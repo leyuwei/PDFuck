@@ -70,6 +70,7 @@ export default function App() {
   const modelRef = useRef<PdfDocumentModel | undefined>(undefined)
   const dirtyRef = useRef(false)
   const printingRef = useRef(false)
+  const annotationFocusTimer = useRef<number | undefined>(undefined)
   const sessionsRef = useRef<Map<number, DocumentSession>>(new Map())
   const liveSessionRef = useRef<DocumentSession>(emptySession(1))
   const activeDocumentIdRef = useRef(1)
@@ -87,6 +88,7 @@ export default function App() {
   const [annotations, setAnnotations] = useState<AnnotationRecord[]>([])
   const [textObjects, setTextObjects] = useState<TextObjectRecord[]>([])
   const [selectedAnnotation, setSelectedAnnotation] = useState<string>()
+  const [focusedAnnotation, setFocusedAnnotation] = useState<string>()
   const [annotationFocusToken, setAnnotationFocusToken] = useState(0)
   const [selection, setSelection] = useState<TextSelection>()
   const [dirty, setDirty] = useState(false)
@@ -98,6 +100,7 @@ export default function App() {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('pdf')
   const [exportDpi, setExportDpi] = useState(150)
   const [printing, setPrinting] = useState(false)
+  const [annotationPanelCollapsed, setAnnotationPanelCollapsed] = useState(false)
   const [activeDocumentId, setActiveDocumentId] = useState(1)
   const [documentTabs, setDocumentTabs] = useState<DocumentTabsSnapshot>(() => ({ currentId: 1, documents: [sessionSummary(emptySession(1))] }))
   const [windowDocumentReady, setWindowDocumentReady] = useState(false)
@@ -125,6 +128,8 @@ export default function App() {
     if (!dirtyCount || window.confirm(`有 ${dirtyCount} 个文档包含未保存的修改，确定关闭 PDFuck 吗？`)) { dirtyRef.current = false; window.desktop.windowClose() }
   }, [])
   const activateSession = useCallback((session: DocumentSession) => {
+    if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
+    annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty
     setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects)
@@ -189,6 +194,7 @@ export default function App() {
     return () => { offMaximize(); offOpen() }
   }, [closeCurrentWindow, openPath, showError])
   useEffect(() => { const handler = (event: BeforeUnloadEvent) => { sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
+  useEffect(() => () => { if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current) }, [])
   useEffect(() => { if (windowDocumentReady) window.desktop.updateWindowDocument({ fileName: documentName, dirty, hasDocument }) }, [dirty, documentName, hasDocument, windowDocumentReady])
   useEffect(() => {
     setDocumentTabs((current) => {
@@ -233,7 +239,7 @@ export default function App() {
   }, [mutate])
   const deleteAnnotation = useCallback((annotation: AnnotationRecord) => {
     if (window.confirm(`确定删除第 ${annotation.pageIndex + 1} 页的这条批注？`)) {
-      setSelectedAnnotation((current) => current === annotation.id ? undefined : current)
+      setSelectedAnnotation((current) => current === annotation.id ? undefined : current); setFocusedAnnotation((current) => current === annotation.id ? undefined : current)
       void mutate((model) => model.deleteAnnotation(annotation.id), '批注已删除', false)
     }
   }, [mutate])
@@ -241,13 +247,18 @@ export default function App() {
     const model = modelRef.current; if (!model) return
     await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false)
   }, [syncModel])
+  const revealAnnotation = useCallback((id: string) => {
+    if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
+    setFocusedAnnotation(id); setAnnotationFocusToken((value) => value + 1)
+    annotationFocusTimer.current = window.setTimeout(() => { setFocusedAnnotation((current) => current === id ? undefined : current); annotationFocusTimer.current = undefined }, 1050)
+  }, [])
   const selectAnnotation = useCallback((annotation: AnnotationRecord) => {
-    setSelectedAnnotation(annotation.id); setAnnotationFocusToken((value) => value + 1); setCurrentPage(annotation.pageIndex)
+    setSelectedAnnotation(annotation.id); revealAnnotation(annotation.id); setCurrentPage(annotation.pageIndex)
     viewerRef.current?.focusAnnotation(annotation.id, annotation.pageIndex)
-  }, [])
+  }, [revealAnnotation])
   const selectPageAnnotation = useCallback((annotation: AnnotationRecord) => {
-    setSelectedAnnotation(annotation.id); setAnnotationFocusToken((value) => value + 1)
-  }, [])
+    setSelectedAnnotation(annotation.id); revealAnnotation(annotation.id)
+  }, [revealAnnotation])
   const editTextObject = useCallback(async (textObject: TextObjectRecord) => {
     const value = await askText({ text: textObject.text, style: textObject.style }); if (!value) return
     const image = await cjkRaster(value.text, textObject.rect, value)
@@ -306,15 +317,15 @@ export default function App() {
     const path = window.desktop.filePath(file)
     void openPath(path)
   }}>
-    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v1.5.0</em></div><div className="document-title" title={documentName}>{documentName}{dirty ? ' · 未保存' : ''}</div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button>
+    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v1.6.0</em></div><div className="document-title" title={documentName}>{documentName}{dirty ? ' · 未保存' : ''}</div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button>
       <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
       <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>适合宽度</button></div>
       <button className="quick-save primary" disabled={!hasDocument} onClick={() => void savePdf(false)}>保存</button><div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div></header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
-    <main className="workspace"><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} className={module === key ? 'active' : ''} onClick={() => selectModule(key)}><span className={`nav-icon ${key}`} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v1.5.0</small></nav>
+    <main className="workspace"><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} className={module === key ? 'active' : ''} onClick={() => selectModule(key)}><span className={`nav-icon ${key}`} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v1.6.0</small></nav>
       <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} onExportFormat={setExportFormat} onExportDpi={setExportDpi} />
-      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} mode={viewMode} activeTool={effectiveTool} annotations={annotations} selectedAnnotationId={selectedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={module === 'edit'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <div className="welcome"><div className="welcome-icon"><span>PDF</span></div><h1>打开 PDF 开始工作</h1><p>多份 PDF 会整齐收纳在同一个窗口的文档标签中。</p><button className="primary" onClick={() => void chooseOpen()}>选择 PDF 文件</button><small>也可以把 PDF 文件直接拖到窗口中</small></div>}</section>
-      {module === 'annotate' && hasDocument && <AnnotationPanel annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
+      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} mode={viewMode} activeTool={effectiveTool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={module === 'edit'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <div className="welcome"><div className="welcome-icon"><span>PDF</span></div><h1>打开 PDF 开始工作</h1><p>多份 PDF 会整齐收纳在同一个窗口的文档标签中。</p><button className="primary" onClick={() => void chooseOpen()}>选择 PDF 文件</button><small>也可以把 PDF 文件直接拖到窗口中</small></div>}</section>
+      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
     </main><footer><span>{status}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `已选择：${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? `${pageCount} 页 · 第 ${currentPage + 1} 页` : '未打开文档'}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>释放以打开 PDF</b><span>{hasDocument ? '将在当前窗口新增一个文档标签' : '将在当前标签中打开'}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { setDialog(null); annotationResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); annotationResolve.current?.(value) }} />}

@@ -6,6 +6,8 @@ import { AnnotationIcon } from './AnnotationIcon'
 interface Props {
   annotations: AnnotationRecord[]
   selectedId?: string
+  collapsed: boolean
+  onToggle(): void
   onSelect(annotation: AnnotationRecord): void
   onEdit(id: string, content: string): Promise<void>
   onDelete(id: string): void
@@ -28,9 +30,10 @@ function AnnotationRow({ annotation, selected, onSelect, onEdit }: { annotation:
   </div>
 }
 
-export function AnnotationPanel({ annotations, selectedId, onSelect, onEdit, onDelete }: Props) {
+export function AnnotationPanel({ annotations, selectedId, collapsed, onToggle, onSelect, onEdit, onDelete }: Props) {
   const selected = annotations.find((annotation) => annotation.id === selectedId)
-  return <aside className="annotation-panel"><div className="annotation-heading"><div><h2>批注列表</h2><p>{annotations.length} 条批注</p></div></div>
+  if (collapsed) return <aside className="annotation-panel collapsed"><button type="button" className="annotation-expand" onClick={onToggle} title="展开批注列表" aria-label="展开批注列表"><span className="annotation-panel-glyph">≡</span><b>批注</b><em>{annotations.length}</em><i>‹</i></button></aside>
+  return <aside className="annotation-panel"><div className="annotation-heading"><div><h2>批注列表</h2><p>{annotations.length} 条批注</p></div><button type="button" className="annotation-collapse" onClick={onToggle} title="收起批注列表" aria-label="收起批注列表"><span>›</span> 收起</button></div>
     <div className="annotation-header"><span /><span>页</span><span>类型</span><span>内容（双击编辑）</span></div>
     <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} selected={annotation.id === selectedId} onSelect={() => onSelect(annotation)} onEdit={(content) => onEdit(annotation.id, content)} />) : <div className="empty-list">还没有批注<br /><small>在页面上框选文字开始批注</small></div>}</div>
     <div className="annotation-actions"><button onClick={() => selected && onDelete(selected.id)} disabled={!selected} className="danger">删除批注</button></div>

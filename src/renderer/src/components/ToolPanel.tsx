@@ -32,7 +32,7 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint="拖动框选要保留的页面区域">框选裁切页面</ToolButton>
       <button className="danger wide" disabled={disabled} onClick={props.onDeletePages}>批量删除页面…</button><h3>内容</h3>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint="拖出文本框后设置内容和格式">在页面上添加文字</ToolButton></section>}
-    {module === 'annotate' && <section><h2>批注</h2><p className="subtitle">单击定位文字光标，拖动框选 PDF 文字；已有批注可直接右键删除。</p><h3>文本批注</h3>
+    {module === 'annotate' && <section><h2>批注</h2><p className="subtitle">单击定位文字光标，按住 Shift 并用左右键精准选字；拖动可快速框选。</p><h3>文本批注</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint="框选文字并可填写说明">文本高亮</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint="框选原文并填写替换内容">文本替换标记</ToolButton>
       <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="delete_text" />} hint="框选文字添加删除线">文本删除</ToolButton>

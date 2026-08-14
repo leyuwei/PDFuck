@@ -19,7 +19,7 @@ let printWindow: BrowserWindow | null = null
 
 app.setAboutPanelOptions({
   applicationName: 'PDFuck',
-  applicationVersion: '1.5.0',
+  applicationVersion: '1.6.0',
   copyright: 'Copyright © 2026 github@leyuwei'
 })
 

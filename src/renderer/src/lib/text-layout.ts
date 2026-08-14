@@ -3,26 +3,76 @@ import type { PdfPoint, PdfRect } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 
 export interface WordBox { text: string; rect: PdfRect; order: number }
-export interface TextCaret { x: number; y: number; height: number }
+export interface TextPosition { wordIndex: number; offset: number }
+export interface TextCaret extends TextPosition { x: number; y: number; height: number }
+
+function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
+
+export function caretForTextPosition(words: WordBox[], position: TextPosition): TextCaret | undefined {
+  const word = words[position.wordIndex]
+  if (!word) return undefined
+  const count = characterCount(word)
+  const offset = Math.max(0, Math.min(count, position.offset))
+  return { wordIndex: position.wordIndex, offset, x: word.rect.x + word.rect.width * offset / count, y: word.rect.y, height: word.rect.height }
+}
 
 export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
-  let nearest: WordBox | undefined
+  let nearestIndex = -1
   let nearestDistance = Number.POSITIVE_INFINITY
-  for (const word of words) {
+  words.forEach((word, index) => {
     const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
     const distance = dx * dx + dy * dy
-    if (distance < nearestDistance) { nearest = word; nearestDistance = distance }
-  }
-  if (!nearest) return undefined
-  const characterCount = Math.max(1, Array.from(nearest.text).length)
+    if (distance < nearestDistance) { nearestIndex = index; nearestDistance = distance }
+  })
+  if (nearestIndex < 0) return undefined
+  const nearest = words[nearestIndex], count = characterCount(nearest)
   const relativeX = Math.max(0, Math.min(1, (point.x - nearest.rect.x) / Math.max(1, nearest.rect.width)))
-  const characterBoundary = Math.round(relativeX * characterCount)
-  return {
-    x: nearest.rect.x + nearest.rect.width * characterBoundary / characterCount,
-    y: nearest.rect.y,
-    height: nearest.rect.height
+  return caretForTextPosition(words, { wordIndex: nearestIndex, offset: Math.round(relativeX * count) })
+}
+
+export function moveTextPosition(words: WordBox[], position: TextPosition, direction: -1 | 1): TextPosition {
+  if (!words.length) return position
+  const wordIndex = Math.max(0, Math.min(words.length - 1, position.wordIndex))
+  const offset = Math.max(0, Math.min(characterCount(words[wordIndex]), position.offset))
+  if (direction < 0) {
+    if (offset > 0) return { wordIndex, offset: offset - 1 }
+    if (wordIndex > 0) return { wordIndex: wordIndex - 1, offset: characterCount(words[wordIndex - 1]) }
+  } else {
+    if (offset < characterCount(words[wordIndex])) return { wordIndex, offset: offset + 1 }
+    if (wordIndex < words.length - 1) return { wordIndex: wordIndex + 1, offset: 0 }
   }
+  return { wordIndex, offset }
+}
+
+function comparePosition(a: TextPosition, b: TextPosition): number {
+  return a.wordIndex === b.wordIndex ? a.offset - b.offset : a.wordIndex - b.wordIndex
+}
+
+export function textSelectionBetween(words: WordBox[], anchor: TextPosition, focus: TextPosition): { text: string; rects: PdfRect[] } | undefined {
+  if (!words.length || comparePosition(anchor, focus) === 0) return undefined
+  const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
+  const pieces: string[] = [], rects: PdfRect[] = []
+  for (let wordIndex = start.wordIndex; wordIndex <= end.wordIndex; wordIndex += 1) {
+    const word = words[wordIndex]
+    if (!word) continue
+    const chars = Array.from(word.text), count = Math.max(1, chars.length)
+    const from = wordIndex === start.wordIndex ? Math.max(0, Math.min(count, start.offset)) : 0
+    const to = wordIndex === end.wordIndex ? Math.max(0, Math.min(count, end.offset)) : count
+    if (to <= from) continue
+    pieces.push(chars.slice(from, to).join(''))
+    rects.push({ x: word.rect.x + word.rect.width * from / count, y: word.rect.y, width: word.rect.width * (to - from) / count, height: word.rect.height })
+  }
+  if (!rects.length) return undefined
+  const lines: PdfRect[] = []
+  for (const rect of rects) {
+    const previous = lines.at(-1)
+    if (previous && Math.abs(previous.y - rect.y) < Math.max(previous.height, rect.height) * 0.55) {
+      const right = Math.max(previous.x + previous.width, rect.x + rect.width)
+      previous.x = Math.min(previous.x, rect.x); previous.width = right - previous.x; previous.height = Math.max(previous.height, rect.height)
+    } else lines.push({ ...rect })
+  }
+  return { text: pieces.join(' '), rects: lines }
 }
 
 function ascentRatio(style?: PdfJsTextStyle): number {
