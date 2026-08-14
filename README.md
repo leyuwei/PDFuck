@@ -1,36 +1,91 @@
 # PDFuck
 
-使用 TypeScript + React + Electron 构建的跨平台 PDF 查看、编辑、批注、打印和导出工具。当前 Windows 版本为 v1.2.0；业务层和构建配置同时支持后续 macOS 打包。
+> 让 PDF 阅读、批注与轻量编辑，重新回到一个干净、顺手的窗口里。
+
+PDFuck 是一款使用 TypeScript、React 与 Electron 构建的跨平台 PDF 工具。它把高清阅读、页面整理、文字编辑、专业批注、打印和多格式导出集中在四个清晰模块中——没有拥挤的工具栏，也不需要为了一个简单操作在多层菜单里来回寻找。
+
+无论是阅读论文、审阅报告、整理资料，还是给同事留下修改意见，PDFuck 都希望让你的注意力留在文档本身。
+
+[前往 GitHub Releases 下载](https://github.com/leyuwei/PDFuck/releases)
 
 版权声明：Copyright © 2026 github@leyuwei
 
-## 功能
+## 为什么值得一试
 
-- 查看：连续滚动、单页查看、页码跳转、缩放、适合宽度和高 DPI 重新渲染。
-- 打开：按钮、启动参数或从资源管理器/Finder 直接拖入 PDF。
-- 编辑：框选裁切、任意多页批量删除；添加文字后可拖动改位，双击可继续修改内容和完整格式。
-- 批注：高亮、便笺、替换、插入文字、删除线和下划线，每项均配有独立图标。
-- 批注交互：直接框选 PDF 文字；页面右键快捷批注；已有批注可选择、移动和双击编辑。
-- 批注列表：单击定位，双击内容单元格直接编辑，Enter 或失去焦点时写回。
-- 保存：PDF 保存/另存为；逐页导出 PNG、JPG 或 EPS，支持 72-600 DPI。
-- 打印：使用系统打印对话框打印当前尚未保存的编辑结果，支持 Ctrl+P。
-- 桌面体验：无系统外框，右上角内置固定的最小化、最大化/还原、关闭按钮，支持未保存保护和 Ctrl+S。
+- **清晰阅读，缩放更跟手**：缩放时即时预览，停手后只对可见页面进行 PDF.js 高清重绘；连续滚动与单页模式随时切换。
+- **轻量编辑，操作直观**：裁切页面、批量删除多页；添加的文字可以继续拖动、双击修改内容和完整格式。
+- **批注就在手边**：单击 PDF 文字显示字符间光标，拖动即可框选；已有批注可直接右键编辑或删除。
+- **批注集中管理**：批注列表支持定位、行内编辑和删除，长文档的修改意见也能快速梳理。
+- **从编辑到交付一步完成**：保存 PDF、调用系统打印，或逐页导出 PNG、JPG、EPS。
+- **桌面体验更专注**：简洁无边框界面、拖放打开、未保存保护，以及常用键盘快捷键。
 
-## 直接运行
+## Windows 下载与安装
 
-Windows 便携版无需安装 Node.js：
+发布页同时提供两种版本：
 
-```text
-release/PDFuck-1.2.0-Windows.exe
-```
+### 安装版（推荐）
 
-也可以把 PDF 路径作为参数：
+下载 `PDFuck-1.3.0-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
-```powershell
-& .\release\PDFuck-1.2.0-Windows.exe "C:\Documents\example.pdf"
-```
+- 自定义安装目录；
+- 创建桌面快捷方式；
+- 创建开始菜单入口；
+- 通过 Windows“已安装的应用”正常卸载；
+- 安装结束后直接启动 PDFuck。
 
-## 开发
+### 便携版
+
+下载 `PDFuck-1.3.0-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+
+两种版本都不需要另行安装 Node.js。
+
+> 如果未签名的社区版本触发 Windows SmartScreen，请先确认文件来自本仓库的 Releases 页面并核对发布页校验值，再选择是否继续运行。
+
+## 功能一览
+
+### 查看
+
+- 连续滚动与单页查看；
+- 页码跳转、缩放、适合宽度；
+- 高 DPI 清晰渲染；
+- 从资源管理器直接拖入 PDF 打开。
+
+### 编辑
+
+- 框选裁切页面；
+- 当前页、奇数页、偶数页或任意组合的批量删页；
+- 添加自定义字体类别、字号、颜色、粗体、斜体和对齐方式的文字；
+- 新增文字可直接选择、拖动，双击后继续编辑。
+
+### 批注
+
+- 文本高亮；
+- 任意位置便笺；
+- 文本替换标记；
+- 插入文字标记；
+- 文本删除线；
+- 文本下划线；
+- 页面右键快捷批注；
+- 单击文字显示类似 Word 的字符间闪烁光标，拖动才形成选区；
+- 已有批注可在页面上直接右键编辑或删除；
+- 批注列表定位、编辑与删除。
+
+### 保存、打印与导出
+
+- 保存或另存为 PDF；
+- 使用系统打印对话框打印当前编辑结果；
+- 导出 PNG、JPG、EPS；
+- 支持 72–600 DPI，多页文件自动添加页码后缀。
+
+## 快捷键
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `Ctrl+S` | 保存当前 PDF |
+| `Ctrl+P` | 打开系统打印对话框 |
+| `Ctrl+鼠标滚轮` | 快速缩放页面 |
+
+## 从源码运行
 
 需要 Node.js 22 或更高版本。
 
@@ -39,32 +94,49 @@ npm install
 npm run dev
 ```
 
-常用检查和构建：
+## 检查与构建
 
 ```powershell
 npm run typecheck
 npm test
 npm run build
+```
+
+Windows 发布命令：
+
+```powershell
+# 同时生成安装版和便携版
 npm run dist:win
+
+# 只生成 NSIS 安装版
+npm run dist:win:installer
+
+# 只生成便携版
+npm run dist:win:portable
+```
+
+macOS 构建：
+
+```powershell
 npm run dist:mac
 ```
 
-`dist:mac` 需要在 macOS 上执行，以生成 DMG 并完成签名/公证配置。
+`dist:mac` 需要在 macOS 上执行；正式分发前还需要配置 Apple 签名与公证。
 
 ## 技术结构
 
-- `src/main/`：Electron 窗口、原生对话框和安全文件写入。
-- `src/preload/`：启用 context isolation 的类型化桌面接口。
-- `src/renderer/src/`：React 界面、PDF.js 查看器、编辑/批注交互。
-- `src/renderer/src/lib/pdf-document.ts`：pdf-lib 文档编辑和标准批注字典。
-- `src/renderer/src/lib/export.ts`：PNG、JPG、EPS 导出。
-- `PLAN.md`：重构计划和完成定义。
-- `PROGRESS.md`：完整迁移留痕和中断恢复记录。
+- `src/main/`：Electron 窗口、原生对话框、打印和安全文件写入；
+- `src/preload/`：启用 context isolation 的类型化桌面接口；
+- `src/renderer/src/`：React 界面、PDF.js 查看器和编辑/批注交互；
+- `src/renderer/src/lib/pdf-document.ts`：pdf-lib 文档编辑和标准 PDF 批注；
+- `src/renderer/src/lib/export.ts`：PNG、JPG 与 EPS 导出；
+- `PLAN.md`：设计与实施计划；
+- `PROGRESS.md`：完整开发留痕和中断恢复记录。
 
-## 导出规则
+## 关于文字对象
 
-- 单页文档使用用户选择的文件名。
-- 多页文档生成 `文件名_001.png`、`文件名_002.png` 等文件。
-- EPS 为每页一个带 RGB 图像流的有效单页 EPS 文件。
+PDFuck 添加的文字会保存为带外观流的 PDF FreeText 对象。拉丁文字使用矢量文字外观；中文等无法由标准 PDF 字体直接编码的文字使用高分辨率透明外观。保存后重新打开，PDFuck 创建的文字对象仍可继续移动和编辑。
 
-添加文字保存为带外观流的 PDF FreeText 对象。拉丁文字保留矢量文字外观；中文等无法由标准 PDF 字体直接编码的文字使用高分辨率透明外观。PDFuck 写入的文字对象保存后重新打开仍可继续移动和编辑；原 PDF 页面始终由 PDF.js 按当前缩放和屏幕像素比重新渲染。
+## 开源许可
+
+本项目基于 [MIT License](LICENSE) 开源。欢迎提交 Issue、改进建议和 Pull Request。

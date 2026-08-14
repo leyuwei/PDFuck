@@ -12,7 +12,7 @@ let initialPath: string | null = null
 
 app.setAboutPanelOptions({
   applicationName: 'PDFuck',
-  applicationVersion: '1.2.0',
+  applicationVersion: '1.3.0',
   copyright: 'Copyright © 2026 github@leyuwei'
 })
 

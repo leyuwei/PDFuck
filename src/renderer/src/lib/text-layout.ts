@@ -1,8 +1,29 @@
 import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src/display/api'
-import type { PdfRect } from '../types'
+import type { PdfPoint, PdfRect } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 
 export interface WordBox { text: string; rect: PdfRect; order: number }
+export interface TextCaret { x: number; y: number; height: number }
+
+export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
+  let nearest: WordBox | undefined
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const word of words) {
+    const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
+    const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
+    const distance = dx * dx + dy * dy
+    if (distance < nearestDistance) { nearest = word; nearestDistance = distance }
+  }
+  if (!nearest) return undefined
+  const characterCount = Math.max(1, Array.from(nearest.text).length)
+  const relativeX = Math.max(0, Math.min(1, (point.x - nearest.rect.x) / Math.max(1, nearest.rect.width)))
+  const characterBoundary = Math.round(relativeX * characterCount)
+  return {
+    x: nearest.rect.x + nearest.rect.width * characterBoundary / characterCount,
+    y: nearest.rect.y,
+    height: nearest.rect.height
+  }
+}
 
 function ascentRatio(style?: PdfJsTextStyle): number {
   if (style?.ascent) return style.ascent

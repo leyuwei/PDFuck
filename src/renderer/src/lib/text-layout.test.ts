@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
-import { textItemsToWordBoxes } from './text-layout'
+import { textCaretAtPoint, textItemsToWordBoxes } from './text-layout'
 
 describe('PDF text layout', () => {
   it('places selection above the PDF baseline using font ascent', () => {
@@ -10,5 +10,18 @@ describe('PDF text layout', () => {
     expect(words[0].rect.y).toBeCloseTo(83)
     expect(words[0].rect.height).toBeCloseTo(12)
     expect(words[0].rect.y + words[0].rect.height).toBeCloseTo(95)
+  })
+
+  it('snaps a click to the nearest character boundary instead of selecting the word', () => {
+    const caret = textCaretAtPoint([{ text: 'word', order: 0, rect: { x: 10, y: 20, width: 40, height: 12 } }], { x: 27, y: 25 })
+    expect(caret).toEqual({ x: 30, y: 20, height: 12 })
+  })
+
+  it('uses the closest word edge when clicking between words', () => {
+    const caret = textCaretAtPoint([
+      { text: 'one', order: 0, rect: { x: 10, y: 20, width: 30, height: 12 } },
+      { text: 'two', order: 1, rect: { x: 50, y: 20, width: 30, height: 12 } }
+    ], { x: 43, y: 25 })
+    expect(caret?.x).toBe(40)
   })
 })

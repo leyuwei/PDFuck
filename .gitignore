@@ -9,6 +9,11 @@ tmp/
 node_modules/
 out/
 release/
+# Windows 发布产物：便携版、NSIS 安装程序及更新元数据
+PDFuck-*-Windows.exe
+PDFuck-*-Windows-Setup.exe
+*.blockmap
 coverage/
 playwright-report/
 test-results/
+output/playwright/
