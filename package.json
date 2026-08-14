@@ -80,6 +80,7 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
+      "icon": "resources/icon.png",
       "artifactName": "PDFuck-${version}-macOS.${ext}"
     }
   }
