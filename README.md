@@ -2,6 +2,8 @@
 
 > 让 PDF 阅读、批注与轻量编辑，重新回到一个干净、顺手的窗口里。
 
+<img width="1282" height="726" alt="Screenshot 2026-08-14 at 22 06 51" src="https://github.com/user-attachments/assets/84653ee2-09c6-4e92-93f6-65e4dfce601b" />
+
 PDFuck 是一款使用 TypeScript、React 与 Electron 构建的跨平台 PDF 工具。它把高清阅读、页面整理、文字编辑、专业批注、打印和多格式导出集中在四个清晰模块中——没有拥挤的工具栏，也不需要为了一个简单操作在多层菜单里来回寻找。
 
 无论是阅读论文、审阅报告、整理资料，还是给同事留下修改意见，PDFuck 都希望让你的注意力留在文档本身。
