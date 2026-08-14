@@ -1,5 +1,5 @@
 import { AnnotationMode, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
-import type { ExportFormat, ExportPage } from '../../../shared/contracts'
+import type { ExportPage, RasterExportFormat } from '../../../shared/contracts'
 import { encodeRgbEps } from './eps'
 
 function canvasBytes(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Uint8Array> {
@@ -21,13 +21,17 @@ function epsBytes(canvas: HTMLCanvasElement, widthPoints: number, heightPoints: 
   return encodeRgbEps(rgb, canvas.width, canvas.height, widthPoints, heightPoints)
 }
 
-export async function exportPdfPages(data: Uint8Array, format: ExportFormat, dpi: number, onProgress?: (page: number, total: number) => void): Promise<ExportPage[]> {
+export async function exportPdfPages(data: Uint8Array, format: RasterExportFormat, dpi: number, onProgress?: (completed: number, total: number, pageNumber: number) => void, pageIndices?: number[]): Promise<ExportPage[]> {
   const task = getDocument({ data: data.slice() })
   const document: PDFDocumentProxy = await task.promise
   const outputs: ExportPage[] = []
   try {
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-      onProgress?.(pageNumber, document.numPages)
+    const selected = pageIndices ? [...new Set(pageIndices)].sort((a, b) => a - b) : Array.from({ length: document.numPages }, (_, index) => index)
+    if (!selected.length) throw new Error('请至少选择一个要导出的页面。')
+    if (selected.some((page) => page < 0 || page >= document.numPages)) throw new Error('选择的页码超出了文档范围。')
+    for (let index = 0; index < selected.length; index += 1) {
+      const pageNumber = selected[index] + 1
+      onProgress?.(index + 1, selected.length, pageNumber)
       const page = await document.getPage(pageNumber)
       const base = page.getViewport({ scale: 1 })
       const viewport = page.getViewport({ scale: dpi / 72 })

@@ -65,4 +65,23 @@ describe('PdfDocumentModel', () => {
     expect([0, 1, 2].map((page) => model.getPageSize(page).width)).toEqual([600, 602, 604])
     await expect(model.deletePages([0, 1, 2])).rejects.toThrow('全部页面')
   })
+
+  it('creates a non-destructive PDF subset in the selected order', async () => {
+    const source = await PDFDocument.create()
+    source.addPage([500, 700]); source.addPage([550, 700]); source.addPage([600, 700])
+    const model = await PdfDocumentModel.load(await source.save())
+    const subset = await PDFDocument.load(await model.pageSubset([2, 0]))
+    expect(subset.getPageCount()).toBe(2)
+    expect(subset.getPages().map((page) => page.getWidth())).toEqual([600, 500])
+    expect(model.pageCount).toBe(3)
+  })
+
+  it('keeps annotations when a selected-page PDF is created for print or export', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    await model.addAnnotation(2, 'highlight', [{ x: 70, y: 110, width: 150, height: 15 }], 'selected page comment')
+    const subset = await PdfDocumentModel.load(await model.pageSubset([2]))
+    expect(subset.pageCount).toBe(1)
+    expect(subset.annotations()).toEqual([expect.objectContaining({ pageIndex: 0, content: 'selected page comment' })])
+    expect(model.pageCount).toBe(3)
+  })
 })

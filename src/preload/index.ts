@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { DesktopApi, ExportRequest, PrintPdfRequest, SavePdfRequest } from '../shared/contracts'
+import type { DesktopApi, ExportRequest, PrintPdfRequest, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
@@ -8,7 +8,8 @@ const api: DesktopApi = {
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   filePath: (file) => webUtils.getPathForFile(file),
-  initialPdf: () => ipcRenderer.invoke('pdf:initial'),
+  initialPdfs: () => ipcRenderer.invoke('pdf:initial'),
+  updateWindowDocument: (state: WindowDocumentState) => ipcRenderer.send('window:update-document', state),
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
   windowClose: () => ipcRenderer.send('window:close'),

@@ -88,6 +88,15 @@ export class PdfDocumentModel {
 
   get bytes(): Uint8Array { return Uint8Array.from(this.currentBytes) }
   get pageCount(): number { return this.document.getPageCount() }
+  async pageSubset(pageIndices: number[]): Promise<Uint8Array> {
+    const pages = [...new Set(pageIndices)]
+    if (!pages.length) throw new Error('请至少选择一个页面。')
+    if (pages.some((page) => page < 0 || page >= this.pageCount)) throw new Error('选择的页码超出了文档范围。')
+    const subset = await PDFDocument.create()
+    const copies = await subset.copyPages(this.document, pages)
+    copies.forEach((page) => subset.addPage(page))
+    return Uint8Array.from(await subset.save({ useObjectStreams: false, addDefaultPage: false }))
+  }
   getPageSize(pageIndex: number): { width: number; height: number } {
     const page = this.document.getPage(pageIndex)
     const crop = page.getCropBox()

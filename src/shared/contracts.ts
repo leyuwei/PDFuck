@@ -1,4 +1,5 @@
-export type ExportFormat = 'png' | 'jpg' | 'eps'
+export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
+export type RasterExportFormat = Exclude<ExportFormat, 'pdf'>
 
 export interface OpenedPdf {
   path: string
@@ -27,9 +28,25 @@ export interface ExportPage {
 }
 
 export interface ExportRequest {
-  format: ExportFormat
+  format: RasterExportFormat
   pages: ExportPage[]
   sourceName: string
+}
+
+export interface WindowDocumentState {
+  fileName: string
+  dirty: boolean
+  hasDocument: boolean
+}
+
+export interface ManagedPdfDocument extends WindowDocumentState {
+  id: number
+  title: string
+}
+
+export interface DocumentTabsSnapshot {
+  currentId: number
+  documents: ManagedPdfDocument[]
 }
 
 export interface DesktopApi {
@@ -39,7 +56,8 @@ export interface DesktopApi {
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   filePath(file: File): string
-  initialPdf(): Promise<string | null>
+  initialPdfs(): Promise<string[]>
+  updateWindowDocument(state: WindowDocumentState): void
   windowMinimize(): void
   windowToggleMaximize(): void
   windowClose(): void

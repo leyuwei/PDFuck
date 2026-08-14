@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AnnotationKind, TextStyle } from '../types'
+import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; optional?: boolean; edit?: boolean }
 
@@ -47,6 +48,33 @@ export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }:
     <div className="page-delete-grid">{Array.from({ length: pageCount }, (_, page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{selected.has(page) ? '删除' : '保留'}</small></button>)}</div>
     <div className={`page-delete-summary${allSelected ? ' invalid' : ''}`}>{allSelected ? '不能删除全部页面，请至少取消选择一页。' : `将删除 ${selected.size} 页，保留 ${pageCount - selected.size} 页。`}</div>
     <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="danger" disabled={!selected.size || allSelected} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>删除所选页面</button></div></div></div>
+}
+
+export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'print' | 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
+  const allPages = allPageIndices(pageCount)
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
+  const [manual, setManual] = useState(() => compactPageSelection(allPages))
+  const parsed = parsePageSelection(manual, pageCount)
+  const invalid = parsed.invalid
+  const replace = (pages: number[]) => { const normalized = [...new Set(pages)].sort((a, b) => a - b); setSelected(new Set(normalized)); setManual(compactPageSelection(normalized)) }
+  const toggle = (page: number) => replace(selected.has(page) ? [...selected].filter((value) => value !== page) : [...selected, page])
+  const changeManual = (value: string) => {
+    setManual(value)
+    const result = parsePageSelection(value, pageCount)
+    if (!result.invalid.length) setSelected(new Set(result.pages))
+  }
+  const isAll = selected.size === pageCount
+  const title = purpose === 'print' ? '选择要打印的页面' : '选择要导出的页面'
+  const action = purpose === 'print' ? '打印' : '导出'
+  const valid = selected.size > 0 && invalid.length === 0
+  return <div className="modal-backdrop"><div className="modal page-selection-dialog">
+    <div className="page-selection-heading"><span className={`page-selection-icon ${purpose}`} aria-hidden="true">{purpose === 'print' ? '▣' : '⇩'}</span><div><h2>{title}</h2><p>可直接点选页面，也可输入不连续页码和范围。</p></div></div>
+    <label className={`page-range-input${invalid.length ? ' invalid' : ''}`}><span>页码范围</span><div><input autoFocus value={manual} placeholder="例如：1-3, 5, 8-10" onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection([...selected])) }} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' && valid) onSubmit([...selected].sort((a, b) => a - b)) }} /><small>{invalid.length ? `无法识别：${invalid.join('、')}` : '支持逗号、空格和短横线；页码可不连续'}</small></div></label>
+    <div className="page-selection-shortcuts"><button className={isAll ? 'active' : ''} onClick={() => replace(allPages)}>全部</button><button className={selected.size === 1 && selected.has(currentPage) ? 'active' : ''} onClick={() => replace([currentPage])}>当前页</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 0))}>奇数页</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 1))}>偶数页</button><button onClick={() => replace(allPages.filter((page) => !selected.has(page)))}>反选</button><button onClick={() => replace([])}>清空</button></div>
+    <div className="page-selection-grid">{allPages.map((page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{page === currentPage ? '当前页' : selected.has(page) ? '已选择' : '未选择'}</small></button>)}</div>
+    <div className={`page-selection-summary${!valid ? ' invalid' : ''}`}><b>{selected.size ? `已选择 ${selected.size} 页` : '尚未选择页面'}</b><span>{invalid.length ? '请修正页码范围后继续' : selected.size ? compactPageSelection([...selected]) : `请至少选择一页进行${action}`}</span></div>
+    <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="primary" disabled={!valid} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{action}所选 {selected.size || ''} 页</button></div>
+  </div></div>
 }
 
 export function Toast({ message }: { message: string }) {

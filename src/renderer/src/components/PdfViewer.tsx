@@ -9,13 +9,15 @@ import { AnnotationIcon } from './AnnotationIcon'
 
 GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href
 
-export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void }
+export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void }
 
 interface ViewerProps {
   data?: Uint8Array
   mode: ViewMode
   activeTool: Tool
   annotations: AnnotationRecord[]
+  selectedAnnotationId?: string
+  annotationFocusToken: number
   textObjects: TextObjectRecord[]
   editableTextObjects: boolean
   zoom: number
@@ -26,6 +28,7 @@ interface ViewerProps {
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
   onAnnotationMove(id: string, dx: number, dy: number): void
+  onAnnotationSelect(annotation: AnnotationRecord): void
   onAnnotationEdit(annotation: AnnotationRecord): void
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
@@ -40,11 +43,14 @@ interface PageProps {
   renderZoom: number
   tool: Tool
   annotations: AnnotationRecord[]
+  selectedAnnotationId?: string
+  annotationFocusToken: number
   textObjects: TextObjectRecord[]
   editableTextObjects: boolean
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
   onAnnotationMove(id: string, dx: number, dy: number): void
+  onAnnotationSelect(annotation: AnnotationRecord): void
   onAnnotationEdit(annotation: AnnotationRecord): void
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
@@ -91,16 +97,16 @@ function selectionFromRange(words: WordBox[], first: number, last: number): Text
   return { text: selected.map((word) => word.text).join(' '), rects: lines }
 }
 
-function AnnotationOverlay({ annotation, zoom, onMove, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; onMove(id: string, dx: number, dy: number): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
+function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
   const bounds = rectUnion(annotation.rects)
   const drag = useRef<{ x: number; y: number } | null>(null)
-  const [selected, setSelected] = useState(false)
   const style = { left: bounds.x * zoom, top: bounds.y * zoom, width: Math.max(8, bounds.width * zoom), height: Math.max(8, bounds.height * zoom) }
   return <div
-    className={`annotation-hit annotation-${annotation.kind}${selected ? ' selected' : ''}`}
+    className={`annotation-hit annotation-${annotation.kind}${focused ? ' focused' : ''}`}
     style={style}
+    data-annotation-id={annotation.id}
     title={annotation.content || annotation.kind}
-    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY }; setSelected(true); event.currentTarget.setPointerCapture(event.pointerId) }}
+    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY }; onSelect(annotation); event.currentTarget.setPointerCapture(event.pointerId) }}
     onPointerUp={(event) => {
       event.stopPropagation()
       if (!drag.current) return
@@ -108,12 +114,13 @@ function AnnotationOverlay({ annotation, zoom, onMove, onEdit, onContext }: { an
       drag.current = null
       if (Math.hypot(dx, dy) > 2) onMove(annotation.id, dx, dy)
     }}
-    onDoubleClick={(event) => { event.stopPropagation(); onEdit(annotation) }}
-    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setSelected(true); onContext(annotation, event.clientX, event.clientY) }}
+    onDoubleClick={(event) => { event.stopPropagation(); onSelect(annotation); onEdit(annotation) }}
+    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(annotation); onContext(annotation, event.clientX, event.clientY) }}
   >
     {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {annotation.kind === 'note' && <span className="note-pin">●</span>}
     {annotation.kind === 'insert' && <span className="insert-caret">⌃</span>}
+    {focused && <><span key={focusToken} className="annotation-focus-ring" /><span className="annotation-focus-badge">当前批注</span></>}
   </div>
 }
 
@@ -145,7 +152,7 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
   >{textObject.text}</div>
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, textObjects, editableTextObjects, onAction, onSelectionChange, onAnnotationMove, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, selectedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, onAction, onSelectionChange, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
@@ -315,7 +322,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, tex
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !isTextTool && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 4, top: hoverInsert.y * zoom - 4 }}>⌃</div>}
-    {annotations.map((annotation) => <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} onMove={onAnnotationMove} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} />)}
+    {annotations.map((annotation) => { const focused = annotation.id === selectedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       {menu.annotation ? <>
@@ -331,7 +338,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, tex
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, mode, activeTool, annotations, textObjects, editableTextObjects, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onAnnotationMove, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError } = props
+  const { data, mode, activeTool, annotations, selectedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -370,7 +377,15 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const goToPage = (pageIndex: number) => {
     viewportRef.current?.querySelector(`[data-page="${pageIndex}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
-  useImperativeHandle(ref, () => ({ fitWidth, goToPage }))
+  const focusAnnotation = (id: string, pageIndex: number) => {
+    const reveal = () => {
+      const target = viewportRef.current?.querySelector<HTMLElement>(`[data-annotation-id="${CSS.escape(id)}"]`)
+      if (target) target.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+      else viewportRef.current?.querySelector(`[data-page="${pageIndex}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+    requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
+  }
+  useImperativeHandle(ref, () => ({ fitWidth, goToPage, focusAnnotation }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -397,8 +412,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
     <div className={`page-stack ${mode}`}>{document && pages.map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} onAction={onAction} onSelectionChange={onSelectionChange}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} selectedAnnotationId={selectedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects}
-      onAnnotationMove={onAnnotationMove} onAnnotationEdit={onAnnotationEdit} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} />)}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} />)}</div>
   </div>
 })
