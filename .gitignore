@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+tmp/
+*.log
+*.spec
+node_modules/
+out/
+release/
+coverage/
+playwright-report/
+test-results/

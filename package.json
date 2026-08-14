@@ -1,0 +1,65 @@
+{
+  "name": "pdfuck",
+  "version": "1.2.0",
+  "description": "跨平台 PDF 查看、编辑、批注与导出工具",
+  "main": "out/main/index.js",
+  "author": "github@leyuwei",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "npm run typecheck && npm test && electron-vite build",
+    "dist:win": "npm run build && electron-builder --win portable",
+    "dist:mac": "npm run build && electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.2.108",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.9.0",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  },
+  "build": {
+    "appId": "cn.pdfuck.app",
+    "productName": "PDFuck",
+    "copyright": "Copyright © 2026 github@leyuwei",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "PDFuck-${version}-Windows.${ext}",
+      "legalTrademarks": "github@leyuwei"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "PDFuck-${version}-macOS.${ext}"
+    }
+  }
+}
