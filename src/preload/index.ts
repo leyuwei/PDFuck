@@ -13,6 +13,7 @@ const api: DesktopApi = {
   openReleasePage: (url) => ipcRenderer.invoke('app:open-release-page', url),
   filePath: (file) => webUtils.getPathForFile(file),
   initialPdfs: () => ipcRenderer.invoke('pdf:initial'),
+  recentPdfs: () => ipcRenderer.invoke('pdf:recent'),
   updateWindowDocument: (state: WindowDocumentState) => ipcRenderer.send('window:update-document', state),
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),

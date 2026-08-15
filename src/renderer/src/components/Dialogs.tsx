@@ -26,17 +26,17 @@ export function AnnotationDialog({ state, onCancel, onSubmit }: { state: Annotat
 
 export interface TextDialogValue { text: string; style: TextStyle }
 
-export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { initial?: TextDialogValue; edit?: boolean; onCancel(): void; onSubmit(value: TextDialogValue): void }) {
+export function TextDialog({ initial, edit = false, pageText = false, onCancel, onSubmit }: { initial?: TextDialogValue; edit?: boolean; pageText?: boolean; onCancel(): void; onSubmit(value: TextDialogValue): void }) {
   const [text, setText] = useState(initial?.text || '')
   const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'sans', size: 16, color: '#182033', bold: false, italic: false, align: 'left' })
   const textareaRef = useDeferredTextareaFocus()
-  return <div className="modal-backdrop"><div className="modal text-dialog"><h2>{edit ? '编辑文字' : '添加文字'}</h2><p>设置文字内容和显示格式。添加后可在页面上拖动，双击可再次编辑。</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
+  return <div className="modal-backdrop"><div className="modal text-dialog"><h2>{pageText ? '编辑页面文字' : edit ? '编辑文字' : '添加文字'}</h2><p>{pageText ? '修改框选的原文和格式。原显示区域将被覆盖，替换文字可继续拖动和双击编辑。' : '设置文字内容和显示格式。添加后可在页面上拖动，双击可再次编辑。'}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
     <div className="format-grid"><label>字体<select value={style.font} onChange={(event) => setStyle({ ...style, font: event.target.value as TextStyle['font'] })}><option value="sans">无衬线</option><option value="serif">衬线</option><option value="mono">等宽</option></select></label>
       <label>字号<input type="number" min="6" max="144" value={style.size} onChange={(event) => setStyle({ ...style, size: Number(event.target.value) })} /></label>
       <label>颜色<input type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
       <label>对齐<select value={style.align} onChange={(event) => setStyle({ ...style, align: event.target.value as TextStyle['align'] })}><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> 粗体</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> 斜体</button></div>
-    <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? '保存修改' : '添加'}</button></div></div></div>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{pageText ? '替换原文' : edit ? '保存修改' : '添加'}</button></div></div></div>
 }
 
 export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }: { pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {

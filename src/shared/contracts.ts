@@ -7,6 +7,12 @@ export interface OpenedPdf {
   data: Uint8Array
 }
 
+export interface RecentPdf {
+  path: string
+  name: string
+  lastOpened: string
+}
+
 export interface SavePdfRequest {
   data: Uint8Array
   currentPath?: string
@@ -68,6 +74,7 @@ export interface DesktopApi {
   openReleasePage(url: string): Promise<void>
   filePath(file: File): string
   initialPdfs(): Promise<string[]>
+  recentPdfs(): Promise<RecentPdf[]>
   updateWindowDocument(state: WindowDocumentState): void
   windowMinimize(): void
   windowToggleMaximize(): void

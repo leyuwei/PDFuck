@@ -63,6 +63,17 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations()).toHaveLength(5)
   })
 
+  it('visually replaces selected page text and keeps the replacement editable after reopening', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], 'Revised wording', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })
+    const replacement = model.textObjects().find((item) => item.id === id)
+    expect(replacement).toEqual(expect.objectContaining({ pageIndex: 0, text: 'Revised wording', rect: expect.objectContaining({ x: 72, y: 118, width: 190, height: 15 }) }))
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id, text: 'Revised wording' })])
+    await reopened.updateTextObject(id, 'Edited again', { font: 'serif', size: 13, color: '#3157d5', bold: true, italic: false, align: 'left' })
+    expect(reopened.textObjects()[0].text).toBe('Edited again')
+  })
+
   it('does not delete the last page', async () => {
     const source = await PDFDocument.create(); source.addPage()
     const model = await PdfDocumentModel.load(await source.save())

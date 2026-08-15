@@ -31,6 +31,7 @@ export function ToolPanel(props: Props) {
     {module === 'edit' && <section><h2>编辑</h2><p className="subtitle">直接调整页面或添加带格式的文字内容。</p><h3>页面</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint="拖动框选要保留的页面区域">框选裁切页面</ToolButton>
       <button className="danger wide" disabled={disabled} onClick={props.onDeletePages}>批量删除页面…</button><h3>内容</h3>
+      <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint="精准框选页面原文并输入替换内容">编辑页面文字</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint="拖出文本框后设置内容和格式">在页面上添加文字</ToolButton></section>}
     {module === 'annotate' && <section><h2>批注</h2><p className="subtitle">单击定位文字光标，按住 Shift 并用左右键精准选字；拖动可快速框选。</p><h3>文本批注</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint="框选文字并可填写说明">文本高亮</ToolButton>

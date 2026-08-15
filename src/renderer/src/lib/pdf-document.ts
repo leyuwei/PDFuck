@@ -1,6 +1,6 @@
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRef, PDFString,
-  StandardFonts, type PDFFont, type PDFPage
+  StandardFonts, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
 import type { AnnotationKind, AnnotationRecord, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { rectUnion } from './geometry'
@@ -217,6 +217,18 @@ export class PdfDocumentModel {
     page.node.addAnnot(this.document.context.register(dictionary))
     await this.commit()
     return id
+  }
+
+  async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect): Promise<string> {
+    if (!rects.length) throw new Error('请先框选要编辑的页面文字。')
+    const page = this.document.getPage(pageIndex)
+    const geometry = pageGeometry(page)
+    for (const rect of rects) {
+      const padded = { x: Math.max(0, rect.x - 1), y: Math.max(0, rect.y - 1), width: rect.width + 2, height: rect.height + 2 }
+      const [left, bottom, right, top] = displayRectToPdfBounds(padded, geometry)
+      page.drawRectangle({ x: left, y: bottom, width: Math.max(1, right - left), height: Math.max(1, top - bottom), color: rgb(1, 1, 1), borderWidth: 0 })
+    }
+    return this.addText(pageIndex, replacementRect || rectUnion(rects), text, style, rasterPng)
   }
 
   private annotationEntries(): AnnotationEntry[] {

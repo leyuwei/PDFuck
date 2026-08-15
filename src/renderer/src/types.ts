@@ -1,6 +1,6 @@
 export type ModuleKey = 'view' | 'edit' | 'annotate' | 'save'
 export type ViewMode = 'continuous' | 'single'
-export type Tool = 'none' | 'text_select' | 'crop' | 'add_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
+export type Tool = 'none' | 'text_select' | 'crop' | 'add_text' | 'edit_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
 export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'delete' | 'underline'
 
 export interface PdfRect { x: number; y: number; width: number; height: number }

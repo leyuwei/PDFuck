@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExportRequest, PrintPdfRequest, PrintPdfResult, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { ExportRequest, PrintPdfRequest, PrintPdfResult, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 
@@ -17,6 +17,7 @@ interface MainWindowSession extends WindowDocumentState {
 let mainSession: MainWindowSession | null = null
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
+let recentWriteQueue: Promise<void> = Promise.resolve()
 
 const testUserData = !app.isPackaged ? process.env.PDFUCK_TEST_USER_DATA : undefined
 if (testUserData) app.setPath('userData', resolve(testUserData))
@@ -83,6 +84,7 @@ async function openPdfAt(path: string) {
   const absolute = resolve(path)
   if (!isPdf(absolute)) throw new Error('只能打开 PDF 文件。')
   const data = await readFile(absolute)
+  await rememberRecentPdf(absolute).catch(() => undefined)
   return { path: absolute, name: basename(absolute), data: new Uint8Array(data) }
 }
 
@@ -96,6 +98,31 @@ async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
     await copyFile(temporary, target)
     await unlink(temporary).catch(() => undefined)
   }
+}
+
+function recentPdfsPath(): string { return join(app.getPath('userData'), 'recent-pdfs.json') }
+
+async function readRecentPdfs(): Promise<RecentPdf[]> {
+  try {
+    const parsed = JSON.parse(await readFile(recentPdfsPath(), 'utf8')) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((value): RecentPdf[] => {
+      if (!value || typeof value !== 'object') return []
+      const entry = value as Partial<RecentPdf>
+      if (typeof entry.path !== 'string' || !isPdf(entry.path) || !existsSync(entry.path)) return []
+      return [{ path: resolve(entry.path), name: typeof entry.name === 'string' ? entry.name : basename(entry.path), lastOpened: typeof entry.lastOpened === 'string' ? entry.lastOpened : new Date(0).toISOString() }]
+    }).slice(0, 8)
+  } catch { return [] }
+}
+
+async function rememberRecentPdf(path: string): Promise<void> {
+  recentWriteQueue = recentWriteQueue.catch(() => undefined).then(async () => {
+    const absolute = resolve(path)
+    const current = await readRecentPdfs()
+    const next: RecentPdf[] = [{ path: absolute, name: basename(absolute), lastOpened: new Date().toISOString() }, ...current.filter((entry) => entry.path.toLowerCase() !== absolute.toLowerCase())].slice(0, 8)
+    await atomicWrite(recentPdfsPath(), new TextEncoder().encode(JSON.stringify(next, null, 2)))
+  })
+  return recentWriteQueue
 }
 
 function requireMainWindow(sender: WebContents): BrowserWindow {
@@ -201,6 +228,7 @@ app.whenReady().then(() => {
     mainSession.initialDelivered = true
     return mainSession.initialPaths.splice(0)
   })
+  ipcMain.handle('pdf:recent', (event) => { requireMainWindow(event.sender); return readRecentPdfs() })
   ipcMain.handle('pdf:save', async (event, request: SavePdfRequest) => {
     const window = requireMainWindow(event.sender)
     let target = request.saveAs ? undefined : request.currentPath

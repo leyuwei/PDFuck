@@ -271,7 +271,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const annotationTextTool = ['highlight', 'replace', 'delete_text', 'underline'].includes(tool)
+  const selectionActionTool = ['highlight', 'replace', 'delete_text', 'underline', 'edit_text'].includes(tool)
   const canSelectText = !['crop', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
@@ -327,7 +327,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       }
       const selected = completed.anchor && completed.focus ? textSelectionBetween(words, completed.anchor, completed.focus) : undefined
       setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
-      if (annotationTextTool && selected) {
+      if (selectionActionTool && selected) {
         onAction({ pageIndex, tool, selection: selected })
         setSelection(undefined); onSelectionChange(undefined)
       }
@@ -373,7 +373,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       event.preventDefault(); setSelection(undefined); onSelectionChange(undefined)
       setSelectionAnchor({ wordIndex: textCaret.wordIndex, offset: textCaret.offset }); return
     }
-    if (event.key === 'Enter' && annotationTextTool && selection) {
+    if (event.key === 'Enter' && selectionActionTool && selection) {
       event.preventDefault(); onAction({ pageIndex, tool, selection }); setSelection(undefined); onSelectionChange(undefined); return
     }
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -409,7 +409,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>编辑批注内容…</span></button>
         <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>删除这条批注</span></button>
       </> : <>
-        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制（自动去除回行）</span><kbd>Ctrl+C</kbd></button>}
+        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制</span><kbd>Ctrl+C</kbd></button>}
+        {editableTextObjects && selection?.text && <><i /><button onClick={() => runMenu('edit_text')}><span className="menu-text-edit-icon" aria-hidden="true">Aa</span><span>编辑所选页面文字…</span></button></>}
         {annotationMode && <>{selection?.text && <i />}<button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>高亮此处文字</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>标记替换…</span></button>
           <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>标记删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>添加下划线</span></button>
           <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>在此处添加批注…</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>在此处插入文字…</span></button></>}
