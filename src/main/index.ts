@@ -1,12 +1,13 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, shell, type WebContents } from 'electron'
-import { randomUUID } from 'node:crypto'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExportRequest, PrintPdfRequest, PrintPdfResult, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { ExportRequest, PdfPasswordUpdate, PrintPdfRequest, PrintPdfResult, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
+import { PdfPasswordStore } from './pdf-password-store'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -18,6 +19,7 @@ let mainSession: MainWindowSession | null = null
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
 let recentWriteQueue: Promise<void> = Promise.resolve()
+let passwordStore: PdfPasswordStore | undefined
 
 const testUserData = !app.isPackaged ? process.env.PDFUCK_TEST_USER_DATA : undefined
 if (testUserData) app.setPath('userData', resolve(testUserData))
@@ -84,8 +86,10 @@ async function openPdfAt(path: string) {
   const absolute = resolve(path)
   if (!isPdf(absolute)) throw new Error('只能打开 PDF 文件。')
   const data = await readFile(absolute)
+  const credentialKey = createHash('sha256').update(data).digest('hex')
+  const savedPassword = await getPasswordStore().get(credentialKey)
   await rememberRecentPdf(absolute).catch(() => undefined)
-  return { path: absolute, name: basename(absolute), data: new Uint8Array(data) }
+  return { path: absolute, name: basename(absolute), data: new Uint8Array(data), credentialKey, savedPassword }
 }
 
 async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
@@ -101,6 +105,11 @@ async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
 }
 
 function recentPdfsPath(): string { return join(app.getPath('userData'), 'recent-pdfs.json') }
+
+function getPasswordStore(): PdfPasswordStore {
+  if (!passwordStore) passwordStore = new PdfPasswordStore(join(app.getPath('userData'), 'pdf-passwords.json'), safeStorage)
+  return passwordStore
+}
 
 async function readRecentPdfs(): Promise<RecentPdf[]> {
   try {
@@ -184,7 +193,7 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
-  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, fileName: '未打开文档', dirty: false, hasDocument: false }
+  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
   window.on('maximize', () => window.webContents.send('window:maximized', true))
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession)) })
@@ -222,6 +231,11 @@ app.whenReady().then(() => {
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
+  ipcMain.handle('pdf:password-update', (event, request: PdfPasswordUpdate) => {
+    requireMainWindow(event.sender)
+    if (!request || typeof request !== 'object') throw new Error('PDF 密码保存请求无效。')
+    return getPasswordStore().set(request.credentialKey, request.password)
+  })
   ipcMain.handle('pdf:initial', (event) => {
     requireMainWindow(event.sender)
     if (!mainSession) return []
@@ -277,7 +291,7 @@ app.whenReady().then(() => {
     const window = requireMainWindow(event.sender)
     if (!mainSession) return
     mainSession.fileName = typeof state.fileName === 'string' ? state.fileName.slice(0, 260) : '未打开文档'
-    mainSession.dirty = Boolean(state.dirty); mainSession.hasDocument = Boolean(state.hasDocument)
+    mainSession.dirty = Boolean(state.dirty); mainSession.hasDocument = Boolean(state.hasDocument); mainSession.encrypted = Boolean(state.encrypted)
     window.setTitle(nativeWindowTitle(mainSession))
   })
   ipcMain.on('window:minimize', (event) => requireMainWindow(event.sender).minimize())

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
@@ -15,11 +15,12 @@ import { normalizeCopiedText } from './lib/clipboard-text'
 import type { UpdateCheckResult } from '../../shared/contracts'
 import { replacementTextRect } from './lib/page-text-edit'
 import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
+import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 
-const APP_VERSION = '1.9.0'
+const APP_VERSION = '1.10.0'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
-type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
+type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
 
 interface DocumentSession {
   id: number
@@ -39,17 +40,19 @@ interface DocumentSession {
   dirty: boolean
   canUndo: boolean
   canRedo: boolean
+  encrypted: boolean
+  password?: string
   documentName: string
   status: string
 }
 
 function emptySession(id: number): DocumentSession {
-  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, pageCount: 0, currentPage: 0, annotations: [], textObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, documentName: '未打开文档', status: '准备就绪' }
+  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, pageCount: 0, currentPage: 0, annotations: [], textObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, encrypted: false, documentName: '未打开文档', status: '准备就绪' }
 }
 
 function sessionSummary(session: DocumentSession): ManagedPdfDocument {
   const hasDocument = Boolean(session.data?.length)
-  return { id: session.id, fileName: session.documentName, title: cleanDocumentName(session.documentName, hasDocument), dirty: session.dirty, hasDocument }
+  return { id: session.id, fileName: session.documentName, title: cleanDocumentName(session.documentName, hasDocument), dirty: session.dirty, hasDocument, encrypted: session.encrypted }
 }
 
 function styledTextRaster(text: string, rect: PdfRect, value: TextDialogValue): Promise<Uint8Array | undefined> {
@@ -107,6 +110,7 @@ export default function App() {
   const nextDocumentId = useRef(2)
   const annotationResolve = useRef<((value: string | null) => void) | undefined>(undefined)
   const textResolve = useRef<((value: TextDialogValue | null) => void) | undefined>(undefined)
+  const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
   const [data, setData] = useState<Uint8Array>()
   const [module, setModule] = useState<ModuleKey>('view')
   const [tool, setTool] = useState<Tool>('none')
@@ -123,6 +127,8 @@ export default function App() {
   const [dirty, setDirty] = useState(false)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
+  const [encrypted, setEncrypted] = useState(false)
+  const [documentPassword, setDocumentPassword] = useState<string>()
   const [documentName, setDocumentName] = useState('未打开文档')
   const [status, setStatus] = useState('准备就绪')
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -142,7 +148,7 @@ export default function App() {
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
-  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, module, tool, viewMode, zoom, pageCount, currentPage, annotations, textObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, documentName, status }
+  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, module, tool, viewMode, zoom, pageCount, currentPage, annotations, textObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
   sessionsRef.current.set(activeDocumentId, liveSessionRef.current)
 
   const syncModel = useCallback((message: string, refreshDocument = true) => {
@@ -168,14 +174,51 @@ export default function App() {
     setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects)
     setSelectedAnnotation(session.selectedAnnotation); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
-    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
+    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
   }, [])
+  const askPdfPassword = useCallback((value: PdfPasswordDialogState): Promise<PdfPasswordDialogResult | null> => new Promise((resolve) => { passwordResolve.current = resolve; setDialog({ type: 'password', value }) }), [])
   const addOpened = useCallback(async (opened: Awaited<ReturnType<typeof window.desktop.readPdf>>) => {
-    const model = await PdfDocumentModel.load(opened.data, opened.path, opened.name)
+    let password = opened.savedPassword
+    let usingSavedPassword = password !== undefined
+    let prompted = false
+    let rememberPassword = false
+    let encryptedDocument = usingSavedPassword
+    let pageCountFromProbe = 0
+    let passwordSaveFailed = false
+    while (true) {
+      try {
+        pageCountFromProbe = (await probePdfPassword(opened.data, password)).pageCount
+        break
+      } catch (error) {
+        if (!(error instanceof PdfPasswordError)) throw error
+        encryptedDocument = true
+        let reason: PdfPasswordDialogState['reason'] = error.reason
+        if (usingSavedPassword) {
+          reason = 'saved-password-failed'
+          usingSavedPassword = false
+          await window.desktop.updatePdfPassword({ credentialKey: opened.credentialKey }).catch(() => false)
+        }
+        const response = await askPdfPassword({ fileName: opened.name, reason })
+        if (!response) return
+        password = response.password
+        rememberPassword = response.remember
+        prompted = true
+      }
+    }
+    if (encryptedDocument && prompted) {
+      const saved = await window.desktop.updatePdfPassword({ credentialKey: opened.credentialKey, ...(rememberPassword ? { password } : {}) }).catch(() => false)
+      passwordSaveFailed = rememberPassword && !saved
+    }
+    const model = encryptedDocument ? undefined : await PdfDocumentModel.load(opened.data, opened.path, opened.name)
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const replaceBlank = !modelRef.current && tabsSnapshotRef.current.documents.length === 1
     const id = replaceBlank ? activeDocumentIdRef.current : nextDocumentId.current++
-    const session: DocumentSession = { ...emptySession(id), model, data: model.bytes, documentName: model.fileName, pageCount: model.pageCount, annotations: model.annotations(), textObjects: model.textObjects(), status: `已打开 · ${opened.path}` }
+    const session: DocumentSession = {
+      ...emptySession(id), model, data: model?.bytes || opened.data, encrypted: encryptedDocument, password,
+      documentName: model?.fileName || opened.name, pageCount: model?.pageCount || pageCountFromProbe,
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [],
+      status: encryptedDocument ? `已用密码打开 · 加密文档只读${passwordSaveFailed ? ' · 系统安全存储不可用，未保存密码' : ''}` : `已打开 · ${opened.path}`
+    }
     sessionsRef.current.set(id, session)
     setDocumentTabs((current) => {
       const documents = replaceBlank ? current.documents.map((item) => item.id === id ? sessionSummary(session) : item) : [...current.documents, sessionSummary(session)]
@@ -183,7 +226,7 @@ export default function App() {
     })
     activateSession(session)
     window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
-  }, [activateSession])
+  }, [activateSession, askPdfPassword])
   const openPath = useCallback(async (path: string) => {
     try { await addOpened(await window.desktop.readPdf(path)) } catch (error) { showError(error) }
   }, [addOpened, showError])
@@ -245,13 +288,13 @@ export default function App() {
   }, [])
   useEffect(() => { const handler = (event: BeforeUnloadEvent) => { sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
   useEffect(() => () => { if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current) }, [])
-  useEffect(() => { if (windowDocumentReady) window.desktop.updateWindowDocument({ fileName: documentName, dirty, hasDocument }) }, [dirty, documentName, hasDocument, windowDocumentReady])
+  useEffect(() => { if (windowDocumentReady) window.desktop.updateWindowDocument({ fileName: documentName, dirty, hasDocument, encrypted }) }, [dirty, documentName, encrypted, hasDocument, windowDocumentReady])
   useEffect(() => {
     setDocumentTabs((current) => {
       const documents = current.documents.map((item) => item.id === activeDocumentId ? sessionSummary(liveSessionRef.current) : item)
       const snapshot = { currentId: activeDocumentId, documents }; tabsSnapshotRef.current = snapshot; return snapshot
     })
-  }, [activeDocumentId, data, dirty, documentName])
+  }, [activeDocumentId, data, dirty, documentName, encrypted])
 
   const askAnnotation = (value: AnnotationDialogState): Promise<string | null> => new Promise((resolve) => { annotationResolve.current = resolve; setDialog({ type: 'annotation', value }) })
   const askText = (initial?: TextDialogValue): Promise<TextDialogValue | null> => new Promise((resolve) => { textResolve.current = resolve; setDialog({ type: 'text', initial, edit: Boolean(initial) }) })
@@ -396,6 +439,7 @@ export default function App() {
   }, [exportDpi, exportFormat, showError])
 
   const selectModule = (value: ModuleKey) => {
+    if (encrypted && value !== 'view') { setStatus('加密 PDF 当前以只读模式打开，仅支持阅读、翻页和缩放'); return }
     if (value === module) {
       setToolPanelCollapsed((collapsed) => !collapsed)
       return
@@ -413,19 +457,20 @@ export default function App() {
     const path = window.desktop.filePath(file)
     void openPath(path)
   }}>
-    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className="document-title" title={documentName}>{documentName}{dirty ? ' · 未保存' : ''}</div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button><div className="history-controls"><button disabled={!canUndo} title="撤销 (Ctrl+Z)" aria-label="撤销" onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title="重做 (Ctrl+Y / Ctrl+Shift+Z)" aria-label="重做" onClick={() => void redoDocument()}>↷</button></div>
+    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className={`document-title${encrypted ? ' encrypted' : ''}`} title={`${documentName}${encrypted ? '（加密，只读）' : ''}`}>{encrypted && <span className="document-encrypted-badge">加密</span>}<span>{documentName}{dirty ? ' · 未保存' : ''}</span></div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button><div className="history-controls"><button disabled={!canUndo} title="撤销 (Ctrl+Z)" aria-label="撤销" onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title="重做 (Ctrl+Y / Ctrl+Shift+Z)" aria-label="重做" onClick={() => void redoDocument()}>↷</button></div>
       <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
       <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>适合宽度</button></div>
-      <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty} onClick={() => void savePdf(false)}>保存</button><div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div></header>
+      <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>保存</button><div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div></header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
-    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={module === key ? (toolPanelCollapsed ? `展开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具` : `收起${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`) : `打开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`} onClick={() => selectModule(key)}><ModuleIcon module={key} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
-      <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} onExportFormat={setExportFormat} onExportDpi={setExportDpi} /></div>
-      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} mode={viewMode} activeTool={tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={module === 'edit'} annotationMode={module === 'annotate'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={encrypted && key !== 'view' ? '加密 PDF 以只读模式打开' : module === key ? (toolPanelCollapsed ? `展开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具` : `收起${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`) : `打开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`} onClick={() => selectModule(key)}><ModuleIcon module={key} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
+      <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} onExportFormat={setExportFormat} onExportDpi={setExportDpi} /></div>
+      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
     </main><footer><span>{status}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `已选择：${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? `${pageCount} 页 · 第 ${currentPage + 1} 页` : '未打开文档'}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>释放以打开 PDF</b><span>{hasDocument ? '将在当前窗口新增一个文档标签' : '将在当前标签中打开'}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { setDialog(null); annotationResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); annotationResolve.current?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
+    {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
     {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; setDialog(null); if (purpose === 'print') void printPdf(pages); else void exportPages(pages) }} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}

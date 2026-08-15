@@ -38,17 +38,18 @@ PDFuck 是一款使用 TypeScript、React 与 Electron 构建的跨平台 PDF �
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.9.0-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.10.0-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
 - 创建开始菜单入口；
+- 注册为可打开 PDF 文件的应用；
 - 通过 Windows“已安装的应用”正常卸载；
 - 安装结束后直接启动 PDFuck。
 
 ### 便携版
 
-下载 `PDFuck-1.9.0-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.10.0-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 

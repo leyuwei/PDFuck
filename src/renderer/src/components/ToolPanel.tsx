@@ -9,6 +9,7 @@ interface Props {
   exportFormat: ExportFormat
   exportDpi: number
   disabled: boolean
+  readOnly: boolean
   onTool(tool: Tool): void
   onMode(mode: ViewMode): void
   onDeletePages(): void
@@ -23,10 +24,11 @@ interface Props {
 const ToolButton = ({ tool, activeTool, children, hint, icon, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span></button>
 
 export function ToolPanel(props: Props) {
-  const { module, activeTool, mode, disabled, onTool } = props
+  const { module, activeTool, mode, disabled, onTool, readOnly } = props
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>查看</h2><p className="subtitle">选择适合当前阅读场景的页面布局。</p><h3>页面布局</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>连续滚动</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>单页查看</button></div>
+      {readOnly && <div className="encrypted-readonly"><b>加密文档 · 只读</b><span>当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。</span></div>}
       <div className="info-card"><b>阅读提示</b><span>按住 Ctrl 并滚动鼠标滚轮，可以快速缩放页面。</span></div></section>}
     {module === 'edit' && <section><h2>编辑</h2><p className="subtitle">直接调整页面或添加带格式的文字内容。</p><h3>页面</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint="拖动框选要保留的页面区域">框选裁切页面</ToolButton>

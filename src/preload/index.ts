@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { DesktopApi, ExportRequest, PrintPdfRequest, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
+import type { DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   readPdf: (path) => ipcRenderer.invoke('pdf:read', path),
+  updatePdfPassword: (request: PdfPasswordUpdate) => ipcRenderer.invoke('pdf:password-update', request),
   savePdf: (request: SavePdfRequest) => ipcRenderer.invoke('pdf:save', request),
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),

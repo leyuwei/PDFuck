@@ -10,5 +10,5 @@ export function cleanDocumentName(fileName: string, hasDocument: boolean): strin
 
 export function nativeWindowTitle(state: WindowDocumentState): string {
   const name = cleanDocumentName(state.fileName, state.hasDocument)
-  return `${name}${state.dirty ? ' • 未保存' : ''} — PDFuck`
+  return `${state.encrypted ? '[加密] ' : ''}${name}${state.dirty ? ' • 未保存' : ''} — PDFuck`
 }

@@ -6,8 +6,8 @@ import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; optional?: boolean; edit?: boolean }
 
-function useDeferredTextareaFocus() {
-  const ref = useRef<HTMLTextAreaElement>(null)
+function useDeferredFocus<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => ref.current?.focus({ preventScroll: true }))
     const timer = window.setTimeout(() => ref.current?.focus({ preventScroll: true }), 40)
@@ -18,7 +18,7 @@ function useDeferredTextareaFocus() {
 
 export function AnnotationDialog({ state, onCancel, onSubmit }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: string): void }) {
   const [value, setValue] = useState(state.initial || '')
-  const textareaRef = useDeferredTextareaFocus()
+  const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   const labels: Record<AnnotationKind, string> = { highlight: '高亮说明', note: '批注内容', replace: '替换为', insert: '插入文字', delete: '删除标记', underline: '下划线说明' }
   return <div className="modal-backdrop"><div className="modal"><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><p>{state.optional ? '可以为这条批注添加说明，也可以留空。' : '请输入要写入这条批注的内容。'}</p>
     <textarea ref={textareaRef} value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.ctrlKey && event.key === 'Enter' && (state.optional || value.trim())) onSubmit(value.trim()) }} />
@@ -30,7 +30,7 @@ export interface TextDialogValue { text: string; style: TextStyle }
 export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { initial?: TextDialogValue; edit?: boolean; onCancel(): void; onSubmit(value: TextDialogValue): void }) {
   const [text, setText] = useState(initial?.text || '')
   const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'Arial', size: 16, color: '#182033', bold: false, italic: false, align: 'left', lineHeight: 1.25 })
-  const textareaRef = useDeferredTextareaFocus()
+  const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   return <div className="modal-backdrop"><div className="modal text-dialog"><h2>{edit ? '编辑文字' : '添加文字'}</h2><p>设置文字内容和显示格式。添加后可在页面上拖动，双击可再次编辑。</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
     <div className="format-grid"><label>字体<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
       <label>字号<input type="number" min="6" max="144" value={style.size} onChange={(event) => setStyle({ ...style, size: Number(event.target.value) })} /></label>
@@ -39,6 +39,39 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
       <label>行距<select value={style.lineHeight || 1.25} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">紧凑</option><option value="1.25">正文</option><option value="1.5">宽松</option><option value="2">双倍</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> 粗体</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> 斜体</button></div>
     <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? '保存修改' : '添加'}</button></div></div></div>
+}
+
+export interface PdfPasswordDialogState {
+  fileName: string
+  reason: 'required' | 'incorrect' | 'saved-password-failed'
+}
+
+export interface PdfPasswordDialogResult {
+  password: string
+  remember: boolean
+}
+
+export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPasswordDialogState; onCancel(): void; onSubmit(value: PdfPasswordDialogResult): void }) {
+  const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(false)
+  const [visible, setVisible] = useState(false)
+  const inputRef = useDeferredFocus<HTMLInputElement>()
+  const invalid = state.reason !== 'required'
+  const message = state.reason === 'saved-password-failed' ? '本地保存的密码已失效，请输入当前密码。' : state.reason === 'incorrect' ? '密码不正确，请重新输入。' : '此文档受密码保护，请验证后继续。'
+  const submit = () => {
+    if (!password.length) return
+    const value = { password, remember }
+    setPassword('')
+    onSubmit(value)
+  }
+  return <div className="modal-backdrop password-backdrop"><div className="modal password-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-password-title">
+    <div className="password-heading"><span className="password-lock" aria-hidden="true">锁</span><div><small>受保护的 PDF</small><h2 id="pdf-password-title">输入打开密码</h2></div></div>
+    <div className="password-file"><span>PDF</span><div><b>{state.fileName}</b><small>加密文档将以只读模式打开</small></div></div>
+    <p className={invalid ? 'password-message invalid' : 'password-message'}>{message}</p>
+    <label className="password-field"><span>密码</span><div><input ref={inputRef} type={visible ? 'text' : 'password'} value={password} autoComplete="off" spellCheck={false} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') submit() }} /><button type="button" onClick={() => setVisible((value) => !value)}>{visible ? '隐藏' : '显示'}</button></div></label>
+    <label className="remember-password"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span><b>在此设备上保存密码</b><small>使用系统安全存储加密，下次打开时自动尝试</small></span></label>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!password.length} onClick={submit}>解锁并打开</button></div>
+  </div></div>
 }
 
 export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }: { pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {

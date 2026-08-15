@@ -17,6 +17,7 @@ export function WindowManagerBar({ snapshot, onFocus, onCreate, onClose }: Props
           onClick={() => onFocus(document.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFocus(document.id) }}>
           <span className="window-tab-icon">PDF</span>
           <span className="window-tab-name">{document.title}</span>
+          {document.encrypted && <span className="window-encrypted-badge" title="密码保护的只读文档">加密</span>}
           {document.dirty && <span className="window-dirty-dot" title="有未保存修改" />}
           <button type="button" className="window-tab-close" aria-label={`关闭 ${document.title}`} title="关闭文档标签"
             onClick={(event) => { event.stopPropagation(); onClose(document.id) }}>×</button>

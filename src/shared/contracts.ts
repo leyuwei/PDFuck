@@ -5,6 +5,13 @@ export interface OpenedPdf {
   path: string
   name: string
   data: Uint8Array
+  credentialKey: string
+  savedPassword?: string
+}
+
+export interface PdfPasswordUpdate {
+  credentialKey: string
+  password?: string
 }
 
 export interface RecentPdf {
@@ -43,6 +50,7 @@ export interface WindowDocumentState {
   fileName: string
   dirty: boolean
   hasDocument: boolean
+  encrypted: boolean
 }
 
 export interface ManagedPdfDocument extends WindowDocumentState {
@@ -65,6 +73,7 @@ export interface UpdateCheckResult {
 export interface DesktopApi {
   openPdf(): Promise<OpenedPdf | null>
   readPdf(path: string): Promise<OpenedPdf>
+  updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<string | null>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
