@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AnnotationKind, TextStyle } from '../types'
+import type { UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; optional?: boolean; edit?: boolean }
@@ -74,6 +75,15 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
     <div className="page-selection-grid">{allPages.map((page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{page === currentPage ? '当前页' : selected.has(page) ? '已选择' : '未选择'}</small></button>)}</div>
     <div className={`page-selection-summary${!valid ? ' invalid' : ''}`}><b>{selected.size ? `已选择 ${selected.size} 页` : '尚未选择页面'}</b><span>{invalid.length ? '请修正页码范围后继续' : selected.size ? compactPageSelection([...selected]) : `请至少选择一页进行${action}`}</span></div>
     <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="primary" disabled={!valid} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{action}所选 {selected.size || ''} 页</button></div>
+  </div></div>
+}
+
+export function UpdateDialog({ update, onLater, onSkip, onDownload }: { update: UpdateCheckResult & { status: 'available' }; onLater(): void; onSkip(): void; onDownload(): void }) {
+  return <div className="modal-backdrop update-backdrop"><div className="modal update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+    <div className="update-symbol" aria-hidden="true"><span>↑</span></div>
+    <div className="update-copy"><small>PDFuck 更新检测</small><h2 id="update-title">发现新版本 {update.latestVersion}</h2><p>你正在使用 {update.currentVersion}。新版安装包已经发布，可前往 GitHub Releases 下载。</p></div>
+    <div className="update-version"><span>当前版本 <b>{update.currentVersion}</b></span><i>→</i><span>最新版本 <b>{update.latestVersion}</b></span></div>
+    <div className="update-actions"><button type="button" onClick={onSkip}>不再提示此版本</button><span /><button type="button" onClick={onLater}>稍后提醒</button><button type="button" className="primary" onClick={onDownload}>前往下载</button></div>
   </div></div>
 }
 

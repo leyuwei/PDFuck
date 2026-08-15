@@ -1,11 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, shell, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExportRequest, PrintPdfRequest, PrintPdfResult, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
+import type { ExportRequest, PrintPdfRequest, PrintPdfResult, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
+import { compareVersions } from '../shared/version'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -17,11 +18,59 @@ let mainSession: MainWindowSession | null = null
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
 
+const testUserData = !app.isPackaged ? process.env.PDFUCK_TEST_USER_DATA : undefined
+if (testUserData) app.setPath('userData', resolve(testUserData))
+
 app.setAboutPanelOptions({
   applicationName: 'PDFuck',
-  applicationVersion: '1.6.0',
+  applicationVersion: app.getVersion(),
   copyright: 'Copyright © 2026 github@leyuwei'
 })
+
+const releasesApi = 'https://api.github.com/repos/leyuwei/PDFuck/releases/latest'
+const releasesPage = 'https://github.com/leyuwei/PDFuck/releases'
+
+interface UpdatePreferences { skippedVersion?: string }
+
+function updatePreferencesPath(): string { return join(app.getPath('userData'), 'update-preferences.json') }
+
+async function readUpdatePreferences(): Promise<UpdatePreferences> {
+  try {
+    const value = JSON.parse(await readFile(updatePreferencesPath(), 'utf8')) as UpdatePreferences
+    return typeof value.skippedVersion === 'string' ? { skippedVersion: value.skippedVersion } : {}
+  } catch { return {} }
+}
+
+async function writeUpdatePreferences(value: UpdatePreferences): Promise<void> {
+  await atomicWrite(updatePreferencesPath(), new TextEncoder().encode(JSON.stringify(value, null, 2)))
+}
+
+function validReleasePage(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname === 'github.com' && url.pathname.toLowerCase().startsWith('/leyuwei/pdfuck/releases')
+  } catch { return false }
+}
+
+async function checkForUpdates(): Promise<UpdateCheckResult> {
+  const currentVersion = app.getVersion()
+  try {
+    const testVersion = !app.isPackaged ? process.env.PDFUCK_TEST_UPDATE_VERSION : undefined
+    let latestVersion = testVersion
+    let releaseUrl = releasesPage
+    if (!latestVersion) {
+      const response = await net.fetch(releasesApi, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PDFuck/${currentVersion}`, 'X-GitHub-Api-Version': '2022-11-28' } })
+      if (!response.ok) return { status: 'unavailable', currentVersion }
+      const release = await response.json() as { tag_name?: unknown; html_url?: unknown }
+      latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/i, '') : undefined
+      if (typeof release.html_url === 'string' && validReleasePage(release.html_url)) releaseUrl = release.html_url
+    }
+    if (!latestVersion || compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion }
+    const preferences = await readUpdatePreferences()
+    if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl }
+    return { status: 'available', currentVersion, latestVersion, releaseUrl }
+  } catch { return { status: 'unavailable', currentVersion } }
+}
 
 const isPdf = (value: string): boolean => extname(value).toLowerCase() === '.pdf'
 
@@ -179,6 +228,22 @@ app.whenReady().then(() => {
       await atomicWrite(target, page.data); outputs.push(target)
     }
     return outputs
+  })
+  ipcMain.handle('clipboard:write', (event, text: string) => {
+    requireMainWindow(event.sender)
+    if (typeof text !== 'string' || text.length > 5_000_000) throw new Error('复制内容无效或过长。')
+    clipboard.writeText(text)
+  })
+  ipcMain.handle('app:check-update', (event) => { requireMainWindow(event.sender); return checkForUpdates() })
+  ipcMain.handle('app:skip-update-version', async (event, version: string) => {
+    requireMainWindow(event.sender)
+    if (!/^\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw new Error('版本号无效。')
+    await writeUpdatePreferences({ skippedVersion: version })
+  })
+  ipcMain.handle('app:open-release-page', async (event, url: string) => {
+    requireMainWindow(event.sender)
+    if (!validReleasePage(url)) throw new Error('更新链接无效。')
+    await shell.openExternal(url)
   })
   ipcMain.on('window:update-document', (event, state: WindowDocumentState) => {
     const window = requireMainWindow(event.sender)

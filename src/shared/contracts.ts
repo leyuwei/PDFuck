@@ -49,12 +49,23 @@ export interface DocumentTabsSnapshot {
   documents: ManagedPdfDocument[]
 }
 
+export interface UpdateCheckResult {
+  status: 'available' | 'current' | 'skipped' | 'unavailable'
+  currentVersion: string
+  latestVersion?: string
+  releaseUrl?: string
+}
+
 export interface DesktopApi {
   openPdf(): Promise<OpenedPdf | null>
   readPdf(path: string): Promise<OpenedPdf>
   savePdf(request: SavePdfRequest): Promise<string | null>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
+  copyText(text: string): Promise<void>
+  checkForUpdates(): Promise<UpdateCheckResult>
+  skipUpdateVersion(version: string): Promise<void>
+  openReleasePage(url: string): Promise<void>
   filePath(file: File): string
   initialPdfs(): Promise<string[]>
   updateWindowDocument(state: WindowDocumentState): void

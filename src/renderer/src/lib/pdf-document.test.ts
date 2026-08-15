@@ -32,6 +32,19 @@ describe('PdfDocumentModel', () => {
     expect(reopened.textObjects()).toEqual([expect.objectContaining({ id: textId, text: 'Edited text', rect: expect.objectContaining({ x: 68, y: 92 }), style: expect.objectContaining({ font: 'serif', size: 18, color: '#c83a45', italic: true, align: 'right' }) })])
   })
 
+  it('supports repeated crops using the current CropBox as the next coordinate origin', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    await model.cropPage(0, { x: 20, y: 30, width: 500, height: 700 })
+    await model.cropPage(0, { x: 10, y: 20, width: 300, height: 400 })
+    expect(model.getPageSize(0)).toEqual({ width: 300, height: 400 })
+    const reopened = await PDFDocument.load(model.bytes)
+    const crop = reopened.getPage(0).getCropBox()
+    expect(crop.x).toBeCloseTo(30)
+    expect(crop.y).toBeCloseTo(342)
+    expect(crop.width).toBeCloseTo(300)
+    expect(crop.height).toBeCloseTo(400)
+  })
+
   it('creates all six annotations and persists list edits and movement', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const markupKinds: AnnotationKind[] = ['highlight', 'replace', 'delete', 'underline']

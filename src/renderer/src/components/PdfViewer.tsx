@@ -3,6 +3,7 @@ import { AnnotationMode, GlobalWorkerOptions, getDocument, type PDFDocumentProxy
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, CanvasAction, PdfPoint, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from '../types'
 import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
+import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
 import { caretForTextPosition, moveTextPosition, textCaretAtPoint, textItemsToWordBoxes, textSelectionBetween, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
 import { canvasOutputScale, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
@@ -20,6 +21,7 @@ interface ViewerProps {
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
   editableTextObjects: boolean
+  annotationMode: boolean
   zoom: number
   currentPage: number
   onZoomChange(zoom: number): void
@@ -27,6 +29,7 @@ interface ViewerProps {
   onDocumentReady(pageCount: number): void
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
+  onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord): void
   onAnnotationEdit(annotation: AnnotationRecord): void
@@ -47,8 +50,10 @@ interface PageProps {
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
   editableTextObjects: boolean
+  annotationMode: boolean
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
+  onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord): void
   onAnnotationEdit(annotation: AnnotationRecord): void
@@ -152,7 +157,45 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
   >{textObject.text}</div>
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, onAction, onSelectionChange, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
+function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void }) {
+  const interaction = useRef<{ handle: CropHandle; x: number; y: number; initial: PdfRect } | undefined>(undefined)
+  const begin = (handle: CropHandle, event: React.PointerEvent) => {
+    if (event.button !== 0) return
+    event.preventDefault(); event.stopPropagation()
+    interaction.current = { handle, x: event.clientX, y: event.clientY, initial: rect }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const move = (event: React.PointerEvent) => {
+    const active = interaction.current
+    if (!active) return
+    event.preventDefault(); event.stopPropagation()
+    onChange(adjustCropRect(active.initial, active.handle, (event.clientX - active.x) / zoom, (event.clientY - active.y) / zoom, bounds))
+  }
+  const finish = (event: React.PointerEvent) => {
+    if (!interaction.current) return
+    event.preventDefault(); event.stopPropagation(); interaction.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const actionBelow = rect.y + rect.height + 42 / zoom <= bounds.height
+  const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 154, rect.x * zoom))
+  const actionTop = actionBelow ? (rect.y + rect.height) * zoom + 7 : Math.max(4, rect.y * zoom - 37)
+  const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+  return <>
+    <div className="crop-draft" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
+      onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish}>
+      <span className="crop-draft-label">裁切区域</span>
+      {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} />)}
+    </div>
+    <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>取消</button>
+      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>确认范围</button>
+    </div>
+  </>
+}
+
+interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
+
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
@@ -161,8 +204,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [selection, setSelection] = useState<TextSelection>()
   const [textCaret, setTextCaret] = useState<TextCaret>()
   const [selectionAnchor, setSelectionAnchor] = useState<TextPosition>()
-  const [drag, setDrag] = useState<{ start: PdfPoint; current: PdfPoint; firstWord: number; lastWord: number; moved: boolean }>()
-  const dragRef = useRef<{ start: PdfPoint; current: PdfPoint; firstWord: number; lastWord: number; moved: boolean } | undefined>(undefined)
+  const [drag, setDrag] = useState<PageDrag>()
+  const dragRef = useRef<PageDrag | undefined>(undefined)
+  const [cropDraft, setCropDraft] = useState<PdfRect>()
   const [menu, setMenu] = useState<{ x: number; y: number; point: PdfPoint; annotation?: AnnotationRecord }>()
   const [hoverInsert, setHoverInsert] = useState<PdfPoint>()
   const [renderEligible, setRenderEligible] = useState(pageIndex < 2)
@@ -221,26 +265,28 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     return () => { cancelled = true; task.cancel() }
   }, [page, renderEligible, renderZoom, onError])
 
-  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined) }, [tool])
+  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined) }, [tool])
 
   const pointFor = (event: React.PointerEvent | React.MouseEvent): PdfPoint => {
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const isTextTool = ['text_select', 'highlight', 'replace', 'delete_text', 'underline'].includes(tool)
+  const annotationTextTool = ['highlight', 'replace', 'delete_text', 'underline'].includes(tool)
+  const canSelectText = !['crop', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
     pageRef.current?.focus({ preventScroll: true })
     setMenu(undefined)
     const point = pointFor(event)
-    if (isTextTool) {
-      const index = nearestWord(words, point)
-      const next = { start: point, current: point, firstWord: index, lastWord: index, moved: false }
+    if (canSelectText) {
+      const caret = textCaretAtPoint(words, point)
+      const position = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined
+      const next: PageDrag = { start: point, current: point, anchor: position, focus: position, moved: false }
       dragRef.current = next; setDrag(next)
       setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined)
     } else if (tool === 'crop' || tool === 'add_text') {
-      const next = { start: point, current: point, firstWord: -1, lastWord: -1, moved: false }
+      const next: PageDrag = { start: point, current: point, moved: false }
       dragRef.current = next; setDrag(next)
     }
     else if (tool === 'note' || tool === 'insert') {
@@ -254,12 +300,13 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (tool === 'insert') setHoverInsert(insertionPoint(words, point))
     const activeDrag = dragRef.current
     if (!activeDrag) return
-    if (isTextTool) {
+    if (canSelectText) {
       const moved = activeDrag.moved || Math.hypot(point.x - activeDrag.start.x, point.y - activeDrag.start.y) * zoom >= 4
-      const index = nearestWord(words, point)
-      const next = { ...activeDrag, current: point, lastWord: index, moved }
+      const caret = textCaretAtPoint(words, point)
+      const focus = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : activeDrag.focus
+      const next = { ...activeDrag, current: point, focus, moved }
       dragRef.current = next; setDrag(next)
-      if (moved) setSelection(selectionFromRange(words, next.firstWord, next.lastWord))
+      if (moved && next.anchor && next.focus) setSelection(textSelectionBetween(words, next.anchor, next.focus))
     } else {
       const next = { ...activeDrag, current: point, moved: true }
       dragRef.current = next; setDrag(next)
@@ -271,22 +318,25 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     dragRef.current = undefined
     setDrag(undefined)
-    if (isTextTool) {
+    if (canSelectText) {
       if (!completed.moved) {
         setSelection(undefined); onSelectionChange(undefined)
         const caret = textCaretAtPoint(words, completed.current)
         setTextCaret(caret); setSelectionAnchor(caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined)
         return
       }
-      const selected = selectionFromRange(words, completed.firstWord, completed.lastWord)
+      const selected = completed.anchor && completed.focus ? textSelectionBetween(words, completed.anchor, completed.focus) : undefined
       setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
-      if (tool !== 'text_select' && selected) {
+      if (annotationTextTool && selected) {
         onAction({ pageIndex, tool, selection: selected })
         setSelection(undefined); onSelectionChange(undefined)
       }
     } else {
       const rect = normalizeRect(completed.start, completed.current)
-      if (rect.width > 4 && rect.height > 4) onAction({ pageIndex, tool, rect })
+      if (rect.width > 4 && rect.height > 4) {
+        if (tool === 'crop') setCropDraft(rect)
+        else onAction({ pageIndex, tool, rect })
+      }
     }
   }
   const handleContext = (event: React.MouseEvent) => {
@@ -316,13 +366,14 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   }
   const editMenuAnnotation = () => { if (menu?.annotation) onAnnotationEdit(menu.annotation); setMenu(undefined) }
   const deleteMenuAnnotation = () => { if (menu?.annotation) onAnnotationDelete(menu.annotation); setMenu(undefined) }
+  const copyMenuSelection = () => { if (selection?.text) onCopyText(selection.text); setMenu(undefined) }
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (!isTextTool || !textCaret) return
+    if (!canSelectText || !textCaret) return
     if (event.key === 'Escape') {
       event.preventDefault(); setSelection(undefined); onSelectionChange(undefined)
       setSelectionAnchor({ wordIndex: textCaret.wordIndex, offset: textCaret.offset }); return
     }
-    if (event.key === 'Enter' && tool !== 'text_select' && selection) {
+    if (event.key === 'Enter' && annotationTextTool && selection) {
       event.preventDefault(); onAction({ pageIndex, tool, selection }); setSelection(undefined); onSelectionChange(undefined); return
     }
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -348,7 +399,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
     {selection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
-    {drag && !isTextTool && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
+    {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
+    {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 4, top: hoverInsert.y * zoom - 4 }}>⌃</div>}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
@@ -357,16 +409,17 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>编辑批注内容…</span></button>
         <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>删除这条批注</span></button>
       </> : <>
-        <button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>高亮此处文字</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>标记替换…</span></button>
-        <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>标记删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>添加下划线</span></button>
-        <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>在此处添加批注…</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>在此处插入文字…</span></button>
+        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制（自动去除回行）</span><kbd>Ctrl+C</kbd></button>}
+        {annotationMode && <>{selection?.text && <i />}<button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>高亮此处文字</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>标记替换…</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>标记删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>添加下划线</span></button>
+          <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>在此处添加批注…</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>在此处插入文字…</span></button></>}
       </>}
     </div>}
   </div>
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError } = props
+  const { data, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -440,8 +493,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
     <div className={`page-stack ${mode}`}>{document && pages.map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange}
-      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange} onCopyText={onCopyText}
+      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} />)}</div>
   </div>
 })

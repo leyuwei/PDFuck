@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, TextDialog, type TextDialogValue, Toast } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
@@ -10,6 +10,11 @@ import type { AnnotationKind, AnnotationRecord, CanvasAction, ModuleKey, PdfRect
 import type { DocumentTabsSnapshot, ManagedPdfDocument } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
+import { normalizeCopiedText } from './lib/clipboard-text'
+import type { UpdateCheckResult } from '../../shared/contracts'
+
+const APP_VERSION = '1.7.0'
+type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
 type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
 
@@ -104,6 +109,7 @@ export default function App() {
   const [activeDocumentId, setActiveDocumentId] = useState(1)
   const [documentTabs, setDocumentTabs] = useState<DocumentTabsSnapshot>(() => ({ currentId: 1, documents: [sessionSummary(emptySession(1))] }))
   const [windowDocumentReady, setWindowDocumentReady] = useState(false)
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate>()
   const hasDocument = Boolean(data?.length)
 
   activeDocumentIdRef.current = activeDocumentId
@@ -193,6 +199,13 @@ export default function App() {
     window.desktop.initialPdfs().then(async (paths) => { for (const path of paths) await openPath(path); setWindowDocumentReady(true) }).catch((error) => { showError(error); setWindowDocumentReady(true) })
     return () => { offMaximize(); offOpen() }
   }, [closeCurrentWindow, openPath, showError])
+  useEffect(() => {
+    let active = true
+    window.desktop.checkForUpdates().then((result) => {
+      if (active && result.status === 'available' && result.latestVersion && result.releaseUrl) setAvailableUpdate(result as AvailableUpdate)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [])
   useEffect(() => { const handler = (event: BeforeUnloadEvent) => { sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
   useEffect(() => () => { if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current) }, [])
   useEffect(() => { if (windowDocumentReady) window.desktop.updateWindowDocument({ fileName: documentName, dirty, hasDocument }) }, [dirty, documentName, hasDocument, windowDocumentReady])
@@ -213,7 +226,10 @@ export default function App() {
   const handleCanvasAction = useCallback(async (action: CanvasAction) => {
     const model = modelRef.current; if (!model) return
     if (action.tool === 'crop' && action.rect) {
-      if (window.confirm('将当前页面裁切为框选区域？')) await mutate((value) => value.cropPage(action.pageIndex, action.rect!), '页面已裁切')
+      if (window.confirm('将当前页面裁切为框选区域？')) {
+        await mutate((value) => value.cropPage(action.pageIndex, action.rect!), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”')
+        setTool('none')
+      }
     } else if (action.tool === 'add_text' && action.rect) {
       const value = await askText(); if (!value) return
       const image = await cjkRaster(value.text, action.rect, value)
@@ -274,6 +290,15 @@ export default function App() {
     } catch (error) { showError(error); return false }
   }, [showError])
 
+  const copyText = useCallback(async (value: string) => {
+    const normalized = normalizeCopiedText(value)
+    if (!normalized) return
+    try {
+      await window.desktop.copyText(normalized)
+      setStatus(`已复制 ${Array.from(normalized).length} 个字符 · 已自动去除回行`)
+    } catch (error) { showError(error) }
+  }, [showError])
+
   const printPdf = useCallback(async (pages: number[]) => {
     const model = modelRef.current
     if (!model || printingRef.current) return
@@ -290,7 +315,12 @@ export default function App() {
     const command = event.ctrlKey || event.metaKey
     if (command && event.key.toLowerCase() === 's') { event.preventDefault(); void savePdf(false) }
     else if (command && event.key.toLowerCase() === 'p' && modelRef.current) { event.preventDefault(); setDialog({ type: 'page_selection', purpose: 'print' }) }
-  }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [savePdf])
+    else if (command && event.key.toLowerCase() === 'c' && selection?.text) {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return
+      event.preventDefault(); void copyText(selection.text)
+    }
+  }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [copyText, savePdf, selection])
 
   const exportPages = useCallback(async (selectedPages: number[]) => {
     const model = modelRef.current; if (!model) return
@@ -308,8 +338,7 @@ export default function App() {
     } catch (error) { showError(error) }
   }, [exportDpi, exportFormat, showError])
 
-  const selectModule = (value: ModuleKey) => { setModule(value); setTool('none'); setSelection(undefined); if (value === 'annotate') setStatus('批注模式：单击定位文字光标，拖动框选文字；批注痕迹可右键管理') }
-  const effectiveTool: Tool = module === 'annotate' && tool === 'none' ? 'text_select' : tool
+  const selectModule = (value: ModuleKey) => { setModule(value); setTool('none'); setSelection(undefined); setStatus(value === 'annotate' ? '批注模式：按字符精准框选文字；右键可复制或添加批注' : '可直接按字符框选 PDF 文字，按 Ctrl+C 或右键复制') }
 
   return <div className="app-shell" onDragEnter={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFile(false) }} onDrop={(event) => {
     event.preventDefault(); setDraggingFile(false); const file = [...event.dataTransfer.files].find((value) => value.name.toLowerCase().endsWith('.pdf'))
@@ -317,14 +346,14 @@ export default function App() {
     const path = window.desktop.filePath(file)
     void openPath(path)
   }}>
-    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v1.6.0</em></div><div className="document-title" title={documentName}>{documentName}{dirty ? ' · 未保存' : ''}</div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button>
+    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className="document-title" title={documentName}>{documentName}{dirty ? ' · 未保存' : ''}</div><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button>
       <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
       <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>适合宽度</button></div>
       <button className="quick-save primary" disabled={!hasDocument} onClick={() => void savePdf(false)}>保存</button><div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div></header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
-    <main className="workspace"><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} className={module === key ? 'active' : ''} onClick={() => selectModule(key)}><span className={`nav-icon ${key}`} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v1.6.0</small></nav>
+    <main className="workspace"><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} className={module === key ? 'active' : ''} onClick={() => selectModule(key)}><span className={`nav-icon ${key}`} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
       <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} onExportFormat={setExportFormat} onExportDpi={setExportDpi} />
-      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} mode={viewMode} activeTool={effectiveTool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={module === 'edit'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <div className="welcome"><div className="welcome-icon"><span>PDF</span></div><h1>打开 PDF 开始工作</h1><p>多份 PDF 会整齐收纳在同一个窗口的文档标签中。</p><button className="primary" onClick={() => void chooseOpen()}>选择 PDF 文件</button><small>也可以把 PDF 文件直接拖到窗口中</small></div>}</section>
+      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} mode={viewMode} activeTool={tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={module === 'edit'} annotationMode={module === 'annotate'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <div className="welcome"><div className="welcome-icon"><span>PDF</span></div><h1>打开 PDF 开始工作</h1><p>多份 PDF 会整齐收纳在同一个窗口的文档标签中。</p><button className="primary" onClick={() => void chooseOpen()}>选择 PDF 文件</button><small>也可以把 PDF 文件直接拖到窗口中</small></div>}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
     </main><footer><span>{status}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `已选择：${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? `${pageCount} 页 · 第 ${currentPage + 1} 页` : '未打开文档'}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>释放以打开 PDF</b><span>{hasDocument ? '将在当前窗口新增一个文档标签' : '将在当前标签中打开'}</span></div></div>}
@@ -332,6 +361,7 @@ export default function App() {
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; setDialog(null); if (purpose === 'print') void printPdf(pages); else void exportPages(pages) }} />}
+    {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? status : ''} />
   </div>
 }
