@@ -13,4 +13,10 @@ describe('replacementTextRect', () => {
   it('keeps the replacement inside the visible page', () => {
     expect(replacementTextRect({ x: 260, y: 480, width: 30, height: 15 }, 'long replacement', style, { width: 300, height: 500 })).toEqual({ x: 260, y: 480, width: 40, height: 15 })
   })
+
+  it('includes paragraph spacing, character spacing and width scaling in the replacement box', () => {
+    const formatted = replacementTextRect({ x: 20, y: 30, width: 30, height: 12 }, 'Wide\nText', { ...style, lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 4, letterSpacing: 2, horizontalScale: 140 }, { width: 400, height: 500 })
+    expect(formatted.width).toBeGreaterThan(50)
+    expect(formatted.height).toBe(50)
+  })
 })

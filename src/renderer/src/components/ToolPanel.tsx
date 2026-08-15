@@ -31,15 +31,15 @@ export function ToolPanel(props: Props) {
     {module === 'edit' && <section><h2>编辑</h2><p className="subtitle">直接调整页面或添加带格式的文字内容。</p><h3>页面</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint="拖动框选要保留的页面区域">框选裁切页面</ToolButton>
       <button className="danger wide" disabled={disabled} onClick={props.onDeletePages}>批量删除页面…</button><h3>内容</h3>
-      <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint="精准框选页面原文并输入替换内容">编辑页面文字</ToolButton>
+      <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint="显示当前页文本块，点击任意一处直接编辑">编辑页面文字</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint="拖出文本框后设置内容和格式">在页面上添加文字</ToolButton></section>}
     {module === 'annotate' && <section><h2>批注</h2><p className="subtitle">单击定位文字光标，按住 Shift 并用左右键精准选字；拖动可快速框选。</p><h3>文本批注</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint="框选文字并可填写说明">文本高亮</ToolButton>
-      <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint="框选原文并填写替换内容">文本替换标记</ToolButton>
+      <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint="框选原文并填写替换内容">文本替换</ToolButton>
       <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="delete_text" />} hint="框选文字添加删除线">文本删除</ToolButton>
-      <ToolButton tool="underline" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="underline" />} hint="框选文字添加下划线">文本下划线</ToolButton><h3>位置批注</h3>
-      <ToolButton tool="note" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="note" />} hint="点击页面任意位置添加便笺">任意位置批注</ToolButton>
-      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} hint="在单词间点击并填写插入文字">插入文字标记</ToolButton></section>}
+      <ToolButton tool="underline" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="underline" />} hint="框选文字添加下划线">加下划线</ToolButton><h3>位置批注</h3>
+      <ToolButton tool="note" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="note" />} hint="点击页面任意位置添加便笺">自由批注</ToolButton>
+      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} hint="在单词间点击并填写插入文字">插入文字</ToolButton></section>}
     {module === 'save' && <section><h2>保存</h2><p className="subtitle">保存完整文档，或只打印、导出真正需要的页面。</p><h3>PDF</h3>
       <button className="primary wide" disabled={disabled} onClick={() => props.onSave(false)}>保存 PDF</button><button className="wide" disabled={disabled} onClick={() => props.onSave(true)}>另存为 PDF…</button><h3>打印</h3>
       <button className="wide print-button" disabled={disabled || props.printing} onClick={props.onPrint}><span>{props.printing ? '正在打开打印对话框…' : '选择页面并打印…'}</span><kbd>Ctrl+P</kbd></button><p className="hint">可选择连续或不连续页码，包含尚未保存的修改。</p><h3>指定页面导出</h3>

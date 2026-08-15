@@ -22,12 +22,32 @@ export interface AnnotationRecord {
 }
 
 export interface TextStyle {
-  font: 'sans' | 'serif' | 'mono'
+  font: string
   size: number
   color: string
   bold: boolean
   italic: boolean
   align: 'left' | 'center' | 'right'
+  lineHeight?: 1 | 1.25 | 1.5 | 2
+  paragraphBefore?: number
+  paragraphAfter?: number
+  letterSpacing?: number
+  horizontalScale?: number
+}
+
+export interface EditableTextRegion {
+  id: string
+  text: string
+  rect: PdfRect
+  sourceRects: PdfRect[]
+  style: TextStyle
+}
+
+export interface PageTextEdit {
+  region: EditableTextRegion
+  text: string
+  style: TextStyle
+  backgroundColor: string
 }
 
 export interface TextObjectRecord {
@@ -44,4 +64,5 @@ export interface CanvasAction {
   rect?: PdfRect
   point?: PdfPoint
   selection?: TextSelection
+  pageTextEdit?: PageTextEdit
 }

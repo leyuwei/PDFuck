@@ -1,12 +1,14 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { AnnotationMode, GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type PDFPageProxy } from 'pdfjs-dist'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
-import type { AnnotationRecord, CanvasAction, PdfPoint, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from '../types'
+import type { AnnotationRecord, CanvasAction, EditableTextRegion, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
 import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
-import { caretForTextPosition, moveTextPosition, textCaretAtPoint, textItemsToWordBoxes, textSelectionBetween, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
+import { caretForTextPosition, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
 import { canvasOutputScale, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
+import { sampleCanvasRegionColors } from '../lib/page-text-color'
+import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 
 GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href
 
@@ -50,6 +52,7 @@ interface PageProps {
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
   editableTextObjects: boolean
+  activePage: boolean
   annotationMode: boolean
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
@@ -135,11 +138,11 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
   const [selected, setSelected] = useState(false)
   useEffect(() => { if (!editable) setSelected(false) }, [editable])
   const { rect, style } = textObject
-  const fontFamily = style.font === 'serif' ? 'Georgia, "Times New Roman", serif' : style.font === 'mono' ? 'Consolas, "Courier New", monospace' : '"Microsoft YaHei UI", "Segoe UI", sans-serif'
+  const fontFamily = fontCssFamily(style.font)
   return <div className={`text-object${editable ? ' editable' : ''}${selected && editable ? ' selected' : ''}`} style={{
     left: rect.x * zoom + offset.x, top: rect.y * zoom + offset.y, width: rect.width * zoom, height: rect.height * zoom,
-    color: style.color, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', textAlign: style.align,
-    lineHeight: 1.25
+    color: style.color, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align,
+    lineHeight: style.lineHeight || 1.25, paddingTop: (style.paragraphBefore || 0) * zoom, paddingBottom: (style.paragraphAfter || 0) * zoom
   }} title={editable ? '拖动调整位置，双击编辑文字和格式' : textObject.text}
     onPointerDown={(event) => {
       if (!editable || event.button !== 0) return
@@ -155,6 +158,46 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
     }}
     onDoubleClick={(event) => { if (editable) { event.stopPropagation(); onEdit(textObject) } }}
   >{textObject.text}</div>
+}
+
+function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor, onCancel, onSave }: { region: EditableTextRegion; zoom: number; pageSize: { width: number; height: number }; initialColor: string; backgroundColor: string; onCancel(): void; onSave(text: string, style: TextStyle): void }) {
+  const [text, setText] = useState(region.text)
+  const [style, setStyle] = useState<TextStyle>({ ...region.style, color: initialColor })
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { textareaRef.current?.focus(); textareaRef.current?.select() }, [])
+  const lineHeight = style.lineHeight || 1.25
+  const paragraphBefore = Math.max(0, style.paragraphBefore || 0), paragraphAfter = Math.max(0, style.paragraphAfter || 0)
+  const fontFamily = fontCssFamily(style.font)
+  const fontOptions = fontOptionsFor(style.font)
+  const editorWidth = Math.max(100, Math.min(pageSize.width * zoom - region.rect.x * zoom, region.rect.width * zoom + 12))
+  const editorHeight = Math.max(30, region.rect.height * zoom + 8, (style.size * lineHeight + paragraphBefore + paragraphAfter) * zoom + 8)
+  const toolbarWidth = 550
+  const toolbarLeft = Math.max(6, Math.min(pageSize.width * zoom - toolbarWidth - 6, region.rect.x * zoom))
+  const toolbarHeight = 78
+  const toolbarTop = region.rect.y * zoom >= toolbarHeight + 8 ? region.rect.y * zoom - toolbarHeight - 6 : Math.min(pageSize.height * zoom - toolbarHeight, region.rect.y * zoom + editorHeight + 7)
+  const submit = () => onSave(text, style)
+  return <>
+    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label="编辑页面文字内容" style={{ left: region.rect.x * zoom, top: region.rect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: 3 + paragraphBefore * zoom, paddingBottom: 3 + paragraphAfter * zoom, color: style.color, backgroundColor, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); submit() } }} />
+    <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop }} onPointerDown={(event) => event.stopPropagation()}>
+      <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
+        <label title="字体"><select aria-label="字体" value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label className="format-size" title="字号"><input aria-label="字号" type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
+        <button type="button" className={style.bold ? 'active' : ''} aria-label="粗体" title="粗体" onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b></button>
+        <button type="button" className={style.italic ? 'active' : ''} aria-label="斜体" title="斜体" onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i></button>
+        <label className="format-color" title="文字颜色"><input aria-label="文字颜色" type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
+        <span className="toolbar-spacer" /><button type="button" className="toolbar-cancel" onClick={onCancel}>取消</button><button type="button" className="primary toolbar-apply" onClick={submit}>应用</button>
+      </div>
+      <div className="format-toolbar-row secondary"><span className="format-group-label">段落</span>
+        {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={`${align === 'left' ? '左' : align === 'center' ? '居中' : '右'}对齐`} title={`${align === 'left' ? '左' : align === 'center' ? '居中' : '右'}对齐`} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
+        <label className="format-line-height" title="段落行距"><select aria-label="段落行距" value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">紧凑</option><option value="1.25">正文</option><option value="1.5">宽松</option><option value="2">双倍</option></select></label>
+        <label className="format-number" title="段前距"><span>段前</span><input aria-label="段前距" type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number" title="段后距"><span>段后</span><input aria-label="段后距" type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <span className="toolbar-divider" /><span className="format-group-label">字符</span>
+        <label className="format-number" title="字符间距"><span>间距</span><input aria-label="字符间距" type="number" min="-5" max="20" step=".1" value={style.letterSpacing || 0} onChange={(event) => setStyle({ ...style, letterSpacing: Math.max(-5, Math.min(20, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number format-width" title="文字宽度比例"><span>宽度</span><input aria-label="文字宽度" type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
+      </div>
+    </div>
+  </>
 }
 
 function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void }) {
@@ -195,12 +238,14 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
   const [size, setSize] = useState({ width: 612, height: 792 })
   const [words, setWords] = useState<WordBox[]>([])
+  const [textRegions, setTextRegions] = useState<EditableTextRegion[]>([])
+  const [pageTextEditor, setPageTextEditor] = useState<{ region: EditableTextRegion; foreground: string; background: string }>()
   const [selection, setSelection] = useState<TextSelection>()
   const [textCaret, setTextCaret] = useState<TextCaret>()
   const [selectionAnchor, setSelectionAnchor] = useState<TextPosition>()
@@ -212,6 +257,10 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [renderEligible, setRenderEligible] = useState(pageIndex < 2)
   const [textRequested, setTextRequested] = useState(pageIndex < 2)
   const textLoadedRef = useRef(false)
+  const editableRegions = useMemo(() => textRegions.filter((region) => {
+    const center = { x: region.rect.x + region.rect.width / 2, y: region.rect.y + region.rect.height / 2 }
+    return !textObjects.some((textObject) => pointInRect(center, textObject.rect, 1))
+  }), [textObjects, textRegions])
 
   useEffect(() => {
     const element = pageRef.current
@@ -239,8 +288,18 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     textLoadedRef.current = true
     let cancelled = false
     const viewport = page.getViewport({ scale: 1 })
-    page.getTextContent().then((content) => {
-      if (!cancelled) setWords(textItemsToWordBoxes(content.items.filter((item): item is TextItem => 'str' in item), content.styles, viewport.transform as [number, number, number, number, number, number]))
+    Promise.all([page.getTextContent(), page.getOperatorList()]).then(([content]) => {
+      if (cancelled) return
+      const items = content.items.filter((item): item is TextItem => 'str' in item)
+      const fontDetails: Record<string, PdfFontDetails> = {}
+      for (const fontName of new Set(items.map((item) => item.fontName))) {
+        try {
+          const font = page.commonObjs.get(fontName) as PdfFontDetails | undefined
+          if (font) fontDetails[fontName] = { name: font.name, bold: font.bold, italic: font.italic }
+        } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
+      }
+      setWords(textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number]))
+      setTextRegions(textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
     }).catch((error) => { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { cancelled = true }
   }, [page, textRequested, onError])
@@ -265,13 +324,14 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     return () => { cancelled = true; task.cancel() }
   }, [page, renderEligible, renderZoom, onError])
 
-  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined) }, [tool])
+  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined); setPageTextEditor(undefined) }, [tool])
+  useEffect(() => { if (!activePage) setPageTextEditor(undefined) }, [activePage])
 
   const pointFor = (event: React.PointerEvent | React.MouseEvent): PdfPoint => {
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const selectionActionTool = ['highlight', 'replace', 'delete_text', 'underline', 'edit_text'].includes(tool)
+  const selectionActionTool = ['highlight', 'replace', 'delete_text', 'underline'].includes(tool)
   const canSelectText = !['crop', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
@@ -367,6 +427,11 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const editMenuAnnotation = () => { if (menu?.annotation) onAnnotationEdit(menu.annotation); setMenu(undefined) }
   const deleteMenuAnnotation = () => { if (menu?.annotation) onAnnotationDelete(menu.annotation); setMenu(undefined) }
   const copyMenuSelection = () => { if (selection?.text) onCopyText(selection.text); setMenu(undefined) }
+  const openPageTextEditor = (region: EditableTextRegion) => {
+    const colors = sampleCanvasRegionColors(canvasRef.current, region.rect, size)
+    setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined); setMenu(undefined)
+    setPageTextEditor({ region, foreground: colors.foreground, background: colors.background })
+  }
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (!canSelectText || !textCaret) return
     if (event.key === 'Escape') {
@@ -397,6 +462,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoverInsert(undefined)} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
+    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`编辑文字：${region.text.slice(0, 40)}`} title="点击直接编辑这段文字" style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
+    {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} onCancel={() => setPageTextEditor(undefined)} onSave={(text, style) => { onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
     {selection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
@@ -410,10 +477,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>删除这条批注</span></button>
       </> : <>
         {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制</span><kbd>Ctrl+C</kbd></button>}
-        {editableTextObjects && selection?.text && <><i /><button onClick={() => runMenu('edit_text')}><span className="menu-text-edit-icon" aria-hidden="true">Aa</span><span>编辑所选页面文字…</span></button></>}
-        {annotationMode && <>{selection?.text && <i />}<button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>高亮此处文字</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>标记替换…</span></button>
-          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>标记删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>添加下划线</span></button>
-          <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>在此处添加批注…</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>在此处插入文字…</span></button></>}
+        {annotationMode && <>{selection?.text && <i />}<button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>文本高亮</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>文本替换</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>文本删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>加下划线</span></button>
+          <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>自由批注</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>插入文字</span></button></>}
       </>}
     </div>}
   </div>
@@ -495,7 +561,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
     <div className={`page-stack ${mode}`}>{document && pages.map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange} onCopyText={onCopyText}
-      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} annotationMode={annotationMode}
+      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} />)}</div>
   </div>
 })

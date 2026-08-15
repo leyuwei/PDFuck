@@ -8,9 +8,19 @@ import {
   displayRectToPdfBounds, displayRectsToPdfQuads, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
   type PageGeometry
 } from './page-coordinates'
+import { fontCategory, normalizeFontFamily } from './text-fonts'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
-  highlight: '高亮', note: '便笺', replace: '替换', insert: '插入文字', delete: '删除线', underline: '下划线'
+  highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线'
+}
+
+const MAX_HISTORY_ENTRIES = 40
+const MAX_HISTORY_BYTES = 256 * 1024 * 1024
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false
+  return true
 }
 
 function hexColor(value: string): [number, number, number] {
@@ -73,6 +83,9 @@ interface AnnotationEntry { dict: PDFDict; ref?: PDFRef; index: number; page: PD
 export class PdfDocumentModel {
   private document!: PDFDocument
   private currentBytes: Uint8Array<ArrayBufferLike> = new Uint8Array()
+  private savedBytes: Uint8Array<ArrayBufferLike> = new Uint8Array()
+  private undoStack: Uint8Array<ArrayBufferLike>[] = []
+  private redoStack: Uint8Array<ArrayBufferLike>[] = []
   filePath?: string
   fileName = '未命名.pdf'
   dirty = false
@@ -81,6 +94,7 @@ export class PdfDocumentModel {
     const model = new PdfDocumentModel()
     model.document = await PDFDocument.load(data, { updateMetadata: false })
     model.currentBytes = new Uint8Array(data)
+    model.savedBytes = new Uint8Array(data)
     model.filePath = path
     model.fileName = name || path?.split(/[\\/]/).pop() || '未命名.pdf'
     return model
@@ -88,6 +102,8 @@ export class PdfDocumentModel {
 
   get bytes(): Uint8Array { return Uint8Array.from(this.currentBytes) }
   get pageCount(): number { return this.document.getPageCount() }
+  get canUndo(): boolean { return this.undoStack.length > 0 }
+  get canRedo(): boolean { return this.redoStack.length > 0 }
   async pageSubset(pageIndices: number[]): Promise<Uint8Array> {
     const pages = [...new Set(pageIndices)]
     if (!pages.length) throw new Error('请至少选择一个页面。')
@@ -103,14 +119,48 @@ export class PdfDocumentModel {
     return page.getRotation().angle % 180 === 0 ? { width: crop.width, height: crop.height } : { width: crop.height, height: crop.width }
   }
 
+  private trimHistory(stack: Uint8Array<ArrayBufferLike>[]): void {
+    while (stack.length > MAX_HISTORY_ENTRIES) stack.shift()
+    let total = stack.reduce((sum, bytes) => sum + bytes.byteLength, 0)
+    while (stack.length > 1 && total > MAX_HISTORY_BYTES) total -= stack.shift()!.byteLength
+  }
+
   private async commit(): Promise<void> {
-    this.currentBytes = Uint8Array.from(await this.document.save({ useObjectStreams: false, addDefaultPage: false }))
-    this.dirty = true
+    const previous = Uint8Array.from(this.currentBytes)
+    const next = Uint8Array.from(await this.document.save({ useObjectStreams: false, addDefaultPage: false }))
+    if (!sameBytes(previous, next)) {
+      this.undoStack.push(previous)
+      this.trimHistory(this.undoStack)
+      this.redoStack = []
+    }
+    this.currentBytes = next
+    this.dirty = !sameBytes(this.currentBytes, this.savedBytes)
+  }
+
+  private async restoreHistory(bytes: Uint8Array<ArrayBufferLike>): Promise<void> {
+    this.currentBytes = Uint8Array.from(bytes)
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+    this.dirty = !sameBytes(this.currentBytes, this.savedBytes)
+  }
+
+  async undo(): Promise<void> {
+    const previous = this.undoStack.pop()
+    if (!previous) return
+    this.redoStack.push(Uint8Array.from(this.currentBytes)); this.trimHistory(this.redoStack)
+    await this.restoreHistory(previous)
+  }
+
+  async redo(): Promise<void> {
+    const next = this.redoStack.pop()
+    if (!next) return
+    this.undoStack.push(Uint8Array.from(this.currentBytes)); this.trimHistory(this.undoStack)
+    await this.restoreHistory(next)
   }
 
   markSaved(path: string): void {
     this.filePath = path
     this.fileName = path.split(/[\\/]/).pop() || this.fileName
+    this.savedBytes = Uint8Array.from(this.currentBytes)
     this.dirty = false
   }
 
@@ -139,18 +189,19 @@ export class PdfDocumentModel {
   }
 
   private async standardFont(style: TextStyle): Promise<PDFFont> {
+    const category = fontCategory(style.font)
     let font = StandardFonts.Helvetica
-    if (style.font === 'serif') font = StandardFonts.TimesRoman
-    if (style.font === 'mono') font = StandardFonts.Courier
-    if (style.font === 'sans' && style.bold && style.italic) font = StandardFonts.HelveticaBoldOblique
-    else if (style.font === 'sans' && style.bold) font = StandardFonts.HelveticaBold
-    else if (style.font === 'sans' && style.italic) font = StandardFonts.HelveticaOblique
-    else if (style.font === 'serif' && style.bold && style.italic) font = StandardFonts.TimesRomanBoldItalic
-    else if (style.font === 'serif' && style.bold) font = StandardFonts.TimesRomanBold
-    else if (style.font === 'serif' && style.italic) font = StandardFonts.TimesRomanItalic
-    else if (style.font === 'mono' && style.bold && style.italic) font = StandardFonts.CourierBoldOblique
-    else if (style.font === 'mono' && style.bold) font = StandardFonts.CourierBold
-    else if (style.font === 'mono' && style.italic) font = StandardFonts.CourierOblique
+    if (category === 'serif') font = StandardFonts.TimesRoman
+    if (category === 'mono') font = StandardFonts.Courier
+    if (category === 'sans' && style.bold && style.italic) font = StandardFonts.HelveticaBoldOblique
+    else if (category === 'sans' && style.bold) font = StandardFonts.HelveticaBold
+    else if (category === 'sans' && style.italic) font = StandardFonts.HelveticaOblique
+    else if (category === 'serif' && style.bold && style.italic) font = StandardFonts.TimesRomanBoldItalic
+    else if (category === 'serif' && style.bold) font = StandardFonts.TimesRomanBold
+    else if (category === 'serif' && style.italic) font = StandardFonts.TimesRomanItalic
+    else if (category === 'mono' && style.bold && style.italic) font = StandardFonts.CourierBoldOblique
+    else if (category === 'mono' && style.bold) font = StandardFonts.CourierBold
+    else if (category === 'mono' && style.italic) font = StandardFonts.CourierOblique
     return this.document.embedFont(font)
   }
 
@@ -166,22 +217,30 @@ export class PdfDocumentModel {
     } else {
       const font = await this.standardFont(style)
       resources = this.document.context.obj({ Font: { F0: font.ref } })
-      const words = text.replace(/\r/g, '').split(/(\n|\s+)/)
-      const lines: string[] = []
-      let line = ''
-      for (const word of words) {
-        if (word === '\n') { lines.push(line.trimEnd()); line = ''; continue }
-        const candidate = line + word
-        if (line && font.widthOfTextAtSize(candidate, style.size) > width) { lines.push(line.trimEnd()); line = word.trimStart() }
-        else line = candidate
+      const letterSpacing = style.letterSpacing || 0, horizontalScale = style.horizontalScale || 100
+      const paragraphBefore = Math.max(0, style.paragraphBefore || 0), paragraphAfter = Math.max(0, style.paragraphAfter || 0)
+      const measuredWidth = (value: string) => (font.widthOfTextAtSize(value, style.size) + Math.max(0, Array.from(value).length - 1) * letterSpacing) * horizontalScale / 100
+      const lines: Array<{ value: string; top: number }> = []
+      let top = 0
+      for (const paragraph of text.replace(/\r/g, '').split('\n')) {
+        top += paragraphBefore
+        const words = paragraph.split(/(\s+)/)
+        let line = ''
+        const paragraphLines: string[] = []
+        for (const word of words) {
+          const candidate = line + word
+          if (line && measuredWidth(candidate) > width) { paragraphLines.push(line.trimEnd()); line = word.trimStart() }
+          else line = candidate
+        }
+        paragraphLines.push(line)
+        for (const value of paragraphLines) { lines.push({ value, top }); top += style.size * (style.lineHeight || 1.25) }
+        top += paragraphAfter
       }
-      if (line || !lines.length) lines.push(line)
-      const lineHeight = style.size * 1.25
-      const operators = lines.slice(0, Math.max(1, Math.floor(height / lineHeight))).map((value, index) => {
-        const lineWidth = font.widthOfTextAtSize(value, style.size)
+      const operators = lines.filter((line) => line.top + style.size <= height).map(({ value, top: lineTop }) => {
+        const lineWidth = measuredWidth(value)
         const offset = style.align === 'center' ? (width - lineWidth) / 2 : style.align === 'right' ? width - lineWidth : 0
-        const y = Math.max(0, height - style.size - index * lineHeight)
-        return `BT /F0 ${style.size} Tf ${red} ${green} ${blue} rg 1 0 0 1 ${Math.max(0, offset)} ${y} Tm ${font.encodeText(value)} Tj ET`
+        const y = Math.max(0, height - style.size - lineTop)
+        return `BT /F0 ${style.size} Tf ${red} ${green} ${blue} rg ${letterSpacing} Tc ${horizontalScale} Tz 1 0 0 1 ${Math.max(0, offset)} ${y} Tm ${font.encodeText(value)} Tj ET`
       })
       contents = `q ${operators.join('\n')} Q`
     }
@@ -208,25 +267,31 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('DA'), PDFString.of(`/Helv ${style.size} Tf ${red} ${green} ${blue} rg`))
     dictionary.set(PDFName.of('Q'), PDFNumber.of(style.align === 'center' ? 1 : style.align === 'right' ? 2 : 0))
     dictionary.set(PDFName.of('PDFuckText'), PDFName.of('true'))
-    dictionary.set(PDFName.of('PDFuckFont'), PDFName.of(style.font))
+    dictionary.set(PDFName.of('PDFuckFont'), pdfString(normalizeFontFamily(style.font)))
     dictionary.set(PDFName.of('PDFuckSize'), PDFNumber.of(style.size))
     dictionary.set(PDFName.of('PDFuckColor'), PDFString.of(style.color))
     dictionary.set(PDFName.of('PDFuckBold'), PDFName.of(style.bold ? 'true' : 'false'))
     dictionary.set(PDFName.of('PDFuckItalic'), PDFName.of(style.italic ? 'true' : 'false'))
     dictionary.set(PDFName.of('PDFuckAlign'), PDFName.of(style.align))
+    dictionary.set(PDFName.of('PDFuckLineHeight'), PDFNumber.of(style.lineHeight || 1.25))
+    dictionary.set(PDFName.of('PDFuckParagraphBefore'), PDFNumber.of(style.paragraphBefore || 0))
+    dictionary.set(PDFName.of('PDFuckParagraphAfter'), PDFNumber.of(style.paragraphAfter || 0))
+    dictionary.set(PDFName.of('PDFuckLetterSpacing'), PDFNumber.of(style.letterSpacing || 0))
+    dictionary.set(PDFName.of('PDFuckHorizontalScale'), PDFNumber.of(style.horizontalScale || 100))
     page.node.addAnnot(this.document.context.register(dictionary))
     await this.commit()
     return id
   }
 
-  async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect): Promise<string> {
-    if (!rects.length) throw new Error('请先框选要编辑的页面文字。')
+  async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect, backgroundColor = '#ffffff'): Promise<string> {
+    if (!rects.length) throw new Error('找不到要编辑的页面文字区域。')
     const page = this.document.getPage(pageIndex)
     const geometry = pageGeometry(page)
+    const [backgroundRed, backgroundGreen, backgroundBlue] = hexColor(backgroundColor)
     for (const rect of rects) {
-      const padded = { x: Math.max(0, rect.x - 1), y: Math.max(0, rect.y - 1), width: rect.width + 2, height: rect.height + 2 }
+      const padded = { x: Math.max(0, rect.x - .35), y: Math.max(0, rect.y - .5), width: rect.width + .7, height: rect.height + 1 }
       const [left, bottom, right, top] = displayRectToPdfBounds(padded, geometry)
-      page.drawRectangle({ x: left, y: bottom, width: Math.max(1, right - left), height: Math.max(1, top - bottom), color: rgb(1, 1, 1), borderWidth: 0 })
+      page.drawRectangle({ x: left, y: bottom, width: Math.max(1, right - left), height: Math.max(1, top - bottom), color: rgb(backgroundRed, backgroundGreen, backgroundBlue), borderWidth: 0 })
     }
     return this.addText(pageIndex, replacementRect || rectUnion(rects), text, style, rasterPng)
   }
@@ -274,12 +339,17 @@ export class PdfDocumentModel {
         rect: pdfBoundsToDisplayRect(numberArray(this.document, entry.dict.get(PDFName.of('Rect'))), pageGeometry(entry.page)),
         text: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
         style: {
-          font: font === 'serif' || font === 'mono' ? font : 'sans',
+          font: normalizeFontFamily(font),
           size: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckSize')), 16),
           color: decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckColor'))) || '#182033',
           bold: decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckBold'))) === 'true',
           italic: decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckItalic'))) === 'true',
-          align: align === 'center' || align === 'right' ? align : 'left'
+          align: align === 'center' || align === 'right' ? align : 'left',
+          lineHeight: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckLineHeight')), 1.25) as TextStyle['lineHeight'],
+          paragraphBefore: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckParagraphBefore')), 0),
+          paragraphAfter: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckParagraphAfter')), 0),
+          letterSpacing: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckLetterSpacing')), 0),
+          horizontalScale: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckHorizontalScale')), 100)
         }
       }]
     })
@@ -301,12 +371,17 @@ export class PdfDocumentModel {
     dict.set(PDFName.of('AP'), this.document.context.obj({ N: appearance }))
     dict.set(PDFName.of('DA'), PDFString.of(`/Helv ${style.size} Tf ${red} ${green} ${blue} rg`))
     dict.set(PDFName.of('Q'), PDFNumber.of(style.align === 'center' ? 1 : style.align === 'right' ? 2 : 0))
-    dict.set(PDFName.of('PDFuckFont'), PDFName.of(style.font))
+    dict.set(PDFName.of('PDFuckFont'), pdfString(normalizeFontFamily(style.font)))
     dict.set(PDFName.of('PDFuckSize'), PDFNumber.of(style.size))
     dict.set(PDFName.of('PDFuckColor'), PDFString.of(style.color))
     dict.set(PDFName.of('PDFuckBold'), PDFName.of(style.bold ? 'true' : 'false'))
     dict.set(PDFName.of('PDFuckItalic'), PDFName.of(style.italic ? 'true' : 'false'))
     dict.set(PDFName.of('PDFuckAlign'), PDFName.of(style.align))
+    dict.set(PDFName.of('PDFuckLineHeight'), PDFNumber.of(style.lineHeight || 1.25))
+    dict.set(PDFName.of('PDFuckParagraphBefore'), PDFNumber.of(style.paragraphBefore || 0))
+    dict.set(PDFName.of('PDFuckParagraphAfter'), PDFNumber.of(style.paragraphAfter || 0))
+    dict.set(PDFName.of('PDFuckLetterSpacing'), PDFNumber.of(style.letterSpacing || 0))
+    dict.set(PDFName.of('PDFuckHorizontalScale'), PDFNumber.of(style.horizontalScale || 100))
     await this.commit()
   }
 

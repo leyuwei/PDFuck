@@ -29,7 +29,7 @@ describe('PdfDocumentModel', () => {
     const reopened = await PdfDocumentModel.load(model.bytes)
     expect(reopened.pageCount).toBe(2)
     expect(reopened.getPageSize(0).width).toBe(500)
-    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id: textId, text: 'Edited text', rect: expect.objectContaining({ x: 68, y: 92 }), style: expect.objectContaining({ font: 'serif', size: 18, color: '#c83a45', italic: true, align: 'right' }) })])
+    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id: textId, text: 'Edited text', rect: expect.objectContaining({ x: 68, y: 92 }), style: expect.objectContaining({ font: 'Times New Roman', size: 18, color: '#c83a45', italic: true, align: 'right' }) })])
   })
 
   it('supports repeated crops using the current CropBox as the next coordinate origin', async () => {
@@ -43,6 +43,37 @@ describe('PdfDocumentModel', () => {
     expect(crop.y).toBeCloseTo(342)
     expect(crop.width).toBeCloseTo(300)
     expect(crop.height).toBeCloseTo(400)
+  })
+
+  it('undoes and redoes mutations while tracking the last saved state', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf(), 'sample.pdf', 'sample.pdf')
+    expect(model.canUndo).toBe(false)
+    await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 80, height: 12 }], 'first')
+    const editedBytes = model.bytes
+    expect(model.canUndo).toBe(true)
+    expect(model.canRedo).toBe(false)
+    await model.undo()
+    expect(model.annotations()).toHaveLength(0)
+    expect(model.dirty).toBe(false)
+    expect(model.canRedo).toBe(true)
+    await model.redo()
+    expect(model.annotations()).toHaveLength(1)
+    expect(model.bytes).toEqual(editedBytes)
+    model.markSaved('sample.pdf')
+    await model.undo()
+    expect(model.dirty).toBe(true)
+    await model.redo()
+    expect(model.dirty).toBe(false)
+  })
+
+  it('restores structural page edits through the same history', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    await model.deletePages([1])
+    expect(model.pageCount).toBe(2)
+    await model.undo()
+    expect(model.pageCount).toBe(3)
+    await model.redo()
+    expect(model.pageCount).toBe(2)
   })
 
   it('creates all six annotations and persists list edits and movement', async () => {
@@ -70,8 +101,8 @@ describe('PdfDocumentModel', () => {
     expect(replacement).toEqual(expect.objectContaining({ pageIndex: 0, text: 'Revised wording', rect: expect.objectContaining({ x: 72, y: 118, width: 190, height: 15 }) }))
     const reopened = await PdfDocumentModel.load(model.bytes)
     expect(reopened.textObjects()).toEqual([expect.objectContaining({ id, text: 'Revised wording' })])
-    await reopened.updateTextObject(id, 'Edited again', { font: 'serif', size: 13, color: '#3157d5', bold: true, italic: false, align: 'left' })
-    expect(reopened.textObjects()[0].text).toBe('Edited again')
+    await reopened.updateTextObject(id, 'Edited again', { font: 'serif', size: 13, color: '#3157d5', bold: true, italic: false, align: 'left', lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 })
+    expect(reopened.textObjects()[0]).toEqual(expect.objectContaining({ text: 'Edited again', style: expect.objectContaining({ lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 }) }))
   })
 
   it('does not delete the last page', async () => {
