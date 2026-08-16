@@ -33,6 +33,11 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret |
   return caretForTextPosition(words, { wordIndex: nearestIndex, offset: Math.round(relativeX * count) })
 }
 
+export function insertionPointAt(words: WordBox[], point: PdfPoint): PdfPoint {
+  const caret = textCaretAtPoint(words, point)
+  return caret ? { x: caret.x, y: caret.y + caret.height / 2 } : point
+}
+
 export function moveTextPosition(words: WordBox[], position: TextPosition, direction: -1 | 1): TextPosition {
   if (!words.length) return position
   const wordIndex = Math.max(0, Math.min(words.length - 1, position.wordIndex))

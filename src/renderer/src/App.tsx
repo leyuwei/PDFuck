@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
 import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
 import { PdfDocumentModel } from './lib/pdf-document'
-import type { AnnotationKind, AnnotationRecord, CanvasAction, ModuleKey, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ModuleKey, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
 import type { DocumentTabsSnapshot, ManagedPdfDocument, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
@@ -17,7 +17,7 @@ import { replacementTextRect } from './lib/page-text-edit'
 import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
 import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 
-const APP_VERSION = '1.10.0'
+const APP_VERSION = '1.11.0'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
 type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
@@ -108,7 +108,7 @@ export default function App() {
   const activeDocumentIdRef = useRef(1)
   const tabsSnapshotRef = useRef<DocumentTabsSnapshot>({ currentId: 1, documents: [sessionSummary(emptySession(1))] })
   const nextDocumentId = useRef(2)
-  const annotationResolve = useRef<((value: string | null) => void) | undefined>(undefined)
+  const annotationResolve = useRef<((value: AnnotationDialogResult | null) => void) | undefined>(undefined)
   const textResolve = useRef<((value: TextDialogValue | null) => void) | undefined>(undefined)
   const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
   const [data, setData] = useState<Uint8Array>()
@@ -296,7 +296,7 @@ export default function App() {
     })
   }, [activeDocumentId, data, dirty, documentName, encrypted])
 
-  const askAnnotation = (value: AnnotationDialogState): Promise<string | null> => new Promise((resolve) => { annotationResolve.current = resolve; setDialog({ type: 'annotation', value }) })
+  const askAnnotation = (value: AnnotationDialogState): Promise<AnnotationDialogResult | null> => new Promise((resolve) => { annotationResolve.current = resolve; setDialog({ type: 'annotation', value }) })
   const askText = (initial?: TextDialogValue): Promise<TextDialogValue | null> => new Promise((resolve) => { textResolve.current = resolve; setDialog({ type: 'text', initial, edit: Boolean(initial) }) })
   const mutate = useCallback(async (operation: (model: PdfDocumentModel) => Promise<unknown>, message: string, refreshDocument = true) => {
     const model = modelRef.current; if (!model) return
@@ -321,23 +321,23 @@ export default function App() {
       const image = await styledTextRaster(edit.text, replacementRect, value)
       await mutate((modelValue) => modelValue.replacePageText(action.pageIndex, edit.region.sourceRects, edit.text, edit.style, image, replacementRect, edit.backgroundColor), '页面文字已更新；可继续点击当前页其他文本块')
     } else if (action.tool === 'highlight' && action.selection) {
-      const content = await askAnnotation({ kind: 'highlight', optional: true }); if (content === null) return
-      await mutate((value) => value.addAnnotation(action.pageIndex, 'highlight', action.selection!.rects, content), '高亮批注已添加', false)
+      const annotation = await askAnnotation({ kind: 'highlight', optional: true }); if (annotation === null) return
+      await mutate((value) => value.addAnnotation(action.pageIndex, 'highlight', action.selection!.rects, annotation.content, undefined, annotation.color), '高亮批注已添加', false)
     } else if (action.tool === 'replace' && action.selection) {
-      const content = await askAnnotation({ kind: 'replace' }); if (content === null) return
-      await mutate((value) => value.addAnnotation(action.pageIndex, 'replace', action.selection!.rects, content), '替换标记已添加', false)
+      const annotation = await askAnnotation({ kind: 'replace' }); if (annotation === null) return
+      await mutate((value) => value.addAnnotation(action.pageIndex, 'replace', action.selection!.rects, annotation.content, undefined, annotation.color), '替换标记已添加', false)
     } else if (action.tool === 'delete_text' && action.selection) await mutate((value) => value.addAnnotation(action.pageIndex, 'delete', action.selection!.rects, '标记删除'), '删除标记已添加', false)
     else if (action.tool === 'underline' && action.selection) await mutate((value) => value.addAnnotation(action.pageIndex, 'underline', action.selection!.rects), '下划线已添加', false)
     else if ((action.tool === 'note' || action.tool === 'insert') && action.point) {
       const kind: AnnotationKind = action.tool
-      const content = await askAnnotation({ kind }); if (content === null) return
-      await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], content, action.point), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
+      const annotation = await askAnnotation({ kind }); if (annotation === null) return
+      await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], annotation.content, action.point, annotation.color), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
     }
   }, [mutate])
 
   const editAnnotation = useCallback(async (annotation: AnnotationRecord) => {
-    const content = await askAnnotation({ kind: annotation.kind, initial: annotation.content, optional: true, edit: true }); if (content === null) return
-    await mutate((model) => model.updateAnnotation(annotation.id, content), '批注内容已更新', false)
+    const value = await askAnnotation({ kind: annotation.kind, initial: annotation.content, initialColor: annotation.color, reply: annotation.reply, optional: true, edit: true }); if (value === null) return
+    await mutate((model) => model.updateAnnotationProperties(annotation.id, value.content, value.color, value.reply), '批注内容、颜色和回复已更新', false)
   }, [mutate])
   const deleteAnnotation = useCallback((annotation: AnnotationRecord) => {
     if (window.confirm(`确定删除第 ${annotation.pageIndex + 1} 页的这条批注？`)) {
@@ -349,6 +349,12 @@ export default function App() {
     const model = modelRef.current; if (!model) return
     await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false)
   }, [syncModel])
+  const recolorAnnotation = useCallback(async (id: string, color: string) => {
+    await mutate((model) => model.updateAnnotationColor(id, color), '批注颜色已更新', false)
+  }, [mutate])
+  const replyAnnotation = useCallback(async (id: string, reply?: AnnotationReply) => {
+    await mutate((model) => model.updateAnnotationReply(id, reply), reply ? `已回复：${reply.content}` : '批注回复已清除', false)
+  }, [mutate])
   const revealAnnotation = useCallback((id: string) => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
     setFocusedAnnotation(id); setAnnotationFocusToken((value) => value + 1)
@@ -464,8 +470,8 @@ export default function App() {
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={encrypted && key !== 'view' ? '加密 PDF 以只读模式打开' : module === key ? (toolPanelCollapsed ? `展开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具` : `收起${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`) : `打开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`} onClick={() => selectModule(key)}><ModuleIcon module={key} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
       <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} onExportFormat={setExportFormat} onExportDpi={setExportDpi} /></div>
-      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
-      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
+      <section className="document-area">{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} onZoomChange={setZoom} onPageChange={setCurrentPage} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={setSelection} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={(id) => { const annotation = annotations.find((item) => item.id === id); if (annotation) deleteAnnotation(annotation) }} />}
     </main><footer><span>{status}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `已选择：${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? `${pageCount} 页 · 第 ${currentPage + 1} 页` : '未打开文档'}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>释放以打开 PDF</b><span>{hasDocument ? '将在当前窗口新增一个文档标签' : '将在当前标签中打开'}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { setDialog(null); annotationResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); annotationResolve.current?.(value) }} />}

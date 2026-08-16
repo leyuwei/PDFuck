@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AnnotationKind, TextStyle } from '../types'
+import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
 import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import type { UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
+import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
+import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 
-export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; optional?: boolean; edit?: boolean }
+export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
+export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply }
 
 function useDeferredFocus<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -16,13 +19,18 @@ function useDeferredFocus<T extends HTMLElement>() {
   return ref
 }
 
-export function AnnotationDialog({ state, onCancel, onSubmit }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: string): void }) {
+export function AnnotationDialog({ state, onCancel, onSubmit }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void }) {
   const [value, setValue] = useState(state.initial || '')
+  const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
+  const [reply, setReply] = useState<AnnotationReply | undefined>(state.reply)
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   const labels: Record<AnnotationKind, string> = { highlight: '高亮说明', note: '批注内容', replace: '替换为', insert: '插入文字', delete: '删除标记', underline: '下划线说明' }
-  return <div className="modal-backdrop"><div className="modal"><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><p>{state.optional ? '可以为这条批注添加说明，也可以留空。' : '请输入要写入这条批注的内容。'}</p>
-    <textarea ref={textareaRef} value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.ctrlKey && event.key === 'Enter' && (state.optional || value.trim())) onSubmit(value.trim()) }} />
-    <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => onSubmit(value.trim())}>确定</button></div></div></div>
+  const submit = () => onSubmit({ content: value.trim(), color, reply })
+  return <div className="modal-backdrop"><div className="modal annotation-dialog"><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><p>{state.optional ? '可以补充说明并选择醒目的标记颜色。' : '填写批注内容，并选择适合的标记颜色。'}</p>
+    <textarea ref={textareaRef} value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.ctrlKey && event.key === 'Enter' && (state.optional || value.trim())) submit() }} />
+    <AnnotationColorPicker color={color} onChange={setColor} />
+    {state.edit && <AnnotationReplyPicker reply={reply} onChange={setReply} />}
+    <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={submit}>确定</button></div></div></div>
 }
 
 export interface TextDialogValue { text: string; style: TextStyle }

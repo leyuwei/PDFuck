@@ -79,19 +79,26 @@ describe('PdfDocumentModel', () => {
   it('creates all six annotations and persists list edits and movement', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const markupKinds: AnnotationKind[] = ['highlight', 'replace', 'delete', 'underline']
-    for (const kind of markupKinds) await model.addAnnotation(0, kind, [{ x: 70, y: 110, width: 150, height: 15 }], `${kind} content`)
+    const markupIds = new Map<AnnotationKind, string>()
+    for (const kind of markupKinds) markupIds.set(kind, await model.addAnnotation(0, kind, [{ x: 70, y: 110, width: 150, height: 15 }], `${kind} content`))
     const note = await model.addAnnotation(0, 'note', [], 'note content', { x: 260, y: 140 })
     const insert = await model.addAnnotation(0, 'insert', [], 'insert content', { x: 300, y: 130 })
     expect(new Set(model.annotations().map((annotation) => annotation.kind))).toEqual(new Set<AnnotationKind>(['highlight', 'replace', 'delete', 'underline', 'note', 'insert']))
+    expect(model.annotations().find((annotation) => annotation.kind === 'replace')?.color).toBe('#173f7a')
     await model.updateAnnotation(note, 'edited in list')
+    await model.updateAnnotationColor(markupIds.get('highlight')!, '#7c4dca')
+    await model.updateAnnotationReply(markupIds.get('replace')!, { status: 'handled', content: '已处理' })
     await model.moveAnnotation(insert, 12, 8)
     expect(model.annotations().find((annotation) => annotation.id === note)?.content).toBe('edited in list')
     const moved = model.annotations().find((annotation) => annotation.id === insert)!
-    expect(moved.rects[0].x).toBeCloseTo(308)
+    expect(moved.rects[0].x).toBeCloseTo(303)
+    expect(moved.rects[0].y + moved.rects[0].height).toBeCloseTo(138)
     await model.deleteAnnotation(note)
     expect(model.annotations()).toHaveLength(5)
     const reopened = await PdfDocumentModel.load(model.bytes)
     expect(reopened.annotations()).toHaveLength(5)
+    expect(reopened.annotations().find((annotation) => annotation.kind === 'highlight')?.color).toBe('#7c4dca')
+    expect(reopened.annotations().find((annotation) => annotation.kind === 'replace')?.reply).toEqual({ status: 'handled', content: '已处理' })
   })
 
   it('visually replaces selected page text and keeps the replacement editable after reopening', async () => {

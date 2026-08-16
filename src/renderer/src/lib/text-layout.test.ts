@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
-import { moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween } from './text-layout'
+import { insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween } from './text-layout'
 
 describe('PDF text layout', () => {
   it('places selection above the PDF baseline using font ascent', () => {
@@ -63,6 +63,11 @@ describe('PDF text layout', () => {
       { text: 'two', order: 1, rect: { x: 50, y: 20, width: 30, height: 12 } }
     ], { x: 43, y: 25 })
     expect(caret?.x).toBe(40)
+  })
+
+  it('places an insertion marker at the nearest character boundary and line center', () => {
+    const point = insertionPointAt([{ text: 'word', order: 0, rect: { x: 10, y: 20, width: 40, height: 12 } }], { x: 27, y: 25 })
+    expect(point).toEqual({ x: 30, y: 26 })
   })
 
   it('moves the caret one character at a time and crosses word boundaries', () => {

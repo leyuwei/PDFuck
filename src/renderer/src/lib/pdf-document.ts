@@ -2,13 +2,14 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRef, PDFString,
   StandardFonts, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AnnotationKind, AnnotationRecord, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { rectUnion } from './geometry'
 import {
   displayRectToPdfBounds, displayRectsToPdfQuads, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
   type PageGeometry
 } from './page-coordinates'
 import { fontCategory, normalizeFontFamily } from './text-fonts'
+import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
   highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线'
@@ -26,6 +27,11 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
 function hexColor(value: string): [number, number, number] {
   const hex = value.replace('#', '').padEnd(6, '0')
   return [Number.parseInt(hex.slice(0, 2), 16) / 255, Number.parseInt(hex.slice(2, 4), 16) / 255, Number.parseInt(hex.slice(4, 6), 16) / 255]
+}
+
+function rgbArrayToHex(values: number[], fallback: string): string {
+  if (values.length < 3) return fallback
+  return `#${values.slice(0, 3).map((value) => Math.round(Math.max(0, Math.min(1, value)) * 255).toString(16).padStart(2, '0')).join('')}`
 }
 
 function pdfString(value: string): PDFHexString { return PDFHexString.fromText(value) }
@@ -316,10 +322,17 @@ export class PdfDocumentModel {
       const quads = numberArray(this.document, entry.dict.get(PDFName.of('QuadPoints')))
       const rect = numberArray(this.document, entry.dict.get(PDFName.of('Rect')))
       const geometry = pageGeometry(entry.page)
+      const storedColor = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckColor')))
+      const color = normalizeHexColor(storedColor, rgbArrayToHex(numberArray(this.document, entry.dict.get(PDFName.of('C'))), DEFAULT_ANNOTATION_COLOR[kind]))
+      const replyStatus = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyStatus'))) as AnnotationReplyStatus
+      const replyContent = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReply')))
+      const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent } : undefined
       return [{
         id, pageIndex: entry.pageIndex, kind,
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
+        color,
+        reply,
         rects: quads.length ? pdfQuadsToDisplayRects(quads, geometry) : [pdfBoundsToDisplayRect(rect, geometry)],
         createdAt: decodeObject(this.document, entry.dict.get(PDFName.of('M')))
       }]
@@ -403,16 +416,17 @@ export class PdfDocumentModel {
     return entry
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint): Promise<string> {
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string): Promise<string> {
     const page = this.document.getPage(pageIndex)
     const geometry = pageGeometry(page)
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     let normalized = rects
     if (kind === 'note' && point) normalized = [{ x: point.x, y: point.y, width: 20, height: 20 }]
-    if (kind === 'insert' && point) normalized = [{ x: point.x - 4, y: point.y - 4, width: 8, height: 8 }]
+    if (kind === 'insert' && point) normalized = [{ x: point.x - 9, y: Math.max(0, point.y - 22), width: 18, height: Math.min(22, point.y) }]
     if (!normalized.length) throw new Error('请先选择文字或页面位置。')
     const bounds = rectUnion(normalized)
-    const color = kind === 'highlight' ? [1, 0.82, 0.16] : kind === 'note' ? [1, 0.72, 0.1] : [0.16, 0.48, 0.95]
+    const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
+    const color = hexColor(colorHex)
     const dictionary = this.document.context.obj({})
     dictionary.set(PDFName.of('Type'), PDFName.of('Annot'))
     dictionary.set(PDFName.of('Subtype'), PDFName.of(subtypeFor(kind)))
@@ -422,18 +436,66 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('NM'), pdfString(id))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     dictionary.set(PDFName.of('C'), this.document.context.obj(color))
+    dictionary.set(PDFName.of('PDFuckColor'), pdfString(colorHex))
     dictionary.set(PDFName.of('CA'), PDFNumber.of(kind === 'highlight' ? 0.35 : 1))
     dictionary.set(PDFName.of('F'), PDFNumber.of(4))
     dictionary.set(PDFName.of('Subj'), pdfString(KIND_LABEL[kind]))
     if (!['note', 'insert'].includes(kind)) dictionary.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(normalized, geometry)))
     if (kind === 'insert') dictionary.set(PDFName.of('Sy'), PDFName.of('P'))
+    if (kind === 'insert') this.setAnnotationColor(dictionary, colorHex)
     page.node.addAnnot(this.document.context.register(dictionary))
     await this.commit()
     return id
   }
 
   async updateAnnotation(id: string, content: string): Promise<void> {
-    this.findAnnotation(id).dict.set(PDFName.of('Contents'), pdfString(content))
+    const dict = this.findAnnotation(id).dict
+    dict.set(PDFName.of('Contents'), pdfString(content))
+    dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    await this.commit()
+  }
+
+  private setAnnotationColor(dict: PDFDict, color: string): void {
+    const normalized = normalizeHexColor(color, '#173f7a')
+    dict.set(PDFName.of('C'), this.document.context.obj(hexColor(normalized)))
+    dict.set(PDFName.of('PDFuckColor'), pdfString(normalized))
+    if (kindFor(dict, this.document) === 'insert') {
+      const rect = numberArray(this.document, dict.get(PDFName.of('Rect')))
+      const width = Math.max(8, Math.abs((rect[2] || 18) - (rect[0] || 0))), height = Math.max(8, Math.abs((rect[3] || 22) - (rect[1] || 0)))
+      const [red, green, blue] = hexColor(normalized), center = width / 2, wing = Math.min(6, width * .34), base = Math.min(7, height * .32)
+      const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg 2.6 w 1 J ${center} ${height - 1} m ${center} ${base} l S ${center - wing} ${base} m ${center} 0 l ${center + wing} ${base} l h f Q`
+      const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, width, height], Resources: {} })
+      dict.set(PDFName.of('AP'), this.document.context.obj({ N: this.document.context.register(stream) }))
+    } else dict.delete(PDFName.of('AP'))
+  }
+
+  private setAnnotationReply(dict: PDFDict, reply?: AnnotationReply): void {
+    if (reply?.content.trim()) {
+      dict.set(PDFName.of('PDFuckReplyStatus'), PDFName.of(reply.status))
+      dict.set(PDFName.of('PDFuckReply'), pdfString(reply.content.trim()))
+    } else {
+      dict.delete(PDFName.of('PDFuckReplyStatus'))
+      dict.delete(PDFName.of('PDFuckReply'))
+    }
+  }
+
+  async updateAnnotationColor(id: string, color: string): Promise<void> {
+    const dict = this.findAnnotation(id).dict
+    this.setAnnotationColor(dict, color); dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    await this.commit()
+  }
+
+  async updateAnnotationReply(id: string, reply?: AnnotationReply): Promise<void> {
+    const dict = this.findAnnotation(id).dict
+    this.setAnnotationReply(dict, reply); dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    await this.commit()
+  }
+
+  async updateAnnotationProperties(id: string, content: string, color: string, reply?: AnnotationReply): Promise<void> {
+    const dict = this.findAnnotation(id).dict
+    dict.set(PDFName.of('Contents'), pdfString(content))
+    this.setAnnotationColor(dict, color); this.setAnnotationReply(dict, reply)
+    dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     await this.commit()
   }
 
