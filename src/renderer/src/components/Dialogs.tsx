@@ -23,10 +23,15 @@ export function AnnotationDialog({ state, onCancel, onSubmit }: { state: Annotat
   const [value, setValue] = useState(state.initial || '')
   const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
   const [reply, setReply] = useState<AnnotationReply | undefined>(state.reply)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const drag = useRef<{ x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   const labels: Record<AnnotationKind, string> = { highlight: '高亮说明', note: '批注内容', replace: '替换为', insert: '插入文字', delete: '删除标记', underline: '下划线说明' }
   const submit = () => onSubmit({ content: value.trim(), color, reply })
-  return <div className="modal-backdrop"><div className="modal annotation-dialog"><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><p>{state.optional ? '可以补充说明并选择醒目的标记颜色。' : '填写批注内容，并选择适合的标记颜色。'}</p>
+  const beginDrag = (event: React.PointerEvent) => { if (event.button !== 0) return; event.preventDefault(); drag.current = { x: event.clientX, y: event.clientY, offset }; event.currentTarget.setPointerCapture(event.pointerId) }
+  const moveDrag = (event: React.PointerEvent) => { if (!drag.current) return; event.preventDefault(); setOffset({ x: drag.current.offset.x + event.clientX - drag.current.x, y: drag.current.offset.y + event.clientY - drag.current.y }) }
+  const finishDrag = () => { drag.current = undefined }
+  return <div className="modal-backdrop"><div className="modal annotation-dialog" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}><div className="annotation-dialog-heading" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><span title="拖动浮窗">⠿</span></div><p>{state.optional ? '可以补充说明并选择醒目的标记颜色。' : '填写批注内容，并选择适合的标记颜色。'}</p>
     <textarea ref={textareaRef} value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.ctrlKey && event.key === 'Enter' && (state.optional || value.trim())) submit() }} />
     <AnnotationColorPicker color={color} onChange={setColor} />
     {state.edit && <AnnotationReplyPicker reply={reply} onChange={setReply} />}

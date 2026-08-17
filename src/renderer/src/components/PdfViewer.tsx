@@ -104,6 +104,34 @@ function selectionFromRange(words: WordBox[], first: number, last: number): Text
   return { text: selected.map((word) => word.text).join(' '), rects: lines }
 }
 
+function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { selection: TextSelection; zoom: number; pageSize: { width: number; height: number }; onChoose(tool: Tool): void }) {
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const drag = useRef<{ x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
+  const bounds = rectUnion(selection.rects)
+  useEffect(() => { setOffset({ x: 0, y: 0 }) }, [selection.text, bounds.x, bounds.y, bounds.width, bounds.height])
+  const width = 238, height = 40
+  const baseLeft = Math.max(5, Math.min(pageSize.width * zoom - width - 5, (bounds.x + bounds.width / 2) * zoom - width / 2))
+  const baseTop = bounds.y * zoom >= height + 8 ? bounds.y * zoom - height - 7 : Math.min(pageSize.height * zoom - height - 5, (bounds.y + bounds.height) * zoom + 7)
+  const beginDrag = (event: React.PointerEvent) => {
+    if (event.button !== 0) return
+    event.preventDefault(); event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY, offset }; event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const moveDrag = (event: React.PointerEvent) => {
+    if (!drag.current) return
+    event.preventDefault(); event.stopPropagation()
+    const nextX = event.clientX - drag.current.x + drag.current.offset.x, nextY = event.clientY - drag.current.y + drag.current.offset.y
+    setOffset({ x: Math.max(5 - baseLeft, Math.min(pageSize.width * zoom - width - 5 - baseLeft, nextX)), y: Math.max(5 - baseTop, Math.min(pageSize.height * zoom - height - 5 - baseTop, nextY)) })
+  }
+  const finishDrag = (event: React.PointerEvent) => { if (!drag.current) return; event.stopPropagation(); drag.current = undefined }
+  const tools: Array<{ tool: Tool; label: string; kind: 'highlight' | 'replace' | 'delete_text' | 'underline' | 'note' | 'insert' }> = [
+    { tool: 'highlight', label: '文本高亮', kind: 'highlight' }, { tool: 'replace', label: '文本替换', kind: 'replace' }, { tool: 'delete_text', label: '文本删除', kind: 'delete_text' }, { tool: 'underline', label: '加下划线', kind: 'underline' }, { tool: 'note', label: '自由批注', kind: 'note' }, { tool: 'insert', label: '插入文字', kind: 'insert' }
+  ]
+  return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()}>
+    <button type="button" className="selection-toolbar-grip" aria-label="拖动批注快捷浮窗" title="拖动浮窗" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
+    {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
+  </div>
+}
+
 function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
   const bounds = rectUnion(annotation.rects)
   const drag = useRef<{ x: number; y: number } | null>(null)
@@ -298,7 +326,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
           if (font) fontDetails[fontName] = { name: font.name, bold: font.bold, italic: font.italic }
         } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
       }
-      setWords(textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number]))
+      setWords(textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
       setTextRegions(textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
     }).catch((error) => { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { cancelled = true }
@@ -444,6 +472,16 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     setMenu((current) => current?.annotation ? { ...current, annotation: { ...current.annotation, reply } } : current)
   }
   const copyMenuSelection = () => { if (selection?.text) onCopyText(selection.text); setMenu(undefined) }
+  const chooseQuickAnnotation = (selectedTool: Tool) => {
+    if (!selection) return
+    if (['highlight', 'replace', 'delete_text', 'underline'].includes(selectedTool)) onAction({ pageIndex, tool: selectedTool, selection })
+    else {
+      const last = selection.rects.at(-1)
+      const point = last ? (selectedTool === 'insert' ? { x: last.x + last.width, y: last.y + last.height / 2 } : { x: last.x + last.width / 2, y: last.y + last.height / 2 }) : { x: size.width / 2, y: size.height / 2 }
+      onAction({ pageIndex, tool: selectedTool, point })
+    }
+    setSelection(undefined); onSelectionChange(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
+  }
   const openPageTextEditor = (region: EditableTextRegion) => {
     const colors = sampleCanvasRegionColors(canvasRef.current, region.rect, size)
     setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined); setMenu(undefined)
@@ -486,6 +524,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
+    {annotationMode && selection?.text && !menu && <SelectionAnnotationToolbar selection={selection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>

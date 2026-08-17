@@ -5,6 +5,8 @@ describe('text font helpers', () => {
   it('recovers familiar family names from PDF subset and PostScript names', () => {
     expect(normalizeFontFamily('ABCDEF+Times-BoldItalic', 'serif')).toBe('Times New Roman')
     expect(normalizeFontFamily('Helvetica-Bold')).toBe('Helvetica')
+    expect(normalizeFontFamily('GULXXR+NimbusRomNo9L-Medi')).toBe('Times New Roman')
+    expect(normalizeFontFamily('NimbusSanL-Bold')).toBe('Helvetica')
     expect(normalizeFontFamily('Calibri-Italic')).toBe('Calibri')
     expect(normalizeFontFamily('MicrosoftYaHei')).toBe('Microsoft YaHei')
   })

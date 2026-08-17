@@ -1,0 +1,23 @@
+.annotation-header, .annotation-row { grid-template-columns: 20px 25px 82px minmax(0, 1fr) 28px; }
+.annotation-panel { position: relative; min-width: 280px; max-width: 560px; }
+.annotation-resize-handle { position: absolute; z-index: 5; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; }
+.annotation-resize-handle::after { content: ""; position: absolute; left: 3px; top: 50%; width: 2px; height: 34px; border-radius: 2px; background: #c9d2e3; opacity: 0; transform: translateY(-50%); transition: opacity .15s ease, background .15s ease; }
+.annotation-panel:hover .annotation-resize-handle::after, .annotation-resize-handle:hover::after { opacity: 1; }
+.annotation-resize-handle:hover::after { background: #5575de; }
+.annotation-statuses { min-width: 0; display: flex; align-items: center; gap: 3px; }
+.annotation-status-button { width: 23px; height: 23px; min-width: 23px; padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #9aa3b3; font-size: 13px; font-weight: 800; line-height: 1; }
+.annotation-status-button:hover { border-color: #d7deea; background: #fff; }
+.annotation-status-button.active { background: #fff; box-shadow: 0 1px 4px #1b27421c; }
+.annotation-status-button.handled.active { color: #25865b; border-color: #8bc8a7; }
+.annotation-status-button.thinking.active { color: #ad7b0c; border-color: #e2bf64; }
+.annotation-status-button.declined.active { color: #c3424c; border-color: #e19aa0; }
+.export-mode-label { display: block; margin: 10px 0 6px; color: #6b758b; font-size: 11px; font-weight: 650; }
+.export-mode { margin-bottom: 10px; }
+
+@media (max-width: 1240px) {
+  .titlebar { gap: 8px; padding-left: 12px; }
+  .brand { min-width: 78px; font-size: 18px; }
+  .document-title { max-width: 150px; }
+  .file-actions { gap: 4px; }
+  .open-button, .folder-button { padding-inline: 8px; font-size: 11px; }
+}

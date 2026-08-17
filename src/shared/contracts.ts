@@ -40,7 +40,7 @@ export interface ExportPage {
 }
 
 export interface ExportRequest {
-  format: RasterExportFormat
+  format: ExportFormat
   pages: ExportPage[]
   sourceName: string
 }
@@ -73,6 +73,7 @@ export interface DesktopApi {
   openPdf(): Promise<OpenedPdf | null>
   readPdf(path: string): Promise<OpenedPdf>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
+  openPdfFolder(path: string): Promise<void>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<string | null>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>

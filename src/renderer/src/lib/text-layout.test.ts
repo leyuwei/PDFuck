@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
-import { insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween } from './text-layout'
+import { fitTextAdvances, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween } from './text-layout'
 
 describe('PDF text layout', () => {
   it('places selection above the PDF baseline using font ascent', () => {
@@ -74,6 +74,10 @@ describe('PDF text layout', () => {
     const word = { text: 'ill', order: 0, rect: { x: 10, y: 20, width: 24, height: 12 }, boundaries: [0, 4, 10, 24] }
     expect(textCaretAtPoint([word], { x: 16, y: 25 })).toEqual({ wordIndex: 0, offset: 1, x: 14, y: 20, height: 12 })
     expect(textSelectionBetween([word], { wordIndex: 0, offset: 1 }, { wordIndex: 0, offset: 2 })).toEqual({ text: 'l', rects: [{ x: 14, y: 20, width: 6, height: 12 }] })
+  })
+
+  it('assigns justified line expansion to spaces instead of stretching glyphs', () => {
+    expect(fitTextAdvances([5, 5, 2, 5, 5], 24, 'ab cd')).toEqual([5, 5, 4, 5, 5])
   })
 
   it('moves the caret one character at a time and crosses word boundaries', () => {

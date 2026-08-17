@@ -234,6 +234,13 @@ app.whenReady().then(() => {
     requireMainWindow(event.sender)
     return getPasswordStore().get(credentialKey)
   })
+  ipcMain.handle('pdf:open-folder', (event, path: string) => {
+    requireMainWindow(event.sender)
+    if (typeof path !== 'string' || !isPdf(path)) throw new Error('当前文件不是 PDF。')
+    const absolute = resolve(path)
+    if (!existsSync(absolute)) throw new Error('当前 PDF 文件已不存在。')
+    shell.showItemInFolder(absolute)
+  })
   ipcMain.handle('pdf:password-update', (event, request: PdfPasswordUpdate) => {
     requireMainWindow(event.sender)
     if (!request || typeof request !== 'object') throw new Error('PDF 密码保存请求无效。')
@@ -261,7 +268,7 @@ app.whenReady().then(() => {
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
     const window = requireMainWindow(event.sender)
-    if (!['png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
+    if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
     const stem = parse(request.sourceName || 'document').name
     const result = await dialog.showSaveDialog(window, { title: `导出 ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null

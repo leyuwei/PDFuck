@@ -1,7 +1,7 @@
 import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src/display/api'
 import type { EditableTextRegion, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
-import { normalizeFontFamily } from './text-fonts'
+import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 
 export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
@@ -147,7 +147,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
         font: normalizeFontFamily(details?.name, pdfStyle?.fontFamily),
         size: Math.max(6, Math.min(144, Math.round(fontHeight * 100) / 100)),
         color: '#182033',
-        bold: details?.bold ?? /bold|black|heavy|semibold|demi/i.test(fontDescription),
+        bold: details?.bold ?? /bold|black|heavy|semibold|demi|medi/i.test(fontDescription),
         italic: details?.italic ?? /italic|oblique/i.test(fontDescription),
         align: 'left' as const,
         lineHeight: 1.25 as const,
@@ -226,15 +226,28 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
     })
 }
 
-function textMeasure(fontSize: number, family: string): ((text: string) => number) | undefined {
+function textMeasure(fontSize: number, family: string, bold = false, italic = false): ((text: string) => number) | undefined {
   if (typeof document === 'undefined') return undefined
   const context = document.createElement('canvas').getContext('2d')
   if (!context) return undefined
-  context.font = `${fontSize}px ${family}`
+  context.font = `${italic ? 'italic ' : ''}${bold ? '700 ' : ''}${fontSize}px ${family}`
   return (text) => context.measureText(text).width
 }
 
-export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix): WordBox[] {
+export function fitTextAdvances(natural: number[], fullWidth: number, text: string): number[] {
+  if (!natural.length || !Number.isFinite(fullWidth) || fullWidth <= 0) return natural
+  const total = natural.reduce((sum, value) => sum + Math.max(0, value), 0)
+  if (!Number.isFinite(total) || total <= 0) return natural.map(() => fullWidth / natural.length)
+  const spaces = natural.flatMap((_, index) => /\s/u.test(Array.from(text)[index] || '') ? [index] : [])
+  const scale = fullWidth / total
+  if (spaces.length && scale > 1 && scale < 1.45) {
+    const extra = (fullWidth - total) / spaces.length
+    return natural.map((value, index) => Math.max(0, value) + (spaces.includes(index) ? extra : 0))
+  }
+  return natural.map((value) => Math.max(0, value) * scale)
+}
+
+export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}): WordBox[] {
   const words: WordBox[] = []
   let order = 0
   for (const item of items) {
@@ -246,14 +259,26 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const top = origin.y
     const horizontalScale = Math.max(0.0001, Math.hypot(viewportTransform[0], viewportTransform[1]))
     const fullWidth = Math.max(1, item.width * horizontalScale)
-    const measure = textMeasure(fontHeight, styles[item.fontName]?.fontFamily || 'sans-serif')
-    const measuredTotal = measure?.(item.str) || item.str.length
+    const details = fontDetails[item.fontName]
+    const fontDescription = `${styles[item.fontName]?.fontFamily || ''} ${details?.name || ''}`
+    const family = fontCssFamily(normalizeFontFamily(details?.name, styles[item.fontName]?.fontFamily))
+    const bold = details?.bold ?? /bold|black|heavy|semibold|demi|medi/i.test(fontDescription)
+    const italic = details?.italic ?? /italic|oblique|ital/i.test(fontDescription)
+    const measure = textMeasure(fontHeight, family, bold, italic)
+    const characters = Array.from(item.str)
+    const naturalAdvances = measure ? characters.map((_character, index) => {
+      const end = measure(characters.slice(0, index + 1).join(''))
+      const start = index ? measure(characters.slice(0, index).join('')) : 0
+      return Math.max(0, end - start)
+    }) : []
+    const advances = naturalAdvances.length === characters.length ? fitTextAdvances(naturalAdvances, fullWidth, item.str) : characters.map(() => fullWidth / Math.max(1, characters.length))
+    const prefixAdvances = [0]
+    for (const advance of advances) prefixAdvances.push(prefixAdvances[prefixAdvances.length - 1] + advance)
     for (const match of item.str.matchAll(/\S+/g)) {
-      const start = match.index || 0
-      const before = measure?.(item.str.slice(0, start)) || start
-      const measuredWord = measure?.(match[0]) || Array.from(match[0]).length
-      const offset = fullWidth * before / Math.max(1, measuredTotal)
-      const width = Math.max(2, fullWidth * measuredWord / Math.max(1, measuredTotal))
+      const start = Array.from(item.str.slice(0, match.index || 0)).length
+      const wordCharacters = Array.from(match[0])
+      const offset = prefixAdvances[start] || 0
+      const width = Math.max(0.5, prefixAdvances[start + wordCharacters.length] - offset)
       const direction = { x: Math.cos(angle), y: Math.sin(angle) }
       const down = { x: -Math.sin(angle), y: Math.cos(angle) }
       const corners = [
@@ -264,11 +289,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       ]
       const xs = corners.map((point) => point.x), ys = corners.map((point) => point.y)
       const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
-      const characters = Array.from(match[0])
-      const boundaries = characters.map((_character, index) => {
-        const prefix = characters.slice(0, index + 1).join('')
-        return width * (measure?.(prefix) || index + 1) / Math.max(1, measuredWord)
-      })
+      const boundaries = wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || offset) - offset)
       words.push({ text: match[0], order: order++, rect, boundaries: [0, ...boundaries] })
     }
   }

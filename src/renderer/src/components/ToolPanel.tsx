@@ -8,6 +8,7 @@ interface Props {
   mode: ViewMode
   exportFormat: ExportFormat
   exportDpi: number
+  pdfExportMode: 'combined' | 'separate'
   disabled: boolean
   readOnly: boolean
   onTool(tool: Tool): void
@@ -19,6 +20,7 @@ interface Props {
   onExport(): void
   onExportFormat(value: ExportFormat): void
   onExportDpi(value: number): void
+  onPdfExportMode(value: 'combined' | 'separate'): void
 }
 
 const ToolButton = ({ tool, activeTool, children, hint, icon, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span></button>
@@ -46,6 +48,7 @@ export function ToolPanel(props: Props) {
       <button className="primary wide" disabled={disabled} onClick={() => props.onSave(false)}>保存 PDF</button><button className="wide" disabled={disabled} onClick={() => props.onSave(true)}>另存为 PDF…</button><h3>打印</h3>
       <button className="wide print-button" disabled={disabled || props.printing} onClick={props.onPrint}><span>{props.printing ? '正在打开打印对话框…' : '选择页面并打印…'}</span><kbd>Ctrl+P</kbd></button><p className="hint">可选择连续或不连续页码，包含尚未保存的修改。</p><h3>指定页面导出</h3>
       <label>文件格式<select value={props.exportFormat} onChange={(event) => props.onExportFormat(event.target.value as Props['exportFormat'])}><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="eps">EPS</option></select></label>
+      {props.exportFormat === 'pdf' && <><span className="export-mode-label">PDF 输出方式</span><div className="segmented export-mode"><button className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>合并为一个 PDF</button><button className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>每页单独 PDF</button></div></>}
       {props.exportFormat !== 'pdf' && <label>输出清晰度<div className="input-suffix"><input type="number" min="72" max="600" value={props.exportDpi} onChange={(event) => props.onExportDpi(Math.max(72, Math.min(600, Number(event.target.value))))} /><span>DPI</span></div></label>}
       <button className="wide" disabled={disabled} onClick={props.onExport}>选择页面并导出…</button><p className="hint">可选不连续页码；文件名保留原文档页码后缀。</p></section>}
   </aside>
