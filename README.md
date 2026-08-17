@@ -1,6 +1,6 @@
-<img width="512" height="512" alt="icon" src="https://github.com/user-attachments/assets/b9a1211c-7264-4112-a3e9-09afe480b242" />
+<img width="128" height="128" alt="icon" src="https://github.com/user-attachments/assets/b9a1211c-7264-4112-a3e9-09afe480b242" />
 
-# PDFuck - PDF Editor with <u>U</u>seful & <u>C</u>lever <u>K</u>it
+# PDFuck - PDF Editor with ~U~seful & ~C~lever ~K~it
 
 > 为科研人员打造的 PDF 精读、审稿与协作批注工作台。
 
