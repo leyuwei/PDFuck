@@ -91,8 +91,9 @@ describe('PdfDocumentModel', () => {
     await model.moveAnnotation(insert, 12, 8)
     expect(model.annotations().find((annotation) => annotation.id === note)?.content).toBe('edited in list')
     const moved = model.annotations().find((annotation) => annotation.id === insert)!
-    expect(moved.rects[0].x).toBeCloseTo(303)
-    expect(moved.rects[0].y + moved.rects[0].height).toBeCloseTo(138)
+    expect(moved.rects[0].x + moved.rects[0].width / 2).toBeCloseTo(312)
+    expect(moved.rects[0].y).toBeCloseTo(138)
+    expect(moved.rects[0]).toEqual(expect.objectContaining({ width: 14, height: 18 }))
     await model.deleteAnnotation(note)
     expect(model.annotations()).toHaveLength(5)
     const reopened = await PdfDocumentModel.load(model.bytes)

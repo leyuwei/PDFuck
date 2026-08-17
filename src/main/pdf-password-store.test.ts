@@ -46,6 +46,32 @@ describe('PDF password store', () => {
     expect(await store.get(key)).toBeUndefined()
   })
 
+  it('does not check secure encryption when no password record exists', async () => {
+    let encryptionChecks = 0
+    const cipher: PasswordCipher = {
+      isEncryptionAvailable: () => { encryptionChecks += 1; return true },
+      encryptString: (value) => Buffer.from(value, 'utf8'),
+      decryptString: (value) => value.toString('utf8')
+    }
+    const { store } = await testStore(cipher)
+    expect(await store.get(key)).toBeUndefined()
+    expect(encryptionChecks).toBe(0)
+  })
+
+  it('checks secure encryption only when a password record exists', async () => {
+    let encryptionChecks = 0
+    const cipher: PasswordCipher = {
+      isEncryptionAvailable: () => { encryptionChecks += 1; return true },
+      encryptString: (value) => Buffer.from(value, 'utf8'),
+      decryptString: (value) => value.toString('utf8')
+    }
+    const { store } = await testStore(cipher)
+    await store.set(key, 'secret')
+    encryptionChecks = 0
+    expect(await store.get(key)).toBe('secret')
+    expect(encryptionChecks).toBe(1)
+  })
+
   it('ignores corrupt records', async () => {
     const { path, store } = await testStore()
     await writeFile(path, JSON.stringify({ version: 1, entries: { [key]: 'not base64!' } }))

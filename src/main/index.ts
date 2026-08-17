@@ -87,9 +87,8 @@ async function openPdfAt(path: string) {
   if (!isPdf(absolute)) throw new Error('只能打开 PDF 文件。')
   const data = await readFile(absolute)
   const credentialKey = createHash('sha256').update(data).digest('hex')
-  const savedPassword = await getPasswordStore().get(credentialKey)
   await rememberRecentPdf(absolute).catch(() => undefined)
-  return { path: absolute, name: basename(absolute), data: new Uint8Array(data), credentialKey, savedPassword }
+  return { path: absolute, name: basename(absolute), data: new Uint8Array(data), credentialKey }
 }
 
 async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
@@ -231,6 +230,10 @@ app.whenReady().then(() => {
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
+  ipcMain.handle('pdf:password-get', (event, credentialKey: string) => {
+    requireMainWindow(event.sender)
+    return getPasswordStore().get(credentialKey)
+  })
   ipcMain.handle('pdf:password-update', (event, request: PdfPasswordUpdate) => {
     requireMainWindow(event.sender)
     if (!request || typeof request !== 'object') throw new Error('PDF 密码保存请求无效。')

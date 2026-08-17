@@ -3,19 +3,26 @@ import type { EditableTextRegion, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { normalizeFontFamily } from './text-fonts'
 
-export interface WordBox { text: string; rect: PdfRect; order: number }
+export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; bold?: boolean; italic?: boolean }
 
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
 
+function boundaryAt(word: WordBox, offset: number): number {
+  const count = characterCount(word)
+  const normalized = Math.max(0, Math.min(count, offset))
+  const measured = word.boundaries?.[normalized]
+  return Number.isFinite(measured) ? measured! : word.rect.width * normalized / count
+}
+
 export function caretForTextPosition(words: WordBox[], position: TextPosition): TextCaret | undefined {
   const word = words[position.wordIndex]
   if (!word) return undefined
   const count = characterCount(word)
   const offset = Math.max(0, Math.min(count, position.offset))
-  return { wordIndex: position.wordIndex, offset, x: word.rect.x + word.rect.width * offset / count, y: word.rect.y, height: word.rect.height }
+  return { wordIndex: position.wordIndex, offset, x: word.rect.x + boundaryAt(word, offset), y: word.rect.y, height: word.rect.height }
 }
 
 export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
@@ -29,13 +36,18 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret |
   })
   if (nearestIndex < 0) return undefined
   const nearest = words[nearestIndex], count = characterCount(nearest)
-  const relativeX = Math.max(0, Math.min(1, (point.x - nearest.rect.x) / Math.max(1, nearest.rect.width)))
-  return caretForTextPosition(words, { wordIndex: nearestIndex, offset: Math.round(relativeX * count) })
+  const localX = Math.max(0, Math.min(nearest.rect.width, point.x - nearest.rect.x))
+  let offset = 0, distance = Number.POSITIVE_INFINITY
+  for (let candidate = 0; candidate <= count; candidate += 1) {
+    const candidateDistance = Math.abs(boundaryAt(nearest, candidate) - localX)
+    if (candidateDistance < distance) { offset = candidate; distance = candidateDistance }
+  }
+  return caretForTextPosition(words, { wordIndex: nearestIndex, offset })
 }
 
 export function insertionPointAt(words: WordBox[], point: PdfPoint): PdfPoint {
   const caret = textCaretAtPoint(words, point)
-  return caret ? { x: caret.x, y: caret.y + caret.height / 2 } : point
+  return caret ? { x: caret.x, y: caret.y + caret.height } : point
 }
 
 export function moveTextPosition(words: WordBox[], position: TextPosition, direction: -1 | 1): TextPosition {
@@ -68,7 +80,8 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const to = wordIndex === end.wordIndex ? Math.max(0, Math.min(count, end.offset)) : count
     if (to <= from) continue
     pieces.push(chars.slice(from, to).join(''))
-    rects.push({ x: word.rect.x + word.rect.width * from / count, y: word.rect.y, width: word.rect.width * (to - from) / count, height: word.rect.height })
+    const left = boundaryAt(word, from), right = boundaryAt(word, to)
+    rects.push({ x: word.rect.x + left, y: word.rect.y, width: Math.max(0, right - left), height: word.rect.height })
   }
   if (!rects.length) return undefined
   const lines: PdfRect[] = []
@@ -238,7 +251,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     for (const match of item.str.matchAll(/\S+/g)) {
       const start = match.index || 0
       const before = measure?.(item.str.slice(0, start)) || start
-      const measuredWord = measure?.(match[0]) || match[0].length
+      const measuredWord = measure?.(match[0]) || Array.from(match[0]).length
       const offset = fullWidth * before / Math.max(1, measuredTotal)
       const width = Math.max(2, fullWidth * measuredWord / Math.max(1, measuredTotal))
       const direction = { x: Math.cos(angle), y: Math.sin(angle) }
@@ -250,7 +263,13 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
         { x: left + direction.x * (offset + width) + down.x * fontHeight, y: top + direction.y * (offset + width) + down.y * fontHeight }
       ]
       const xs = corners.map((point) => point.x), ys = corners.map((point) => point.y)
-      words.push({ text: match[0], order: order++, rect: { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) } })
+      const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+      const characters = Array.from(match[0])
+      const boundaries = characters.map((_character, index) => {
+        const prefix = characters.slice(0, index + 1).join('')
+        return width * (measure?.(prefix) || index + 1) / Math.max(1, measuredWord)
+      })
+      words.push({ text: match[0], order: order++, rect, boundaries: [0, ...boundaries] })
     }
   }
   return words

@@ -422,7 +422,11 @@ export class PdfDocumentModel {
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     let normalized = rects
     if (kind === 'note' && point) normalized = [{ x: point.x, y: point.y, width: 20, height: 20 }]
-    if (kind === 'insert' && point) normalized = [{ x: point.x - 9, y: Math.max(0, point.y - 22), width: 18, height: Math.min(22, point.y) }]
+    if (kind === 'insert' && point) {
+      const displayWidth = geometry.rotation % 180 ? geometry.height : geometry.width
+      const displayHeight = geometry.rotation % 180 ? geometry.width : geometry.height
+      normalized = [{ x: Math.max(0, Math.min(displayWidth - 14, point.x - 7)), y: Math.max(0, Math.min(displayHeight - 18, point.y)), width: 14, height: 18 }]
+    }
     if (!normalized.length) throw new Error('请先选择文字或页面位置。')
     const bounds = rectUnion(normalized)
     const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
@@ -462,8 +466,8 @@ export class PdfDocumentModel {
     if (kindFor(dict, this.document) === 'insert') {
       const rect = numberArray(this.document, dict.get(PDFName.of('Rect')))
       const width = Math.max(8, Math.abs((rect[2] || 18) - (rect[0] || 0))), height = Math.max(8, Math.abs((rect[3] || 22) - (rect[1] || 0)))
-      const [red, green, blue] = hexColor(normalized), center = width / 2, wing = Math.min(6, width * .34), base = Math.min(7, height * .32)
-      const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg 2.6 w 1 J ${center} ${height - 1} m ${center} ${base} l S ${center - wing} ${base} m ${center} 0 l ${center + wing} ${base} l h f Q`
+      const [red, green, blue] = hexColor(normalized), center = width / 2, wing = Math.min(5, width * .34), base = Math.min(6, height * .34)
+      const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg 2.4 w 1 J ${center} 1 m ${center} ${height - base} l S ${center - wing} ${height - base} m ${center} ${height} l ${center + wing} ${height - base} l h f Q`
       const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, width, height], Resources: {} })
       dict.set(PDFName.of('AP'), this.document.context.obj({ N: this.document.context.register(stream) }))
     } else dict.delete(PDFName.of('AP'))

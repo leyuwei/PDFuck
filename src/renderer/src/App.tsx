@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
@@ -17,10 +17,10 @@ import { replacementTextRect } from './lib/page-text-edit'
 import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
 import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 
-const APP_VERSION = '1.11.0'
+const APP_VERSION = '1.12.1'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
-type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
+type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | null
 
 interface DocumentSession {
   id: number
@@ -111,6 +111,8 @@ export default function App() {
   const annotationResolve = useRef<((value: AnnotationDialogResult | null) => void) | undefined>(undefined)
   const textResolve = useRef<((value: TextDialogValue | null) => void) | undefined>(undefined)
   const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
+  const secureStorageResolve = useRef<((value: boolean) => void) | undefined>(undefined)
+  const allowWindowCloseRef = useRef(false)
   const [data, setData] = useState<Uint8Array>()
   const [module, setModule] = useState<ModuleKey>('view')
   const [tool, setTool] = useState<Tool>('none')
@@ -165,7 +167,10 @@ export default function App() {
   const closeCurrentWindow = useCallback(() => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const dirtyCount = [...sessionsRef.current.values()].filter((session) => session.dirty).length
-    if (!dirtyCount || window.confirm(`有 ${dirtyCount} 个文档包含未保存的修改，确定关闭 PDFuck 吗？`)) { dirtyRef.current = false; window.desktop.windowClose() }
+    if (!dirtyCount || window.confirm(`有 ${dirtyCount} 个文档包含未保存的修改，确定关闭 PDFuck 吗？`)) {
+      allowWindowCloseRef.current = true; dirtyRef.current = false; window.desktop.windowClose()
+      window.setTimeout(() => { allowWindowCloseRef.current = false }, 1500)
+    }
   }, [])
   const activateSession = useCallback((session: DocumentSession) => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
@@ -177,12 +182,14 @@ export default function App() {
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
   }, [])
   const askPdfPassword = useCallback((value: PdfPasswordDialogState): Promise<PdfPasswordDialogResult | null> => new Promise((resolve) => { passwordResolve.current = resolve; setDialog({ type: 'password', value }) }), [])
+  const askSecureStorageNotice = useCallback((): Promise<boolean> => new Promise((resolve) => { secureStorageResolve.current = resolve; setDialog({ type: 'secure_storage_notice' }) }), [])
   const addOpened = useCallback(async (opened: Awaited<ReturnType<typeof window.desktop.readPdf>>) => {
-    let password = opened.savedPassword
-    let usingSavedPassword = password !== undefined
+    let password: string | undefined
+    let usingSavedPassword = false
     let prompted = false
     let rememberPassword = false
     let encryptedDocument = usingSavedPassword
+    let secureStorageApproved = false
     let pageCountFromProbe = 0
     let passwordSaveFailed = false
     while (true) {
@@ -193,6 +200,17 @@ export default function App() {
         if (!(error instanceof PdfPasswordError)) throw error
         encryptedDocument = true
         let reason: PdfPasswordDialogState['reason'] = error.reason
+        if (!usingSavedPassword && !secureStorageApproved) {
+          secureStorageApproved = await askSecureStorageNotice()
+          if (secureStorageApproved) {
+            const savedPassword = await window.desktop.getPdfPassword(opened.credentialKey).catch(() => undefined)
+            if (savedPassword !== undefined) {
+              password = savedPassword
+              usingSavedPassword = true
+              continue
+            }
+          }
+        }
         if (usingSavedPassword) {
           reason = 'saved-password-failed'
           usingSavedPassword = false
@@ -206,7 +224,9 @@ export default function App() {
       }
     }
     if (encryptedDocument && prompted) {
-      const saved = await window.desktop.updatePdfPassword({ credentialKey: opened.credentialKey, ...(rememberPassword ? { password } : {}) }).catch(() => false)
+      if (rememberPassword && !secureStorageApproved) secureStorageApproved = await askSecureStorageNotice()
+      const shouldSave = rememberPassword && secureStorageApproved
+      const saved = shouldSave ? await window.desktop.updatePdfPassword({ credentialKey: opened.credentialKey, password }).catch(() => false) : true
       passwordSaveFailed = rememberPassword && !saved
     }
     const model = encryptedDocument ? undefined : await PdfDocumentModel.load(opened.data, opened.path, opened.name)
@@ -226,7 +246,7 @@ export default function App() {
     })
     activateSession(session)
     window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
-  }, [activateSession, askPdfPassword])
+  }, [activateSession, askPdfPassword, askSecureStorageNotice])
   const openPath = useCallback(async (path: string) => {
     try { await addOpened(await window.desktop.readPdf(path)) } catch (error) { showError(error) }
   }, [addOpened, showError])
@@ -286,7 +306,7 @@ export default function App() {
     }).catch(() => undefined)
     return () => { active = false }
   }, [])
-  useEffect(() => { const handler = (event: BeforeUnloadEvent) => { sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
+  useEffect(() => { const handler = (event: BeforeUnloadEvent) => { if (allowWindowCloseRef.current) return; sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
   useEffect(() => () => { if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current) }, [])
   useEffect(() => { if (windowDocumentReady) window.desktop.updateWindowDocument({ fileName: documentName, dirty, hasDocument, encrypted }) }, [dirty, documentName, encrypted, hasDocument, windowDocumentReady])
   useEffect(() => {
@@ -477,6 +497,7 @@ export default function App() {
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { setDialog(null); annotationResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); annotationResolve.current?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
+    {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}
     {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; setDialog(null); if (purpose === 'print') void printPdf(pages); else void exportPages(pages) }} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}

@@ -127,7 +127,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
   >
     {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {annotation.kind === 'note' && <span className="note-pin">●</span>}
-    {annotation.kind === 'insert' && <span className="insert-caret">⌃</span>}
+    {annotation.kind === 'insert' && <span className="insert-caret" aria-hidden="true" />}
     {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 25 }}>当前批注</span></>}
   </div>
 }
@@ -402,15 +402,22 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const handleContext = (event: React.MouseEvent) => {
     event.preventDefault()
     const point = pointFor(event)
-    setTextCaret(undefined); setSelectionAnchor(undefined)
-    let selected = selection
-    if (!selected || !selected.rects.some((rect) => pointInRect(point, rect, 3))) {
-      const index = nearestWord(words, point)
-      selected = selectionFromRange(words, index, index)
-      setSelection(selected); onSelectionChange(selected)
+    if (!selection?.rects.some((rect) => pointInRect(point, rect, 3))) {
+      const caret = textCaretAtPoint(words, point)
+      setSelection(undefined); onSelectionChange(undefined)
+      setTextCaret(caret); setSelectionAnchor(caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined)
+    } else {
+      setTextCaret(undefined); setSelectionAnchor(undefined)
     }
     const bounds = pageRef.current!.getBoundingClientRect()
     setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, point })
+  }
+  const handleDoubleClick = (event: React.MouseEvent) => {
+    if (!canSelectText) return
+    event.preventDefault(); event.stopPropagation()
+    const index = nearestWord(words, pointFor(event))
+    const selected = selectionFromRange(words, index, index)
+    setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
   }
   const openAnnotationMenu = (annotation: AnnotationRecord, clientX: number, clientY: number) => {
     const bounds = pageRef.current!.getBoundingClientRect()
@@ -469,7 +476,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 
   return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom }}
     onKeyDown={handleKeyDown}
-    onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoverInsert(undefined)} onContextMenu={handleContext}>
+    onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
     {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`编辑文字：${region.text.slice(0, 40)}`} title="点击直接编辑这段文字" style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
@@ -478,7 +485,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
-    {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 9, top: hoverInsert.y * zoom - 22 }}><span /></div>}
+    {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
@@ -488,8 +495,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>删除这条批注</span></button>
       </> : <>
         {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制</span><kbd>Ctrl+C</kbd></button>}
-        {annotationMode && <>{selection?.text && <i />}<button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>文本高亮</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>文本替换</span></button>
-          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>文本删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>加下划线</span></button>
+        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>文本高亮</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>文本替换</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>文本删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>加下划线</span></button></>}
           <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>自由批注</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>插入文字</span></button></>}
       </>}
     </div>}

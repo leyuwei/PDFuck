@@ -57,9 +57,9 @@ export class PdfPasswordStore {
   }
 
   async get(credentialKey: string): Promise<string | undefined> {
-    if (!validPdfCredentialKey(credentialKey) || !this.cipher.isEncryptionAvailable()) return undefined
+    if (!validPdfCredentialKey(credentialKey)) return undefined
     const encrypted = (await this.read()).entries[credentialKey]
-    if (!encrypted) return undefined
+    if (!encrypted || !this.cipher.isEncryptionAvailable()) return undefined
     try {
       const password = this.cipher.decryptString(Buffer.from(encrypted, 'base64'))
       return password.length <= 4096 ? password : undefined

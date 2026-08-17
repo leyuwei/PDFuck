@@ -4,6 +4,7 @@ import type { DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, Sav
 const api: DesktopApi = {
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   readPdf: (path) => ipcRenderer.invoke('pdf:read', path),
+  getPdfPassword: (credentialKey) => ipcRenderer.invoke('pdf:password-get', credentialKey),
   updatePdfPassword: (request: PdfPasswordUpdate) => ipcRenderer.invoke('pdf:password-update', request),
   savePdf: (request: SavePdfRequest) => ipcRenderer.invoke('pdf:save', request),
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),

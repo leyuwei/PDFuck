@@ -65,9 +65,15 @@ describe('PDF text layout', () => {
     expect(caret?.x).toBe(40)
   })
 
-  it('places an insertion marker at the nearest character boundary and line center', () => {
+  it('places an insertion marker below the line at the nearest character boundary', () => {
     const point = insertionPointAt([{ text: 'word', order: 0, rect: { x: 10, y: 20, width: 40, height: 12 } }], { x: 27, y: 25 })
-    expect(point).toEqual({ x: 30, y: 26 })
+    expect(point).toEqual({ x: 30, y: 32 })
+  })
+
+  it('uses measured proportional character boundaries for English text', () => {
+    const word = { text: 'ill', order: 0, rect: { x: 10, y: 20, width: 24, height: 12 }, boundaries: [0, 4, 10, 24] }
+    expect(textCaretAtPoint([word], { x: 16, y: 25 })).toEqual({ wordIndex: 0, offset: 1, x: 14, y: 20, height: 12 })
+    expect(textSelectionBetween([word], { wordIndex: 0, offset: 1 }, { wordIndex: 0, offset: 2 })).toEqual({ text: 'l', rects: [{ x: 14, y: 20, width: 6, height: 12 }] })
   })
 
   it('moves the caret one character at a time and crosses word boundaries', () => {

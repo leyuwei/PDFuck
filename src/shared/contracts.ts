@@ -6,7 +6,6 @@ export interface OpenedPdf {
   name: string
   data: Uint8Array
   credentialKey: string
-  savedPassword?: string
 }
 
 export interface PdfPasswordUpdate {
@@ -73,6 +72,7 @@ export interface UpdateCheckResult {
 export interface DesktopApi {
   openPdf(): Promise<OpenedPdf | null>
   readPdf(path: string): Promise<OpenedPdf>
+  getPdfPassword(credentialKey: string): Promise<string | undefined>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<string | null>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>

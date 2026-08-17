@@ -82,6 +82,15 @@ export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPas
   </div></div>
 }
 
+export function SecureStorageNoticeDialog({ onCancel, onContinue }: { onCancel(): void; onContinue(): void }) {
+  return <div className="modal-backdrop secure-storage-backdrop"><div className="modal secure-storage-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-storage-title">
+    <div className="secure-storage-heading"><span className="secure-storage-icon" aria-hidden="true">锁</span><div><small>加密 PDF</small><h2 id="secure-storage-title">使用本机安全存储</h2></div></div>
+    <p>此文档已确认受密码保护。继续后，PDFuck 会尝试读取本机保存的打开密码；如果你选择保存新密码，也会交给系统安全存储保护。</p>
+    <div className="secure-storage-note"><b>你可能会看到系统安全授权</b><span>这是 macOS 钥匙串或 Windows 系统凭据保护的正常提示，仅用于保护这个 PDF 的密码。普通未加密 PDF 不会触发此流程。</span></div>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>跳过并手动输入</button><button type="button" className="primary" onClick={onContinue}>继续尝试</button></div>
+  </div></div>
+}
+
 export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }: { pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
   const [selected, setSelected] = useState<Set<number>>(() => new Set([currentPage]))
   const replace = (pages: number[]) => setSelected(new Set(pages))
