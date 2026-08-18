@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnnotationMode, getDocument, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, OPS, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
@@ -10,8 +10,9 @@ import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
+import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 
-export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void }
+export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; openSearch(): void; showVisuals(): void; linkCitations(): void; checkGrammar(): void }
 
 interface ViewerProps {
   data?: Uint8Array
@@ -33,7 +34,7 @@ interface ViewerProps {
   onSelectionChange(selection?: TextSelection): void
   onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
-  onAnnotationSelect(annotation: AnnotationRecord): void
+  onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
   onAnnotationEdit(annotation: AnnotationRecord): void
   onAnnotationColor(annotation: AnnotationRecord, color: string): void
   onAnnotationReply(annotation: AnnotationRecord, reply?: AnnotationReply): void
@@ -41,6 +42,7 @@ interface ViewerProps {
   onTextObjectMove(id: string, dx: number, dy: number): void
   onTextObjectEdit(textObject: TextObjectRecord): void
   onError(error: Error): void
+  onInsight(kind: 'visual' | 'citation' | 'grammar', hits: InsightHit[] | CitationLink[] | GrammarIssue[]): void
 }
 
 interface PageProps {
@@ -60,7 +62,7 @@ interface PageProps {
   onSelectionChange(selection?: TextSelection): void
   onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
-  onAnnotationSelect(annotation: AnnotationRecord): void
+  onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
   onAnnotationEdit(annotation: AnnotationRecord): void
   onAnnotationColor(annotation: AnnotationRecord, color: string): void
   onAnnotationReply(annotation: AnnotationRecord, reply?: AnnotationReply): void
@@ -69,6 +71,8 @@ interface PageProps {
   onTextObjectEdit(textObject: TextObjectRecord): void
   onSize(pageIndex: number, size: { width: number; height: number }): void
   onError(error: Error): void
+  grammarTerms: string[]
+  searchFocusPage?: number
 }
 
 function nearestWord(words: WordBox[], point: PdfPoint): number {
@@ -132,7 +136,68 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   </div>
 }
 
-function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
+interface SearchMatch { pageIndex: number; context: string; match: string }
+
+const REGEX_PRESETS = [
+  { label: '邮箱', value: '[\\w.+-]+@[\\w-]+\\.[A-Za-z]{2,}' },
+  { label: '网址', value: 'https?://[^\\s]+' },
+  { label: '中文手机号', value: '1[3-9]\\d{9}' },
+  { label: '日期', value: '(?:19|20)\\d{2}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?' },
+  { label: '数字', value: '\\b\\d+(?:\\.\\d+)?%?\\b' },
+  { label: '英文单词', value: '\\b[A-Za-z]{2,}\\b' },
+  { label: '引用编号', value: '\\[\\d+(?:[-,]\\d+)*\\]' },
+  { label: 'DOI', value: '10\\.\\d{4,9}/[-._;()/:A-Z0-9]+' },
+  { label: 'ISBN', value: 'ISBN(?:-1[03])?:?[-\\dXx ]{10,}' },
+  { label: '括号内容', value: '[（(][^）)]{1,80}[）)]' }
+]
+
+function SearchPanel({ document, onClose, onJump, onFocusPage }: { document: PDFDocumentProxy; onClose(): void; onJump(pageIndex: number): void; onFocusPage(pageIndex: number): void }) {
+  const [query, setQuery] = useState('')
+  const [caseSensitive, setCaseSensitive] = useState(false)
+  const [fuzzy, setFuzzy] = useState(true)
+  const [regex, setRegex] = useState(false)
+  const [results, setResults] = useState<SearchMatch[]>([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+  const search = async () => {
+    if (!query.trim()) { setResults([]); return }
+    setBusy(true); setError('')
+    try {
+      const flags = caseSensitive ? 'g' : 'gi'
+      const pattern = regex ? new RegExp(query, flags) : undefined
+      const next: SearchMatch[] = []
+      for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
+        const content = await document.getPage(pageIndex + 1).then((page) => page.getTextContent())
+        const text = content.items.filter((item): item is TextItem => 'str' in item).map((item) => item.str).join(' ')
+        const source = fuzzy && !regex ? text.replace(/\s+/g, '') : text
+        const needle = caseSensitive ? query : query.toLowerCase()
+        if (regex) {
+          pattern!.lastIndex = 0
+          let match: RegExpExecArray | null
+          while ((match = pattern!.exec(text))) { next.push({ pageIndex, match: match[0], context: text.slice(Math.max(0, match.index - 46), Math.min(text.length, match.index + match[0].length + 72)) }); if (!match[0]) pattern!.lastIndex += 1 }
+        } else {
+          const haystack = caseSensitive ? source : source.toLowerCase()
+          let offset = haystack.indexOf(needle)
+          while (offset >= 0) { const raw = text.slice(Math.max(0, offset - 46), Math.min(text.length, offset + query.length + 72)); next.push({ pageIndex, match: query, context: raw }); offset = haystack.indexOf(needle, offset + Math.max(1, needle.length)) }
+        }
+      }
+      setResults(next.slice(0, 200))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '搜索表达式无效') }
+    finally { setBusy(false) }
+  }
+  return <div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} onPointerDown={(event) => event.stopPropagation()}>
+    <div className="pdf-search-heading"><b>搜索文档</b><button type="button" onClick={onClose} aria-label="关闭搜索" title="关闭搜索">×</button></div>
+    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder="输入文字或正则表达式" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : '搜索'}</button></div>
+    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />匹配大小写</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />模糊匹配</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />正则表达式</label></div>
+    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">常用正则表达式</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{preset.label}</option>)}</select>}
+    {error && <p className="pdf-search-error">{error}</p>}
+    {results.length > 0 && <div className="pdf-search-results"><header><span>找到 {results.length}{results.length >= 200 ? '+' : ''} 个结果</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => { onJump(result.pageIndex); onFocusPage(result.pageIndex) }}><b>第 {result.pageIndex + 1} 页</b><span>{result.context}</span></button>)}</div>}
+  </div>
+}
+
+function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
   const bounds = rectUnion(annotation.rects)
   const drag = useRef<{ x: number; y: number } | null>(null)
   const markup = !['note', 'insert'].includes(annotation.kind)
@@ -142,7 +207,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     style={style}
     data-annotation-id={annotation.id}
     title={annotation.content || annotation.kind}
-    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY }; onSelect(annotation); event.currentTarget.setPointerCapture(event.pointerId) }}
+    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY }; onSelect(annotation, { additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); event.currentTarget.setPointerCapture(event.pointerId) }}
     onPointerUp={(event) => {
       event.stopPropagation()
       if (!drag.current) return
@@ -266,7 +331,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError, grammarTerms, searchFocusPage }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
@@ -430,13 +495,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const handleContext = (event: React.MouseEvent) => {
     event.preventDefault()
     const point = pointFor(event)
-    if (!selection?.rects.some((rect) => pointInRect(point, rect, 3))) {
-      const caret = textCaretAtPoint(words, point)
-      setSelection(undefined); onSelectionChange(undefined)
-      setTextCaret(caret); setSelectionAnchor(caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined)
-    } else {
-      setTextCaret(undefined); setSelectionAnchor(undefined)
-    }
+    if (!selection?.text && !annotationMode) { setMenu(undefined); return }
+    if (selection?.text) { setTextCaret(undefined); setSelectionAnchor(undefined) }
     const bounds = pageRef.current!.getBoundingClientRect()
     setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, point })
   }
@@ -512,11 +572,13 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     }
   }
 
-  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom }}
+  const grammarMatches = grammarTerms.length ? words.filter((word) => grammarTerms.some((term) => term && word.text.toLowerCase().includes(term.toLowerCase()))) : []
+  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
+    {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title="语法或拼写检查结果" />)}
     {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`编辑文字：${region.text.slice(0, 40)}`} title="点击直接编辑这段文字" style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
     {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} onCancel={() => setPageTextEditor(undefined)} onSave={(text, style) => { onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
     {selection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
@@ -536,18 +598,21 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制</span><kbd>Ctrl+C</kbd></button>}
         {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>文本高亮</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>文本替换</span></button>
           <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>文本删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>加下划线</span></button></>}
-          <i /><button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>自由批注</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>插入文字</span></button></>}
+          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>自由批注</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>插入文字</span></button></>}
       </>}
     </div>}
   </div>
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, currentPage, onZoomChange, onPageChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
   const [renderZoom, setRenderZoom] = useState(zoom)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchFocusPage, setSearchFocusPage] = useState<number>()
+  const [grammarTerms, setGrammarTerms] = useState<string[]>([])
   const wheelZoomRef = useRef(zoom)
   const wheelFrameRef = useRef<number | undefined>(undefined)
   const handleSize = useCallback((index: number, size: { width: number; height: number }) => {
@@ -569,7 +634,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   useEffect(() => {
     if (!data?.length) { setDocument(undefined); return }
     let active = true
-    const task = getDocument({ data: data.slice(), ...(password === undefined ? {} : { password }) })
+    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
     task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => onError(error instanceof Error ? error : new Error(String(error))))
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])
@@ -590,7 +655,36 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     }
     requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
   }
-  useImperativeHandle(ref, () => ({ fitWidth, goToPage, focusAnnotation }))
+  const focusSearchPage = (pageIndex: number) => {
+    goToPage(pageIndex); setSearchFocusPage(pageIndex); window.setTimeout(() => setSearchFocusPage((current) => current === pageIndex ? undefined : current), 1050)
+  }
+  const pageSnapshots = useCallback(async (includeImages = false): Promise<Array<PageTextSnapshot & { imageCount?: number }>> => {
+    if (!document) return []
+    const pages: Array<PageTextSnapshot & { imageCount?: number }> = []
+    for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
+      const page = await document.getPage(pageIndex + 1)
+      const content = await page.getTextContent()
+      const text = content.items.filter((item): item is TextItem => 'str' in item).map((item) => item.str).join(' ')
+      let imageCount = 0
+      if (includeImages) {
+        const operators = await page.getOperatorList()
+        const imageOps = new Set<number>([OPS.paintImageMaskXObject, OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintSolidColorImageMask])
+        imageCount = operators.fnArray.filter((operation: number) => imageOps.has(operation)).length
+      }
+      pages.push({ pageIndex, text, imageCount })
+    }
+    return pages
+  }, [document])
+  const showVisuals = async () => {
+    const hits = visualHits(await pageSnapshots(true)); onInsight('visual', hits); if (hits[0]) focusSearchPage(hits[0].pageIndex)
+  }
+  const linkCitations = async () => {
+    const hits = citationLinks(await pageSnapshots()); onInsight('citation', hits); if (hits[0]) focusSearchPage(hits[0].pageIndex)
+  }
+  const checkGrammar = async () => {
+    const hits = grammarIssues(await pageSnapshots()); setGrammarTerms([...new Set(hits.map((hit) => hit.term).filter((term) => term.length > 2 && term !== '  '))]); onInsight('grammar', hits); if (hits[0]) focusSearchPage(hits[0].pageIndex)
+  }
+  useImperativeHandle(ref, () => ({ fitWidth, goToPage, focusAnnotation, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -616,9 +710,10 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     })
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
-    <div className={`page-stack ${mode}`}>{document && pages.map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
+      <div className={`page-stack ${mode}`}>{document && pages.map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} />)}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} searchFocusPage={searchFocusPage} />)}</div>
+    {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onJump={focusSearchPage} onFocusPage={focusSearchPage} />}
   </div>
 })

@@ -1,4 +1,4 @@
-import { PasswordResponses, getDocument } from './pdfjs'
+import { PasswordResponses, getDocument, PDFJS_WASM_URL } from './pdfjs'
 
 export type PdfPasswordFailure = 'required' | 'incorrect'
 
@@ -19,7 +19,7 @@ export function pdfPasswordFailure(error: unknown): PdfPasswordFailure | undefin
 }
 
 export async function probePdfPassword(data: Uint8Array, password?: string): Promise<{ pageCount: number }> {
-  const task = getDocument({ data: data.slice(), ...(password === undefined ? {} : { password }) })
+  const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
   try {
     const document = await task.promise
     return { pageCount: document.numPages }

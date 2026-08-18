@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
 import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
-import type { UpdateCheckResult } from '../../../shared/contracts'
+import type { PrintPdfOptions, UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
@@ -132,6 +132,21 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
     <div className="page-selection-grid">{allPages.map((page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{page === currentPage ? '当前页' : selected.has(page) ? '已选择' : '未选择'}</small></button>)}</div>
     <div className={`page-selection-summary${!valid ? ' invalid' : ''}`}><b>{selected.size ? `已选择 ${selected.size} 页` : '尚未选择页面'}</b><span>{invalid.length ? '请修正页码范围后继续' : selected.size ? compactPageSelection([...selected]) : `请至少选择一页进行${action}`}</span></div>
     <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="primary" disabled={!valid} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{action}所选 {selected.size || ''} 页</button></div>
+  </div></div>
+}
+
+export function PrintOptionsDialog({ pages, onCancel, onSubmit }: { pages: number[]; onCancel(): void; onSubmit(options: PrintPdfOptions): void }) {
+  const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>('A4')
+  const [landscape, setLandscape] = useState(false)
+  const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>('simplex')
+  const [rows, setRows] = useState(1)
+  const [columns, setColumns] = useState(1)
+  const [scale, setScale] = useState(100)
+  const [frame, setFrame] = useState(true)
+  return <div className="modal-backdrop"><div className="modal print-options-dialog"><h2>打印版面设置</h2><p>已选择 {pages.length} 页。设置纸张、方向、单双面和一张纸上的多页排版。</p>
+    <div className="print-options-grid"><label>纸张尺寸<select value={pageSize} onChange={(event) => setPageSize(event.target.value as PrintPdfOptions['pageSize'])}><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Tabloid</option></select></label><label>方向<select value={landscape ? 'landscape' : 'portrait'} onChange={(event) => setLandscape(event.target.value === 'landscape')}><option value="portrait">纵向</option><option value="landscape">横向</option></select></label><label>印刷方式<select value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">单面</option><option value="longEdge">双面（长边翻页）</option><option value="shortEdge">双面（短边翻页）</option></select></label><label>每页小页缩放<input type="number" min="35" max="150" value={scale} onChange={(event) => setScale(Math.max(35, Math.min(150, Number(event.target.value) || 100)))} /><small>%</small></label><label>X 行<input type="number" min="1" max="6" value={rows} onChange={(event) => setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1)))} /></label><label>Y 列<input type="number" min="1" max="6" value={columns} onChange={(event) => setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1)))} /></label></div>
+    <label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>小页加框</b><small>便于裁切和阅读分隔</small></span></label>
+    <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="primary" onClick={() => onSubmit({ pageSize, landscape, duplex, rows, columns, scale, frame })}>打开系统打印</button></div>
   </div></div>
 }
 

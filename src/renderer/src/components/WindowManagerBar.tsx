@@ -1,4 +1,5 @@
 import type { DocumentTabsSnapshot } from '../../../shared/contracts'
+import { fileDirectory, stablePathColor } from '../lib/document-insights'
 
 interface Props {
   snapshot: DocumentTabsSnapshot
@@ -13,9 +14,11 @@ export function WindowManagerBar({ snapshot, onFocus, onCreate, onClose }: Props
     <div className="window-tabs">
       {snapshot.documents.map((document) => {
         const current = document.id === snapshot.currentId
-        return <div key={document.id} className={`window-tab${current ? ' current' : ''}`} role="button" tabIndex={0} title={`${document.title}${document.dirty ? '（未保存）' : ''}`}
+        const directory = fileDirectory(document.filePath)
+        const status = document.dirty ? '未保存' : document.hasDocument ? '已保存' : '未打开'
+        return <div key={document.id} className={`window-tab${current ? ' current' : ''}`} role="button" tabIndex={0} title={`${document.title}\n目录：${directory || '未保存到磁盘'}\n状态：${status}`}
           onClick={() => onFocus(document.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFocus(document.id) }}>
-          <span className="window-tab-icon">PDF</span>
+          <span className="window-tab-icon" style={{ '--tab-pdf-color': stablePathColor(document.filePath) } as React.CSSProperties}>PDF</span>
           <span className="window-tab-name">{document.title}</span>
           {document.encrypted && <span className="window-encrypted-badge" title="密码保护的只读文档">加密</span>}
           {document.dirty && <span className="window-dirty-dot" title="有未保存修改" />}

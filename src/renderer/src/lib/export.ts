@@ -1,4 +1,4 @@
-import { AnnotationMode, getDocument, type PDFDocumentProxy } from './pdfjs'
+import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from './pdfjs'
 import type { ExportPage, RasterExportFormat } from '../../../shared/contracts'
 import { encodeRgbEps } from './eps'
 
@@ -22,7 +22,7 @@ function epsBytes(canvas: HTMLCanvasElement, widthPoints: number, heightPoints: 
 }
 
 export async function exportPdfPages(data: Uint8Array, format: RasterExportFormat, dpi: number, onProgress?: (completed: number, total: number, pageNumber: number) => void, pageIndices?: number[], password?: string): Promise<ExportPage[]> {
-  const task = getDocument({ data: data.slice(), ...(password === undefined ? {} : { password }) })
+  const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
   const document: PDFDocumentProxy = await task.promise
   const outputs: ExportPage[] = []
   try {

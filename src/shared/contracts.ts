@@ -28,6 +28,17 @@ export interface SavePdfRequest {
 export interface PrintPdfRequest {
   data: Uint8Array
   name: string
+  options?: PrintPdfOptions
+}
+
+export interface PrintPdfOptions {
+  pageSize: 'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'Tabloid'
+  landscape: boolean
+  duplex: 'simplex' | 'longEdge' | 'shortEdge'
+  rows: number
+  columns: number
+  scale: number
+  frame: boolean
 }
 
 export interface PrintPdfResult {
@@ -55,6 +66,7 @@ export interface WindowDocumentState {
 export interface ManagedPdfDocument extends WindowDocumentState {
   id: number
   title: string
+  filePath?: string
 }
 
 export interface DocumentTabsSnapshot {
