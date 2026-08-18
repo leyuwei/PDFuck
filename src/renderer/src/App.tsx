@@ -18,7 +18,7 @@ import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
 import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 import { fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor, type CitationLink, type GrammarIssue, type InsightHit } from './lib/document-insights'
 
-const APP_VERSION = '1.14.0'
+const APP_VERSION = '1.15.2'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
@@ -569,6 +569,6 @@ export default function App() {
     {dialog?.type === 'print_options' && <PrintOptionsDialog pages={dialog.pages} onCancel={() => setDialog(null)} onSubmit={(options) => { const pages = dialog.pages; setDialog(null); void printPdf(pages, options) }} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? status : ''} />
-    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? `${insight.hits.length} 项` : '未发现可定位项目'}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label="关闭结果" title="关闭">×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); viewerRef.current?.goToPage(hit.pageIndex) }}><b>第 {hit.pageIndex + 1} 页 · {hit.label}</b><span>{'reference' in hit ? hit.reference : hit.context}</span></button>)}</div></div>}
+    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? `${insight.hits.length} 项` : '未发现可定位项目'}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label="关闭结果" title="关闭">×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>第 {hit.pageIndex + 1} 页 · {hit.label}</b><span>{'reference' in hit ? hit.reference : hit.context}</span></button>)}</div></div>}
   </div>
 }

@@ -7,6 +7,7 @@ export interface WordBox { text: string; rect: PdfRect; order: number; boundarie
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; bold?: boolean; italic?: boolean }
+export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
 
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
 
@@ -93,6 +94,35 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     } else lines.push({ ...rect })
   }
   return { text: pieces.join(' '), rects: lines }
+}
+
+export function textSelectionForQuery(words: WordBox[], query: string, options: TextQueryOptions = {}): { text: string; rects: PdfRect[] } | undefined {
+  const { occurrence = 0, caseSensitive = false, ignoreWhitespace = false } = options
+  const indexed: Array<{ char: string; start: TextPosition; end: TextPosition }> = []
+  const append = (char: string, start: TextPosition, end: TextPosition) => {
+    if (ignoreWhitespace && /\s/u.test(char)) return
+    const comparable = caseSensitive ? char : char.toLocaleLowerCase()
+    for (const normalizedChar of Array.from(comparable)) indexed.push({ char: normalizedChar, start, end })
+  }
+  words.forEach((word, wordIndex) => {
+    if (wordIndex > 0) append(' ', { wordIndex: wordIndex - 1, offset: Array.from(words[wordIndex - 1].text).length }, { wordIndex, offset: 0 })
+    Array.from(word.text).forEach((char, offset) => append(char, { wordIndex, offset }, { wordIndex, offset: offset + 1 }))
+  })
+  const normalizedNeedle = Array.from(query.trim().replace(/\s+/gu, ' ')).flatMap((char) => {
+    if (ignoreWhitespace && /\s/u.test(char)) return []
+    return Array.from(caseSensitive ? char : char.toLocaleLowerCase())
+  }).join('')
+  if (!normalizedNeedle || !indexed.length) return undefined
+  const source = indexed.map((entry) => entry.char).join('')
+  let start = -1, cursor = 0
+  for (let index = 0; index <= occurrence; index += 1) {
+    start = source.indexOf(normalizedNeedle, cursor)
+    if (start < 0) return undefined
+    cursor = start + Math.max(1, normalizedNeedle.length)
+  }
+  const first = indexed[start], last = indexed[start + normalizedNeedle.length - 1]
+  if (!first || !last) return undefined
+  return textSelectionBetween(words, first.start, last.end)
 }
 
 function ascentRatio(style?: PdfJsTextStyle): number {

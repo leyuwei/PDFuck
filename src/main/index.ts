@@ -172,7 +172,15 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     await new Promise((resolveReady) => setTimeout(resolveReady, 180))
     return await new Promise<PrintPdfResult>((resolvePrint, rejectPrint) => {
       const options = request.options
-      window.webContents.print({ silent: false, printBackground: true, usePrinterDefaultPageSize: !options, ...(options ? { pageSize: options.pageSize, landscape: options.landscape, duplexMode: options.duplex === 'simplex' ? 'simplex' : options.duplex === 'longEdge' ? 'longEdge' : 'shortEdge', pagesPerSheet: Math.max(1, options.rows * options.columns), scaleFactor: Math.max(35, Math.min(150, options.scale)) } : {}) } as Electron.WebContentsPrintOptions, (success, failureReason) => {
+      const printOptions: Electron.WebContentsPrintOptions = options
+        ? {
+            pageSize: options.pageSize,
+            landscape: options.landscape,
+            duplexMode: options.duplex === 'simplex' ? 'simplex' : options.duplex === 'longEdge' ? 'longEdge' : 'shortEdge',
+            ...(options.multiPage ? { pagesPerSheet: Math.max(1, options.rows * options.columns), scaleFactor: Math.max(35, Math.min(150, options.scale)) } : {})
+          }
+        : { usePrinterDefaultPageSize: true }
+      window.webContents.print({ silent: false, printBackground: true, ...printOptions }, (success, failureReason) => {
         if (success) resolvePrint({ status: 'printed' })
         else if (/cancel/i.test(failureReason)) resolvePrint({ status: 'canceled' })
         else rejectPrint(new Error(failureReason || '系统打印失败。'))

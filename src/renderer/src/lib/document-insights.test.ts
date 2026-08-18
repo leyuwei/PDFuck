@@ -18,4 +18,15 @@ describe('document insights', () => {
     const links = citationLinks([{ pageIndex: 0, text: 'Prior work [1] is useful.' }, { pageIndex: 1, text: 'References\n[1] Example Author. 2020.' }])
     expect(links[0]).toEqual(expect.objectContaining({ pageIndex: 0, citation: '1', reference: '[1] Example Author. 2020.' }))
   })
+
+  it('parses inline IEEE references when PDF text extraction has no line breaks', () => {
+    const links = citationLinks([
+      { pageIndex: 0, text: 'The method follows prior work [15], [16].' },
+      { pageIndex: 14, text: 'REFERENCES [15] P. K. Taksande, P. Chaporkar, and A. Karandikar, Proportional fairness. 2020. [16] X. Tan, C. Yin, and L. Ma, Scheduling. 2021.' }
+    ])
+    expect(links).toHaveLength(2)
+    expect(links[0].reference).toContain('[15]')
+    expect(links[1].reference).toContain('[16]')
+    expect(links[0].anchor).toBe('[15]')
+  })
 })

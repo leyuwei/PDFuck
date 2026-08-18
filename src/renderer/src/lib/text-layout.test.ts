@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
-import { fitTextAdvances, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween } from './text-layout'
+import { fitTextAdvances, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery } from './text-layout'
 
 describe('PDF text layout', () => {
   it('places selection above the PDF baseline using font ascent', () => {
@@ -99,5 +99,24 @@ describe('PDF text layout', () => {
     const reverse = textSelectionBetween(words, { wordIndex: 1, offset: 2 }, { wordIndex: 0, offset: 2 })
     expect(forward).toEqual({ text: 'pha be', rects: [{ x: 30, y: 20, width: 60, height: 12 }] })
     expect(reverse).toEqual(forward)
+  })
+
+  it('maps a search result to the exact matching character rectangles', () => {
+    const words = [
+      { text: 'Alpha', order: 0, rect: { x: 10, y: 20, width: 50, height: 12 } },
+      { text: 'beta', order: 1, rect: { x: 70, y: 20, width: 40, height: 12 } },
+      { text: 'alpha', order: 2, rect: { x: 120, y: 20, width: 50, height: 12 } }
+    ]
+    expect(textSelectionForQuery(words, 'pha be')?.rects).toEqual([{ x: 30, y: 20, width: 60, height: 12 }])
+    expect(textSelectionForQuery(words, 'alpha', { occurrence: 1 })?.rects).toEqual([{ x: 120, y: 20, width: 50, height: 12 }])
+    expect(textSelectionForQuery(words, 'alpha', { caseSensitive: true })?.rects).toEqual([{ x: 120, y: 20, width: 50, height: 12 }])
+  })
+
+  it('keeps fuzzy search highlighting aligned when whitespace is ignored', () => {
+    const words = [
+      { text: 'Alpha', order: 0, rect: { x: 10, y: 20, width: 50, height: 12 } },
+      { text: 'beta', order: 1, rect: { x: 70, y: 20, width: 40, height: 12 } }
+    ]
+    expect(textSelectionForQuery(words, 'alphabeta', { ignoreWhitespace: true })?.rects).toEqual([{ x: 10, y: 20, width: 100, height: 12 }])
   })
 })

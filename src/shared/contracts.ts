@@ -35,6 +35,7 @@ export interface PrintPdfOptions {
   pageSize: 'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'Tabloid'
   landscape: boolean
   duplex: 'simplex' | 'longEdge' | 'shortEdge'
+  multiPage: boolean
   rows: number
   columns: number
   scale: number

@@ -174,6 +174,8 @@ npm run dist:mac
 
 `dist:mac` 需要在 macOS 上执行；正式分发前还需要配置 Apple 签名与公证。
 
+版本更新后的完整 macOS/Windows 发布流程、签名、DMG 布局和产物验证要求见 [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md)。
+
 ## 技术结构
 
 - `src/main/`：Electron 窗口、原生对话框、打印和安全文件写入；

@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.14.0",
+  "version": "1.15.2",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -92,6 +92,17 @@
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
       "artifactName": "PDFuck-${version}-macOS.${ext}"
+    },
+    "dmg": {
+      "icon": "resources/icon.png",
+      "backgroundColor": "#f4f6fa",
+      "iconSize": 96,
+      "iconTextSize": 12,
+      "window": { "width": 620, "height": 430 },
+      "contents": [
+        { "x": 165, "y": 220, "type": "file" },
+        { "x": 455, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     }
   }
 }

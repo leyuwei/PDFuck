@@ -1,5 +1,6 @@
 .annotation-header, .annotation-row { grid-template-columns: 20px 25px 82px minmax(0, 1fr) 28px; }
 .annotation-panel { position: relative; min-width: 280px; max-width: 560px; }
+.annotation-panel.collapsed { width: 46px; min-width: 46px; max-width: 46px; flex: 0 0 46px; }
 .window-tab-icon { background: color-mix(in srgb, var(--tab-pdf-color, #5575de) 16%, white); color: var(--tab-pdf-color, #4562c3); }
 .window-tab.current .window-tab-icon { background: var(--tab-pdf-color, #5575de); }
 .annotation-resize-handle { position: absolute; z-index: 5; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; }
@@ -8,7 +9,7 @@
 .annotation-resize-handle:hover::after { background: #5575de; }
 .annotation-statuses { min-width: 0; display: flex; align-items: center; gap: 0; }
 .annotation-status-button { width: 20px; min-width: 20px; height: 21px; padding: 0; }
-.pdf-search-panel { position: absolute; z-index: 60; top: 14px; right: 18px; width: 360px; max-height: min(680px, calc(100% - 28px)); overflow: hidden; border: 1px solid #d5ddea; border-radius: 10px; background: #fff; box-shadow: 0 14px 36px #1b29452e; }
+.pdf-search-panel { position: fixed; z-index: 100; top: 108px; right: 18px; width: 360px; max-height: min(680px, calc(100vh - 128px)); overflow: hidden; border: 1px solid #d5ddea; border-radius: 10px; background: #fff; box-shadow: 0 14px 36px #1b29452e; }
 .pdf-search-heading { height: 35px; padding: 0 9px 0 12px; display: flex; align-items: center; justify-content: space-between; color: #35415a; border-bottom: 1px solid #edf0f5; }
 .pdf-search-heading b { font-size: 12px; }
 .pdf-search-heading button { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: #7d8798; font-size: 18px; }
@@ -28,15 +29,22 @@
 .pdf-search-results button b { color: #3157d5; font-size: 9px; }
 .pdf-search-results button span { overflow: hidden; color: #59667e; font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .pdf-page.search-focused { outline: 3px solid #5575de; outline-offset: 5px; animation: search-page-focus 1s ease-out forwards; }
+.precise-text-focus { position: absolute; z-index: 17; pointer-events: none; border-radius: 2px; background: #ffd84d8c; outline: 2px solid #e0a90099; box-shadow: 0 0 0 3px #ffd84d30; animation: precise-text-focus 4s ease-out forwards; }
+.precise-object-focus { position: absolute; z-index: 17; pointer-events: none; border-radius: 5px; background: #61c7a744; outline: 3px solid #2b9d7b99; box-shadow: 0 0 0 5px #2b9d7b2e; animation: precise-text-focus 4s ease-out forwards; }
 .grammar-mark { position: absolute; z-index: 18; height: 3px; background: repeating-linear-gradient(135deg, #d33d4a 0 2px, transparent 2px 4px); pointer-events: none; }
 @keyframes search-page-focus { 0%, 75% { box-shadow: 0 0 0 6px #5575de32; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes precise-text-focus { 0%, 84% { opacity: 1; } 100% { opacity: .08; box-shadow: 0 0 0 0 transparent; } }
 .print-options-dialog { width: 520px; }
 .print-options-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.print-options-grid.advanced { margin-top: 12px; padding-top: 12px; border-top: 1px solid #edf0f5; }
 .print-options-grid label { display: grid; gap: 5px; color: #68758d; font-size: 10px; font-weight: 700; }
 .print-options-grid input, .print-options-grid select { min-width: 0; height: 32px; border: 1px solid #d6deeb; border-radius: 6px; padding: 0 7px; font-size: 10px; }
 .print-options-grid label small { margin-top: -26px; margin-left: auto; padding-right: 7px; color: #8993a5; font-size: 9px; pointer-events: none; }
 .print-frame-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: #59667e; font-size: 10px; }
 .print-frame-toggle span { display: grid; gap: 2px; }.print-frame-toggle small { color: #8b94a5; font-size: 9px; }
+.print-multipage-toggle { min-height: 42px; display: flex; align-items: center; gap: 9px; margin-top: 15px; padding: 8px 10px; border: 1px solid #dfe5ef; border-radius: 8px; background: #f8faff; color: #59667d; cursor: pointer; }
+.print-multipage-toggle input { width: 15px; height: 15px; accent-color: #3157d5; }
+.print-multipage-toggle span { display: grid; gap: 2px; }.print-multipage-toggle small { color: #8b94a5; font-size: 9px; }.print-multipage-toggle i { margin-left: auto; color: #8190aa; font-size: 9px; font-style: normal; }
 .temporary-document-warning { position: absolute; z-index: 40; top: 12px; left: 50%; transform: translateX(-50%); min-width: 390px; max-width: calc(100% - 36px); min-height: 34px; padding: 7px 35px 7px 11px; display: flex; align-items: center; gap: 8px; border: 1px solid #e7c35a; border-radius: 8px; background: #fff9dd; color: #725714; box-shadow: 0 7px 18px #795c131f; font-size: 11px; }
 .temporary-document-warning > span { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #e2ad25; color: white; font-weight: 800; }
 .temporary-document-warning button { position: absolute; right: 7px; width: 23px; height: 23px; padding: 0; border: 0; background: transparent; color: #9c7c2b; font-size: 17px; }
