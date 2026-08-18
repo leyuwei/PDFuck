@@ -19,3 +19,4 @@ test-results/
 output/playwright/
 PLAN.md
 PROGRESS.md
+.DS_Store
