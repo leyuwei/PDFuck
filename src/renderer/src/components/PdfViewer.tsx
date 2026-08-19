@@ -35,7 +35,7 @@ interface ViewerProps {
   onReadingPositionChange(position: ReadingPosition): void
   onDocumentReady(pageCount: number): void
   onAction(action: CanvasAction): void
-  onSelectionChange(selection?: TextSelection): void
+  onSelectionChange(pageIndex: number, selection?: TextSelection): void
   onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
@@ -267,7 +267,7 @@ function SearchPanel({ document, onClose, onJump, onFocusTarget }: { document: P
 
 function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
   const bounds = rectUnion(annotation.rects)
-  const drag = useRef<{ x: number; y: number } | null>(null)
+  const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const markup = !['note', 'insert'].includes(annotation.kind)
   const style = { left: bounds.x * zoom, top: bounds.y * zoom, width: Math.max(8, bounds.width * zoom), height: Math.max(8, bounds.height * zoom), '--annotation-color': annotation.color } as CSSProperties
   return <div
@@ -275,14 +275,17 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     style={style}
     data-annotation-id={annotation.id}
     title={annotation.content || annotation.kind}
-    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { x: event.clientX, y: event.clientY }; onSelect(annotation, { additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); event.currentTarget.setPointerCapture(event.pointerId) }}
+    onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }; onSelect(annotation, { additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); event.currentTarget.setPointerCapture(event.pointerId) }}
     onPointerUp={(event) => {
       event.stopPropagation()
-      if (!drag.current) return
+      if (!drag.current || drag.current.pointerId !== event.pointerId) return
       const dx = (event.clientX - drag.current.x) / zoom, dy = (event.clientY - drag.current.y) / zoom
       drag.current = null
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       if (Math.hypot(dx, dy) > 2) onMove(annotation.id, dx, dy)
     }}
+    onPointerCancel={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = null }}
+    onLostPointerCapture={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = null }}
     onDoubleClick={(event) => { event.stopPropagation(); onSelect(annotation); onEdit(annotation) }}
     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(annotation); onContext(annotation, event.clientX, event.clientY) }}
   >
@@ -952,7 +955,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={onSelectionChange} onCopyText={onCopyText}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => onSelectionChange(pageIndex, selection)} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} searchFocusPage={searchFocusPage} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onJump={goToPage} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}

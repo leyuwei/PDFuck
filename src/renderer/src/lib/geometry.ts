@@ -24,6 +24,17 @@ export function clampRect(rect: PdfRect, width: number, height: number): PdfRect
   }
 }
 
+export function clampRectDelta(rects: PdfRect[], delta: PdfPoint, width: number, height: number): PdfPoint {
+  const bounds = rectUnion(rects)
+  const clampAxis = (value: number, minimum: number, maximum: number) => minimum <= maximum
+    ? Math.max(minimum, Math.min(maximum, value))
+    : 0
+  return {
+    x: clampAxis(delta.x, -bounds.x, width - bounds.x - bounds.width),
+    y: clampAxis(delta.y, -bounds.y, height - bounds.y - bounds.height)
+  }
+}
+
 export function pointInRect(point: PdfPoint, rect: PdfRect, padding = 0): boolean {
   return point.x >= rect.x - padding && point.x <= rect.x + rect.width + padding && point.y >= rect.y - padding && point.y <= rect.y + rect.height + padding
 }

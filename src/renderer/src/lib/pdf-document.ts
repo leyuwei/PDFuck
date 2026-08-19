@@ -3,7 +3,7 @@ import {
   StandardFonts, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
-import { rectUnion } from './geometry'
+import { clampRectDelta, rectUnion } from './geometry'
 import {
   displayRectToPdfBounds, displayRectsToPdfQuads, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
   type PageGeometry
@@ -507,11 +507,15 @@ export class PdfDocumentModel {
     const { dict, page } = this.findAnnotation(id)
     const geometry = pageGeometry(page)
     const rect = pdfBoundsToDisplayRect(numberArray(this.document, dict.get(PDFName.of('Rect'))), geometry)
-    const moved = { ...rect, x: rect.x + deltaX, y: rect.y + deltaY }
-    dict.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(moved, geometry)))
     const quads = numberArray(this.document, dict.get(PDFName.of('QuadPoints')))
+    const sourceRects = quads.length ? pdfQuadsToDisplayRects(quads, geometry) : [rect]
+    const displayWidth = geometry.rotation % 180 ? geometry.height : geometry.width
+    const displayHeight = geometry.rotation % 180 ? geometry.width : geometry.height
+    const delta = clampRectDelta(sourceRects, { x: deltaX, y: deltaY }, displayWidth, displayHeight)
+    const moved = { ...rect, x: rect.x + delta.x, y: rect.y + delta.y }
+    dict.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(moved, geometry)))
     if (quads.length) {
-      const shifted = pdfQuadsToDisplayRects(quads, geometry).map((value) => ({ ...value, x: value.x + deltaX, y: value.y + deltaY }))
+      const shifted = sourceRects.map((value) => ({ ...value, x: value.x + delta.x, y: value.y + delta.y }))
       dict.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(shifted, geometry)))
     }
     await this.commit()

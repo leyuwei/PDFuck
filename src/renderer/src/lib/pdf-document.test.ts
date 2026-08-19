@@ -102,6 +102,19 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations().find((annotation) => annotation.kind === 'replace')?.reply).toEqual({ status: 'handled', content: '已处理' })
   })
 
+  it('clamps interrupted or oversized annotation drags to the original page', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const note = await model.addAnnotation(1, 'note', [], 'bounded note', { x: 580, y: 760 })
+    await model.moveAnnotation(note, 400, 5000)
+    const bottomRight = model.annotations().find((annotation) => annotation.id === note)!
+    expect(bottomRight.pageIndex).toBe(1)
+    expect(bottomRight.rects[0]).toEqual(expect.objectContaining({ x: 592, y: 772, width: 20, height: 20 }))
+    await model.moveAnnotation(note, -5000, -5000)
+    const topLeft = model.annotations().find((annotation) => annotation.id === note)!
+    expect(topLeft.pageIndex).toBe(1)
+    expect(topLeft.rects[0]).toEqual(expect.objectContaining({ x: 0, y: 0, width: 20, height: 20 }))
+  })
+
   it('visually replaces selected page text and keeps the replacement editable after reopening', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], 'Revised wording', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })

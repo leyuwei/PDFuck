@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
 import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import type { PrintPdfOptions, UpdateCheckResult } from '../../../shared/contracts'
@@ -13,10 +13,14 @@ export interface AnnotationDialogResult { content: string; color: string; reply?
 
 function useDeferredFocus<T extends HTMLElement>() {
   const ref = useRef<T>(null)
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => ref.current?.focus({ preventScroll: true }))
-    const timer = window.setTimeout(() => ref.current?.focus({ preventScroll: true }), 40)
-    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  useLayoutEffect(() => {
+    const focus = () => ref.current?.focus({ preventScroll: true })
+    focus()
+    const frame = window.requestAnimationFrame(focus)
+    const timer = window.setTimeout(focus, 40)
+    const handleWindowFocus = () => { focus(); window.setTimeout(focus, 0) }
+    window.addEventListener('focus', handleWindowFocus)
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); window.removeEventListener('focus', handleWindowFocus) }
   }, [])
   return ref
 }
@@ -26,15 +30,24 @@ export function AnnotationDialog({ state, onCancel, onSubmit }: { state: Annotat
   const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
   const [reply, setReply] = useState<AnnotationReply | undefined>(state.reply)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const drag = useRef<{ x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
+  const drag = useRef<{ pointerId: number; x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   const labels: Record<AnnotationKind, string> = { highlight: '高亮说明', note: '批注内容', replace: '替换为', insert: '插入文字', delete: '删除标记', underline: '下划线说明' }
   const submit = () => onSubmit({ content: value.trim(), color, reply })
-  const beginDrag = (event: React.PointerEvent) => { if (event.button !== 0) return; event.preventDefault(); drag.current = { x: event.clientX, y: event.clientY, offset }; event.currentTarget.setPointerCapture(event.pointerId) }
-  const moveDrag = (event: React.PointerEvent) => { if (!drag.current) return; event.preventDefault(); setOffset({ x: drag.current.offset.x + event.clientX - drag.current.x, y: drag.current.offset.y + event.clientY - drag.current.y }) }
-  const finishDrag = () => { drag.current = undefined }
-  return <div className="modal-backdrop"><div className="modal annotation-dialog" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}><div className="annotation-dialog-heading" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}><h2>{state.edit ? '编辑批注' : labels[state.kind]}</h2><span title="拖动浮窗">⠿</span></div><p>{state.optional ? '可以补充说明并选择醒目的标记颜色。' : '填写批注内容，并选择适合的标记颜色。'}</p>
-    <textarea ref={textareaRef} value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.ctrlKey && event.key === 'Enter' && (state.optional || value.trim())) submit() }} />
+  const beginDrag = (event: React.PointerEvent) => { if (event.button !== 0) return; event.preventDefault(); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, offset }; event.currentTarget.setPointerCapture(event.pointerId) }
+  const moveDrag = (event: React.PointerEvent) => { if (!drag.current || drag.current.pointerId !== event.pointerId) return; event.preventDefault(); setOffset({ x: drag.current.offset.x + event.clientX - drag.current.x, y: drag.current.offset.y + event.clientY - drag.current.y }) }
+  const finishDrag = (event: React.PointerEvent) => {
+    if (drag.current?.pointerId !== event.pointerId) return
+    drag.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  useEffect(() => {
+    const cancelDrag = () => { drag.current = undefined }
+    window.addEventListener('blur', cancelDrag)
+    return () => window.removeEventListener('blur', cancelDrag)
+  }, [])
+  return <div className="modal-backdrop"><div className="modal annotation-dialog" role="dialog" aria-modal="true" aria-labelledby="annotation-dialog-title" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}><div className="annotation-dialog-heading" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = undefined }}><h2 id="annotation-dialog-title">{state.edit ? '编辑批注' : labels[state.kind]}</h2><span title="拖动浮窗">⠿</span></div><p>{state.optional ? '可以补充说明并选择醒目的标记颜色。' : '填写批注内容，并选择适合的标记颜色。'}</p>
+    <textarea ref={textareaRef} autoFocus value={value} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.focus({ preventScroll: true }) }} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && (state.optional || value.trim())) submit() }} />
     <AnnotationColorPicker color={color} onChange={setColor} />
     {state.edit && <AnnotationReplyPicker reply={reply} onChange={setReply} />}
     <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={submit}>确定</button></div></div></div>
