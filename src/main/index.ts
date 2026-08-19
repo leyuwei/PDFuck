@@ -214,7 +214,7 @@ function showMainWindow(): void {
   const window = mainSession?.window
   if (!window || window.isDestroyed()) return
   if (window.isMinimized()) window.restore()
-  window.show(); window.focus()
+  window.show(); window.focus(); window.webContents.focus()
 }
 
 function queuePdfPath(path: string): void {
@@ -264,7 +264,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     if (!window.isDestroyed()) window.destroy()
     if (printWindow === window) printWindow = null
     await unlink(temporary).catch(() => undefined)
-    if (!parent.isDestroyed()) parent.focus()
+    if (!parent.isDestroyed()) { parent.focus(); parent.webContents.focus() }
   }
 }
 
@@ -283,7 +283,8 @@ function createMainWindow(): BrowserWindow {
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession)) })
   window.on('closed', () => { if (mainSession?.window === window) mainSession = null })
-  window.once('ready-to-show', () => { window.show(); window.focus() })
+  window.once('ready-to-show', () => { window.show(); window.focus(); window.webContents.focus() })
+  window.on('focus', () => { if (!window.isDestroyed()) window.webContents.focus() })
   const captureTarget = process.env.PDFUCK_CAPTURE
   if (captureTarget) window.webContents.once('did-finish-load', () => setTimeout(async () => {
     if (window.isDestroyed()) return

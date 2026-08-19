@@ -335,6 +335,46 @@ export default function App() {
     return () => { active = false }
   }, [])
   useEffect(() => { const handler = (event: BeforeUnloadEvent) => { if (allowWindowCloseRef.current) return; sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current); if ([...sessionsRef.current.values()].some((session) => session.dirty)) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', handler); return () => window.removeEventListener('beforeunload', handler) }, [])
+  useEffect(() => {
+    const captures = new Map<number, Set<Element>>()
+    const rememberCapture = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      const elements = captures.get(event.pointerId) || new Set<Element>()
+      elements.add(event.target)
+      captures.set(event.pointerId, elements)
+    }
+    const forgetCapture = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      const elements = captures.get(event.pointerId)
+      elements?.delete(event.target)
+      if (!elements?.size) captures.delete(event.pointerId)
+    }
+    const release = (pointerId?: number) => {
+      const ids = pointerId === undefined ? [...captures.keys()] : [pointerId]
+      for (const id of ids) {
+        for (const element of captures.get(id) || []) {
+          if (!element.hasPointerCapture(id)) continue
+          try { element.releasePointerCapture(id) } catch { /* The element may unmount during a dialog transition. */ }
+        }
+        captures.delete(id)
+      }
+    }
+    const releaseAfterDispatch = (event: PointerEvent) => queueMicrotask(() => release(event.pointerId))
+    const releaseOnBlur = () => release()
+    window.addEventListener('gotpointercapture', rememberCapture, true)
+    window.addEventListener('lostpointercapture', forgetCapture, true)
+    window.addEventListener('pointerup', releaseAfterDispatch, true)
+    window.addEventListener('pointercancel', releaseAfterDispatch, true)
+    window.addEventListener('blur', releaseOnBlur)
+    return () => {
+      window.removeEventListener('gotpointercapture', rememberCapture, true)
+      window.removeEventListener('lostpointercapture', forgetCapture, true)
+      window.removeEventListener('pointerup', releaseAfterDispatch, true)
+      window.removeEventListener('pointercancel', releaseAfterDispatch, true)
+      window.removeEventListener('blur', releaseOnBlur)
+      release()
+    }
+  }, [])
   useEffect(() => () => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
     readingPositionTimersRef.current.forEach((timer) => window.clearTimeout(timer))

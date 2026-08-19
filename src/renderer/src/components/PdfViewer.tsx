@@ -12,6 +12,7 @@ import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
+import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
 import type { ReadingPosition } from '../../../shared/contracts'
 
 export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
@@ -133,11 +134,15 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
     const nextX = event.clientX - drag.current.x + drag.current.offset.x, nextY = event.clientY - drag.current.y + drag.current.offset.y
     setOffset({ x: Math.max(5 - baseLeft, Math.min(pageSize.width * zoom - width - 5 - baseLeft, nextX)), y: Math.max(5 - baseTop, Math.min(pageSize.height * zoom - height - 5 - baseTop, nextY)) })
   }
-  const finishDrag = (event: React.PointerEvent) => { if (!drag.current) return; event.stopPropagation(); drag.current = undefined }
+  const finishDrag = (event: React.PointerEvent) => {
+    if (!drag.current) return
+    event.stopPropagation(); drag.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
   const tools: Array<{ tool: Tool; label: string; kind: 'highlight' | 'replace' | 'delete_text' | 'underline' | 'note' | 'insert' }> = [
     { tool: 'highlight', label: '文本高亮', kind: 'highlight' }, { tool: 'replace', label: '文本替换', kind: 'replace' }, { tool: 'delete_text', label: '文本删除', kind: 'delete_text' }, { tool: 'underline', label: '加下划线', kind: 'underline' }, { tool: 'note', label: '自由批注', kind: 'note' }, { tool: 'insert', label: '插入文字', kind: 'insert' }
   ]
-  return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()}>
+  return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
     <button type="button" className="selection-toolbar-grip" aria-label="拖动批注快捷浮窗" title="拖动浮窗" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
   </div>
@@ -320,6 +325,8 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
       drag.current = null; setOffset({ x: 0, y: 0 })
       if (Math.hypot(dx, dy) > 1) onMove(textObject.id, dx, dy)
     }}
+    onPointerCancel={(event) => { drag.current = null; setOffset({ x: 0, y: 0 }); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
+    onLostPointerCapture={() => { drag.current = null; setOffset({ x: 0, y: 0 }) }}
     onDoubleClick={(event) => { if (editable) { event.stopPropagation(); onEdit(textObject) } }}
   >{textObject.text}</div>
 }
@@ -389,9 +396,9 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
   const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
     <div className="crop-draft" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
-      onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish}>
+      onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <span className="crop-draft-label">裁切区域</span>
-      {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} />)}
+      {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
       <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>取消</button>
@@ -529,7 +536,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       const target = tool === 'insert' ? insertionPoint(words, point) : point
       onAction({ pageIndex, tool, point: target })
     }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    // Note and insert open a dialog immediately. Capturing that pointer can
+    // leave the PDF page owning later clicks if the dialog interrupts pointerup.
+    if (pageToolUsesPointerCapture(tool)) event.currentTarget.setPointerCapture(event.pointerId)
   }
   const handlePointerMove = (event: React.PointerEvent) => {
     const point = pointFor(event)
@@ -574,6 +583,11 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         else onAction({ pageIndex, tool, rect })
       }
     }
+  }
+  const handlePointerCancel = (event: React.PointerEvent) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    dragRef.current = undefined
+    setDrag(undefined)
   }
   const handleContext = (event: React.MouseEvent) => {
     event.preventDefault()
@@ -676,7 +690,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   }, [textFocus?.token, visualFocus?.token, words.length])
   return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom }}
     onKeyDown={handleKeyDown}
-    onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
+    onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
     {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`查看引文 ${labels}`} title={`查看参考文献 ${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
