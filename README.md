@@ -36,7 +36,7 @@
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.15.6-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.15.7-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -47,7 +47,7 @@
 
 ### 便携版
 
-下载 `PDFuck-1.15.6-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.15.7-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -59,11 +59,11 @@
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.15.6-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-1.15.7-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.15.6-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-1.15.7-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -192,7 +192,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.15.6-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并生成 `release/PDFuck-1.15.7-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")
