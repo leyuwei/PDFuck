@@ -185,6 +185,15 @@ export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
   const issues: GrammarIssue[] = []
   pages.forEach((page) => {
     const text = normalizeInsightText(page.text)
+    if (/^(?:references|bibliography|参考文献)\b/i.test(text)) return
+    const englishLetters = (text.match(/[A-Za-z]/g) || []).length
+    const cjkLetters = (text.match(/[\u3400-\u9fff]/g) || []).length
+    // Do not run English grammar heuristics on invoices, identifiers, or
+    // bilingual forms. Their extracted text often contains isolated Latin
+    // glyphs and serial numbers that look like words to a regex.
+    const digits = (text.match(/\d/g) || []).length
+    const symbols = (text.match(/[+*/=<>|]/g) || []).length
+    if ((cjkLetters > 0 && cjkLetters >= englishLetters * 0.5) || digits > englishLetters * 0.35 || symbols > 3 || (text.length > 80 && englishLetters / Math.max(1, text.length) < 0.18)) return
     const words = text.match(/[A-Za-z]{3,}/g) || []
     const occurrences = new Map<string, number>()
     const lowerText = text.toLocaleLowerCase()
@@ -215,6 +224,8 @@ export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
     agreementRules.forEach(({ pattern, replacement }) => {
       let match: RegExpExecArray | null
       while ((match = pattern.exec(text))) {
+        const sentence = text.slice(Math.max(0, text.lastIndexOf('.', match.index) + 1), text.indexOf('.', match.index) < 0 ? text.length : text.indexOf('.', match.index))
+        if ((sentence.match(/[A-Za-z]/g) || []).length < 8) continue
         const anchor = match[0]
         const verb = match[2]
         issues.push({ pageIndex: page.pageIndex, label: '主谓一致', term: verb, replacement: replacement(verb.toLocaleLowerCase()), anchor, anchorOccurrence: 0, context: text.slice(Math.max(0, match.index - 45), match.index + anchor.length + 65) })

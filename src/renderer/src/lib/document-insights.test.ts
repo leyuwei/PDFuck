@@ -46,6 +46,11 @@ describe('document insights', () => {
     ]))
   })
 
+  it('ignores invoice identifiers and mixed-language form fragments', () => {
+    expect(grammarIssues([{ pageIndex: 0, text: '91330108MA2KCE2W7D 3*-8+0+/+0<15/64*69531+/654 2022 05 26' }])).toEqual([])
+    expect(grammarIssues([{ pageIndex: 0, text: '中央非税收入统一票据 electronic code 91330108MA2KCE2W7D' }])).toEqual([])
+  })
+
   it('parses inline IEEE references when PDF text extraction has no line breaks', () => {
     const links = citationLinks([
       { pageIndex: 0, text: 'The method follows prior work [15], [16].' },

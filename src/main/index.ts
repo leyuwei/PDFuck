@@ -1,7 +1,9 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
@@ -21,6 +23,7 @@ let printWindow: BrowserWindow | null = null
 let recentWriteQueue: Promise<void> = Promise.resolve()
 let readingPositionWriteQueue: Promise<void> = Promise.resolve()
 let passwordStore: PdfPasswordStore | undefined
+const execFileAsync = promisify(execFile)
 
 const PRINT_PAPER_POINTS: Record<PrintPdfOptions['pageSize'], [number, number]> = {
   A3: [841.89, 1190.55], A4: [595.28, 841.89], A5: [419.53, 595.28], Letter: [612, 792], Legal: [612, 1008], Tabloid: [792, 1224]
@@ -92,6 +95,27 @@ const isPdf = (value: string): boolean => extname(value).toLowerCase() === '.pdf
 function candidateFromArgs(args: string[]): string | null {
   const value = args.find((arg) => isPdf(arg) && existsSync(resolve(arg)))
   return value ? resolve(value) : null
+}
+
+async function refreshMacPdfAssociation(): Promise<void> {
+  if (process.platform !== 'darwin' || !app.isPackaged) return
+  const lsregister = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+  const currentBundle = resolve(dirname(process.execPath), '..', '..')
+  const roots = [
+    '/Applications',
+    join(app.getPath('home'), 'Applications')
+  ]
+  const stale: string[] = []
+  for (const root of roots) {
+    let entries: string[] = []
+    try { entries = await readdir(root) } catch { continue }
+    entries.filter((entry) => /^PDFuck(?:[- _].*)?\.app$/i.test(entry)).forEach((entry) => {
+      const bundle = resolve(root, entry)
+      if (bundle !== currentBundle) stale.push(bundle)
+    })
+  }
+  for (const bundle of stale) await execFileAsync(lsregister, ['-u', bundle]).catch(() => undefined)
+  await execFileAsync(lsregister, ['-f', currentBundle]).catch(() => undefined)
 }
 
 async function openPdfAt(path: string) {
@@ -286,6 +310,7 @@ app.on('second-instance', (_event, argv) => {
 app.on('open-file', (event, path) => { event.preventDefault(); queuePdfPath(path) })
 
 app.whenReady().then(() => {
+  void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
     const window = requireMainWindow(event.sender)
     const result = await dialog.showOpenDialog(window, { title: '打开 PDF', properties: ['openFile'], filters: [{ name: 'PDF 文件', extensions: ['pdf'] }] })

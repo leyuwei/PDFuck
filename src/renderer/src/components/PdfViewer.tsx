@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnnotationMode, getDocument, OPS, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, OPS, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
@@ -486,7 +486,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     buffer.height = Math.max(1, Math.floor(viewport.height * outputScale))
     const context = buffer.getContext('2d', { alpha: false })
     if (!context) return
-    const task = page.render({ canvas: buffer, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.DISABLE })
+    const task = page.render({ canvas: buffer, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.ENABLE })
     task.promise.then(() => {
       const canvas = canvasRef.current
       if (cancelled || !canvas) return
@@ -772,7 +772,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     restoringPositionRef.current = true
     if (!data?.length) { setDocument(undefined); return }
     let active = true
-    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
+    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
     task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => onError(error instanceof Error ? error : new Error(String(error))))
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])
