@@ -9,8 +9,9 @@
 .annotation-resize-handle:hover::after { background: #5575de; }
 .annotation-statuses { min-width: 0; display: flex; align-items: center; gap: 0; }
 .annotation-status-button { width: 20px; min-width: 20px; height: 21px; padding: 0; }
-.pdf-search-panel { position: fixed; z-index: 100; top: 108px; right: 18px; width: 360px; max-height: min(680px, calc(100vh - 128px)); overflow: hidden; border: 1px solid #d5ddea; border-radius: 10px; background: #fff; box-shadow: 0 14px 36px #1b29452e; }
-.pdf-search-heading { height: 35px; padding: 0 9px 0 12px; display: flex; align-items: center; justify-content: space-between; color: #35415a; border-bottom: 1px solid #edf0f5; }
+.pdf-search-panel { position: fixed; z-index: 100; width: 360px; max-height: min(680px, calc(100vh - 128px)); overflow: hidden; border: 1px solid #d5ddea; border-radius: 10px; background: #fff; box-shadow: 0 14px 36px #1b29452e; }
+.pdf-search-heading { height: 35px; padding: 0 9px 0 12px; display: flex; align-items: center; justify-content: space-between; color: #35415a; border-bottom: 1px solid #edf0f5; cursor: grab; user-select: none; }
+.pdf-search-heading:active { cursor: grabbing; }
 .pdf-search-heading b { font-size: 12px; }
 .pdf-search-heading button { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: #7d8798; font-size: 18px; }
 .pdf-search-input-row { display: flex; gap: 6px; padding: 9px 10px 5px; }
@@ -28,15 +29,25 @@
 .pdf-search-results button:hover { background: #f2f5ff; }
 .pdf-search-results button b { color: #3157d5; font-size: 9px; }
 .pdf-search-results button span { overflow: hidden; color: #59667e; font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.tool-action-button.active { border-color: #8bc8a7; background: #eef9f2; color: #237653; }
 .pdf-page.search-focused { outline: 3px solid #5575de; outline-offset: 5px; animation: search-page-focus 1s ease-out forwards; }
-.precise-text-focus { position: absolute; z-index: 17; pointer-events: none; border-radius: 2px; background: #ffd84d8c; outline: 2px solid #e0a90099; box-shadow: 0 0 0 3px #ffd84d30; animation: precise-text-focus 4s ease-out forwards; }
-.precise-object-focus { position: absolute; z-index: 17; pointer-events: none; border-radius: 5px; background: #61c7a744; outline: 3px solid #2b9d7b99; box-shadow: 0 0 0 5px #2b9d7b2e; animation: precise-text-focus 4s ease-out forwards; }
+.insight-focus-ring { z-index: 17; }
 .grammar-mark { position: absolute; z-index: 18; height: 3px; background: repeating-linear-gradient(135deg, #d33d4a 0 2px, transparent 2px 4px); pointer-events: none; }
+.citation-link-mark { position: absolute; z-index: 16; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 2px; background: #75d6a35c; box-shadow: inset 0 -1px 0 #249a65a8; cursor: pointer; }
+.citation-link-mark:hover, .citation-link-mark.active { background: #54c58a82; box-shadow: inset 0 -2px 0 #168055, 0 0 0 2px #54c58a38; }
+.citation-popover { position: absolute; z-index: 45; width: 298px; max-height: 210px; padding: 0 12px 11px; overflow: auto; border: 1px solid #b9dcca; border-radius: 8px; background: #fff; box-shadow: 0 12px 30px #1d44372e; color: #344b43; cursor: default; }
+.citation-popover header { position: sticky; top: 0; margin: 0 -12px; padding: 9px 9px 7px 12px; display: flex; align-items: center; justify-content: space-between; background: #f1faf5; border-bottom: 1px solid #dcece3; }
+.citation-popover header div { display: flex; align-items: baseline; gap: 7px; }.citation-popover header small { color: #56806d; font-size: 9px; font-weight: 700; }.citation-popover header b { color: #19784f; font-size: 12px; }
+.citation-popover header button { width: 23px; height: 23px; padding: 0; border: 0; background: transparent; color: #6d8c7e; font-size: 17px; }
+.citation-popover p { margin: 10px 0; color: #41564e; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.citation-reference-list p + p { padding-top: 9px; border-top: 1px solid #e5eee9; }
+.citation-popover .citation-copy { width: 100%; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; border-color: #abd5c0; background: #edf8f2; color: #237553; font-size: 10px; font-weight: 700; }
 @keyframes search-page-focus { 0%, 75% { box-shadow: 0 0 0 6px #5575de32; } 100% { box-shadow: 0 0 0 0 transparent; } }
-@keyframes precise-text-focus { 0%, 84% { opacity: 1; } 100% { opacity: .08; box-shadow: 0 0 0 0 transparent; } }
-.print-options-dialog { width: 520px; }
+.print-options-dialog { width: 940px; max-height: calc(100vh - 34px); padding: 0; overflow: hidden; }
+.print-dialog-heading { min-height: 67px; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e7ef; background: #f8f9fc; }.print-dialog-heading h2 { font-size: 18px; }.print-dialog-heading p { margin: 4px 0 0; color: #7b8799; font-size: 10px; }.print-dialog-heading > button { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: #788397; font-size: 19px; }
+.print-dialog-body { min-height: 0; max-height: calc(100vh - 168px); display: grid; grid-template-columns: 390px minmax(360px, 1fr); }.print-controls { min-width: 0; padding: 18px 19px; overflow: auto; border-right: 1px solid #e5e9f0; }
 .print-options-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-.print-options-grid.advanced { margin-top: 12px; padding-top: 12px; border-top: 1px solid #edf0f5; }
+.print-options-grid.basic { margin-top: 0; }.print-options-grid.advanced { margin-top: 10px; padding-top: 11px; border-top: 1px solid #edf0f5; }
 .print-options-grid label { display: grid; gap: 5px; color: #68758d; font-size: 10px; font-weight: 700; }
 .print-options-grid input, .print-options-grid select { min-width: 0; height: 32px; border: 1px solid #d6deeb; border-radius: 6px; padding: 0 7px; font-size: 10px; }
 .print-options-grid label small { margin-top: -26px; margin-left: auto; padding-right: 7px; color: #8993a5; font-size: 9px; pointer-events: none; }
@@ -45,6 +56,10 @@
 .print-multipage-toggle { min-height: 42px; display: flex; align-items: center; gap: 9px; margin-top: 15px; padding: 8px 10px; border: 1px solid #dfe5ef; border-radius: 8px; background: #f8faff; color: #59667d; cursor: pointer; }
 .print-multipage-toggle input { width: 15px; height: 15px; accent-color: #3157d5; }
 .print-multipage-toggle span { display: grid; gap: 2px; }.print-multipage-toggle small { color: #8b94a5; font-size: 9px; }.print-multipage-toggle i { margin-left: auto; color: #8190aa; font-size: 9px; font-style: normal; }
+.print-layout-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 11px; padding: 3px; border-radius: 7px; background: #f0f3f7; }.print-layout-presets button { min-width: 0; height: 29px; padding: 0; border: 0; background: transparent; color: #667287; font-size: 9px; }.print-layout-presets button.active { background: #fff; color: #3157d5; box-shadow: 0 1px 4px #25314b1f; font-weight: 750; }
+.print-preview { min-width: 0; padding: 15px 18px 12px; display: flex; flex-direction: column; overflow: hidden; background: #eef1f5; }.print-preview > header { flex: none; display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }.print-preview > header > div { display: grid; gap: 2px; }.print-preview > header b { color: #3b4659; font-size: 11px; }.print-preview > header small { color: #7f8999; font-size: 9px; }.print-preview nav { display: flex; gap: 4px; }.print-preview nav button { width: 28px; height: 26px; min-width: 28px; padding: 0; font-size: 17px; }
+.print-paper-stage { min-height: 0; flex: 1; display: flex; align-items: center; justify-content: center; }.print-paper { width: min(100%, 380px); max-height: 465px; padding: 14px; background: #fff; box-shadow: 0 4px 18px #26304432; }.print-paper.landscape { width: min(100%, 440px); }.print-preview-grid { width: 100%; height: 100%; display: grid; gap: 8px; }.print-preview-cell { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fafafa; }.print-preview-cell.framed { border: 1px solid #a9b0bb; }.print-preview-cell img { width: 100%; height: 100%; object-fit: contain; }.print-preview-cell > small { position: absolute; right: 3px; bottom: 3px; min-width: 17px; height: 15px; padding: 0 4px; display: grid; place-items: center; border-radius: 3px; background: #273449d9; color: #fff; font-size: 8px; }.print-preview-loading { color: #9aa3b1; font-size: 9px; }
+.print-preview > footer { flex: none; margin-top: 10px; display: flex; justify-content: space-between; color: #687486; font-size: 9px; }.print-options-dialog > .modal-actions { margin: 0; padding: 13px 20px 17px; border-top: 1px solid #e4e8ef; }
 .temporary-document-warning { position: absolute; z-index: 40; top: 12px; left: 50%; transform: translateX(-50%); min-width: 390px; max-width: calc(100% - 36px); min-height: 34px; padding: 7px 35px 7px 11px; display: flex; align-items: center; gap: 8px; border: 1px solid #e7c35a; border-radius: 8px; background: #fff9dd; color: #725714; box-shadow: 0 7px 18px #795c131f; font-size: 11px; }
 .temporary-document-warning > span { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #e2ad25; color: white; font-weight: 800; }
 .temporary-document-warning button { position: absolute; right: 7px; width: 23px; height: 23px; padding: 0; border: 0; background: transparent; color: #9c7c2b; font-size: 17px; }
@@ -66,4 +81,70 @@
   .document-title { max-width: 150px; }
   .file-actions { gap: 4px; }
   .open-button, .folder-button { padding-inline: 8px; font-size: 11px; }
+}
+
+/* Print preview is a work surface: controls stay quiet while the paper remains the visual focus. */
+.print-modal-backdrop { padding: 18px; background: #11182770; backdrop-filter: blur(3px); }
+.print-options-dialog { width: min(1080px, calc(100vw - 36px)); height: min(760px, calc(100vh - 36px)); max-width: none; max-height: none; display: flex; flex-direction: column; border: 1px solid #d8dee8; border-radius: 8px; background: #f7f8fa; box-shadow: 0 24px 70px #1118274d; }
+.print-dialog-heading { height: 72px; min-height: 72px; padding: 0 22px; background: #fff; }
+.print-heading-copy { display: flex; align-items: center; gap: 12px; }
+.print-heading-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 7px; background: #3157d5; color: #fff; font-size: 14px; font-weight: 800; }
+.print-dialog-heading h2 { font-size: 17px; letter-spacing: 0; }
+.print-dialog-heading p { margin-top: 3px; font-size: 10px; }
+.print-dialog-heading > button { border-radius: 6px; }
+.print-dialog-body { min-height: 0; max-height: none; flex: 1; display: grid; grid-template-columns: 326px minmax(480px, 1fr); background: #f7f8fa; }
+.print-controls { padding: 0 20px 20px; overflow: auto; border-right: 1px solid #dfe4eb; background: #fff; }
+.print-control-section { padding: 19px 0 20px; border-bottom: 1px solid #e8ebf0; }
+.print-control-section:last-child { border-bottom: 0; }
+.print-control-section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+.print-control-section > header b { color: #273247; font-size: 11px; }
+.print-control-section > header span { color: #8a94a5; font-size: 9px; }
+.print-field { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: center; gap: 9px; margin-top: 10px; color: #657086; font-size: 10px; font-weight: 700; }
+.print-field select { width: 100%; height: 34px; padding: 0 9px; border: 1px solid #d5dbe5; border-radius: 6px; background: #fff; outline: 0; font-size: 10px; }
+.print-field select:focus { border-color: #6680d9; box-shadow: 0 0 0 3px #3157d514; }
+.print-orientation { height: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 7px; background: #eef1f5; }
+.print-orientation button { min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 5px; background: transparent; color: #68748a; font-size: 10px; }
+.print-orientation button.active { background: #fff; color: #3157d5; box-shadow: 0 1px 4px #1f29371f; font-weight: 750; }
+.paper-shape { display: block; border: 1.5px solid currentColor; border-radius: 1px; }
+.paper-shape.portrait { width: 9px; height: 13px; }
+.paper-shape.landscape { width: 13px; height: 9px; }
+.print-multipage-toggle { min-height: 52px; margin: 0; padding: 8px 9px; border-color: #d9dfe9; border-radius: 7px; background: #fafbfc; }
+.print-multipage-toggle:has(input:checked) { border-color: #8fa3e5; background: #f2f5ff; }
+.print-multipage-toggle input { width: 16px; height: 16px; }
+.print-multipage-toggle span b { color: #3b465b; font-size: 10px; }
+.print-multipage-toggle i { width: 30px; height: 18px; position: relative; border-radius: 9px; background: #c9d0dc; }
+.print-multipage-toggle i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #11182740; transition: transform .15s ease; }
+.print-multipage-toggle:has(input:checked) i { background: #3157d5; }
+.print-multipage-toggle:has(input:checked) i::after { transform: translateX(12px); }
+.print-layout-presets { margin-top: 12px; height: 35px; padding: 3px; border-radius: 7px; }
+.print-layout-presets button { height: 29px; border-radius: 5px; }
+.print-options-grid.advanced { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; }
+.print-frame-toggle { margin-top: 12px; padding: 4px 0; }
+.print-preview { padding: 18px 22px 14px; background: #e7eaee; }
+.print-preview > header { height: 36px; margin-bottom: 12px; }
+.print-preview > header b { font-size: 11px; }
+.print-preview > header small { font-size: 9px; }
+.print-preview nav { align-items: center; gap: 6px; }
+.print-preview nav span { min-width: 52px; color: #596477; text-align: center; font-size: 10px; font-weight: 700; }
+.print-preview nav button { width: 30px; height: 28px; border-color: #cbd2dc; border-radius: 6px; background: #f8f9fb; }
+.print-paper-stage { padding: 20px; overflow: hidden; border: 1px solid #d4d9e0; border-radius: 7px; background-color: #dfe3e8; background-image: linear-gradient(#cfd5dd 1px, transparent 1px), linear-gradient(90deg, #cfd5dd 1px, transparent 1px); background-size: 20px 20px; }
+.print-paper { width: auto; height: min(100%, 540px); max-width: 100%; max-height: 100%; padding: 18px; box-shadow: 0 10px 30px #2630443d, 0 0 0 1px #c8ced7; }
+.print-paper.landscape { width: min(100%, 600px); height: auto; }
+.print-preview-grid { gap: 7px; }
+.print-preview-cell { background: #f6f6f5; }
+.print-preview-cell.framed { border-color: #9ca5b2; }
+.print-preview-cell > small { right: 4px; bottom: 4px; }
+.print-preview > footer { height: 28px; margin-top: 8px; align-items: center; }
+.print-preview > footer b { color: #4f5a6c; font-size: 9px; }
+.print-dialog-actions { min-height: 66px; margin: 0; padding: 12px 22px; align-items: center; border-top: 1px solid #dfe4eb; background: #fff; }
+.print-dialog-actions > span { margin-right: auto; color: #727d8f; font-size: 10px; }
+.print-dialog-actions > span b { color: #2f3a4f; font-size: 12px; }
+.print-dialog-actions button { min-width: 82px; height: 36px; }
+.print-dialog-actions button.primary { min-width: 132px; }
+.insight-page-focus-ring { border-width: 3px; border-radius: 6px; }
+
+@media (max-width: 900px) {
+  .print-dialog-body { grid-template-columns: 285px minmax(360px, 1fr); }
+  .print-controls { padding-inline: 15px; }
+  .print-preview { padding-inline: 14px; }
 }

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
 import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import type { PrintPdfOptions, UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
+import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
+import { printPaperSize, printSheetCount } from '../lib/print-layout'
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
 export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply }
@@ -135,20 +137,76 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
   </div></div>
 }
 
-export function PrintOptionsDialog({ pages, onCancel, onSubmit }: { pages: number[]; onCancel(): void; onSubmit(options: PrintPdfOptions): void }) {
+function usePrintThumbnails(data: Uint8Array, pageIndices: number[]): Record<number, string> {
+  const [document, setDocument] = useState<PDFDocumentProxy>()
+  const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
+  const cache = useRef<Record<number, string>>({})
+  const pageKey = pageIndices.join(',')
+  useEffect(() => {
+    let active = true
+    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
+    task.promise.then((value) => { if (active) setDocument(value) }).catch(() => undefined)
+    return () => { active = false; void task.destroy() }
+  }, [data])
+  useEffect(() => {
+    if (!document) return
+    let cancelled = false
+    const render = async () => {
+      for (const pageIndex of pageIndices) {
+        if (cache.current[pageIndex] || cancelled) continue
+        const page = await document.getPage(pageIndex + 1)
+        const base = page.getViewport({ scale: 1 })
+        const viewport = page.getViewport({ scale: Math.min(220 / base.width, 280 / base.height) })
+        const canvas = window.document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
+        const context = canvas.getContext('2d', { alpha: false })
+        if (!context) continue
+        await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+        if (cancelled) return
+        cache.current[pageIndex] = canvas.toDataURL('image/png')
+        setThumbnails({ ...cache.current })
+      }
+    }
+    void render().catch(() => undefined)
+    return () => { cancelled = true }
+  }, [document, pageKey])
+  return thumbnails
+}
+
+export function PrintOptionsDialog({ data, pages, onCancel, onSubmit }: { data: Uint8Array; pages: number[]; onCancel(): void; onSubmit(options: PrintPdfOptions): void }) {
   const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>('A4')
   const [landscape, setLandscape] = useState(false)
   const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>('simplex')
   const [multiPage, setMultiPage] = useState(false)
-  const [rows, setRows] = useState(1)
-  const [columns, setColumns] = useState(1)
+  const [rows, setRows] = useState(2)
+  const [columns, setColumns] = useState(2)
   const [scale, setScale] = useState(100)
   const [frame, setFrame] = useState(true)
-  return <div className="modal-backdrop"><div className="modal print-options-dialog"><h2>打印设置</h2><p>已选择 {pages.length} 页。先设置常用打印方式，需要时再展开一张纸多页排版。</p>
-    <div className="print-options-grid basic"><label>纸张尺寸<select value={pageSize} onChange={(event) => setPageSize(event.target.value as PrintPdfOptions['pageSize'])}><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Tabloid</option></select></label><label>方向<select value={landscape ? 'landscape' : 'portrait'} onChange={(event) => setLandscape(event.target.value === 'landscape')}><option value="portrait">纵向</option><option value="landscape">横向</option></select></label><label>印刷方式<select value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">单面</option><option value="longEdge">双面（长边翻页）</option><option value="shortEdge">双面（短边翻页）</option></select></label></div>
-    <label className="print-multipage-toggle"><input type="checkbox" checked={multiPage} onChange={(event) => setMultiPage(event.target.checked)} /><span><b>一张纸打印多页</b><small>默认关闭，适合讲义、缩印和草稿</small></span><i>{multiPage ? '已展开' : '可选'}</i></label>
-    {multiPage && <><div className="print-options-grid advanced"><label>每页小页缩放<input type="number" min="35" max="150" value={scale} onChange={(event) => setScale(Math.max(35, Math.min(150, Number(event.target.value) || 100)))} /><small>%</small></label><label>X 行<input type="number" min="1" max="6" value={rows} onChange={(event) => setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1)))} /></label><label>Y 列<input type="number" min="1" max="6" value={columns} onChange={(event) => setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1)))} /></label></div><label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>小页加框</b><small>便于裁切和阅读分隔</small></span></label></>}
-    <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="primary" onClick={() => onSubmit({ pageSize, landscape, duplex, multiPage, rows, columns, scale, frame })}>打开系统打印</button></div>
+  const [sheetIndex, setSheetIndex] = useState(0)
+  const options = useMemo<PrintPdfOptions>(() => ({ pageSize, landscape, duplex, multiPage, rows, columns, scale, frame }), [pageSize, landscape, duplex, multiPage, rows, columns, scale, frame])
+  const perSheet = multiPage ? rows * columns : 1
+  const sheetCount = printSheetCount(pages.length, options)
+  const previewPages = pages.slice(sheetIndex * perSheet, (sheetIndex + 1) * perSheet)
+  const thumbnails = usePrintThumbnails(data, previewPages)
+  const [paperWidth, paperHeight] = printPaperSize(options)
+  useEffect(() => { setSheetIndex((current) => Math.min(current, Math.max(0, sheetCount - 1))) }, [sheetCount])
+  const setPreset = (nextRows: number, nextColumns: number) => { setRows(nextRows); setColumns(nextColumns); setSheetIndex(0) }
+  return <div className="modal-backdrop print-modal-backdrop"><div className="modal print-options-dialog"><div className="print-dialog-heading"><div className="print-heading-copy"><span className="print-heading-icon" aria-hidden="true">⎙</span><div><h2>打印预览</h2><p>{pages.length} 个文档页面 · {sheetCount} 张纸</p></div></div><button type="button" aria-label="关闭打印设置" title="关闭" onClick={onCancel}>×</button></div>
+    <div className="print-dialog-body"><aside className="print-controls">
+      <section className="print-control-section"><header><b>纸张设置</b><span>{pageSize} · {landscape ? '横向' : '纵向'}</span></header>
+        <label className="print-field"><span>纸张尺寸</span><select value={pageSize} onChange={(event) => { setPageSize(event.target.value as PrintPdfOptions['pageSize']); setSheetIndex(0) }}><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Tabloid</option></select></label>
+        <div className="print-field"><span>页面方向</span><div className="print-orientation" role="group" aria-label="页面方向"><button type="button" className={!landscape ? 'active' : ''} onClick={() => { setLandscape(false); setSheetIndex(0) }}><i className="paper-shape portrait" aria-hidden="true" />纵向</button><button type="button" className={landscape ? 'active' : ''} onClick={() => { setLandscape(true); setSheetIndex(0) }}><i className="paper-shape landscape" aria-hidden="true" />横向</button></div></div>
+        <label className="print-field"><span>印刷方式</span><select value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">单面打印</option><option value="longEdge">双面 · 长边翻页</option><option value="shortEdge">双面 · 短边翻页</option></select></label>
+      </section>
+      <section className="print-control-section layout-section"><header><b>页面布局</b><span>{multiPage ? `${rows * columns} 页/张` : '1 页/张'}</span></header>
+        <label className="print-multipage-toggle"><input type="checkbox" checked={multiPage} onChange={(event) => { setMultiPage(event.target.checked); setSheetIndex(0) }} /><span><b>合并多页到一张纸</b><small>PDFuck 将按右侧预览直接生成拼版</small></span><i aria-hidden="true" /></label>
+        {multiPage && <><div className="print-layout-presets" aria-label="每张纸页数"><button type="button" className={rows === 1 && columns === 2 ? 'active' : ''} onClick={() => setPreset(1, 2)}>2 页</button><button type="button" className={rows === 2 && columns === 2 ? 'active' : ''} onClick={() => setPreset(2, 2)}>4 页</button><button type="button" className={rows === 2 && columns === 3 ? 'active' : ''} onClick={() => setPreset(2, 3)}>6 页</button><button type="button" className={rows === 3 && columns === 3 ? 'active' : ''} onClick={() => setPreset(3, 3)}>9 页</button></div><div className="print-options-grid advanced"><label>缩放<input type="number" min="35" max="100" value={scale} onChange={(event) => setScale(Math.max(35, Math.min(100, Number(event.target.value) || 100)))} /><small>%</small></label><label>行数<input type="number" min="1" max="6" value={rows} onChange={(event) => { setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label><label>列数<input type="number" min="1" max="6" value={columns} onChange={(event) => { setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label></div><label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>显示页面边框</b><small>打印时保留浅灰分隔线</small></span></label></>}
+      </section>
+    </aside><section className="print-preview"><header><div><b>纸张预览</b><small>输出效果与下方纸张比例一致</small></div><nav><button type="button" disabled={sheetIndex <= 0} aria-label="上一张纸" title="上一张纸" onClick={() => setSheetIndex((value) => Math.max(0, value - 1))}>‹</button><span>{sheetIndex + 1} / {sheetCount}</span><button type="button" disabled={sheetIndex >= sheetCount - 1} aria-label="下一张纸" title="下一张纸" onClick={() => setSheetIndex((value) => Math.min(sheetCount - 1, value + 1))}>›</button></nav></header>
+      <div className="print-paper-stage"><div className={`print-paper${landscape ? ' landscape' : ''}`} style={{ aspectRatio: `${paperWidth} / ${paperHeight}` }}><div className="print-preview-grid" style={{ gridTemplateRows: `repeat(${multiPage ? rows : 1}, minmax(0, 1fr))`, gridTemplateColumns: `repeat(${multiPage ? columns : 1}, minmax(0, 1fr))` }}>{previewPages.map((pageIndex) => <div key={pageIndex} className={`print-preview-cell${frame && multiPage ? ' framed' : ''}`}>{thumbnails[pageIndex] ? <img src={thumbnails[pageIndex]} alt={`第 ${pageIndex + 1} 页预览`} /> : <span className="print-preview-loading">正在生成预览</span>}<small>{pageIndex + 1}</small></div>)}</div></div></div>
+      <footer><span>{multiPage ? `${rows} × ${columns} 拼版` : '单页铺放'}</span><b>{pageSize} · {landscape ? '横向' : '纵向'} · {duplex === 'simplex' ? '单面' : '双面'}</b></footer>
+    </section></div>
+    <div className="modal-actions print-dialog-actions"><span><b>{pages.length}</b> 页将使用 <b>{sheetCount}</b> 张纸</span><button onClick={onCancel}>取消</button><button className="primary" onClick={() => onSubmit(options)}>打开系统打印</button></div>
   </div></div>
 }
 

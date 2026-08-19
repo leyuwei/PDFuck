@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
+import type { DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
+  platform: process.platform,
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   readPdf: (path) => ipcRenderer.invoke('pdf:read', path),
   getPdfPassword: (credentialKey) => ipcRenderer.invoke('pdf:password-get', credentialKey),
@@ -17,6 +18,9 @@ const api: DesktopApi = {
   filePath: (file) => webUtils.getPathForFile(file),
   initialPdfs: () => ipcRenderer.invoke('pdf:initial'),
   recentPdfs: () => ipcRenderer.invoke('pdf:recent'),
+  getReadingPosition: (path) => ipcRenderer.invoke('pdf:reading-position-get', path),
+  setReadingPosition: (path, position: ReadingPosition) => ipcRenderer.invoke('pdf:reading-position-set', { path, position }),
+  flushReadingPosition: (path, position: ReadingPosition) => ipcRenderer.send('pdf:reading-position-flush', { path, position }),
   updateWindowDocument: (state: WindowDocumentState) => ipcRenderer.send('window:update-document', state),
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),

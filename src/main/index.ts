@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExportRequest, PdfPasswordUpdate, PrintPdfRequest, PrintPdfResult, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
@@ -19,7 +19,19 @@ let mainSession: MainWindowSession | null = null
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
 let recentWriteQueue: Promise<void> = Promise.resolve()
+let readingPositionWriteQueue: Promise<void> = Promise.resolve()
 let passwordStore: PdfPasswordStore | undefined
+
+const PRINT_PAPER_POINTS: Record<PrintPdfOptions['pageSize'], [number, number]> = {
+  A3: [841.89, 1190.55], A4: [595.28, 841.89], A5: [419.53, 595.28], Letter: [612, 792], Legal: [612, 1008], Tabloid: [792, 1224]
+}
+
+function printPageSizeMicrons(options: NonNullable<PrintPdfRequest['options']>): { width: number; height: number } {
+  const [width, height] = PRINT_PAPER_POINTS[options.pageSize]
+  const points = options.landscape ? [height, width] : [width, height]
+  const pointsToMicrons = (value: number) => Math.round(value * 352.7777778)
+  return { width: pointsToMicrons(points[0]), height: pointsToMicrons(points[1]) }
+}
 
 const testUserData = !app.isPackaged ? process.env.PDFUCK_TEST_USER_DATA : undefined
 if (testUserData) app.setPath('userData', resolve(testUserData))
@@ -104,6 +116,42 @@ async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
 }
 
 function recentPdfsPath(): string { return join(app.getPath('userData'), 'recent-pdfs.json') }
+function readingPositionsPath(): string { return join(app.getPath('userData'), 'reading-positions.json') }
+
+async function readReadingPositions(): Promise<Record<string, ReadingPosition>> {
+  try {
+    const parsed = JSON.parse(await readFile(readingPositionsPath(), 'utf8')) as unknown
+    if (!parsed || typeof parsed !== 'object') return {}
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).flatMap(([path, value]) => {
+      if (!value || typeof value !== 'object') return []
+      const position = value as Partial<ReadingPosition>
+      if (!Number.isFinite(position.page) || !Number.isFinite(position.zoom)) return []
+      return [[resolve(path), {
+        page: Math.max(0, Math.floor(position.page!)),
+        zoom: Math.max(0.25, Math.min(4, position.zoom!)),
+        offset: Math.max(0, Math.min(1, Number.isFinite(position.offset) ? position.offset! : 0))
+      } satisfies ReadingPosition]]
+    }))
+  } catch { return {} }
+}
+
+async function readReadingPosition(path: string): Promise<ReadingPosition | null> {
+  const positions = await readReadingPositions()
+  return positions[resolve(path)] || null
+}
+
+async function rememberReadingPosition(path: string, position: ReadingPosition): Promise<void> {
+  readingPositionWriteQueue = readingPositionWriteQueue.catch(() => undefined).then(async () => {
+    const positions = await readReadingPositions()
+    positions[resolve(path)] = {
+      page: Math.max(0, Math.floor(position.page)),
+      zoom: Math.max(0.25, Math.min(4, position.zoom)),
+      offset: Math.max(0, Math.min(1, Number.isFinite(position.offset) ? position.offset! : 0))
+    }
+    await atomicWrite(readingPositionsPath(), new TextEncoder().encode(JSON.stringify(positions, null, 2)))
+  })
+  return readingPositionWriteQueue
+}
 
 function getPasswordStore(): PdfPasswordStore {
   if (!passwordStore) passwordStore = new PdfPasswordStore(join(app.getPath('userData'), 'pdf-passwords.json'), safeStorage)
@@ -174,10 +222,12 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
       const options = request.options
       const printOptions: Electron.WebContentsPrintOptions = options
         ? {
-            pageSize: options.pageSize,
-            landscape: options.landscape,
-            duplexMode: options.duplex === 'simplex' ? 'simplex' : options.duplex === 'longEdge' ? 'longEdge' : 'shortEdge',
-            ...(options.multiPage ? { pagesPerSheet: Math.max(1, options.rows * options.columns), scaleFactor: Math.max(35, Math.min(150, options.scale)) } : {})
+            // The renderer sends a PDF whose page box is already in the
+            // requested orientation. Passing landscape=true here makes some
+            // macOS printer drivers rotate that page a second time.
+            pageSize: printPageSizeMicrons(options),
+            landscape: false,
+            duplexMode: options.duplex === 'simplex' ? 'simplex' : options.duplex === 'longEdge' ? 'longEdge' : 'shortEdge'
           }
         : { usePrinterDefaultPageSize: true }
       window.webContents.print({ silent: false, printBackground: true, ...printOptions }, (success, failureReason) => {
@@ -197,7 +247,10 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
 function createMainWindow(): BrowserWindow {
   if (mainSession && !mainSession.window.isDestroyed()) { showMainWindow(); return mainSession.window }
   const window = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 1080, minHeight: 680, frame: false,
+    width: 1440, height: 900, minWidth: 1080, minHeight: 680,
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 20 } }
+      : { frame: false }),
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
@@ -262,6 +315,21 @@ app.whenReady().then(() => {
     return mainSession.initialPaths.splice(0)
   })
   ipcMain.handle('pdf:recent', (event) => { requireMainWindow(event.sender); return readRecentPdfs() })
+  ipcMain.handle('pdf:reading-position-get', (event, path: string) => {
+    requireMainWindow(event.sender)
+    if (typeof path !== 'string' || !isPdf(path)) throw new Error('阅读位置请求无效。')
+    return readReadingPosition(path)
+  })
+  ipcMain.handle('pdf:reading-position-set', (event, request: { path: string; position: ReadingPosition }) => {
+    requireMainWindow(event.sender)
+    if (!request || typeof request.path !== 'string' || !isPdf(request.path) || !request.position) throw new Error('阅读位置请求无效。')
+    return rememberReadingPosition(request.path, request.position)
+  })
+  ipcMain.on('pdf:reading-position-flush', (event, request: { path: string; position: ReadingPosition }) => {
+    requireMainWindow(event.sender)
+    if (!request || typeof request.path !== 'string' || !isPdf(request.path) || !request.position) return
+    void rememberReadingPosition(request.path, request.position)
+  })
   ipcMain.handle('pdf:save', async (event, request: SavePdfRequest) => {
     const window = requireMainWindow(event.sender)
     let target = request.saveAs ? undefined : request.currentPath

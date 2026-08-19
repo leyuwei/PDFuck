@@ -9,14 +9,41 @@ describe('document insights', () => {
     expect(stablePathColor('/a/report.pdf')).not.toBe(stablePathColor('/b/report.pdf'))
   })
 
-  it('finds image/table pages and common spelling issues', () => {
-    expect(visualHits([{ pageIndex: 0, text: 'Table 1\nA  B\n1  2', imageCount: 2 }])).toHaveLength(2)
+  it('finds caption keywords, image objects, and common spelling issues', () => {
+    const visuals = visualHits([{ pageIndex: 0, text: 'Figure 1: system overview. Table 1: Results.', imageCount: 2 }])
+    expect(visuals.map((hit) => hit.label)).toEqual(['Figure 1', 'Table 1'])
+    expect(visualHits([{ pageIndex: 1, text: 'Fig. 2: architecture. Tab. 3: ablation.' }]).map((hit) => hit.label)).toEqual(['Fig. 2', 'Tab. 3'])
     expect(grammarIssues([{ pageIndex: 1, text: 'teh results recieve data' }])[0]).toEqual(expect.objectContaining({ term: 'teh', replacement: 'the' }))
+  })
+
+  it('gives suspected tables a precise text anchor', () => {
+    const [hit] = visualHits([{ pageIndex: 3, text: 'Results Mean: 15.2 median: 12.8' }])
+    expect(hit).toEqual(expect.objectContaining({ pageIndex: 3, label: '疑似表格', anchor: 'Mean: 15' }))
   })
 
   it('links numbered citations to the references section', () => {
     const links = citationLinks([{ pageIndex: 0, text: 'Prior work [1] is useful.' }, { pageIndex: 1, text: 'References\n[1] Example Author. 2020.' }])
     expect(links[0]).toEqual(expect.objectContaining({ pageIndex: 0, citation: '1', reference: '[1] Example Author. 2020.' }))
+  })
+
+  it('links citations when PDF extraction letter-spaces the references heading', () => {
+    const links = citationLinks([
+      { pageIndex: 0, text: 'Open RAN improves sharing [1], [2].' },
+      { pageIndex: 14, text: 'R EFERENCES [1] M. Polese, Open RAN. 2024. [2] B. Agarwal, 6G networks. 2025.' }
+    ])
+    expect(links).toHaveLength(2)
+    expect(links.map((link) => link.citation)).toEqual(['1', '2'])
+    expect(links[0].reference).toContain('[1]')
+  })
+
+  it('only reports high-confidence grammar findings', () => {
+    expect(grammarIssues([{ pageIndex: 1, text: 'The result is tested and the input was received.' }])).toEqual([])
+    const issues = grammarIssues([{ pageIndex: 1, text: 'It are tested. They was repeated repeated.' }])
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: '主谓一致', term: 'are', replacement: 'is', anchor: 'It are' }),
+      expect.objectContaining({ label: '主谓一致', term: 'was', replacement: 'were', anchor: 'They was' }),
+      expect.objectContaining({ label: '重复单词', term: 'repeated', anchor: 'repeated repeated' })
+    ]))
   })
 
   it('parses inline IEEE references when PDF text extraction has no line breaks', () => {
@@ -28,5 +55,22 @@ describe('document insights', () => {
     expect(links[0].reference).toContain('[15]')
     expect(links[1].reference).toContain('[16]')
     expect(links[0].anchor).toBe('[15]')
+  })
+
+  it('expands bracketed citation ranges and Unicode dash ranges', () => {
+    const links = citationLinks([
+      { pageIndex: 0, text: 'Earlier work [1-3] and later work [2]–[3].' },
+      { pageIndex: 1, text: 'REFERENCES [1] First. 2020. [2] Second. 2021. [3] Third. 2022.' }
+    ])
+    expect(links.map((link) => link.citation)).toEqual(['1', '2', '3', '2', '3'])
+  })
+
+  it('keeps every citation occurrence on the same page', () => {
+    const links = citationLinks([
+      { pageIndex: 0, text: 'First [1], repeated [1], and repeated again [1].' },
+      { pageIndex: 1, text: 'REFERENCES [1] Example Author. 2020.' }
+    ])
+    expect(links).toHaveLength(3)
+    expect(links.map((link) => link.anchorOccurrence)).toEqual([0, 1, 2])
   })
 })

@@ -24,6 +24,7 @@ interface Props {
   onSearch(): void
   onVisuals(): void
   onCitations(): void
+  citationsEnabled: boolean
   onGrammar(): void
 }
 
@@ -34,9 +35,9 @@ export function ToolPanel(props: Props) {
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>查看</h2><p className="subtitle">选择适合当前阅读场景的页面布局。</p><h3>页面布局</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>连续滚动</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>单页查看</button></div>
-      <h3>阅读工具</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>搜索 PDF <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>一键图表</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onCitations}>关联引文</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>语法检查</button>
+      <h3>阅读工具</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>搜索 PDF <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>一键图表</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? '关闭引文标记' : '关联引文'}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>语法检查</button>
       {readOnly && <div className="encrypted-readonly"><b>加密文档 · 只读</b><span>当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。</span></div>}
-      <div className="info-card"><b>阅读提示</b><span>按住 Ctrl 并滚动鼠标滚轮，可以快速缩放页面。</span></div></section>}
+      <div className="info-card"><b>阅读提示</b><span>Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。</span></div></section>}
     {module === 'edit' && <section><h2>编辑</h2><p className="subtitle">直接调整页面或添加带格式的文字内容。</p><h3>页面</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint="拖动框选要保留的页面区域">框选裁切页面</ToolButton>
       <button className="danger wide" disabled={disabled} onClick={props.onDeletePages}>批量删除页面…</button><h3>内容</h3>

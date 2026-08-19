@@ -19,6 +19,13 @@ export interface RecentPdf {
   lastOpened: string
 }
 
+export interface ReadingPosition {
+  page: number
+  zoom: number
+  /** Normalized distance from the top of the active page. */
+  offset?: number
+}
+
 export interface SavePdfRequest {
   data: Uint8Array
   currentPath?: string
@@ -83,6 +90,7 @@ export interface UpdateCheckResult {
 }
 
 export interface DesktopApi {
+  readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
   readPdf(path: string): Promise<OpenedPdf>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
@@ -98,6 +106,9 @@ export interface DesktopApi {
   filePath(file: File): string
   initialPdfs(): Promise<string[]>
   recentPdfs(): Promise<RecentPdf[]>
+  getReadingPosition(path: string): Promise<ReadingPosition | null>
+  setReadingPosition(path: string, position: ReadingPosition): Promise<void>
+  flushReadingPosition(path: string, position: ReadingPosition): void
   updateWindowDocument(state: WindowDocumentState): void
   windowMinimize(): void
   windowToggleMaximize(): void

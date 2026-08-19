@@ -27,6 +27,16 @@ export interface PageTextSnapshot {
   visualRects?: PdfRect[]
 }
 
+function normalizeInsightText(text: string): string {
+  return text
+    .replace(/\u00ad/g, '')
+    .replace(/\s*[-\u2010\u2011]\s+(?=[A-Za-z])/g, '')
+    .replace(/R\s*E\s*F\s*E\s*R\s*E\s*N\s*C\s*E\s*S/gi, 'REFERENCES')
+    .replace(/B\s*I\s*B\s*L\s*I\s*O\s*G\s*R\s*A\s*P\s*H\s*Y/gi, 'BIBLIOGRAPHY')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 const TEMP_SEGMENT = /^(?:temp|tmp|wx|wechat|tencent|qq|feishu|dingding|钉钉|微信|腾讯)(?:[-_.].*)?$/i
 
 export function isTemporaryDocumentPath(filePath?: string): boolean {
@@ -52,22 +62,40 @@ export function stablePathColor(filePath?: string): string {
 export function visualHits(pages: Array<PageTextSnapshot & { imageCount?: number }>): InsightHit[] {
   return pages.flatMap((page) => {
     const hits: InsightHit[] = []
-    if ((page.imageCount || 0) > 0) {
-      const caption = page.text.match(/(?:figure|fig\.?|图)\s*\d+[^.!?。！？\n]{0,120}/i)?.[0]
-      hits.push({ pageIndex: page.pageIndex, label: `图片 ${page.imageCount} 个`, context: caption || '检测到页面图像对象', anchor: caption, rects: page.visualRects })
+    const text = page.text.replace(/\s+/g, ' ').trim()
+    const figureMatches = [...text.matchAll(/\b(?:figure|fig\.?|image|plate)\s*\d+[a-z]?\b[^.!?。！？]{0,180}/gi), ...text.matchAll(/图\s*\d+[A-Za-z]?[^.!?。！？]{0,180}/gi)]
+    const tableMatches = [...text.matchAll(/\b(?:table|tab\.?)\s*\d+[a-z]?\b[^.!?。！？]{0,180}/gi), ...text.matchAll(/表\s*\d+[A-Za-z]?[^.!?。！？]{0,180}/gi)]
+    const seenCaptions = new Set<string>()
+    for (const match of figureMatches) {
+      const caption = match[0].trim()
+      const key = caption.toLocaleLowerCase()
+      if (seenCaptions.has(`figure:${key}`)) continue
+      seenCaptions.add(`figure:${key}`)
+      const marker = caption.match(/^(?:figure|fig\.?|image|plate|图)\s*\d+[a-z]?/i)?.[0] || '图片'
+      hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption, rects: page.visualRects })
     }
-    const lines = page.text.split(/\n+/).filter(Boolean)
-    const tabularLines = lines.filter((line) => (line.match(/\s{2,}|\t|\|/g) || []).length >= 2)
-    if (tabularLines.length >= 2 || /\btable\b|表\s*\d+/i.test(page.text)) {
-      const context = tabularLines.slice(0, 2).join(' · ') || '检测到表格标题或列式文本'
-      hits.push({ pageIndex: page.pageIndex, label: '疑似表格', context, anchor: tabularLines[0] || (page.text.match(/(?:Table\s*\d+|表\s*\d+[^.。]*)/i)?.[0]) })
+    if ((page.imageCount || 0) > 0 && !figureMatches.length) {
+      hits.push({ pageIndex: page.pageIndex, label: `图片 ${page.imageCount} 个`, context: '检测到页面图像对象', rects: page.visualRects })
+    }
+    for (const match of tableMatches) {
+      const caption = match[0].trim()
+      const key = caption.toLocaleLowerCase()
+      if (seenCaptions.has(`table:${key}`)) continue
+      seenCaptions.add(`table:${key}`)
+      const marker = caption.match(/^(?:table|tab\.?|表)\s*\d+[a-z]?/i)?.[0] || '表格'
+      hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption })
+    }
+    const tableSignal = text.match(/\|[^|]{1,}\|/) || text.match(/(?:^|\s)((?:n|mean|std\.?|median)\s*[:=]\s*[^.!?。！？]{0,80})/i)
+    if (!tableMatches.length && tableSignal) {
+      const anchor = (tableSignal[1] || tableSignal[0]).trim()
+      hits.push({ pageIndex: page.pageIndex, label: '疑似表格', context: `检测到表格列式文本或统计字段：${anchor}`, anchor })
     }
     return hits
   })
 }
 
 const CITATION_PATTERNS = [
-  /\[(\d{1,3}(?:\s*[-,]\s*\d{1,3})*)\]/g,
+  /\[\s*(\d{1,3}(?:\s*[-\u2013\u2014,]\s*\d{1,3})*)\s*\](?:\s*[-\u2013\u2014]\s*\[\s*(\d{1,3})\s*\])?/g,
   /\(([A-Z][A-Za-z'’-]{1,32}(?:\s+et\s+al\.)?(?:,\s*|\s+)(?:19|20)\d{2}[a-z]?)\)/g,
   /\b([A-Z][A-Za-z'’-]{1,32}\s+\((?:19|20)\d{2}[a-z]?\))\b/g
 ]
@@ -75,18 +103,20 @@ const CITATION_PATTERNS = [
 interface ReferenceEntry { number?: number; text: string }
 
 function referenceHeadingIndex(text: string): number {
-  const match = text.match(/(?:^|\s)(?:references|bibliography)(?=\s*(?:\[\d{1,3}\]|\d{1,3}[.)]|$))/i)
+  const normalized = normalizeInsightText(text)
+  const match = normalized.match(/(?:^|\s)(?:references|bibliography)(?=\s*(?:\[\d{1,3}\]|\d{1,3}[.)]|$))/i)
   if (match?.index !== undefined) return match.index + match[0].search(/(?:references|bibliography)/i)
-  const chinese = text.search(/参考文献/i)
+  const chinese = normalized.search(/参考文献/i)
   return chinese
 }
 
 function referenceEntries(text: string): ReferenceEntry[] {
   // IEEE-like papers often have every reference on one PDF text line after
   // extraction. Split by the numbered marker instead of relying on newlines.
-  const heading = referenceHeadingIndex(text)
+  const normalized = normalizeInsightText(text)
+  const heading = referenceHeadingIndex(normalized)
   if (heading < 0) return []
-  const body = text.slice(heading).replace(/^\s*(?:references|bibliography|参考文献)\s*/i, '')
+  const body = normalized.slice(heading).replace(/^\s*(?:references|bibliography|参考文献)\s*/i, '')
   const numbered: ReferenceEntry[] = []
   const marker = /(?:^|\s)\[(\d{1,3})\]\s*/g
   let match: RegExpExecArray | null
@@ -108,30 +138,43 @@ function referenceEntries(text: string): ReferenceEntry[] {
 }
 
 export function citationLinks(pages: PageTextSnapshot[]): CitationLink[] {
-  const references = pages.find((page) => referenceHeadingIndex(page.text) >= 0)
+  const normalizedPages = pages.map((page) => ({ ...page, text: normalizeInsightText(page.text) }))
+  const references = normalizedPages.find((page) => referenceHeadingIndex(page.text) >= 0)
   if (!references) return []
   const entries = referenceEntries(references.text)
   if (!entries.length) return []
   const links: CitationLink[] = []
-  pages.filter((page) => page.pageIndex < references.pageIndex).forEach((page) => {
+  normalizedPages.filter((page) => page.pageIndex < references.pageIndex).forEach((page) => {
     const occurrences = new Map<string, number>()
     for (const pattern of CITATION_PATTERNS) {
       pattern.lastIndex = 0
       let match: RegExpExecArray | null
       while ((match = pattern.exec(page.text))) {
-        const citation = match[1]
-        const number = /^\d+$/.test(citation) ? Number(citation) : undefined
-        const entry = number ? entries.find((candidate) => candidate.number === number) : entries.find((candidate) => candidate.text.toLowerCase().includes(citation.split(/\s+/)[0].toLowerCase()))
-        if (entry) {
-          const anchor = match[0]
-          const anchorOccurrence = occurrences.get(anchor.toLocaleLowerCase()) || 0
-          occurrences.set(anchor.toLocaleLowerCase(), anchorOccurrence + 1)
-          links.push({ pageIndex: page.pageIndex, label: citation, citation, reference: entry.text, anchor, anchorOccurrence, context: page.text.slice(Math.max(0, match.index - 42), Math.min(page.text.length, match.index + match[0].length + 70)) })
-        }
+        const citation = match[2] ? `${match[1]}-${match[2]}` : match[1]
+        const values: string[] = []
+        if (/^\d/.test(citation)) {
+          citation.split(',').forEach((part) => {
+            const range = part.trim().split(/\s*[-\u2013\u2014]\s*/).map(Number)
+            if (range.length === 2 && range.every((value) => Number.isInteger(value)) && range[1] >= range[0] && range[1] - range[0] <= 100) {
+              for (let value = range[0]; value <= range[1]; value += 1) values.push(String(value))
+            } else if (part.trim()) values.push(part.trim())
+          })
+        } else values.push(citation)
+        const anchor = match[0]
+        const anchorKey = anchor.toLocaleLowerCase()
+        const anchorOccurrence = occurrences.get(anchorKey) || 0
+        occurrences.set(anchorKey, anchorOccurrence + 1)
+        values.forEach((value) => {
+          const number = /^\d+$/.test(value) ? Number(value) : undefined
+          const entry = number !== undefined
+            ? entries.find((candidate) => candidate.number === number)
+            : entries.find((candidate) => candidate.text.toLowerCase().includes(value.split(/\s+/)[0].toLowerCase()))
+          if (entry) links.push({ pageIndex: page.pageIndex, label: value, citation: value, reference: entry.text, anchor, anchorOccurrence, context: page.text.slice(Math.max(0, match!.index - 42), Math.min(page.text.length, match!.index + match![0].length + 70)) })
+        })
       }
     }
   })
-  return links.filter((link, index, all) => all.findIndex((candidate) => candidate.pageIndex === link.pageIndex && candidate.citation === link.citation && candidate.reference === link.reference) === index)
+  return links
 }
 
 const ENGLISH_TYPO_REPLACEMENTS: Record<string, string> = {
@@ -141,19 +184,42 @@ const ENGLISH_TYPO_REPLACEMENTS: Record<string, string> = {
 export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
   const issues: GrammarIssue[] = []
   pages.forEach((page) => {
-    const words = page.text.match(/[A-Za-z]{3,}/g) || []
+    const text = normalizeInsightText(page.text)
+    const words = text.match(/[A-Za-z]{3,}/g) || []
     const occurrences = new Map<string, number>()
+    const lowerText = text.toLocaleLowerCase()
+    const searchOffsets = new Map<string, number>()
     words.forEach((word) => {
       const replacement = ENGLISH_TYPO_REPLACEMENTS[word.toLowerCase()]
       if (replacement) {
         const key = word.toLocaleLowerCase(), anchorOccurrence = occurrences.get(key) || 0
         occurrences.set(key, anchorOccurrence + 1)
-        const offset = page.text.toLocaleLowerCase().indexOf(key)
-        issues.push({ pageIndex: page.pageIndex, label: `拼写：${word}`, term: word, replacement, anchor: word, anchorOccurrence, context: page.text.slice(Math.max(0, offset - 45), offset + word.length + 65) })
+        const offset = lowerText.indexOf(key, searchOffsets.get(key) || 0)
+        searchOffsets.set(key, offset < 0 ? (searchOffsets.get(key) || 0) : offset + key.length)
+        issues.push({ pageIndex: page.pageIndex, label: `拼写：${word}`, term: word, replacement, anchor: word, anchorOccurrence, context: text.slice(Math.max(0, offset - 45), offset + word.length + 65) })
       }
     })
-    if (/\s{2,}/.test(page.text)) issues.push({ pageIndex: page.pageIndex, label: '多余空格', term: '  ', context: '检测到连续空格；不会标记跨行连字符或跨页断词' })
-    if (/\b(?:is|are|was|were)\s+\w+ed\b/i.test(page.text)) issues.push({ pageIndex: page.pageIndex, label: '可能的语法问题', term: 'be + past tense', context: '请确认被动语态或时态是否符合语境' })
+    const duplicateOccurrences = new Map<string, number>()
+    const duplicatePattern = /\b([A-Za-z]{2,})\s+\1\b/gi
+    let duplicateMatch: RegExpExecArray | null
+    while ((duplicateMatch = duplicatePattern.exec(text))) {
+      const anchor = duplicateMatch[0]
+      const key = anchor.toLocaleLowerCase(), anchorOccurrence = duplicateOccurrences.get(key) || 0
+      duplicateOccurrences.set(key, anchorOccurrence + 1)
+      issues.push({ pageIndex: page.pageIndex, label: '重复单词', term: duplicateMatch[1], replacement: duplicateMatch[1], anchor, anchorOccurrence, context: text.slice(Math.max(0, duplicateMatch.index - 45), duplicateMatch.index + anchor.length + 65) })
+    }
+    const agreementRules = [
+      { pattern: /\b(he|she|it|this|that)\s+(are|were)\b/gi, replacement: (verb: string) => verb === 'are' ? 'is' : 'was' },
+      { pattern: /\b(these|those|they|we|you)\s+(is|was)\b/gi, replacement: (verb: string) => verb === 'is' ? 'are' : 'were' }
+    ]
+    agreementRules.forEach(({ pattern, replacement }) => {
+      let match: RegExpExecArray | null
+      while ((match = pattern.exec(text))) {
+        const anchor = match[0]
+        const verb = match[2]
+        issues.push({ pageIndex: page.pageIndex, label: '主谓一致', term: verb, replacement: replacement(verb.toLocaleLowerCase()), anchor, anchorOccurrence: 0, context: text.slice(Math.max(0, match.index - 45), match.index + anchor.length + 65) })
+      }
+    })
   })
   return issues
 }
