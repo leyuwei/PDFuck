@@ -12,7 +12,7 @@ import { fontCategory, normalizeFontFamily } from './text-fonts'
 import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
-  highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线'
+  highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线', ai_polish: '智能润色'
 }
 
 const MAX_HISTORY_ENTRIES = 40
@@ -66,6 +66,7 @@ function pageGeometry(page: PDFPage): PageGeometry {
 }
 
 function subtypeFor(kind: AnnotationKind): string {
+  if (kind === 'ai_polish') return 'Text'
   if (kind === 'note') return 'Text'
   if (kind === 'insert') return 'Caret'
   if (kind === 'underline') return 'Underline'
@@ -76,6 +77,7 @@ function subtypeFor(kind: AnnotationKind): string {
 function kindFor(dict: PDFDict, document: PDFDocument): AnnotationKind | null {
   const subtype = decodeObject(document, dict.get(PDFName.of('Subtype')))
   const subject = decodeObject(document, dict.get(PDFName.of('Subj'))).toLowerCase()
+  if (subject.includes('ai_polish') || subject.includes('智能润色')) return 'ai_polish'
   if (subtype === 'Highlight') return 'highlight'
   if (subtype === 'Text') return 'note'
   if (subtype === 'Caret') return 'insert'
@@ -299,6 +301,12 @@ export class PdfDocumentModel {
       const [left, bottom, right, top] = displayRectToPdfBounds(padded, geometry)
       page.drawRectangle({ x: left, y: bottom, width: Math.max(1, right - left), height: Math.max(1, top - bottom), color: rgb(backgroundRed, backgroundGreen, backgroundBlue), borderWidth: 0 })
     }
+    // Empty replacement is a real delete operation: mask the source glyphs
+    // but do not create an empty FreeText annotation.
+    if (!text.trim()) {
+      await this.commit()
+      return ''
+    }
     return this.addText(pageIndex, replacementRect || rectUnion(rects), text, style, rasterPng)
   }
 
@@ -319,6 +327,7 @@ export class PdfDocumentModel {
       const kind = kindFor(entry.dict, this.document)
       if (!kind) return []
       const id = decodeObject(this.document, entry.dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`
+      const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup'))) || undefined
       const quads = numberArray(this.document, entry.dict.get(PDFName.of('QuadPoints')))
       const rect = numberArray(this.document, entry.dict.get(PDFName.of('Rect')))
       const geometry = pageGeometry(entry.page)
@@ -328,7 +337,7 @@ export class PdfDocumentModel {
       const replyContent = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReply')))
       const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent } : undefined
       return [{
-        id, pageIndex: entry.pageIndex, kind,
+        id, groupId, pageIndex: entry.pageIndex, kind,
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
         color,
@@ -416,7 +425,7 @@ export class PdfDocumentModel {
     return entry
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string): Promise<string> {
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string): Promise<string> {
     const page = this.document.getPage(pageIndex)
     const geometry = pageGeometry(page)
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -438,6 +447,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('Contents'), pdfString(content))
     dictionary.set(PDFName.of('T'), pdfString('PDFuck'))
     dictionary.set(PDFName.of('NM'), pdfString(id))
+    if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     dictionary.set(PDFName.of('C'), this.document.context.obj(color))
     dictionary.set(PDFName.of('PDFuckColor'), pdfString(colorHex))
@@ -523,7 +533,19 @@ export class PdfDocumentModel {
 
   async deleteAnnotation(id: string): Promise<void> {
     const entry = this.findAnnotation(id)
-    entry.page.node.Annots()?.remove(entry.index)
+    const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
+    const matches = groupId
+      ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId)
+      : [entry]
+    const byPage = new Map<PDFPage, number[]>()
+    matches.forEach((candidate) => {
+      const indexes = byPage.get(candidate.page) || []
+      indexes.push(candidate.index)
+      byPage.set(candidate.page, indexes)
+    })
+    byPage.forEach((indexes, page) => {
+      indexes.sort((left, right) => right - left).forEach((index) => page.node.Annots()?.remove(index))
+    })
     await this.commit()
   }
 }

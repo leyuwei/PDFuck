@@ -1,7 +1,7 @@
 export type ModuleKey = 'view' | 'edit' | 'annotate' | 'save'
 export type ViewMode = 'continuous' | 'single'
 export type Tool = 'none' | 'text_select' | 'crop' | 'add_text' | 'edit_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
-export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'delete' | 'underline'
+export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'delete' | 'underline' | 'ai_polish'
 export type AnnotationReplyStatus = 'handled' | 'thinking' | 'declined' | 'custom'
 
 export interface PdfRect { x: number; y: number; width: number; height: number }
@@ -10,10 +10,14 @@ export interface PdfPoint { x: number; y: number }
 export interface TextSelection {
   text: string
   rects: PdfRect[]
+  /** Per-page segments for selections that cross page boundaries. */
+  segments?: Array<{ pageIndex: number; text: string; rects: PdfRect[] }>
 }
 
 export interface AnnotationRecord {
   id: string
+  /** Shared identifier for visual segments of one cross-page annotation. */
+  groupId?: string
   pageIndex: number
   kind: AnnotationKind
   author: string

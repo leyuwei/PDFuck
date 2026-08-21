@@ -1,0 +1,3 @@
+.ai-polish-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ai-polish-actions button { min-width: 104px; height: 38px; }
+.ai-polish-actions button.primary { min-width: 130px; }

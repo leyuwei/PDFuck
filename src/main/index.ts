@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, AiResponse, ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
@@ -15,6 +15,7 @@ interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
   initialPaths: string[]
   initialDelivered: boolean
+  closeApproved: boolean
 }
 
 let mainSession: MainWindowSession | null = null
@@ -88,6 +89,33 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl }
     return { status: 'available', currentVersion, latestVersion, releaseUrl }
   } catch { return { status: 'unavailable', currentVersion } }
+}
+
+async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
+  if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('智能润色请求无效。')
+  if (request.body.length > 2_000_000) throw new Error('智能润色请求过大，请缩短框选内容后重试。')
+  let target: URL
+  try { target = new URL(request.url) } catch { throw new Error('接口地址无效，请检查 URL 是否完整（需以 http:// 或 https:// 开头）。') }
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') throw new Error('接口地址只支持 http:// 或 https://。')
+  if (target.username || target.password) throw new Error('接口地址不能包含账号或密码。')
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (request.headers && typeof request.headers === 'object') {
+    for (const [name, value] of Object.entries(request.headers)) {
+      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || typeof value !== 'string' || value.length > 20_000) continue
+      headers[name] = value
+    }
+  }
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45_000)
+  try {
+    const response = await net.fetch(target.toString(), { method: 'POST', headers, body: request.body, signal: controller.signal })
+    const body = await response.text()
+    return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('请求超时（45 秒）。请检查网络、代理或接口地址后重试。')
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`无法连接模型服务：${detail || '网络连接失败'}。请检查接口地址、网络或证书。`)
+  } finally { clearTimeout(timeout) }
 }
 
 const isPdf = (value: string): boolean => extname(value).toLowerCase() === '.pdf'
@@ -278,10 +306,16 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
-  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
+  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, closeApproved: false, fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
   window.on('maximize', () => window.webContents.send('window:maximized', true))
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession)) })
+  window.on('close', (event) => {
+    const session = mainSession
+    if (!session || session.window !== window || session.closeApproved || !session.dirty) return
+    event.preventDefault()
+    if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
+  })
   window.on('closed', () => { if (mainSession?.window === window) mainSession = null })
   window.once('ready-to-show', () => { window.show(); window.focus(); window.webContents.focus() })
   window.on('focus', () => { if (!window.isDestroyed()) window.webContents.focus() })
@@ -389,6 +423,7 @@ app.whenReady().then(() => {
     if (typeof text !== 'string' || text.length > 5_000_000) throw new Error('复制内容无效或过长。')
     clipboard.writeText(text)
   })
+  ipcMain.handle('ai:request', (event, request: AiRequest) => { requireMainWindow(event.sender); return requestAiCompletion(request) })
   ipcMain.handle('app:check-update', (event) => { requireMainWindow(event.sender); return checkForUpdates() })
   ipcMain.handle('app:skip-update-version', async (event, version: string) => {
     requireMainWindow(event.sender)
@@ -409,7 +444,11 @@ app.whenReady().then(() => {
   })
   ipcMain.on('window:minimize', (event) => requireMainWindow(event.sender).minimize())
   ipcMain.on('window:toggle-maximize', (event) => { const window = requireMainWindow(event.sender); window.isMaximized() ? window.unmaximize() : window.maximize() })
-  ipcMain.on('window:close', (event) => requireMainWindow(event.sender).close())
+  ipcMain.on('window:close', (event) => {
+    const window = requireMainWindow(event.sender)
+    if (mainSession) mainSession.closeApproved = true
+    window.close()
+  })
   ipcMain.handle('window:is-maximized', (event) => requireMainWindow(event.sender).isMaximized())
   createMainWindow()
 })

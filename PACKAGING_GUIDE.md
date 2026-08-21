@@ -59,6 +59,15 @@ npm run build
 git diff --check
 ```
 
+多栏文字选择回归还应运行：
+
+```bash
+npm run test:selection-cpaper
+node scripts/selection-cpaper-ui-smoke.cjs
+```
+
+该 CJS 检查会遍历 `tmp/cpaper.pdf` 全部页面，动态识别双栏或多栏正文、紧凑栏沟，以及图、表、长公式和跨栏题注组成的视觉块；它验证正文选区不穿栏沟，视觉块按几何顺序完整选中且矩形不越界。Electron UI 烟测覆盖右栏纯选、图 3、图 4、图 5 题注，并验证从第 3 页选中后点击第 4 页会清除所有旧选区。缺少该测试 PDF 时应先补齐样本，不要跳过回归。
+
 其中 `npm run build` 会重新生成 `out/main`、`out/preload` 和 `out/renderer`。不要直接用旧的 `out` 目录打包，否则源码修复可能没有进入 `app.asar`。
 
 涉及 PDF 渲染、搜索、批注、打印或密码逻辑时，还应使用 `tmp/` 中的测试 PDF 做实际烟雾测试。至少检查：

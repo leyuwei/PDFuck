@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
   platform: process.platform,
@@ -12,6 +12,7 @@ const api: DesktopApi = {
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
+  aiRequest: (request: AiRequest) => ipcRenderer.invoke('ai:request', request),
   checkForUpdates: () => ipcRenderer.invoke('app:check-update'),
   skipUpdateVersion: (version) => ipcRenderer.invoke('app:skip-update-version', version),
   openReleasePage: (url) => ipcRenderer.invoke('app:open-release-page', url),
@@ -30,6 +31,11 @@ const api: DesktopApi = {
     const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized)
     ipcRenderer.on('window:maximized', listener)
     return () => ipcRenderer.removeListener('window:maximized', listener)
+  },
+  onWindowRequestClose: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('window:request-close', listener)
+    return () => ipcRenderer.removeListener('window:request-close', listener)
   },
   onOpenPdf: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, path: string) => callback(path)

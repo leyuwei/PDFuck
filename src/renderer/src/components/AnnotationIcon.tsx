@@ -11,5 +11,6 @@ export function AnnotationIcon({ kind, size = 22 }: { kind: IconKind; size?: num
     {normalized === 'insert' && <><path d="m6 17 6-10 6 10" /><path className="accent" d="M12 5v14M9.5 12h5" /></>}
     {normalized === 'delete' && <><path className="detail" d="M5 8h14M5 16h14" /><path className="accent" d="M4 12h16" /></>}
     {normalized === 'underline' && <><path d="M7 5v5a5 5 0 0 0 10 0V5" /><path className="accent" d="M5 19h14" /></>}
+    {normalized === 'ai_polish' && <><path d="m12 3 1.6 5.1L19 10l-5.4 1.7L12 17l-1.6-5.3L5 10l5.4-1.9z" /><path className="accent" d="m18 15 .8 2.4L21 18l-2.2.7L18 21l-.8-2.3L15 18l2.2-.6z" /></>}
   </svg>
 }

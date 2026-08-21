@@ -1,6 +1,7 @@
 import type { ModuleKey, Tool, ViewMode } from '../types'
 import type { ExportFormat } from '../../../shared/contracts'
 import { AnnotationIcon } from './AnnotationIcon'
+import { AnnotationLab } from './AnnotationLab'
 
 interface Props {
   module: ModuleKey
@@ -26,6 +27,20 @@ interface Props {
   onCitations(): void
   citationsEnabled: boolean
   onGrammar(): void
+  theme: 'light' | 'dark'
+  accent: string
+  hasCustomAccent: boolean
+  documentBackground: string
+  onTheme(theme: 'light' | 'dark'): void
+  onAccent(value: string): void
+  onClearAccent(): void
+  onDocumentBackground(value: string): void
+  hasCustomDocumentBackground: boolean
+  onClearDocumentBackground(): void
+  selection?: string
+  selectionKey?: string
+  onAddAiAnnotation(content: string): void
+  onCopy(content: string): void
 }
 
 const ToolButton = ({ tool, activeTool, children, hint, icon, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span></button>
@@ -35,6 +50,7 @@ export function ToolPanel(props: Props) {
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>查看</h2><p className="subtitle">选择适合当前阅读场景的页面布局。</p><h3>页面布局</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>连续滚动</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>单页查看</button></div>
+      <h3>主题</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>当前配色</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>夜间</button></div><label className="theme-color-control"><span>软件主题色</span><span><input type="color" value={props.accent} onChange={(event) => props.onAccent(event.target.value)} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title="恢复默认软件主题色" aria-label="恢复默认软件主题色">↺</button></span></label><label className="theme-color-control"><span>PDF 纸张背景</span><span><input type="color" value={props.documentBackground} onChange={(event) => props.onDocumentBackground(event.target.value)} /><button type="button" className="color-reset" disabled={!props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title="恢复默认 PDF 纸张背景" aria-label="恢复默认 PDF 纸张背景">↺</button></span></label><p className="hint">直接替换页面白纸底色；设置仅保存在当前 PDF 的本机偏好中。</p>
       <h3>阅读工具</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>搜索 PDF <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>一键图表</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? '关闭引文标记' : '关联引文'}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>语法检查</button>
       {readOnly && <div className="encrypted-readonly"><b>加密文档 · 只读</b><span>当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。</span></div>}
       <div className="info-card"><b>阅读提示</b><span>Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。</span></div></section>}
@@ -49,7 +65,8 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="delete_text" />} hint="框选文字 · Delete">文本删除</ToolButton>
       <ToolButton tool="underline" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="underline" />} hint="框选文字 · Ctrl+U / ⌘U">加下划线</ToolButton><h3>位置批注</h3>
       <ToolButton tool="note" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="note" />} hint="选择文字 · Ctrl+N / ⌘N">自由批注</ToolButton>
-      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} hint="选择文字 · Insert">插入文字</ToolButton></section>}
+      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} hint="选择文字 · Insert">插入文字</ToolButton>
+      <AnnotationLab selection={props.selection} selectionKey={props.selectionKey} onAdd={props.onAddAiAnnotation} onCopy={props.onCopy} /></section>}
     {module === 'save' && <section><h2>保存</h2><p className="subtitle">保存完整文档，或只打印、导出真正需要的页面。</p><h3>PDF</h3>
       <button className="primary wide" disabled={disabled} onClick={() => props.onSave(false)}>保存 PDF</button><button className="wide" disabled={disabled} onClick={() => props.onSave(true)}>另存为 PDF…</button><h3>打印</h3>
       <button className="wide print-button" disabled={disabled || props.printing} onClick={props.onPrint}><span>{props.printing ? '正在打开打印对话框…' : '选择页面并打印…'}</span><kbd>Ctrl+P</kbd></button><p className="hint">可选择连续或不连续页码，包含尚未保存的修改。</p><h3>指定页面导出</h3>

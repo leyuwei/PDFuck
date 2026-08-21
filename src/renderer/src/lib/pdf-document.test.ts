@@ -102,6 +102,31 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations().find((annotation) => annotation.kind === 'replace')?.reply).toEqual({ status: 'handled', content: '已处理' })
   })
 
+  it('deletes every visual segment belonging to one cross-page annotation', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const groupId = 'cross-page-regression-group'
+    const first = await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 120, height: 12 }], '跨页批注', undefined, undefined, groupId)
+    await model.addAnnotation(1, 'highlight', [{ x: 72, y: 120, width: 160, height: 12 }], '跨页批注', undefined, undefined, groupId)
+    expect(model.annotations()).toEqual([
+      expect.objectContaining({ id: first, pageIndex: 0, groupId }),
+      expect.objectContaining({ pageIndex: 1, groupId })
+    ])
+    await model.deleteAnnotation(first)
+    expect(model.annotations()).toHaveLength(0)
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.annotations()).toHaveLength(0)
+  })
+
+  it('removes the persisted annotation object so reopening cannot reveal a hidden duplicate', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const id = await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 120, height: 12 }], 'delete me')
+    expect(model.annotations()).toHaveLength(1)
+    await model.deleteAnnotation(id)
+    expect(model.annotations()).toHaveLength(0)
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.annotations()).toHaveLength(0)
+  })
+
   it('clamps interrupted or oversized annotation drags to the original page', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const note = await model.addAnnotation(1, 'note', [], 'bounded note', { x: 580, y: 760 })
@@ -124,6 +149,15 @@ describe('PdfDocumentModel', () => {
     expect(reopened.textObjects()).toEqual([expect.objectContaining({ id, text: 'Revised wording' })])
     await reopened.updateTextObject(id, 'Edited again', { font: 'serif', size: 13, color: '#3157d5', bold: true, italic: false, align: 'left', lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 })
     expect(reopened.textObjects()[0]).toEqual(expect.objectContaining({ text: 'Edited again', style: expect.objectContaining({ lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 }) }))
+  })
+
+  it('allows deleting page text without creating an empty annotation', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], '', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })
+    expect(id).toBe('')
+    expect(model.textObjects()).toHaveLength(0)
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.textObjects()).toHaveLength(0)
   })
 
   it('does not delete the last page', async () => {

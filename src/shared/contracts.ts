@@ -89,6 +89,18 @@ export interface UpdateCheckResult {
   releaseUrl?: string
 }
 
+export interface AiRequest {
+  url: string
+  headers: Record<string, string>
+  body: string
+}
+
+export interface AiResponse {
+  status: number
+  statusText: string
+  body: string
+}
+
 export interface DesktopApi {
   readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
@@ -100,6 +112,7 @@ export interface DesktopApi {
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>
+  aiRequest(request: AiRequest): Promise<AiResponse>
   checkForUpdates(): Promise<UpdateCheckResult>
   skipUpdateVersion(version: string): Promise<void>
   openReleasePage(url: string): Promise<void>
@@ -115,5 +128,6 @@ export interface DesktopApi {
   windowClose(): void
   windowIsMaximized(): Promise<boolean>
   onWindowMaximized(callback: (maximized: boolean) => void): () => void
+  onWindowRequestClose(callback: () => void): () => void
   onOpenPdf(callback: (path: string) => void): () => void
 }

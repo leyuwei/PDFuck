@@ -11,7 +11,8 @@ export function normalizeCopiedText(value: string): string {
   const dehyphenated = value
     .replace(/\r\n?/g, '\n')
     .replace(/\u00ad/g, '')
-    .replace(/([A-Za-z])-[ \t]*\n[ \t]*(?=[a-z])/g, '$1')
+    .replace(/([A-Za-z]{2,})-[ \t]*\n[ \t]*(?=[a-z]{2})/g, '$1')
+    .replace(/([A-Za-z]{2,})-[ \t]+(?=[a-z]{2})/g, '$1')
   const lines = dehyphenated.split('\n').map((line) => line.replace(/[\t\u00a0 ]+/g, ' ').trim()).filter(Boolean)
   return lines.reduce((result, line) => {
     if (!result) return line

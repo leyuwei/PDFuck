@@ -19,7 +19,8 @@ export const DEFAULT_ANNOTATION_COLOR: Record<AnnotationKind, string> = {
   replace: DEEP_BLUE,
   insert: DEEP_BLUE,
   delete: '#e24b4f',
-  underline: '#2f7de1'
+  underline: '#2f7de1',
+  ai_polish: '#7c4dca'
 }
 
 export const QUICK_REPLIES: Array<{ status: Exclude<AnnotationReplyStatus, 'custom'>; label: string; tint: string }> = [

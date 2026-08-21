@@ -40,6 +40,16 @@ describe('PDF text layout', () => {
     expect(regions[1].rect.x).toBe(320)
   })
 
+  it('keeps staggered neighboring columns in separate editable regions', () => {
+    const item = (str: string, x: number, baseline: number, width: number) => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body', hasEOL: true }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const regions = textItemsToEditableRegions([
+      item('Left column line one', 40, 700, 190), item('Right column line one', 245, 698, 190),
+      item('Left column line two', 40, 684, 190), item('Right column line two', 245, 682, 190)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    expect(regions.map((region) => region.text)).toEqual(['Left column line one\nLeft column line two', 'Right column line one\nRight column line two'])
+  })
+
   it('joins adjacent fragments on the same visual line with a natural space', () => {
     const items = [
       { str: 'Hello', width: 30, height: 12, transform: [12, 0, 0, 12, 40, 700], fontName: 'body' },
@@ -76,6 +86,73 @@ describe('PDF text layout', () => {
     expect(textSelectionBetween([word], { wordIndex: 0, offset: 1 }, { wordIndex: 0, offset: 2 })).toEqual({ text: 'l', rects: [{ x: 14, y: 20, width: 6, height: 12 }] })
   })
 
+  it('orders formula text objects by their visual line and x position', () => {
+    const item = (str: string, x: number, baseline: number, width: number, fontName = 'body') => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('x', 128, 684, 8, 'math'), item('line two', 40, 668, 55), item('line one', 40, 700, 55), item('=', 112, 684, 8, 'math'), item('y', 96, 684, 8, 'math')
+    ], { ...styles, math: { ...styles.body, fontFamily: 'Times New Roman' } }, [1, 0, 0, -1, 0, 792])
+    expect(words.map((word) => word.text).join(' ')).toBe('line one y = x line two')
+  })
+
+  it('keeps stacked formula glyphs in one continuous selection', () => {
+    const item = (str: string, x: number, baseline: number, width: number, size = 10, fontName = 'math') => ({ str, width, height: size, transform: [size, 0, 0, size, x, baseline], fontName }) as TextItem
+    const styles = { math: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('i', 120, 692, 4, 7), item('∞', 120, 698, 8, 7), item('μ', 108, 700, 7), item('˜', 108, 700, 5), item('(', 128, 700, 4), item('τ', 132, 700, 5)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: words.length - 1, offset: words.at(-1)!.text.length })
+    expect(selection?.text.replace(/ /g, '')).toBe('μ˜∞i(τ')
+    expect(selection?.rects.length).toBeGreaterThan(0)
+  })
+
+  it('reads two visual columns top-to-bottom instead of interleaving rows', () => {
+    const item = (str: string, x: number, baseline: number, width: number) => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('R1', 230, 700, 24), item('L1', 40, 700, 24), item('R2', 230, 684, 24), item('L2', 40, 684, 24), item('R3', 230, 668, 24), item('L3', 40, 668, 24)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    expect(words.map((word) => word.text)).toEqual(['L1', 'L2', 'L3', 'R1', 'R2', 'R3'])
+  })
+
+  it('detects three visual columns from page gutters without a column limit', () => {
+    const item = (str: string, x: number, baseline: number, width: number) => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('A1', 40, 700, 24), item('B1', 220, 700, 24), item('C1', 400, 700, 24),
+      item('A2', 40, 684, 24), item('B2', 220, 684, 24), item('C2', 400, 684, 24),
+      item('A3', 40, 668, 24), item('B3', 220, 668, 24), item('C3', 400, 668, 24)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    expect([...new Set(words.map((word) => word.column))]).toEqual([0, 1, 2])
+    expect(words.map((word) => word.text)).toEqual(['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'])
+  })
+
+  it('detects columns whose gutter is narrower than 15 points', () => {
+    const item = (str: string, x: number, baseline: number) => ({ str, width: 24, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('L1', 40, 700), item('R1', 70, 700), item('L2', 40, 684), item('R2', 70, 684), item('L3', 40, 668), item('R3', 70, 668)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    expect([...new Set(words.map((word) => word.column))]).toEqual([0, 1])
+    expect(words.map((word) => word.text)).toEqual(['L1', 'L2', 'L3', 'R1', 'R2', 'R3'])
+  })
+
+  it('keeps formula fragments attached to the visual run column', () => {
+    const item = (str: string, x: number, baseline: number, width: number, fontName = 'body') => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('left paragraph text', 40, 700, 180), item('=', 220, 700, 8, 'math'), item('right paragraph text', 300, 700, 180), item('x', 300, 700, 8, 'math'),
+      item('left second line', 40, 684, 160), item('right second line', 300, 684, 160), item('left third line', 40, 668, 160), item('right third line', 300, 668, 160)
+    ], { ...styles, math: { ...styles.body, fontFamily: 'Times New Roman' } }, [1, 0, 0, -1, 0, 792])
+    const left = words.filter((word) => word.rect.x < 260)
+    const right = words.filter((word) => word.rect.x >= 260)
+    expect(left.length).toBeGreaterThan(0)
+    expect(right.length).toBeGreaterThan(0)
+    expect(new Set(left.map((word) => word.column)).size).toBe(1)
+    expect(new Set(right.map((word) => word.column)).size).toBe(1)
+    expect(left[0].column).not.toBe(right[0].column)
+  })
+
   it('assigns justified line expansion to spaces instead of stretching glyphs', () => {
     expect(fitTextAdvances([5, 5, 2, 5, 5], 24, 'ab cd')).toEqual([5, 5, 4, 5, 5])
   })
@@ -99,6 +176,116 @@ describe('PDF text layout', () => {
     const reverse = textSelectionBetween(words, { wordIndex: 1, offset: 2 }, { wordIndex: 0, offset: 2 })
     expect(forward).toEqual({ text: 'pha be', rects: [{ x: 30, y: 20, width: 60, height: 12 }] })
     expect(reverse).toEqual(forward)
+  })
+
+  it('keeps a selection split at a wide two-column gutter', () => {
+    const words = [
+      { text: 'left', order: 0, rect: { x: 10, y: 20, width: 32, height: 12 } },
+      { text: 'right', order: 1, rect: { x: 180, y: 20, width: 40, height: 12 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 1, offset: 5 })?.rects).toEqual([
+      { x: 10, y: 20, width: 32, height: 12 },
+      { x: 180, y: 20, width: 40, height: 12 }
+    ])
+  })
+
+  it('never unions neighboring columns even when their gutter is narrow', () => {
+    const words = [
+      { text: 'left', order: 0, column: 0, rect: { x: 10, y: 20, width: 32, height: 12 } },
+      { text: 'right', order: 1, column: 1, rect: { x: 54, y: 20, width: 40, height: 12 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 1, offset: 5 })?.rects).toEqual([
+      { x: 10, y: 20, width: 32, height: 12 },
+      { x: 54, y: 20, width: 40, height: 12 }
+    ])
+  })
+
+  it('selects only the tail of the first column and head of the second column', () => {
+    const words = [
+      { text: 'L1', order: 0, column: 0, rect: { x: 10, y: 10, width: 20, height: 12 } },
+      { text: 'L2', order: 1, column: 0, rect: { x: 10, y: 30, width: 20, height: 12 } },
+      { text: 'L3', order: 2, column: 0, rect: { x: 10, y: 50, width: 20, height: 12 } },
+      { text: 'R1', order: 3, column: 1, rect: { x: 60, y: 10, width: 20, height: 12 } },
+      { text: 'R2', order: 4, column: 1, rect: { x: 60, y: 30, width: 20, height: 12 } },
+      { text: 'R3', order: 5, column: 1, rect: { x: 60, y: 50, width: 20, height: 12 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 1, offset: 0 }, { wordIndex: 4, offset: 2 })
+    expect(selection?.text).toBe('L2 L3 R1 R2')
+    expect(selection?.text).not.toContain('L1')
+    expect(selection?.text).not.toContain('R3')
+    expect(selection?.rects.every((rect) => rect.x + rect.width <= 30 || rect.x >= 60)).toBe(true)
+  })
+
+  it('does not include another column when both drag endpoints are in one column', () => {
+    const words = [
+      { text: 'left', order: 0, column: 0, rect: { x: 10, y: 20, width: 32, height: 12 } },
+      { text: 'right', order: 1, column: 1, rect: { x: 180, y: 20, width: 40, height: 12 } },
+      { text: 'left-two', order: 2, column: 0, rect: { x: 10, y: 40, width: 60, height: 12 } },
+      { text: 'right-two', order: 3, column: 1, rect: { x: 180, y: 40, width: 68, height: 12 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 1, offset: 0 }, { wordIndex: 3, offset: 9 })).toEqual({
+      text: 'right right-two',
+      rects: [
+        { x: 180, y: 20, width: 40, height: 12 },
+        { x: 180, y: 40, width: 68, height: 12 }
+      ]
+    })
+  })
+
+  it('selects a two-line cross-column caption without absorbing body text', () => {
+    const words = [
+      { text: 'Fig.', order: 0, column: 0, columnAmbiguous: true, rect: { x: 10, y: 100, width: 24, height: 12 } },
+      { text: '3.', order: 1, column: 0, columnAmbiguous: true, rect: { x: 38, y: 100, width: 14, height: 12 } },
+      { text: 'Cross-column', order: 2, column: 0, columnAmbiguous: true, rect: { x: 56, y: 100, width: 76, height: 12 } },
+      { text: 'caption.', order: 3, column: 1, columnAmbiguous: true, rect: { x: 136, y: 100, width: 52, height: 12 } },
+      { text: 'Second', order: 4, column: 0, columnAmbiguous: true, rect: { x: 10, y: 110, width: 42, height: 12 } },
+      { text: 'caption', order: 5, column: 0, columnAmbiguous: true, rect: { x: 56, y: 110, width: 48, height: 12 } },
+      { text: 'line.', order: 6, column: 1, columnAmbiguous: true, rect: { x: 108, y: 110, width: 30, height: 12 } },
+      { text: 'Body', order: 7, column: 0, rect: { x: 10, y: 130, width: 28, height: 12 } },
+      { text: 'text.', order: 8, column: 0, rect: { x: 42, y: 130, width: 30, height: 12 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 6, offset: 5 })
+    expect(selection?.text).toBe('Fig. 3. Cross-column caption. Second caption line.')
+    expect(selection?.text).not.toContain('Body')
+    expect(selection?.rects).toEqual([
+      { x: 10, y: 100, width: 122, height: 12 },
+      { x: 136, y: 100, width: 52, height: 12 },
+      { x: 10, y: 110, width: 94, height: 12 },
+      { x: 108, y: 110, width: 30, height: 12 }
+    ])
+  })
+
+  it('selects a multi-line visual block when only some fragments cross the gutter', () => {
+    const words = [
+      { text: 'Table', order: 0, column: 0, columnAmbiguous: true, visualBlock: 4, rect: { x: 10, y: 100, width: 30, height: 12 } },
+      { text: '1.', order: 1, column: 0, columnAmbiguous: true, visualBlock: 4, rect: { x: 45, y: 100, width: 14, height: 12 } },
+      { text: 'wide', order: 2, column: 0, visualBlock: 4, rect: { x: 65, y: 100, width: 28, height: 12 } },
+      { text: 'table', order: 3, column: 1, visualBlock: 4, rect: { x: 98, y: 100, width: 30, height: 12 } },
+      { text: 'caption', order: 4, column: 0, visualBlock: 4, rect: { x: 10, y: 114, width: 42, height: 12 } },
+      { text: 'continues.', order: 5, column: 1, visualBlock: 4, rect: { x: 56, y: 114, width: 54, height: 12 } },
+      { text: 'Body', order: 6, column: 0, rect: { x: 10, y: 136, width: 28, height: 12 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 5, offset: 10 })
+    expect(selection?.text).toBe('Table 1. wide table caption continues.')
+    expect(selection?.text).not.toContain('Body')
+    expect(selection?.rects).toEqual([
+      { x: 10, y: 100, width: 83, height: 12 },
+      { x: 98, y: 100, width: 30, height: 12 },
+      { x: 10, y: 114, width: 42, height: 12 },
+      { x: 56, y: 114, width: 54, height: 12 }
+    ])
+  })
+
+  it('starts a caption at its marker even when an image label shares the block', () => {
+    const words = [
+      { text: '0.8', order: 0, visualBlock: 6, rect: { x: 10, y: 99, width: 20, height: 8 } },
+      { text: 'Fig.', order: 1, visualBlock: 6, rect: { x: 40, y: 100, width: 24, height: 12 } },
+      { text: '2.', order: 2, visualBlock: 6, rect: { x: 68, y: 100, width: 14, height: 12 } },
+      { text: 'caption.', order: 3, visualBlock: 6, rect: { x: 88, y: 100, width: 52, height: 12 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 1, offset: 0 }, { wordIndex: 3, offset: 8 })
+    expect(selection?.text).toBe('Fig. 2. caption.')
+    expect(selection?.text).not.toContain('0.8')
   })
 
   it('maps a search result to the exact matching character rectangles', () => {

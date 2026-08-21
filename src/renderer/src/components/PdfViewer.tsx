@@ -14,6 +14,7 @@ import { citationLinks, grammarIssues, visualHits, type CitationLink, type Gramm
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
 import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
 import type { ReadingPosition } from '../../../shared/contracts'
+import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
 
 export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
@@ -65,6 +66,14 @@ interface PageProps {
   annotationMode: boolean
   onAction(action: CanvasAction): void
   onSelectionChange(selection?: TextSelection): void
+  onTextMap(pageIndex: number, words: WordBox[]): void
+  onCrossSelectionStart(pageIndex: number, position?: TextPosition, extend?: boolean): void
+  onCrossSelectionMove(pageIndex: number, clientX: number, clientY: number): void
+  onCrossSelectionEnd(pageIndex: number, clientX: number, clientY: number, cancel?: boolean): void
+  externalSelection?: TextSelection
+  crossSelection?: CrossPageSelection
+  showSelectionToolbar: boolean
+  selectionCancelToken: number
   onCopyText(text: string): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
@@ -101,19 +110,9 @@ function insertionPoint(words: WordBox[], point: PdfPoint): PdfPoint {
 function selectionFromRange(words: WordBox[], first: number, last: number): TextSelection | undefined {
   if (first < 0 || last < 0) return undefined
   const start = Math.min(first, last), end = Math.max(first, last)
-  const selected = words.slice(start, end + 1)
-  if (!selected.length) return undefined
-  const lines: PdfRect[] = []
-  for (const word of selected) {
-    const previous = lines.at(-1)
-    if (previous && Math.abs(previous.y - word.rect.y) < Math.max(previous.height, word.rect.height) * 0.55) {
-      const right = Math.max(previous.x + previous.width, word.rect.x + word.rect.width)
-      previous.x = Math.min(previous.x, word.rect.x)
-      previous.width = right - previous.x
-      previous.height = Math.max(previous.height, word.rect.height)
-    } else lines.push({ ...word.rect })
-  }
-  return { text: selected.map((word) => word.text).join(' '), rects: lines }
+  const lastWord = words[end]
+  if (!words[start] || !lastWord) return undefined
+  return textSelectionBetween(words, { wordIndex: start, offset: 0 }, { wordIndex: end, offset: Array.from(lastWord.text).length })
 }
 
 function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { selection: TextSelection; zoom: number; pageSize: { width: number; height: number }; onChoose(tool: Tool): void }) {
@@ -121,7 +120,7 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   const drag = useRef<{ x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
   const bounds = rectUnion(selection.rects)
   useEffect(() => { setOffset({ x: 0, y: 0 }) }, [selection.text, bounds.x, bounds.y, bounds.width, bounds.height])
-  const width = 238, height = 40
+  const width = 272, height = 40
   const baseLeft = Math.max(5, Math.min(pageSize.width * zoom - width - 5, (bounds.x + bounds.width / 2) * zoom - width / 2))
   const baseTop = bounds.y * zoom >= height + 8 ? bounds.y * zoom - height - 7 : Math.min(pageSize.height * zoom - height - 5, (bounds.y + bounds.height) * zoom + 7)
   const beginDrag = (event: React.PointerEvent) => {
@@ -145,6 +144,7 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
     <button type="button" className="selection-toolbar-grip" aria-label="拖动批注快捷浮窗" title="拖动浮窗" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
+    <button type="button" className="selection-toolbar-button" aria-label="智能润色" title="智能润色 (Ctrl/⌘I)" onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
   </div>
 }
 
@@ -409,7 +409,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const preciseFocusRef = useRef<HTMLDivElement>(null)
@@ -436,6 +436,11 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const center = { x: region.rect.x + region.rect.width / 2, y: region.rect.y + region.rect.height / 2 }
     return !textObjects.some((textObject) => pointInRect(center, textObject.rect, 1))
   }), [textObjects, textRegions])
+  const crossPageSelection = crossSelection?.segments.find((segment) => segment.pageIndex === pageIndex)
+  // During a cross-page drag, the live cross-page state is authoritative. Do
+  // not fall back to a stale page-local selection while the pointer is down.
+  const activeSelection = crossSelection ? crossPageSelection : selection || externalSelection
+  const actionSelection = crossSelection || activeSelection
 
   useEffect(() => {
     const element = pageRef.current
@@ -473,11 +478,17 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
           if (font) fontDetails[fontName] = { name: font.name, bold: font.bold, italic: font.italic }
         } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
       }
-      setWords(textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
+      const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
+      setWords(nextWords); onTextMap(pageIndex, nextWords)
       setTextRegions(textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
     }).catch((error) => { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { cancelled = true }
-  }, [page, textRequested, onError])
+  }, [page, pageIndex, textRequested, onError, onTextMap])
+
+  useEffect(() => {
+    if (externalSelection) setSelection(externalSelection)
+    else if (selectionCancelToken) setSelection(undefined)
+  }, [externalSelection, selectionCancelToken])
 
   // Search and insight results can target a page that was not previously
   // visible. Request its text map immediately so the precise highlight does
@@ -496,7 +507,10 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     buffer.height = Math.max(1, Math.floor(viewport.height * outputScale))
     const context = buffer.getContext('2d', { alpha: false })
     if (!context) return
-    const task = page.render({ canvas: buffer, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.ENABLE })
+    // PDFuck renders its own annotation overlays from PdfDocumentModel. Letting
+    // PDF.js paint the same PDF annotations into the canvas creates a second,
+    // non-interactive copy that remains visible after the overlay is deleted.
+    const task = page.render({ canvas: buffer, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.DISABLE })
     task.promise.then(() => {
       const canvas = canvasRef.current
       if (cancelled || !canvas) return
@@ -513,7 +527,6 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const selectionActionTool = ['highlight', 'replace', 'delete_text', 'underline'].includes(tool)
   const canSelectText = !['crop', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
@@ -527,6 +540,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       const position = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined
       const next: PageDrag = { start: point, current: point, anchor: position, focus: position, moved: false }
       dragRef.current = next; setDrag(next)
+      onCrossSelectionStart(pageIndex, position, event.shiftKey)
       setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined)
     } else if (tool === 'crop' || tool === 'add_text') {
       const next: PageDrag = { start: point, current: point, moved: false }
@@ -551,6 +565,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       const focus = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : activeDrag.focus
       const next = { ...activeDrag, current: point, focus, moved }
       dragRef.current = next; setDrag(next)
+      onCrossSelectionMove(pageIndex, event.clientX, event.clientY)
       if (moved && next.anchor && next.focus) setSelection(textSelectionBetween(words, next.anchor, next.focus))
     } else {
       const next = { ...activeDrag, current: point, moved: true }
@@ -568,14 +583,12 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         setSelection(undefined); onSelectionChange(undefined)
         const caret = textCaretAtPoint(words, completed.current)
         setTextCaret(caret); setSelectionAnchor(caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined)
+        onCrossSelectionEnd(pageIndex, event.clientX, event.clientY, true)
         return
       }
       const selected = completed.anchor && completed.focus ? textSelectionBetween(words, completed.anchor, completed.focus) : undefined
       setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
-      if (selectionActionTool && selected) {
-        onAction({ pageIndex, tool, selection: selected })
-        setSelection(undefined); onSelectionChange(undefined)
-      }
+      onCrossSelectionEnd(pageIndex, event.clientX, event.clientY)
     } else {
       const rect = normalizeRect(completed.start, completed.current)
       if (rect.width > 4 && rect.height > 4) {
@@ -588,12 +601,13 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     dragRef.current = undefined
     setDrag(undefined)
+    onCrossSelectionEnd(pageIndex, event.clientX, event.clientY, true)
   }
   const handleContext = (event: React.MouseEvent) => {
     event.preventDefault()
     const point = pointFor(event)
-    if (!selection?.text && !annotationMode) { setMenu(undefined); return }
-    if (selection?.text) { setTextCaret(undefined); setSelectionAnchor(undefined) }
+    if (!activeSelection?.text && !annotationMode) { setMenu(undefined); return }
+    if (activeSelection?.text) { setTextCaret(undefined); setSelectionAnchor(undefined) }
     const bounds = pageRef.current!.getBoundingClientRect()
     setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, point })
   }
@@ -628,12 +642,12 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     onAnnotationReply(menu.annotation, reply)
     setMenu((current) => current?.annotation ? { ...current, annotation: { ...current.annotation, reply } } : current)
   }
-  const copyMenuSelection = () => { if (selection?.text) onCopyText(selection.text); setMenu(undefined) }
+  const copyMenuSelection = () => { if (activeSelection?.text) onCopyText(activeSelection.text); setMenu(undefined) }
   const chooseQuickAnnotation = (selectedTool: Tool) => {
-    if (!selection) return
-    if (['highlight', 'replace', 'delete_text', 'underline'].includes(selectedTool)) onAction({ pageIndex, tool: selectedTool, selection })
+    if (!actionSelection) return
+    if (['highlight', 'replace', 'delete_text', 'underline'].includes(selectedTool)) onAction({ pageIndex, tool: selectedTool, selection: actionSelection })
     else {
-      const last = selection.rects.at(-1)
+      const last = actionSelection.rects.at(-1)
       const point = last ? (selectedTool === 'insert' ? { x: last.x + last.width, y: last.y + last.height / 2 } : { x: last.x + last.width / 2, y: last.y + last.height / 2 }) : { x: size.width / 2, y: size.height / 2 }
       onAction({ pageIndex, tool: selectedTool, point })
     }
@@ -649,9 +663,6 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (event.key === 'Escape') {
       event.preventDefault(); setSelection(undefined); onSelectionChange(undefined)
       setSelectionAnchor({ wordIndex: textCaret.wordIndex, offset: textCaret.offset }); return
-    }
-    if (event.key === 'Enter' && selectionActionTool && selection) {
-      event.preventDefault(); onAction({ pageIndex, tool, selection }); setSelection(undefined); onSelectionChange(undefined); return
     }
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault(); event.stopPropagation()
@@ -688,7 +699,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom }}
+  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -697,7 +708,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title="语法或拼写检查结果" />)}
     {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`编辑文字：${region.text.slice(0, 40)}`} title="点击直接编辑这段文字" style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
     {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} onCancel={() => setPageTextEditor(undefined)} onSave={(text, style) => { onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
-    {selection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
+    {activeSelection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textFocus?.text && textFocus.token > 0 && textFocus.text && preciseFocus?.rects.map((rect, index) => <div ref={index === 0 ? preciseFocusRef : undefined} key={`precise-focus-${textFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus?.rects?.map((rect, index) => <div ref={index === 0 ? visualFocusRef : undefined} key={`visual-focus-${visualFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus && !visualFocus.rects?.length && <div ref={visualFocusRef} key={`visual-page-focus-${visualFocus.token}`} className="annotation-focus-ring insight-focus-ring insight-page-focus-ring" style={{ left: 10, top: 10, width: Math.max(6, size.width * zoom - 20), height: Math.max(6, size.height * zoom - 20) }} />}
@@ -710,7 +721,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
-    {annotationMode && selection?.text && !menu && <SelectionAnnotationToolbar selection={selection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
+    {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
@@ -740,6 +751,13 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const [visualFocus, setVisualFocus] = useState<{ pageIndex: number; rects?: PdfRect[]; token: number }>()
   const [grammarTerms, setGrammarTerms] = useState<string[]>([])
   const [citationHits, setCitationHits] = useState<CitationLink[]>([])
+  const [pageSelections, setPageSelections] = useState<PageTextSelection[]>([])
+  const [dragPageSelections, setDragPageSelections] = useState<PageTextSelection[]>([])
+  const [crossSelecting, setCrossSelecting] = useState(false)
+  const crossSelection = useMemo(() => mergePageTextSelections(crossSelecting ? dragPageSelections : pageSelections), [crossSelecting, dragPageSelections, pageSelections])
+  const selectionAnchorRef = useRef<{ pageIndex: number; position: TextPosition } | undefined>(undefined)
+  const [selectionCancelToken, setSelectionCancelToken] = useState(0)
+  const wordMapsRef = useRef(new Map<number, WordBox[]>())
   const insightFocusTimerRef = useRef<number | undefined>(undefined)
   const insightFocusSequenceRef = useRef(0)
   const restoredDocumentRef = useRef<string | undefined>(undefined)
@@ -754,6 +772,58 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       return { ...current, [index]: size }
     })
   }, [])
+  const updateSelection = useCallback((values: PageTextSelection[]) => {
+    const merged = mergePageTextSelections(values)
+    setPageSelections(values)
+    if (!values.length) setSelectionCancelToken((token) => token + 1)
+    onSelectionChange(values[0]?.pageIndex || 0, merged)
+  }, [onSelectionChange])
+  const onTextMap = useCallback((pageIndex: number, words: WordBox[]) => { wordMapsRef.current.set(pageIndex, words) }, [])
+  const beginCrossSelection = useCallback((pageIndex: number, position?: TextPosition, extend = false) => {
+    if (!position) return
+    if (extend && selectionAnchorRef.current) return
+    const next = { pageIndex, position }
+    selectionAnchorRef.current = next
+    setCrossSelecting(true)
+    setDragPageSelections([])
+    if (!extend) updateSelection([])
+  }, [updateSelection])
+  const calculateCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number): PageTextSelection[] => {
+    const anchor = selectionAnchorRef.current
+    const target = window.document.elementsFromPoint(clientX, clientY).find((element) => element instanceof HTMLElement && element.classList.contains('pdf-page')) as HTMLElement | undefined
+    const targetPageIndex = target ? Number(target.dataset.page) : originPageIndex
+    const targetWords = wordMapsRef.current.get(targetPageIndex)
+    if (!anchor || !targetWords || !Number.isInteger(targetPageIndex)) return []
+    const bounds = target?.getBoundingClientRect()
+    const focus = bounds ? textCaretAtPoint(targetWords, { x: (clientX - bounds.left) / zoom, y: (clientY - bounds.top) / zoom }) : undefined
+    if (!focus) return []
+    const first = Math.min(anchor.pageIndex, targetPageIndex), last = Math.max(anchor.pageIndex, targetPageIndex)
+    const values: PageTextSelection[] = []
+    for (let pageIndex = first; pageIndex <= last; pageIndex += 1) {
+      const words = wordMapsRef.current.get(pageIndex)
+      if (!words?.length) continue
+      const start = pageIndex === anchor.pageIndex ? anchor.position : { wordIndex: 0, offset: 0 }
+      const end = pageIndex === targetPageIndex ? focus : { wordIndex: words.length - 1, offset: Array.from(words.at(-1)!.text).length }
+      const selected = textSelectionBetween(words, start, end)
+      if (selected) values.push(bindTextSelectionToPage(pageIndex, selected))
+    }
+    return values
+  }, [zoom])
+  const moveCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number) => {
+    const values = calculateCrossSelection(originPageIndex, clientX, clientY)
+    setDragPageSelections(values)
+  }, [calculateCrossSelection])
+  const endCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number, cancel = false) => {
+    if (cancel) {
+      setCrossSelecting(false)
+      setDragPageSelections([])
+      return
+    }
+    const values = calculateCrossSelection(originPageIndex, clientX, clientY)
+    setCrossSelecting(false)
+    setDragPageSelections([])
+    if (values.length) updateSelection(values)
+  }, [calculateCrossSelection, updateSelection])
 
   useLayoutEffect(() => {
     const anchor = wheelAnchorRef.current
@@ -969,7 +1039,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => onSelectionChange(pageIndex, selection)} onCopyText={onCopyText}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} searchFocusPage={searchFocusPage} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onJump={goToPage} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}

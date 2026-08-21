@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.15.8",
+  "version": "1.16.18",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -10,6 +10,10 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
+    "test:ai-smoke": "electron-vite build && node scripts/ai-smoke.cjs",
+    "test:selection-smoke": "electron-vite build && node scripts/selection-smoke.cjs",
+    "test:selection-cpaper": "node scripts/selection-cpaper-smoke.cjs",
+    "test:selection-cpaper-ui": "electron-vite build && node scripts/selection-cpaper-ui-smoke.cjs",
     "test:watch": "vitest",
     "build": "npm run typecheck && npm test && electron-vite build",
     "dist:win": "npm run build && electron-builder --win",
@@ -41,29 +45,19 @@
     "appId": "cn.pdfuck.app",
     "productName": "PDFuck",
     "copyright": "Copyright © 2026 github@leyuwei",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "out/**/*",
-      "package.json"
-    ],
+    "directories": { "output": "release" },
+    "files": ["out/**/*", "package.json"],
     "asar": true,
-    "fileAssociations": [
-      {
-        "ext": "pdf",
-        "name": "PDF Document",
-        "description": "PDF 文档",
-        "mimeType": "application/pdf",
-        "role": "Viewer",
-        "rank": "Default"
-      }
-    ],
+    "fileAssociations": [{
+      "ext": "pdf",
+      "name": "PDF Document",
+      "description": "PDF 文档",
+      "mimeType": "application/pdf",
+      "role": "Viewer",
+      "rank": "Default"
+    }],
     "win": {
-      "target": [
-        "portable",
-        "nsis"
-      ],
+      "target": ["portable", "nsis"],
       "artifactName": "PDFuck-${version}-Windows.${ext}",
       "icon": "resources/icon.ico",
       "legalTrademarks": "github@leyuwei"
@@ -77,18 +71,14 @@
       "createStartMenuShortcut": true,
       "shortcutName": "PDFuck",
       "runAfterFinish": true,
-      "installerLanguages": [
-        "zh_CN"
-      ],
+      "installerLanguages": ["zh_CN"],
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
       "license": "LICENSE",
       "artifactName": "PDFuck-${version}-Windows-Setup.${ext}"
     },
     "mac": {
-      "target": [
-        "dmg"
-      ],
+      "target": ["dmg"],
       "category": "public.app-category.productivity",
       "icon": "resources/icon.png",
       "artifactName": "PDFuck-${version}-macOS.${ext}"
