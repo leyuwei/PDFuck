@@ -4,7 +4,7 @@
 
 > 为科研人员打造的 PDF 精读、审稿与协作批注工作台。
 
-<img width="1282" height="726" alt="Screenshot 2026-08-14 at 22 06 51" src="https://github.com/user-attachments/assets/84653ee2-09c6-4e92-93f6-65e4dfce601b" />
+<img width="1973" height="1353" alt="image" src="https://github.com/user-attachments/assets/46465586-9e73-4204-8196-120c4355767d" />
 
 读论文，不应该在模糊渲染、零散批注和层层菜单之间消耗注意力。PDFuck 的核心是一个面向审稿返修的批注工作台：你可以在字符边界上留下意见，马上把它标记为“已处理 / 想一想 / 不做了”，再从列表统计和原文定位继续推进。它不只是给 PDF 画颜色，而是把“发现问题 → 写下意见 → 做出决定 → 回到原文核对”放进同一条工作流。
 
