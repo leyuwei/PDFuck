@@ -32,6 +32,12 @@ export interface SavePdfRequest {
   saveAs?: boolean
 }
 
+/** The renderer needs to distinguish a canceled save from a target it cannot write. */
+export type SavePdfResult =
+  | { status: 'saved'; path: string }
+  | { status: 'canceled' }
+  | { status: 'save-as-required'; target: string }
+
 export interface PrintPdfRequest {
   data: Uint8Array
   name: string
@@ -108,7 +114,7 @@ export interface DesktopApi {
   getPdfPassword(credentialKey: string): Promise<string | undefined>
   openPdfFolder(path: string): Promise<void>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
-  savePdf(request: SavePdfRequest): Promise<string | null>
+  savePdf(request: SavePdfRequest): Promise<SavePdfResult>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>

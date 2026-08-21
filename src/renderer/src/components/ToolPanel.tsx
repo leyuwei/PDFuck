@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ModuleKey, Tool, ViewMode } from '../types'
 import type { ExportFormat } from '../../../shared/contracts'
 import { AnnotationIcon } from './AnnotationIcon'
 import { AnnotationLab } from './AnnotationLab'
+import './theme-settings.css'
 
 interface Props {
   module: ModuleKey
@@ -45,12 +48,61 @@ interface Props {
 
 const ToolButton = ({ tool, activeTool, children, hint, icon, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span></button>
 
+const THEME_COLORS = [
+  ['靛蓝', '#5575de'], ['蓝色', '#2f7de1'], ['青绿', '#23826b'], ['森林绿', '#3d8a57'],
+  ['琥珀', '#c98a15'], ['橙色', '#d76a29'], ['珊瑚红', '#d9585c'], ['莓紫', '#9a4fa3'],
+  ['石墨', '#465368'], ['暖灰', '#806f63'], ['浅灰蓝', '#dce5f4'], ['白色', '#ffffff']
+] as const
+
+function isHexColor(value: string): boolean { return /^#[0-9a-f]{6}$/i.test(value) }
+
+export interface HsvColor { h: number; s: number; v: number }
+
+export function hexToHsv(value: string): HsvColor {
+  const parts = value.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+  if (!parts) return { h: 225, s: 62, v: 87 }
+  const [red, green, blue] = parts.slice(1).map((part) => Number.parseInt(part, 16) / 255)
+  const max = Math.max(red, green, blue), min = Math.min(red, green, blue), delta = max - min
+  let hue = 0
+  if (delta) hue = 60 * (max === red ? ((green - blue) / delta + 6) % 6 : max === green ? (blue - red) / delta + 2 : (red - green) / delta + 4)
+  return { h: hue, s: max ? delta / max * 100 : 0, v: max * 100 }
+}
+
+export function hsvToHex({ h, s, v }: HsvColor): string {
+  const hue = ((h % 360) + 360) % 360, saturation = Math.max(0, Math.min(100, s)) / 100, value = Math.max(0, Math.min(100, v)) / 100
+  const chroma = value * saturation, secondary = chroma * (1 - Math.abs((hue / 60) % 2 - 1)), match = value - chroma
+  const [red, green, blue] = hue < 60 ? [chroma, secondary, 0] : hue < 120 ? [secondary, chroma, 0] : hue < 180 ? [0, chroma, secondary] : hue < 240 ? [0, secondary, chroma] : hue < 300 ? [secondary, 0, chroma] : [chroma, 0, secondary]
+  return `#${[red, green, blue].map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** A complete renderer-owned HSV picker works identically on Windows and macOS. */
+export function ThemeColorPicker({ label, value, theme, onChange }: { label: string; value: string; theme: 'light' | 'dark'; onChange(value: string): void }) {
+  const [open, setOpen] = useState(false)
+  const [hsv, setHsv] = useState(() => hexToHsv(value))
+  const [hex, setHex] = useState(value.toUpperCase())
+  useEffect(() => { setHsv(hexToHsv(value)); setHex(value.toUpperCase()) }, [value])
+  const commit = (next: HsvColor) => { const normalized = { h: ((next.h % 360) + 360) % 360, s: Math.max(0, Math.min(100, next.s)), v: Math.max(0, Math.min(100, next.v)) }; setHsv(normalized); const color = hsvToHex(normalized); setHex(color.toUpperCase()); onChange(color) }
+  const chooseSaturation = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    const next = { ...hsv, s: Math.max(0, Math.min(100, (event.clientX - box.left) / box.width * 100)), v: Math.max(0, Math.min(100, (1 - (event.clientY - box.top) / box.height) * 100)) }
+    commit(next)
+  }
+  const chooseHue = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    commit({ ...hsv, h: Math.max(0, Math.min(359, (event.clientX - box.left) / box.width * 360)) })
+  }
+  const drag = (select: (event: React.PointerEvent<HTMLDivElement>) => void) => (event: React.PointerEvent<HTMLDivElement>) => { event.currentTarget.setPointerCapture(event.pointerId); select(event) }
+  const move = (select: (event: React.PointerEvent<HTMLDivElement>) => void) => (event: React.PointerEvent<HTMLDivElement>) => { if (event.buttons) select(event) }
+  const updateHex = (next: string) => { setHex(next); if (isHexColor(next)) commit(hexToHsv(next)) }
+  return <><div className="theme-color-picker"><button type="button" className="theme-color-trigger" aria-label={`设置${label}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}><i style={{ backgroundColor: value }} /><span>{value.toUpperCase()}</span><b aria-hidden="true">⌄</b></button></div>{open && createPortal(<div className={`theme-color-dialog-backdrop ${theme === 'dark' ? 'theme-dark' : ''}`} onPointerDown={() => setOpen(false)}><div className="theme-color-popover" role="dialog" aria-modal="true" aria-label={`${label}颜色面板`} onPointerDown={(event) => event.stopPropagation()}><div className="theme-color-popover-heading"><div><span>{label}</span><small>拖动色彩面板选择任意颜色，或输入精确 HEX 值</small></div><button type="button" aria-label={`关闭${label}颜色面板`} onClick={() => setOpen(false)}>×</button></div><div className="theme-color-editor-label"><span>颜色浓度与明暗</span><b>{hsvToHex(hsv).toUpperCase()}</b></div><div className="theme-color-field" aria-label="饱和度和明度" style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))` }} onPointerDown={drag(chooseSaturation)} onPointerMove={move(chooseSaturation)}><i style={{ left: `${hsv.s}%`, top: `${100 - hsv.v}%` }} /></div><div className="theme-color-editor-label hue-label"><span>色相</span><b>← 拖动调节 →</b></div><div className="theme-color-hue" role="slider" aria-label="色相" aria-valuemin={0} aria-valuemax={359} aria-valuenow={hsv.h} tabIndex={0} onPointerDown={drag(chooseHue)} onPointerMove={move(chooseHue)} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') { event.preventDefault(); commit({ ...hsv, h: hsv.h - 1 }) } if (event.key === 'ArrowRight' || event.key === 'ArrowUp') { event.preventDefault(); commit({ ...hsv, h: hsv.h + 1 }) } }}><i style={{ left: `${hsv.h / 359 * 100}%` }} /></div><div className="theme-color-hex"><span style={{ backgroundColor: hsvToHex(hsv) }} /><input aria-label={`${label} HEX 色值`} value={hex} maxLength={7} spellCheck={false} onChange={(event) => updateHex(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && isHexColor(hex)) setOpen(false) }} /><button type="button" disabled={!isHexColor(hex)} onClick={() => setOpen(false)}>完成</button></div><div className="theme-color-presets"><span>推荐色</span><div>{THEME_COLORS.map(([name, color]) => <button type="button" key={color} className={value.toLowerCase() === color ? 'active' : ''} style={{ backgroundColor: color }} aria-label={`${label}：${name}`} title={name} onClick={() => { onChange(color); setOpen(false) }} />)}</div></div></div></div>, document.body)}</>
+}
+
 export function ToolPanel(props: Props) {
   const { module, activeTool, mode, disabled, onTool, readOnly } = props
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>查看</h2><p className="subtitle">选择适合当前阅读场景的页面布局。</p><h3>页面布局</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>连续滚动</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>单页查看</button></div>
-      <h3>主题</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>当前配色</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>夜间</button></div><label className="theme-color-control"><span>软件主题色</span><span><input type="color" value={props.accent} onChange={(event) => props.onAccent(event.target.value)} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title="恢复默认软件主题色" aria-label="恢复默认软件主题色">↺</button></span></label><label className="theme-color-control"><span>PDF 纸张背景</span><span><input type="color" value={props.documentBackground} onChange={(event) => props.onDocumentBackground(event.target.value)} /><button type="button" className="color-reset" disabled={!props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title="恢复默认 PDF 纸张背景" aria-label="恢复默认 PDF 纸张背景">↺</button></span></label><p className="hint">直接替换页面白纸底色；设置仅保存在当前 PDF 的本机偏好中。</p>
+      <h3>主题</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>当前配色</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>夜间</button></div><div className="theme-settings"><div className="theme-setting"><div className="theme-setting-copy"><b>软件主题色</b><small>控制按钮与强调色</small></div><div className="theme-setting-action"><ThemeColorPicker label="软件主题色" value={props.accent} theme={props.theme} onChange={props.onAccent} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title="恢复默认软件主题色" aria-label="恢复默认软件主题色">↺</button></div></div><div className="theme-setting"><div className="theme-setting-copy"><b>PDF 纸张背景</b><small>仅作用于当前 PDF</small></div><div className="theme-setting-action"><ThemeColorPicker label="PDF 纸张背景" value={props.documentBackground} theme={props.theme} onChange={props.onDocumentBackground} /><button type="button" className="color-reset" disabled={!props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title="恢复默认 PDF 纸张背景" aria-label="恢复默认 PDF 纸张背景">↺</button></div></div></div><p className="hint theme-settings-hint">PDF 纸张背景仅保存在当前文档的本机偏好中。</p>
       <h3>阅读工具</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>搜索 PDF <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>一键图表</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? '关闭引文标记' : '关联引文'}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>语法检查</button>
       {readOnly && <div className="encrypted-readonly"><b>加密文档 · 只读</b><span>当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。</span></div>}
       <div className="info-card"><b>阅读提示</b><span>Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。</span></div></section>}

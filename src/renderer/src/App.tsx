@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
@@ -21,11 +21,11 @@ import { fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor,
 import { bindTextSelectionToPage, type PageTextSelection } from './lib/page-text-selection'
 import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type AppPreferences } from './lib/app-preferences'
 
-const APP_VERSION = '1.16.18'
+const APP_VERSION = '1.16.21'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
-type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | null
+type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | null
 
 interface DocumentSession {
   id: number
@@ -551,9 +551,10 @@ export default function App() {
   const savePdf = useCallback(async (saveAs = false): Promise<boolean> => {
     const model = modelRef.current; if (!model) return false
     try {
-      const path = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs })
-      if (!path) return false
-      model.markSaved(path); setDirty(false); dirtyRef.current = false; setDocumentName(model.fileName); setStatus(`已保存 · ${path}`); return true
+      const result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs })
+      if (result.status === 'canceled') return false
+      if (result.status === 'save-as-required') { setStatus('无法直接保存：请选择其他位置另存'); setDialog({ type: 'save_as_required', target: result.target }); return false }
+      model.markSaved(result.path); setDirty(false); dirtyRef.current = false; setDocumentName(model.fileName); setStatus(`已保存 · ${result.path}`); return true
     } catch (error) { showError(error); return false }
   }, [showError])
 
@@ -687,6 +688,7 @@ export default function App() {
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
     {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}
+    {dialog?.type === 'save_as_required' && <SaveAsRequiredDialog target={dialog.target} onCancel={() => setDialog(null)} onSaveAs={() => { setDialog(null); void savePdf(true) }} />}
     {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; if (purpose === 'print') setDialog({ type: 'print_options', pages }); else { setDialog(null); void exportPages(pages) } }} />}
     {dialog?.type === 'print_options' && data && <PrintOptionsDialog data={data} pages={dialog.pages} onCancel={() => setDialog(null)} onSubmit={(options) => { const pages = dialog.pages; setDialog(null); void printPdf(pages, options) }} />}

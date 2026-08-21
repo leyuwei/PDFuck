@@ -69,6 +69,11 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
     <div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? '保存修改' : '添加'}</button></div></div></div>
 }
 
+export function SaveAsRequiredDialog({ target, onCancel, onSaveAs }: { target: string; onCancel(): void; onSaveAs(): void }) {
+  const fileName = target.split(/[\\/]/).at(-1) || '当前 PDF'
+  return <div className="modal-backdrop save-as-required-backdrop"><div className="modal save-as-required-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-required-title"><div className="save-as-required-symbol" aria-hidden="true">!</div><div className="save-as-required-copy"><small>保存需要新位置</small><h2 id="save-as-required-title">无法直接保存此文件</h2><p><b>{fileName}</b> 可能是只读文件、正被其他程序占用，或所在文件夹禁止写入。</p></div><div className="save-as-required-note"><b>你的修改仍保留在当前窗口</b><span>请选择其他位置另存，原文件不会被改动。</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>暂不保存</button><button type="button" className="primary" onClick={onSaveAs}>选择位置另存…</button></div></div></div>
+}
+
 export interface PdfPasswordDialogState {
   fileName: string
   reason: 'required' | 'incorrect' | 'saved-password-failed'

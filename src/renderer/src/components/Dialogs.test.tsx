@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog } from './Dialogs'
+import { AnnotationDialog, SaveAsRequiredDialog } from './Dialogs'
 
 vi.mock('../lib/pdfjs', () => ({
   AnnotationMode: { DISABLE: 0 },
@@ -44,6 +44,16 @@ describe('AnnotationDialog focus', () => {
     })
     expect(document.activeElement).toBe(textarea)
 
+    await act(async () => root.unmount())
+  })
+
+  it('offers a clear save-as recovery action after a protected-file save fails', async () => {
+    const onSaveAs = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<SaveAsRequiredDialog target="C:\\protected\\report.pdf" onCancel={() => undefined} onSaveAs={onSaveAs} />))
+    expect(container.textContent).toContain('你的修改仍保留在当前窗口')
+    await act(async () => { ([...container.querySelectorAll('button')].find((button) => button.textContent === '选择位置另存…') as HTMLButtonElement).click() })
+    expect(onSaveAs).toHaveBeenCalledOnce()
     await act(async () => root.unmount())
   })
 })

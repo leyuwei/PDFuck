@@ -10,6 +10,7 @@ import type { AiRequest, AiResponse, ExportRequest, PdfPasswordUpdate, PrintPdfO
 import { nativeWindowTitle } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
+import { requiresSaveAs } from './save-pdf'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -395,12 +396,18 @@ app.whenReady().then(() => {
     let target = request.saveAs ? undefined : request.currentPath
     if (!target) {
       const result = await dialog.showSaveDialog(window, { title: '保存 PDF', defaultPath: request.currentPath || 'document.pdf', filters: [{ name: 'PDF 文件', extensions: ['pdf'] }] })
-      if (result.canceled || !result.filePath) return null
+      if (result.canceled || !result.filePath) return { status: 'canceled' as const }
       target = result.filePath
     }
     if (!isPdf(target)) target += '.pdf'
-    await atomicWrite(resolve(target), request.data)
-    return resolve(target)
+    const absolute = resolve(target)
+    try {
+      await atomicWrite(absolute, request.data)
+      return { status: 'saved' as const, path: absolute }
+    } catch (error) {
+      if (requiresSaveAs(error)) return { status: 'save-as-required' as const, target: absolute }
+      throw error
+    }
   })
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
