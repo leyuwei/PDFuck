@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar } from './components/WindowManagerBar'
+import { LocalizedInterfaceCopy } from './components/InterfaceLanguageBridge'
 import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
@@ -20,12 +21,13 @@ import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 import { fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor, type CitationLink, type GrammarIssue, type InsightHit } from './lib/document-insights'
 import { bindTextSelectionToPage, type PageTextSelection } from './lib/page-text-selection'
 import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type AppPreferences } from './lib/app-preferences'
+import { t, translateUiText, ui, useInterfaceLanguage } from './lib/i18n'
 
-const APP_VERSION = '1.16.21'
+const APP_VERSION = '1.16.29'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
-type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | null
+type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string } | null
 
 interface DocumentSession {
   id: number
@@ -96,12 +98,22 @@ function RecentWelcome({ recent, onOpen, onChoose }: { recent: RecentPdf[]; onOp
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
-  return <div className="welcome-layout">
-    <section className="welcome-hero"><div className="welcome-icon"><span>PDF</span></div><h1>打开 PDF 开始工作</h1><p>阅读、编辑、批注与导出，都在一个干净的窗口里完成。</p><button className="primary" onClick={onChoose}>选择 PDF 文件</button><small>也可以把 PDF 文件直接拖到窗口中</small></section>
-    <section className="recent-panel"><div className="recent-heading"><div><small>QUICK OPEN</small><h2>最近打开</h2></div><span>{recent.length ? `${recent.length} 个文件` : '暂无记录'}</span></div>
-      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>最近打开的 PDF 会显示在这里</b><small>打开过的文件可以从这里一键继续阅读</small></div>}</div>
+  return <LocalizedInterfaceCopy><div className="welcome-layout">
+    <section className="welcome-hero"><div className="welcome-icon"><span>PDF</span></div><h1>{ui('打开 PDF 开始工作', 'Open a PDF to Get Started')}</h1><p>{ui('阅读、编辑、批注与导出，都在一个干净的窗口里完成。', 'Read, edit, annotate, and export in one focused workspace.')}</p><button className="primary" onClick={onChoose}>{ui('选择 PDF 文件', 'Choose PDF File')}</button><small>{ui('也可以把 PDF 文件直接拖到窗口中', 'You can also drag a PDF file into this window.')}</small></section>
+    <section className="recent-panel"><div className="recent-heading"><div><small>{ui('快速打开', 'Quick Open')}</small><h2>{ui('最近打开', 'Recent Files')}</h2></div><span>{recent.length ? `${recent.length} ${ui('个文件', 'files')}` : ui('暂无记录', 'No recent files')}</span></div>
+      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>{ui('最近打开的 PDF 会显示在这里', 'Recently opened PDFs appear here')}</b><small>{ui('打开过的文件可以从这里一键继续阅读', 'Resume reading any previous file in one click.')}</small></div>}</div>
     </section>
-  </div>
+  </div></LocalizedInterfaceCopy>
+}
+
+function moduleName(key: ModuleKey): string {
+  return key === 'view' ? ui('查看', 'View') : key === 'edit' ? ui('编辑', 'Edit') : key === 'annotate' ? ui('批注', 'Annotate') : ui('保存', 'Save')
+}
+
+function moduleTitle(key: ModuleKey, encrypted: boolean, activeModule: ModuleKey, collapsed: boolean): string {
+  if (encrypted && key !== 'view') return ui('加密 PDF 以只读模式打开', 'Encrypted PDF opened read-only')
+  const name = moduleName(key)
+  return activeModule === key ? collapsed ? `${ui('展开', 'Expand')} ${name} ${ui('工具', 'tools')}` : `${ui('收起', 'Collapse')} ${name} ${ui('工具', 'tools')}` : `${ui('打开', 'Open')} ${name} ${ui('工具', 'tools')}`
 }
 
 export default function App() {
@@ -121,6 +133,7 @@ export default function App() {
   const textResolve = useRef<((value: TextDialogValue | null) => void) | undefined>(undefined)
   const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
   const secureStorageResolve = useRef<((value: boolean) => void) | undefined>(undefined)
+  const confirmResolve = useRef<((value: boolean) => void) | undefined>(undefined)
   const allowWindowCloseRef = useRef(false)
   const [data, setData] = useState<Uint8Array>()
   const [module, setModule] = useState<ModuleKey>('view')
@@ -161,10 +174,13 @@ export default function App() {
   const [recentFiles, setRecentFiles] = useState<RecentPdf[]>([])
   const [toolPanelCollapsed, setToolPanelCollapsed] = useState(false)
   const [preferences, setPreferences] = useState<AppPreferences>(loadPreferences)
+  const interfaceLanguage = useInterfaceLanguage()
   const hasDocument = Boolean(data?.length)
   const appAccent = preferences.accent || DEFAULT_ACCENT
   const documentBackgroundKey = modelRef.current?.filePath || documentName
   const documentBackground = preferences.documentBackgrounds[documentBackgroundKey] || (preferences.theme === 'dark' ? '#afbbd0' : '#ffffff')
+
+  useEffect(() => { window.desktop.setInterfaceLanguage(interfaceLanguage) }, [interfaceLanguage])
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
@@ -180,16 +196,17 @@ export default function App() {
   }, [])
   const showError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
-    setStatus(`操作失败：${message}`); window.alert(`操作失败\n\n${message}`)
+    setStatus(`操作失败：${message}`); window.alert(`${ui('操作失败', 'Action failed')}\n\n${translateUiText(message)}`)
   }, [])
-  const closeCurrentWindow = useCallback(() => {
+  const askConfirmation = useCallback((message: string): Promise<boolean> => new Promise((resolve) => { confirmResolve.current = resolve; setDialog({ type: 'confirm', message }) }), [])
+  const closeCurrentWindow = useCallback(async () => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const dirtyCount = [...sessionsRef.current.values()].filter((session) => session.dirty).length
-    if (!dirtyCount || window.confirm(`有 ${dirtyCount} 个文档包含未保存的修改，确定关闭 PDFuck 吗？`)) {
+    if (!dirtyCount || await askConfirmation(t('close.app', { count: dirtyCount }))) {
       allowWindowCloseRef.current = true; dirtyRef.current = false; window.desktop.windowClose()
       window.setTimeout(() => { allowWindowCloseRef.current = false }, 1500)
     }
-  }, [])
+  }, [askConfirmation])
   const activateSession = useCallback((session: DocumentSession) => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
     const pendingAnnotation = annotationResolve.current, pendingText = textResolve.current
@@ -294,11 +311,11 @@ export default function App() {
     setDocumentTabs((current) => { const snapshot = { ...current, currentId: id }; tabsSnapshotRef.current = snapshot; return snapshot })
     activateSession(session)
   }, [activateSession])
-  const closeDocument = useCallback((id: number) => {
+  const closeDocument = useCallback(async (id: number) => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const session = sessionsRef.current.get(id)
     if (!session) return
-    if (session.dirty && !window.confirm(`${session.documentName} 有未保存的修改，确定关闭这个文档标签吗？`)) return
+    if (session.dirty && !await askConfirmation(t('close.document', { name: session.documentName }))) return
     const current = tabsSnapshotRef.current
     const closedIndex = current.documents.findIndex((item) => item.id === id)
     const remaining = current.documents.filter((item) => item.id !== id)
@@ -315,7 +332,7 @@ export default function App() {
       sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
     }
     const snapshot = { currentId: next.id, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
-  }, [activateSession])
+  }, [activateSession, askConfirmation])
 
   useEffect(() => {
     window.desktop.windowIsMaximized().then(setMaximized)
@@ -440,10 +457,7 @@ export default function App() {
     const documentId = activeDocumentIdRef.current
     const originIsActive = () => modelRef.current === model && activeDocumentIdRef.current === documentId
     if (action.tool === 'crop' && action.rect) {
-      if (window.confirm('将当前页面裁切为框选区域？')) {
-        await mutate((value) => value.cropPage(action.pageIndex, action.rect!), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”')
-        setTool('none')
-      }
+      setDialog({ type: 'crop_confirm', pageIndex: action.pageIndex, rect: action.rect })
     } else if (action.tool === 'add_text' && action.rect) {
       const value = await askText(); if (!value || !originIsActive()) return
       const image = await styledTextRaster(value.text, action.rect, value)
@@ -664,26 +678,28 @@ export default function App() {
   }
 
   const temporaryDocument = isTemporaryDocumentPath(modelRef.current?.filePath || liveSessionRef.current.filePath)
-  const insightTitle = insight?.kind === 'visual' ? '图表定位结果' : insight?.kind === 'citation' ? '引文关联结果' : '语法检查结果'
+  const insightTitle = insight?.kind === 'visual' ? ui('图表定位结果', 'Figures & Tables') : insight?.kind === 'citation' ? ui('引文关联结果', 'Citation Links') : ui('语法检查结果', 'Grammar Results')
 
   const isMac = window.desktop.platform === 'darwin'
-  return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragOver={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) setDraggingFile(false) }} onDrop={(event) => {
+  const visibleStatus = translateUiText(status)
+  const visibleDocumentName = translateUiText(documentName)
+  return <LocalizedInterfaceCopy><div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragOver={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) setDraggingFile(false) }} onDrop={(event) => {
     event.preventDefault(); setDraggingFile(false); const file = [...event.dataTransfer.files].find((value) => value.name.toLowerCase().endsWith('.pdf'))
     if (!file) { setStatus('请拖入 PDF 文件'); return }
     const path = window.desktop.filePath(file)
     void openPath(path)
   }}>
-    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className={`document-title${encrypted ? ' encrypted' : ''}`} title={`${documentName}${encrypted ? '（加密，只读）' : ''}`}>{encrypted && <span className="document-encrypted-badge">加密</span>}<span>{documentName}{dirty ? ' · 未保存' : ''}</span></div><div className="file-actions"><button className="open-button" onClick={() => void chooseOpen()}>打开 PDF</button><button className="folder-button" disabled={!hasDocument} title="在 Finder 或文件管理器中显示当前 PDF 所在文件夹" onClick={() => void openCurrentFolder()}><span aria-hidden="true">▣</span>打开文件夹</button></div><div className="history-controls"><button disabled={!canUndo} title="撤销 (Ctrl+Z)" aria-label="撤销" onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title="重做 (Ctrl+Y / Ctrl+Shift+Z)" aria-label="重做" onClick={() => void redoDocument()}>↷</button></div>
+    <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className={`document-title${encrypted ? ' encrypted' : ''}`} title={`${visibleDocumentName}${encrypted ? ui('（加密，只读）', ' (Encrypted, read-only)') : ''}`}>{encrypted && <span className="document-encrypted-badge">{ui('加密', 'Encrypted')}</span>}<span>{visibleDocumentName}{dirty ? ui(' · 未保存', ' · Unsaved') : ''}</span></div><div className="file-actions"><button className="open-button" onClick={() => void chooseOpen()}>{ui('打开 PDF', 'Open PDF')}</button><button className="folder-button" disabled={!hasDocument} title={ui('在 Finder 或文件管理器中显示当前 PDF 所在文件夹', 'Show the current PDF in Finder or File Explorer')} onClick={() => void openCurrentFolder()}><span aria-hidden="true">▣</span>{ui('打开文件夹', 'Open Folder')}</button></div><div className="history-controls"><button disabled={!canUndo} title={ui('撤销 (Ctrl+Z)', 'Undo (Ctrl+Z)')} aria-label={ui('撤销', 'Undo')} onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title={ui('重做 (Ctrl+Y / Ctrl+Shift+Z)', 'Redo (Ctrl+Y / Ctrl+Shift+Z)')} aria-label={ui('重做', 'Redo')} onClick={() => void redoDocument()}>↷</button></div>
       <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
-      <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>适合宽度</button></div>
-      <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>保存</button>{!isMac && <div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div>}</header>
+      <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{ui('适合宽度', 'Fit Width')}</button></div>
+      <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui('保存', 'Save')}</button>{!isMac && <div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div>}</header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
-    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={encrypted && key !== 'view' ? '加密 PDF 以只读模式打开' : module === key ? (toolPanelCollapsed ? `展开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具` : `收起${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`) : `打开${{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}工具`} onClick={() => selectModule(key)}><ModuleIcon module={key} />{{ view: '查看', edit: '编辑', annotate: '批注', save: '保存' }[key]}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
+    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} />{moduleName(key)}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
       <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection?.text} onAddAiAnnotation={addAiAnnotation} onCopy={(content) => void copyText(content)} /></div>
-      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>当前文件可能处于临时目录，请注意另存，防止走丢！</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label="关闭临时目录提示" title="关闭提示">×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui('当前文件可能处于临时目录，请注意另存，防止走丢！', 'This file may be in a temporary folder. Save it elsewhere to avoid losing it.')}</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label={ui('关闭临时目录提示', 'Dismiss temporary-folder notice')} title={ui('关闭提示', 'Dismiss notice')}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
-    </main><footer><span>{status}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `已选择：${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? `${pageCount} 页 · 第 ${currentPage + 1} 页` : '未打开文档'}</span></footer>
-    {draggingFile && <div className="drop-overlay"><div><b>释放以打开 PDF</b><span>{hasDocument ? '将在当前窗口新增一个文档标签' : '将在当前标签中打开'}</span></div></div>}
+    </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui('已选择：', 'Selected: ')}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui('未打开文档', 'No Document Open')}</span></footer>
+    {draggingFile && <div className="drop-overlay"><div><b>{ui('释放以打开 PDF', 'Drop to Open PDF')}</b><span>{hasDocument ? ui('将在当前窗口新增一个文档标签', 'A new document tab will open in this window.') : ui('将在当前标签中打开', 'The document will open in this tab.')}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
@@ -691,9 +707,11 @@ export default function App() {
     {dialog?.type === 'save_as_required' && <SaveAsRequiredDialog target={dialog.target} onCancel={() => setDialog(null)} onSaveAs={() => { setDialog(null); void savePdf(true) }} />}
     {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; if (purpose === 'print') setDialog({ type: 'print_options', pages }); else { setDialog(null); void exportPages(pages) } }} />}
+    {dialog?.type === 'crop_confirm' && <ConfirmDialog message={ui('将当前页面裁切为框选区域？', 'Crop the current page to the selected area?')} onCancel={() => setDialog(null)} onConfirm={() => { const crop = dialog; setDialog(null); void mutate((value) => value.cropPage(crop.pageIndex, crop.rect), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”'); setTool('none') }} />}
+    {dialog?.type === 'confirm' && <ConfirmDialog message={dialog.message} onCancel={() => { setDialog(null); confirmResolve.current?.(false); confirmResolve.current = undefined }} onConfirm={() => { setDialog(null); confirmResolve.current?.(true); confirmResolve.current = undefined }} />}
     {dialog?.type === 'print_options' && data && <PrintOptionsDialog data={data} pages={dialog.pages} onCancel={() => setDialog(null)} onSubmit={(options) => { const pages = dialog.pages; setDialog(null); void printPdf(pages, options) }} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
-    <Toast message={status.startsWith('操作失败') ? status : ''} />
-    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? `${insight.hits.length} 项` : '未发现可定位项目'}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label="关闭结果" title="关闭">×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>第 {hit.pageIndex + 1} 页 · {hit.label}</b><span>{'reference' in hit ? hit.reference : hit.context}</span></button>)}</div></div>}
-  </div>
+    <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />
+    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui('未发现可定位项目', 'No matching items found')}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label={ui('关闭结果', 'Close results')} title={ui('关闭', 'Close')}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: hit.label })}</b><span>{'reference' in hit ? hit.reference : hit.context}</span></button>)}</div></div>}
+  </div></LocalizedInterfaceCopy>
 }

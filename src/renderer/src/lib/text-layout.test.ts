@@ -232,6 +232,32 @@ describe('PDF text layout', () => {
     })
   })
 
+  it('keeps a completed line free of a list marker emitted out of PDF stream order', () => {
+    const words = [
+      { text: 'as', order: 0, column: 0, rect: { x: 10, y: 20, width: 12, height: 10 } },
+      // This is the actual ordering pattern seen in Scheduling0821m.pdf:
+      // the next-line bullet occurs before the rest of the current line.
+      { text: '•', order: 1, column: 0, rect: { x: 18, y: 35, width: 5, height: 7 } },
+      { text: 'follows:', order: 2, column: 0, rect: { x: 26, y: 20, width: 40, height: 10 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 2, offset: 8 })).toEqual({
+      text: 'as follows:',
+      rects: [{ x: 10, y: 20, width: 56, height: 10 }]
+    })
+  })
+
+  it('does not leak a next-line formula fragment into a same-line selection', () => {
+    const words = [
+      { text: 'constraint', order: 0, column: 0, rect: { x: 10, y: 20, width: 48, height: 10 } },
+      { text: '=', order: 1, column: 0, rect: { x: 42, y: 33, width: 7, height: 7 } },
+      { text: 'holds.', order: 2, column: 0, rect: { x: 62, y: 20, width: 34, height: 10 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 2, offset: 6 })).toEqual({
+      text: 'constraint holds.',
+      rects: [{ x: 10, y: 20, width: 86, height: 10 }]
+    })
+  })
+
   it('selects a two-line cross-column caption without absorbing body text', () => {
     const words = [
       { text: 'Fig.', order: 0, column: 0, columnAmbiguous: true, rect: { x: 10, y: 100, width: 24, height: 12 } },

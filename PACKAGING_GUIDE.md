@@ -56,17 +56,19 @@ rg -n '"version"|APP_VERSION' package.json package-lock.json src/renderer/src/Ap
 npm run typecheck
 npm test
 npm run build
+npm run test:i18n-catalogue
+npm run test:i18n-ui
 git diff --check
 ```
 
 多栏文字选择回归还应运行：
 
 ```bash
-npm run test:selection-cpaper
-node scripts/selection-cpaper-ui-smoke.cjs
+npm run test:selection-scheduling
+npm run test:selection-scheduling-ui
 ```
 
-该 CJS 检查会遍历 `tmp/cpaper.pdf` 全部页面，动态识别双栏或多栏正文、紧凑栏沟，以及图、表、长公式和跨栏题注组成的视觉块；它验证正文选区不穿栏沟，视觉块按几何顺序完整选中且矩形不越界。Electron UI 烟测覆盖右栏纯选、图 3、图 4、图 5 题注，并验证从第 3 页选中后点击第 4 页会清除所有旧选区。缺少该测试 PDF 时应先补齐样本，不要跳过回归。
+这两项检查使用 `tmp/Scheduling0821m.pdf`。静态检查验证内部对象顺序异常时（下一行项目符号被写在当前行两个词之间），当前行选区既不带入符号也不产生下一行矩形；Electron UI 烟测以真实拖拽验证同一位置，并确认标题、按钮等桌面界面控件不能被浏览器式框选。缺少该测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，验证重启后的语言持久化、主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。
 
 其中 `npm run build` 会重新生成 `out/main`、`out/preload` 和 `out/renderer`。不要直接用旧的 `out` 目录打包，否则源码修复可能没有进入 `app.asar`。
 
@@ -213,7 +215,7 @@ Get-AuthenticodeSignature release\*.exe
 ## 7. 最终发布清单
 
 - `package.json`、`package-lock.json`、`APP_VERSION` 完全一致。
-- `npm run typecheck`、`npm test`、`npm run build`、`git diff --check` 全部通过。
+- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
 - DMG 保留卷图标、应用图标、Applications 快捷入口和正确 Finder 布局。

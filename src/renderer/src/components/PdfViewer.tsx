@@ -10,11 +10,13 @@ import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
+import { LocalizedInterfaceCopy } from './InterfaceLanguageBridge'
 import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
 import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
 import type { ReadingPosition } from '../../../shared/contracts'
 import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
+import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 
 export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
@@ -116,6 +118,7 @@ function selectionFromRange(words: WordBox[], first: number, last: number): Text
 }
 
 function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { selection: TextSelection; zoom: number; pageSize: { width: number; height: number }; onChoose(tool: Tool): void }) {
+  useInterfaceLanguage()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
   const bounds = rectUnion(selection.rects)
@@ -139,12 +142,12 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const tools: Array<{ tool: Tool; label: string; kind: 'highlight' | 'replace' | 'delete_text' | 'underline' | 'note' | 'insert' }> = [
-    { tool: 'highlight', label: '文本高亮', kind: 'highlight' }, { tool: 'replace', label: '文本替换', kind: 'replace' }, { tool: 'delete_text', label: '文本删除', kind: 'delete_text' }, { tool: 'underline', label: '加下划线', kind: 'underline' }, { tool: 'note', label: '自由批注', kind: 'note' }, { tool: 'insert', label: '插入文字', kind: 'insert' }
+    { tool: 'highlight', label: ui('文本高亮', 'Highlight Text'), kind: 'highlight' }, { tool: 'replace', label: ui('文本替换', 'Replace Text'), kind: 'replace' }, { tool: 'delete_text', label: ui('文本删除', 'Delete Text'), kind: 'delete_text' }, { tool: 'underline', label: ui('加下划线', 'Underline Text'), kind: 'underline' }, { tool: 'note', label: ui('自由批注', 'Note'), kind: 'note' }, { tool: 'insert', label: ui('插入文字', 'Insert Text'), kind: 'insert' }
   ]
   return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
-    <button type="button" className="selection-toolbar-grip" aria-label="拖动批注快捷浮窗" title="拖动浮窗" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
+    <button type="button" className="selection-toolbar-grip" aria-label={ui('拖动批注快捷浮窗', 'Drag annotation toolbar')} title={ui('拖动浮窗', 'Drag toolbar')} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
-    <button type="button" className="selection-toolbar-button" aria-label="智能润色" title="智能润色 (Ctrl/⌘I)" onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
+    <button type="button" className="selection-toolbar-button" aria-label={ui('智能润色', 'AI Polish')} title={ui('智能润色 (Ctrl/⌘I)', 'AI Polish (Ctrl/⌘I)')} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
   </div>
 }
 
@@ -260,14 +263,14 @@ function SearchPanel({ document, onClose, onJump, onFocusTarget }: { document: P
     } catch (cause) { setError(cause instanceof Error ? cause.message : '搜索表达式无效') }
     finally { setBusy(false) }
   }
-  return <div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
+  return <LocalizedInterfaceCopy><div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
     <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>搜索文档</b><button type="button" onClick={onClose} aria-label="关闭搜索" title="关闭搜索">×</button></div>
     <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder="输入文字或正则表达式" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : '搜索'}</button></div>
     <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />匹配大小写</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />模糊匹配</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />正则表达式</label></div>
     {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">常用正则表达式</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{preset.label}</option>)}</select>}
     {error && <p className="pdf-search-error">{error}</p>}
-    {results.length > 0 && <div className="pdf-search-results"><header><span>找到 {results.length}{results.length >= 200 ? '+' : ''} 个结果</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => { onJump(result.pageIndex); onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace }) }}><b>第 {result.pageIndex + 1} 页</b><span>{result.context}</span></button>)}</div>}
-  </div>
+    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => { onJump(result.pageIndex); onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace }) }}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
+  </div></LocalizedInterfaceCopy>
 }
 
 function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
@@ -297,7 +300,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {annotation.kind === 'note' && <span className="note-pin">●</span>}
     {annotation.kind === 'insert' && <span className="insert-caret" aria-hidden="true" />}
-    {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 25 }}>当前批注</span></>}
+    {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 25 }}>{t('annotation.current')}</span></>}
   </div>
 }
 
@@ -347,7 +350,7 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   const toolbarHeight = 78
   const toolbarTop = region.rect.y * zoom >= toolbarHeight + 8 ? region.rect.y * zoom - toolbarHeight - 6 : Math.min(pageSize.height * zoom - toolbarHeight, region.rect.y * zoom + editorHeight + 7)
   const submit = () => onSave(text, style)
-  return <>
+  return <LocalizedInterfaceCopy><>
     <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label="编辑页面文字内容" style={{ left: region.rect.x * zoom, top: region.rect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: 3 + paragraphBefore * zoom, paddingBottom: 3 + paragraphAfter * zoom, color: style.color, backgroundColor, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); submit() } }} />
     <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
@@ -368,7 +371,7 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
         <label className="format-number format-width" title="文字宽度比例"><span>宽度</span><input aria-label="文字宽度" type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
       </div>
     </div>
-  </>
+  </></LocalizedInterfaceCopy>
 }
 
 function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void }) {
@@ -394,22 +397,23 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
   const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 154, rect.x * zoom))
   const actionTop = actionBelow ? (rect.y + rect.height) * zoom + 7 : Math.max(4, rect.y * zoom - 37)
   const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
-  return <>
+  return <LocalizedInterfaceCopy><>
     <div className="crop-draft" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
-      <span className="crop-draft-label">裁切区域</span>
+      <span className="crop-draft-label">{t('crop.label')}</span>
       {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
       <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>取消</button>
-      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>确认范围</button>
+      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
     </div>
-  </>
+  </></LocalizedInterfaceCopy>
 }
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
 
 function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
+  useInterfaceLanguage()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const preciseFocusRef = useRef<HTMLDivElement>(null)
@@ -699,7 +703,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
+  return <LocalizedInterfaceCopy><div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -726,17 +730,17 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       {menu.annotation ? <>
-        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>编辑批注内容…</span></button>
+        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui('编辑批注内容…', 'Edit Annotation…')}</span></button>
         <div className="annotation-context-controls"><AnnotationColorPicker compact color={menu.annotation.color} onChange={colorMenuAnnotation} /><AnnotationReplyPicker compact reply={menu.annotation.reply} onChange={replyMenuAnnotation} onQuickReply={() => setMenu(undefined)} /></div>
-        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>删除这条批注</span></button>
+        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>{ui('删除这条批注', 'Delete This Annotation')}</span></button>
       </> : <>
-        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>复制</span><kbd>Ctrl+C</kbd></button>}
-        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>文本高亮</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>文本替换</span></button>
-          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>文本删除</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>加下划线</span></button></>}
-          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>自由批注</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>插入文字</span></button></>}
+        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui('复制', 'Copy')}</span><kbd>Ctrl+C</kbd></button>}
+        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui('文本高亮', 'Highlight Text')}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui('文本替换', 'Replace Text')}</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui('文本删除', 'Delete Text')}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui('加下划线', 'Underline Text')}</span></button></>}
+          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui('自由批注', 'Note')}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui('插入文字', 'Insert Text')}</span></button></>}
       </>}
     </div>}
-  </div>
+  </div></LocalizedInterfaceCopy>
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {

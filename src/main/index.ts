@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AiRequest, AiResponse, ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
-import { nativeWindowTitle } from '../shared/window-session'
+import { nativeWindowTitle, type NativeInterfaceLanguage } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
 import { requiresSaveAs } from './save-pdf'
@@ -17,6 +17,21 @@ interface MainWindowSession extends WindowDocumentState {
   initialPaths: string[]
   initialDelivered: boolean
   closeApproved: boolean
+  interfaceLanguage: NativeInterfaceLanguage
+}
+
+function nativeText(chinese: string, english: string): string {
+  const language = mainSession?.interfaceLanguage || 'zh'
+  if (language === 'zh') return chinese
+  if (language === 'en') return english
+  const translations: Record<string, Record<Exclude<NativeInterfaceLanguage, 'zh' | 'en'>, string>> = {
+    '打开 PDF': { ja: 'PDF を開く', ru: 'Открыть PDF', es: 'Abrir PDF' },
+    'PDF 文件': { ja: 'PDF ファイル', ru: 'PDF-файлы', es: 'Archivos PDF' },
+    '保存 PDF': { ja: 'PDF を保存', ru: 'Сохранить PDF', es: 'Guardar PDF' },
+    '导出': { ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' },
+    '打印': { ja: '印刷', ru: 'Печать', es: 'Imprimir' }
+  }
+  return translations[chinese]?.[language] || english
 }
 
 let mainSession: MainWindowSession | null = null
@@ -114,8 +129,7 @@ async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
     return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
   } catch (error) {
     if (controller.signal.aborted) throw new Error('请求超时（45 秒）。请检查网络、代理或接口地址后重试。')
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`无法连接模型服务：${detail || '网络连接失败'}。请检查接口地址、网络或证书。`)
+    throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   } finally { clearTimeout(timeout) }
 }
 
@@ -262,7 +276,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
   await writeFile(temporary, request.data)
   const window = new BrowserWindow({
     width: 900, height: 720, show: false, skipTaskbar: true, parent, modal: true, autoHideMenuBar: true,
-    title: `打印 - ${basename(request.name || 'document.pdf')}`,
+    title: `${nativeText('打印', 'Print')} - ${basename(request.name || 'document.pdf')}`,
     webPreferences: { plugins: true, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
   })
   printWindow = window
@@ -307,10 +321,10 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
-  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, closeApproved: false, fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
+  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, closeApproved: false, interfaceLanguage: 'zh', fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
   window.on('maximize', () => window.webContents.send('window:maximized', true))
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
-  window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession)) })
+  window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage)) })
   window.on('close', (event) => {
     const session = mainSession
     if (!session || session.window !== window || session.closeApproved || !session.dirty) return
@@ -349,7 +363,7 @@ app.whenReady().then(() => {
   void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
     const window = requireMainWindow(event.sender)
-    const result = await dialog.showOpenDialog(window, { title: '打开 PDF', properties: ['openFile'], filters: [{ name: 'PDF 文件', extensions: ['pdf'] }] })
+    const result = await dialog.showOpenDialog(window, { title: nativeText('打开 PDF', 'Open PDF'), properties: ['openFile'], filters: [{ name: nativeText('PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -395,7 +409,7 @@ app.whenReady().then(() => {
     const window = requireMainWindow(event.sender)
     let target = request.saveAs ? undefined : request.currentPath
     if (!target) {
-      const result = await dialog.showSaveDialog(window, { title: '保存 PDF', defaultPath: request.currentPath || 'document.pdf', filters: [{ name: 'PDF 文件', extensions: ['pdf'] }] })
+      const result = await dialog.showSaveDialog(window, { title: nativeText('保存 PDF', 'Save PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText('PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
       if (result.canceled || !result.filePath) return { status: 'canceled' as const }
       target = result.filePath
     }
@@ -414,7 +428,7 @@ app.whenReady().then(() => {
     const window = requireMainWindow(event.sender)
     if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
     const stem = parse(request.sourceName || 'document').name
-    const result = await dialog.showSaveDialog(window, { title: `导出 ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
+    const result = await dialog.showSaveDialog(window, { title: `${nativeText('导出', 'Export')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null
     const selected = parse(result.filePath), many = request.pages.length > 1
     const outputs: string[] = []
@@ -442,12 +456,18 @@ app.whenReady().then(() => {
     if (!validReleasePage(url)) throw new Error('更新链接无效。')
     await shell.openExternal(url)
   })
+  ipcMain.on('app:set-interface-language', (event, language: unknown) => {
+    const window = requireMainWindow(event.sender)
+    if (!mainSession) return
+    mainSession.interfaceLanguage = language === 'en' || language === 'ja' || language === 'ru' || language === 'es' ? language : 'zh'
+    window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage))
+  })
   ipcMain.on('window:update-document', (event, state: WindowDocumentState) => {
     const window = requireMainWindow(event.sender)
     if (!mainSession) return
     mainSession.fileName = typeof state.fileName === 'string' ? state.fileName.slice(0, 260) : '未打开文档'
     mainSession.dirty = Boolean(state.dirty); mainSession.hasDocument = Boolean(state.hasDocument); mainSession.encrypted = Boolean(state.encrypted)
-    window.setTitle(nativeWindowTitle(mainSession))
+    window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage))
   })
   ipcMain.on('window:minimize', (event) => requireMainWindow(event.sender).minimize())
   ipcMain.on('window:toggle-maximize', (event) => { const window = requireMainWindow(event.sender); window.isMaximized() ? window.unmaximize() : window.maximize() })

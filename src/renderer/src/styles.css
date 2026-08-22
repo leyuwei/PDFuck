@@ -1,6 +1,9 @@
 :root { font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif; color: #182033; background: #f4f6fa; font-synthesis: none; }
 * { box-sizing: border-box; }
-html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; }
+/* The desktop shell owns selection. Keep native browser selection out of all
+   controls and chrome, while preserving deliberate text entry/editing. */
+input, textarea, [contenteditable="true"] { user-select: text; -webkit-user-select: text; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { background: #fff; border: 1px solid #dde2ec; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: .15s ease; }
 button:hover:not(:disabled) { border-color: #829bee; background: #f4f7ff; }

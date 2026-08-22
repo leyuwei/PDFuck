@@ -23,6 +23,7 @@ const api: DesktopApi = {
   setReadingPosition: (path, position: ReadingPosition) => ipcRenderer.invoke('pdf:reading-position-set', { path, position }),
   flushReadingPosition: (path, position: ReadingPosition) => ipcRenderer.send('pdf:reading-position-flush', { path, position }),
   updateWindowDocument: (state: WindowDocumentState) => ipcRenderer.send('window:update-document', state),
+  setInterfaceLanguage: (language) => ipcRenderer.send('app:set-interface-language', language),
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
   windowClose: () => ipcRenderer.send('window:close'),

@@ -15,6 +15,7 @@
 ## 为什么值得一试
 
 - **一键找到论文里的图和表**：自动识别 `Figure`、`Fig.`、`Table`、`图`、`表` 等标题，也能发现没有规范标题的页面图像和疑似表格；结果按页列出，点击即可跳转并短暂聚焦目标。
+- **五种界面语言**：可在查看面板通过紧凑下拉框即时切换简体中文、English、日本語、Русский 与 Español；窗口标题、系统文件对话框、提示、弹窗、打印与导出流程会同步使用所选语言。
 - **引文和参考文献自动连线**：识别 `[1]`、`[2-4]`、作者-年份等常见引文格式，在正文引用与参考文献条目之间建立可点击关联，返修时不用手动翻页对照。
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
@@ -36,7 +37,7 @@
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.16.21-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.16.29-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -47,7 +48,7 @@
 
 ### 便携版
 
-下载 `PDFuck-1.16.21-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.16.29-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -59,11 +60,11 @@
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.16.21-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-1.16.29-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.16.21-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-1.16.29-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -184,7 +185,7 @@ npm test
 npm run build
 ```
 
-针对混排页面的框选回归，可在构建后运行 `npm run test:selection-cpaper`，它会遍历 `tmp/cpaper.pdf` 全部页面，动态识别双栏或多栏正文、紧凑栏沟，以及图、表、长公式和跨栏题注组成的视觉块；它验证正文选区不穿栏沟，视觉块按几何顺序完整选中且矩形不越界。再运行 `node scripts/selection-cpaper-ui-smoke.cjs`，验证真实 Electron 界面中右栏选区不溢出、图 3/图 4/图 5 图题可选且点击另一页会清除旧选区。
+针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling` 和 `npm run test:selection-scheduling-ui`。两项检查都使用 `tmp/Scheduling0821m.pdf`：前者验证 PDF 内部文字流把下一行项目符号插入当前行中间时，选区仍只包含当前行；后者在真实 Electron 界面中拖选该位置，并确认原生界面控件不会出现浏览器式文字选中。
 
 Windows 发布命令：
 
@@ -205,7 +206,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.16.21-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并生成 `release/PDFuck-1.16.29-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")

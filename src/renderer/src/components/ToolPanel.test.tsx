@@ -31,4 +31,16 @@ describe('ToolPanel theme colours', () => {
     expect(hsvToHex(hexToHsv('#9c27b0'))).toBe('#9c27b0')
     expect(hsvToHex(hexToHsv('#16324f'))).toBe('#16324f')
   })
+
+  it('keeps interface language as one direct dropdown below its heading', async () => {
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<ToolPanel module="view" activeTool="none" mode="continuous" disabled={false} readOnly={false} exportFormat="pdf" exportDpi={144} pdfExportMode="combined" onTool={() => undefined} onMode={() => undefined} onDeletePages={() => undefined} onSave={() => undefined} onPrint={() => undefined} printing={false} onExport={() => undefined} onExportFormat={() => undefined} onExportDpi={() => undefined} onPdfExportMode={() => undefined} onSearch={() => undefined} onVisuals={() => undefined} onGrammar={() => undefined} onCitations={() => undefined} citationsEnabled={false} theme="light" accent="#5575de" hasCustomAccent={false} documentBackground="#ffffff" onTheme={() => undefined} onAccent={() => undefined} onClearAccent={() => undefined} onDocumentBackground={() => undefined} hasCustomDocumentBackground={false} onClearDocumentBackground={() => undefined} onAddAiAnnotation={() => undefined} onCopy={() => undefined} />)
+    })
+    const languageSelect = container.querySelector<HTMLSelectElement>('.language-select select')
+    expect(languageSelect).not.toBeNull()
+    expect(languageSelect?.closest('.theme-setting')).toBeNull()
+    expect(container.textContent).not.toContain('显示语言')
+    await act(async () => root.unmount())
+  })
 })

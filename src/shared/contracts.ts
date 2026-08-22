@@ -129,6 +129,7 @@ export interface DesktopApi {
   setReadingPosition(path: string, position: ReadingPosition): Promise<void>
   flushReadingPosition(path: string, position: ReadingPosition): void
   updateWindowDocument(state: WindowDocumentState): void
+  setInterfaceLanguage(language: 'zh' | 'en' | 'ja' | 'ru' | 'es'): void
   windowMinimize(): void
   windowToggleMaximize(): void
   windowClose(): void
