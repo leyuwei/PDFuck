@@ -8,7 +8,7 @@
 
 > A local-first PDF reading, reviewing, editing, and annotation workspace for researchers.
 
-<img width="1973" height="1353" alt="PDFuck screenshot" src="https://github.com/user-attachments/assets/46465586-9e73-4204-8196-120c4355767d" />
+<img width="1438" height="862" alt="Screenshot 2026-08-22 at 18 51 02" src="https://github.com/user-attachments/assets/0e3baff3-529b-4cb4-9ab8-e2a7b4b4bcc6" />
 
 Reading papers should not mean fighting blurry rendering, scattered comments, or nested menus. PDFuck turns the review-and-revision loop into one focused workspace: select text at character boundaries, leave an annotation, mark it as **Done**, **Think about it**, or **Won't do**, then jump between your task list and the source text. PDFuck is more than a PDF highlighter; it keeps “find an issue -> write a note -> make a decision -> verify it in context” in one flow.
 
