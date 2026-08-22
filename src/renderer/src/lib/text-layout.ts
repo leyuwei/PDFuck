@@ -80,6 +80,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const startWord = words[start.wordIndex], endWord = words[end.wordIndex]
   if (!startWord || !endWord) return undefined
   const endpointHeight = Math.max(startWord?.rect.height || 0, endWord?.rect.height || 0)
+  const endpointYGap = startWord && endWord ? Math.abs(startWord.rect.y - endWord.rect.y) : Number.POSITIVE_INFINITY
   const sameColumnBand = anchorColumn !== undefined && anchorColumn === focusColumn
   const visualOrder = (left: WordBox, right: WordBox): number => {
     const height = Math.max(left.rect.height, right.rect.height, endpointHeight)
@@ -113,6 +114,14 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // remain in their PDF reading order because their fragments share the band.
   const visualBandIndices = useVisualBlock
     ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined ? word.visualBlock === blockId : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
+    : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45 && endpointYGap <= endpointHeight * 1.35
+      ? words.map((word, index) => ({ word, index })).filter(({ word }) => {
+        const y = word.rect.y
+        const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY)
+        const left = bandWords.length ? Math.min(...bandWords.map((candidate) => candidate.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
+        const right = bandWords.length ? Math.max(...bandWords.map((candidate) => candidate.rect.x + candidate.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
+        return y >= minY && y <= maxY && word.rect.x + word.rect.width >= left && word.rect.x <= right
+      }).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
     : hasOutOfBandIntermediate
       ? words.map((word, index) => ({ word, index })).filter(({ word }) => word.column === anchorColumn).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
       : undefined
