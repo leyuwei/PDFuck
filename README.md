@@ -2,9 +2,163 @@
 
 # PDFuck - PDF Editor with ~U~seful & ~C~lever ~K~it
 
-> 为科研人员打造的 PDF 精读、审稿与协作批注工作台。
+> A local-first PDF reading, reviewing, editing, and annotation workspace for researchers.
 
-<img width="1973" height="1353" alt="image" src="https://github.com/user-attachments/assets/46465586-9e73-4204-8196-120c4355767d" />
+<img width="1973" height="1353" alt="PDFuck screenshot" src="https://github.com/user-attachments/assets/46465586-9e73-4204-8196-120c4355767d" />
+
+Reading papers should not mean fighting blurry rendering, scattered comments, or nested menus. PDFuck turns the review-and-revision loop into one focused workspace: select text at character boundaries, leave an annotation, mark it as **Done**, **Think about it**, or **Won't do**, then jump between your task list and the source text. PDFuck is more than a PDF highlighter; it keeps “find an issue -> write a note -> make a decision -> verify it in context” in one flow.
+
+[Download the latest release from GitHub](https://github.com/leyuwei/PDFuck/releases)
+
+Copyright © 2026 github@leyuwei
+
+## Why PDFuck
+
+- **Find figures and tables in one click**: Detects captions such as `Figure`, `Fig.`, `Table`, `图`, and `表`, plus page images and likely tables without standard captions. Results are grouped by page and focus the target when selected.
+- **Five interface languages**: Switch between Simplified Chinese, English, Japanese, Russian, and Spanish from the View panel. Window titles, native file dialogs, notices, dialogs, printing, and export flows follow the selected language.
+- **Link citations to references**: Recognizes common numeric (`[1]`, `[2-4]`) and author-year citations and creates clickable links between in-text citations and bibliography entries.
+- **Lightweight paper-oriented grammar checks**: Flags common English spelling, repeated-word, and subject-verb agreement issues and links each result back to its context. It is a review aid, not an uncontrolled rewrite engine.
+- **Edit PDF text as editable objects**: PDF.js text blocks are regrouped into natural chunks. New text inherits the source font, size, weight, style, alignment, color, and sampled page background, and remains movable and editable after saving.
+- **Annotations built for review**: Highlight, replace, delete, underline, note, and insert annotations can carry explanations, colors, replies, and positions that persist in the saved PDF.
+- **Character-level selection**: Select partial words, half-lines, mixed Chinese and English text, and cross-line ranges precisely. Replacement lines and insertion arrows snap to actual character boundaries.
+- **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
+- **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
+- **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
+- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
+- **Independent document tabs**: A single window can hold multiple PDFs, each with its own page, zoom, view mode, reading position, annotations, dirty state, and undo/redo history.
+- **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
+- **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS.
+
+## Download and Install
+
+### Windows
+
+The [Releases page](https://github.com/leyuwei/PDFuck/releases) provides two builds:
+
+- **Installer (recommended)**: `PDFuck-1.16.29-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
+- **Portable**: `PDFuck-1.16.29-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
+
+If Windows SmartScreen warns about an unsigned community build, verify that the file came from this repository's Releases page and check the published checksum before continuing.
+
+### macOS
+
+- **DMG (recommended)**: Open `PDFuck-1.16.29-macOS.dmg` and drag `PDFuck.app` to `Applications`.
+- **ZIP**: Extract `PDFuck-1.16.29-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
+
+Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
+
+On macOS, dragging, double-clicking, or opening a PDF through file association reuses the same window and adds a tab. `Command` maps to Windows `Ctrl`; `Option + Left/Right` changes pages, and `Command` + mouse wheel zooms. Printing, Save As, and export use native system dialogs.
+
+## Feature Overview
+
+### View
+
+- Continuous or single-page reading, page navigation, zoom, fit-to-width, and high-DPI rendering.
+- Light and dark themes, a customizable app accent, and a per-document PDF paper background. Reset either color from its picker.
+- Drag-and-drop opening, recent files, single-window document tabs, and independent state per tab.
+- Reading tools for PDF search, figure/table discovery, citation links, and grammar checks.
+
+### Edit
+
+- Crop pages with a movable selection and eight resize handles, then confirm before applying.
+- Delete the current, odd, even, or any selected pages.
+- Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
+- Edit PDF.js-recognized text blocks in place. Multi-column pages are split into editable blocks; clearing a block and applying the change removes the original text.
+- Undo and redo page crops, page deletion, text changes, and annotation changes independently per document tab.
+
+### Annotate
+
+- Highlight, replace, delete, underline, note, and insert text annotations.
+- Use the page context menu or the floating selection toolbar to create annotations.
+- Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
+- Edit or delete existing annotations from the page or list. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
+- The Annotation Lab provides AI Polish presets such as plain-language explanation, logic review, grammar-only checking, human-like phrasing, inconsistency detection, and custom prompts. Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, and KIMI. API keys are kept in local browser storage.
+
+### Save, Print, and Export
+
+- Save or Save As PDF, including unsaved in-memory changes.
+- Print all, current, odd, even, or arbitrary non-contiguous pages.
+- Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS support 72-600 DPI and preserve original page-number suffixes such as `_001` and `_003`.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+S` | Save the current PDF |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
+| `Ctrl+P` | Choose pages and open the system print dialog |
+| `Ctrl+C` / `Cmd+C` | Copy the selected PDF text and remove hard line breaks |
+| `Ctrl` + mouse wheel | Zoom |
+| `Alt+Left/Right` (`Option` on macOS) | Previous/next page |
+| `Shift+Left/Right` | Expand or shrink the text selection by character |
+| `Ctrl+I` / `Cmd+I` | Open the Annotation Lab AI Polish dialog |
+
+## Run from Source
+
+Requires Node.js 22 or newer. Windows PowerShell, macOS Terminal, and Linux shells are supported.
+
+```sh
+npm ci
+npm run dev
+```
+
+## Check and Build
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`.
+
+Windows release builds:
+
+```powershell
+# Installer and portable builds
+npm run dist:win
+
+# NSIS installer only
+npm run dist:win:installer
+
+# Portable build only
+npm run dist:win:portable
+```
+
+macOS release build (run on macOS):
+
+```sh
+npm run dist:mac
+```
+
+This runs checks, creates a production build, and generates `release/PDFuck-1.16.29-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+
+## Technical Structure
+
+- `src/main/`: Electron windows, native dialogs, printing, and secure file writes.
+- `src/preload/`: Typed desktop APIs with context isolation enabled.
+- `src/renderer/src/`: React UI, PDF.js viewer, editing, and annotation interactions.
+- `src/renderer/src/lib/pdf-document.ts`: pdf-lib document editing and standard PDF annotations.
+- `src/renderer/src/lib/page-selection.ts`: Non-contiguous page parsing and validation.
+- `src/renderer/src/lib/export.ts`: PNG, JPG, and EPS page export.
+- `src/shared/version.ts`: Version comparison and startup update-check foundations.
+
+## Text Objects
+
+Text added by PDFuck is stored as PDF FreeText objects with appearance streams. Latin text uses vector text appearances; characters that standard PDF fonts cannot encode, such as Chinese, use a high-resolution transparent appearance. PDFuck-created text remains movable and editable after reopening the file.
+
+“Edit Page Text” uses visual replacement: PDF.js identifies the text block, PDFuck samples the background color to cover the original display area, and a new editable FreeText object is written on top. This avoids unsafe rewrites of subset-encoded embedded fonts while keeping the replacement editable after saving and reopening.
+
+## License
+
+PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pull requests are welcome.
+
+---
+
+# PDFuck - PDF 编辑器（简体中文）
+
+> 为科研人员打造的 PDF 精读、审稿与协作批注工作台。
 
 读论文，不应该在模糊渲染、零散批注和层层菜单之间消耗注意力。PDFuck 的核心是一个面向审稿返修的批注工作台：你可以在字符边界上留下意见，马上把它标记为“已处理 / 想一想 / 不做了”，再从列表统计和原文定位继续推进。它不只是给 PDF 画颜色，而是把“发现问题 → 写下意见 → 做出决定 → 回到原文核对”放进同一条工作流。
 
@@ -85,7 +239,7 @@
 - 页码跳转、缩放、适合宽度；
 - 高 DPI 清晰渲染；
 - 支持完整的浅色与夜间暗色主题，也可自定义软件主题色，主题色会贯穿导航、标签、激活工具、选区、编辑框、焦点和主操作；亮色主题色会自动采用深色选中文字与图标，避免高亮区域失去可读性。软件主题色与每份 PDF 的纸张底色（包括原始白纸区域）均可在颜色选择器旁一键恢复默认；
-- 从资源管理器直接拖入 PDF 打开。
+- 从资源管理器直接拖入 PDF 打开；
 - 文件未真正拖入窗口时，拖放提示会立即消失，不再遮挡界面；
 - 未打开 PDF 时显示最近使用列表，可点击快速打开；
 - 已有文档时继续打开、双击或拖入 PDF，会在同一个主窗口新增文档标签；
@@ -137,7 +291,7 @@
 - 多段或半行批注仅在真正标记的片段上响应鼠标，未标记文字仍可继续精准框选和批注；
 - 每条批注支持自定义回复，以及“已处理 / 想一想 / 不做了”三种快捷回复；快捷状态默认不外显文字，而以淡绿、淡黄、淡红列表底色表达；
 - 批注列表默认完整多行显示内容，也可通过顶部按钮切换为紧凑单行模式；列表仍支持定位、编辑、删除和收起为 46 px 窄栏；
-- 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失。
+- 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失；
 - 删除批注会立即执行，不再二次确认；误删可用 `Ctrl/⌘Z` 撤销。
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组：框选后按 `Ctrl/⌘I` 或点击页面浮窗的星形图标，可选通俗化解释、逻辑需优化、仅语法检查、类人化表达、前后不一致、要突出亮点或自定义提示词；回复可复制或写回为智能润色批注。
 - 智能润色会根据框选文字的主要语言自动使用中文或英文提示词；切换中文、英文选区时会同步切换预置提示词，混合文本按字符占比判断。
