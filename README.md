@@ -1,5 +1,9 @@
 <img width="128" height="128" alt="icon" src="https://github.com/user-attachments/assets/b9a1211c-7264-4112-a3e9-09afe480b242" />
 
+**Language / 语言:** [English](#english) | [简体中文](#chinese)
+
+<a id="english"></a>
+
 # PDFuck - PDF Editor with ~U~seful & ~C~lever ~K~it
 
 > A local-first PDF reading, reviewing, editing, and annotation workspace for researchers.
@@ -155,6 +159,8 @@ Text added by PDFuck is stored as PDF FreeText objects with appearance streams. 
 PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pull requests are welcome.
 
 ---
+
+<a id="chinese"></a>
 
 # PDFuck - PDF 编辑器（简体中文）
 
