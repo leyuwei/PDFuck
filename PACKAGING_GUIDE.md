@@ -58,6 +58,7 @@ npm test
 npm run build
 npm run test:i18n-catalogue
 npm run test:i18n-ui
+npm run test:window-tabs
 git diff --check
 ```
 
@@ -69,6 +70,8 @@ npm run test:selection-scheduling-ui
 ```
 
 这两项检查使用 `tmp/Scheduling0821m.pdf`。静态检查验证内部对象顺序异常时（下一行项目符号被写在当前行两个词之间），当前行选区既不带入符号也不产生下一行矩形；Electron UI 烟测以真实拖拽验证同一位置，并确认标题、按钮等桌面界面控件不能被浏览器式框选。缺少该测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，验证重启后的语言持久化、主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。
+
+涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、启用一次“适合宽度”后新打开文档自动继承该查看方式、前后拖动排序、内部标签拖动不会触发外部文件蓝框、拖出标签栏生成独立窗口、将独立窗口中的标签拖入另一个 PDFuck 窗口后自动回归标签页、来源空窗口自动关闭，以及关闭独立窗口时没有主进程异常。不要只以单元测试代替这项跨窗口回归。
 
 其中 `npm run build` 会重新生成 `out/main`、`out/preload` 和 `out/renderer`。不要直接用旧的 `out` 目录打包，否则源码修复可能没有进入 `app.asar`。
 
@@ -215,7 +218,7 @@ Get-AuthenticodeSignature release\*.exe
 ## 7. 最终发布清单
 
 - `package.json`、`package-lock.json`、`APP_VERSION` 完全一致。
-- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`git diff --check` 全部通过。
+- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:window-tabs`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
 - DMG 保留卷图标、应用图标、Applications 快捷入口和正确 Finder 布局。

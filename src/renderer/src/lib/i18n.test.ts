@@ -25,4 +25,28 @@ describe('interface translations', () => {
       expect(translateUiText(`操作失败：${failure}`)).not.toContain('无法连接模型服务')
     }
   })
+
+  it('localizes dynamic annotation status messages and their generated defaults', () => {
+    const messages = [
+      '文本高亮已添加',
+      '已在 2 页添加文本替换',
+      '已删除 3 条批注，可按 Ctrl/⌘Z 撤销',
+      '已回复：已处理',
+      '标记删除'
+    ]
+    for (const language of ['en', 'ja', 'ru', 'es'] as const) {
+      setInterfaceLanguage(language)
+      for (const message of messages) {
+        expect(translateUiText(message)).not.toContain('文本高亮')
+        expect(translateUiText(message)).not.toContain('文本替换')
+        expect(translateUiText(message)).not.toContain('批注')
+        expect(translateUiText(message)).not.toContain('标记删除')
+      }
+    }
+    setInterfaceLanguage('en')
+    expect(translateUiText('文本高亮已添加')).toBe('Highlight Text added')
+    expect(translateUiText('已在 2 页添加文本替换')).toBe('Added Replace Text on 2 pages')
+    expect(translateUiText('已删除 3 条批注，可按 Ctrl/⌘Z 撤销')).toBe('Deleted 3 annotations. Press Ctrl/⌘Z to undo.')
+    expect(translateUiText('已回复：已处理')).toBe('Replied: Resolved')
+  })
 })

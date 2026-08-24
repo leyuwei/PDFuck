@@ -94,6 +94,7 @@ export class PdfDocumentModel {
   private savedBytes: Uint8Array<ArrayBufferLike> = new Uint8Array()
   private undoStack: Uint8Array<ArrayBufferLike>[] = []
   private redoStack: Uint8Array<ArrayBufferLike>[] = []
+  private externallyDirty = false
   filePath?: string
   fileName = '未命名.pdf'
   dirty = false
@@ -142,13 +143,13 @@ export class PdfDocumentModel {
       this.redoStack = []
     }
     this.currentBytes = next
-    this.dirty = !sameBytes(this.currentBytes, this.savedBytes)
+    this.dirty = this.externallyDirty || !sameBytes(this.currentBytes, this.savedBytes)
   }
 
   private async restoreHistory(bytes: Uint8Array<ArrayBufferLike>): Promise<void> {
     this.currentBytes = Uint8Array.from(bytes)
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
-    this.dirty = !sameBytes(this.currentBytes, this.savedBytes)
+    this.dirty = this.externallyDirty || !sameBytes(this.currentBytes, this.savedBytes)
   }
 
   async undo(): Promise<void> {
@@ -169,7 +170,18 @@ export class PdfDocumentModel {
     this.filePath = path
     this.fileName = path.split(/[\\/]/).pop() || this.fileName
     this.savedBytes = Uint8Array.from(this.currentBytes)
+    this.externallyDirty = false
     this.dirty = false
+  }
+
+  /**
+   * A document moved to another window has already been serialized. Keep its
+   * unsaved indicator until the next explicit save without manufacturing an
+   * artificial undo entry in the destination window.
+   */
+  markUnsaved(): void {
+    this.externallyDirty = true
+    this.dirty = true
   }
 
   async cropPage(pageIndex: number, rect: PdfRect): Promise<void> {

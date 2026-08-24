@@ -3,13 +3,13 @@ import { AnnotationPanel } from './components/AnnotationPanel'
 import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
-import { WindowManagerBar } from './components/WindowManagerBar'
+import { WindowManagerBar, reorderDocumentTabs } from './components/WindowManagerBar'
 import { LocalizedInterfaceCopy } from './components/InterfaceLanguageBridge'
 import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ModuleKey, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
-import type { DocumentTabsSnapshot, ManagedPdfDocument, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
+import type { DetachedPdfDocument, DocumentTabsSnapshot, ManagedPdfDocument, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
 import { normalizeCopiedText } from './lib/clipboard-text'
@@ -21,11 +21,16 @@ import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 import { fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor, type CitationLink, type GrammarIssue, type InsightHit } from './lib/document-insights'
 import { bindTextSelectionToPage, type PageTextSelection } from './lib/page-text-selection'
 import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type AppPreferences } from './lib/app-preferences'
+import { documentTransferToken, isDocumentTransferDrag } from './lib/document-transfer'
 import { t, translateUiText, ui, useInterfaceLanguage } from './lib/i18n'
 
-const APP_VERSION = '1.16.29'
+const APP_VERSION = '1.17.2'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
+
+function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes('Files')
+}
 
 type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'delete_pages' } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string } | null
 
@@ -38,6 +43,7 @@ interface DocumentSession {
   tool: Tool
   viewMode: ViewMode
   zoom: number
+  fitWidthRequest: number
   pageCount: number
   currentPage: number
   readingPosition: ReadingPosition
@@ -56,7 +62,7 @@ interface DocumentSession {
 }
 
 function emptySession(id: number): DocumentSession {
-  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, pageCount: 0, currentPage: 0, readingPosition: { page: 0, zoom: 1, offset: 0 }, annotations: [], textObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, encrypted: false, documentName: '未打开文档', status: '准备就绪' }
+  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, fitWidthRequest: 0, pageCount: 0, currentPage: 0, readingPosition: { page: 0, zoom: 1, offset: 0 }, annotations: [], textObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, encrypted: false, documentName: '未打开文档', status: '准备就绪' }
 }
 
 function sessionSummary(session: DocumentSession): ManagedPdfDocument {
@@ -106,6 +112,24 @@ function RecentWelcome({ recent, onOpen, onChoose }: { recent: RecentPdf[]; onOp
   </div></LocalizedInterfaceCopy>
 }
 
+function detachedDocument(session: DocumentSession): DetachedPdfDocument {
+  const model = session.model
+  return {
+    data: model?.bytes || session.data,
+    filePath: model?.filePath || session.filePath,
+    fileName: model?.fileName || session.documentName,
+    encrypted: session.encrypted,
+    password: session.password,
+    dirty: session.dirty,
+    pageCount: session.pageCount,
+    currentPage: session.currentPage,
+    zoom: session.zoom,
+    viewMode: session.viewMode,
+    module: session.module,
+    readingPosition: session.readingPosition
+  }
+}
+
 function moduleName(key: ModuleKey): string {
   return key === 'view' ? ui('查看', 'View') : key === 'edit' ? ui('编辑', 'Edit') : key === 'annotate' ? ui('批注', 'Annotate') : ui('保存', 'Save')
 }
@@ -129,6 +153,8 @@ export default function App() {
   const readingPositionTimersRef = useRef<Map<number, number>>(new Map())
   const tabsSnapshotRef = useRef<DocumentTabsSnapshot>({ currentId: 1, documents: [sessionSummary(emptySession(1))] })
   const nextDocumentId = useRef(2)
+  const nextFitWidthRequest = useRef(1)
+  const outboundDocumentTransfers = useRef<Map<string, number>>(new Map())
   const annotationResolve = useRef<((value: AnnotationDialogResult | null) => void) | undefined>(undefined)
   const textResolve = useRef<((value: TextDialogValue | null) => void) | undefined>(undefined)
   const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
@@ -140,6 +166,7 @@ export default function App() {
   const [tool, setTool] = useState<Tool>('none')
   const [viewMode, setViewMode] = useState<ViewMode>('continuous')
   const [zoom, setZoom] = useState(1)
+  const [fitWidthRequest, setFitWidthRequest] = useState(0)
   const [pageCount, setPageCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(0)
   const [annotations, setAnnotations] = useState<AnnotationRecord[]>([])
@@ -159,6 +186,8 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState>(null)
   const [maximized, setMaximized] = useState(false)
   const [draggingFile, setDraggingFile] = useState(false)
+  const [draggingDocumentTransfer, setDraggingDocumentTransfer] = useState(false)
+  const [draggingDocumentTab, setDraggingDocumentTab] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('pdf')
   const [exportDpi, setExportDpi] = useState(150)
   const [pdfExportMode, setPdfExportMode] = useState<PdfExportMode>('combined')
@@ -184,7 +213,7 @@ export default function App() {
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
-  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
+  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
   sessionsRef.current.set(activeDocumentId, liveSessionRef.current)
 
   const syncModel = useCallback((message: string, refreshDocument = true) => {
@@ -214,7 +243,7 @@ export default function App() {
     pendingAnnotation?.(null); pendingText?.(null)
     annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty; readingPositionRef.current = session.readingPosition
-    setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom)
+    setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
@@ -277,6 +306,7 @@ export default function App() {
     const session: DocumentSession = {
       ...emptySession(id), model, data: model?.bytes || opened.data, filePath: model?.filePath || opened.path, encrypted: encryptedDocument, password,
       currentPage: Math.min(readingPosition?.page || 0, Math.max(0, (model?.pageCount || pageCountFromProbe) - 1)), zoom: readingPosition?.zoom || 1,
+      fitWidthRequest: preferences.fitWidth ? nextFitWidthRequest.current++ : 0,
       readingPosition: readingPosition
         ? { ...readingPosition, page: Math.min(readingPosition.page, Math.max(0, (model?.pageCount || pageCountFromProbe) - 1)) }
         : { page: 0, zoom: 1, offset: 0 },
@@ -291,7 +321,91 @@ export default function App() {
     })
     activateSession(session)
     window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
-  }, [activateSession, askPdfPassword, askSecureStorageNotice])
+  }, [activateSession, askPdfPassword, askSecureStorageNotice, preferences.fitWidth])
+  const restoreDetachedDocument = useCallback(async (handoff: DetachedPdfDocument) => {
+    const id = activeDocumentIdRef.current
+    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.filePath, handoff.fileName)
+    if (handoff.dirty && model) model.markUnsaved()
+    const pageCountFromModel = model?.pageCount || handoff.pageCount
+    const currentPage = Math.min(Math.max(0, handoff.currentPage), Math.max(0, pageCountFromModel - 1))
+    const readingPosition = { ...handoff.readingPosition, page: Math.min(Math.max(0, handoff.readingPosition.page), Math.max(0, pageCountFromModel - 1)) }
+    const session: DocumentSession = {
+      ...emptySession(id), model, data: model?.bytes || handoff.data, filePath: model?.filePath || handoff.filePath,
+      encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
+      module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0,
+      pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], status: ui('已在独立窗口中打开文档', 'Document opened in a separate window')
+    }
+    sessionsRef.current.set(id, session)
+    const snapshot = { currentId: id, documents: [sessionSummary(session)] }
+    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(session)
+  }, [activateSession])
+  const addTransferredDocument = useCallback(async (handoff: DetachedPdfDocument) => {
+    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.filePath, handoff.fileName)
+    if (handoff.dirty && model) model.markUnsaved()
+    const pageCountFromModel = model?.pageCount || handoff.pageCount
+    const currentPage = Math.min(Math.max(0, handoff.currentPage), Math.max(0, pageCountFromModel - 1))
+    const readingPosition = { ...handoff.readingPosition, page: Math.min(Math.max(0, handoff.readingPosition.page), Math.max(0, pageCountFromModel - 1)) }
+    const current = tabsSnapshotRef.current
+    const replaceBlank = !modelRef.current && current.documents.length === 1
+    const id = replaceBlank ? activeDocumentIdRef.current : nextDocumentId.current++
+    const session: DocumentSession = {
+      ...emptySession(id), model, data: model?.bytes || handoff.data, filePath: model?.filePath || handoff.filePath,
+      encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
+      module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0,
+      pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], status: ui('已移回文档标签页', 'Document moved back into document tabs')
+    }
+    sessionsRef.current.set(id, session)
+    const documents = replaceBlank ? current.documents.map((item) => item.id === id ? sessionSummary(session) : item) : [...current.documents, sessionSummary(session)]
+    const snapshot = { currentId: id, documents }
+    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(session)
+  }, [activateSession])
+  const beginDocumentTransfer = useCallback((id: number, transferId: string) => {
+    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+    const session = sessionsRef.current.get(id)
+    if (!session) return
+    outboundDocumentTransfers.current.set(transferId, id)
+    void window.desktop.beginDocumentTransfer(transferId, detachedDocument(session)).catch((error) => {
+      outboundDocumentTransfers.current.delete(transferId)
+      showError(error)
+    })
+  }, [showError])
+  const receiveDocumentTransfer = useCallback(async (transferId: string) => {
+    try {
+      const handoff = await window.desktop.claimDocumentTransfer(transferId)
+      if (!handoff) return
+      await addTransferredDocument(handoff)
+      await window.desktop.completeDocumentTransfer(transferId)
+    } catch (error) { showError(error) }
+  }, [addTransferredDocument, showError])
+  const finishDocumentTransfer = useCallback((transferId: string) => {
+    const id = outboundDocumentTransfers.current.get(transferId)
+    outboundDocumentTransfers.current.delete(transferId)
+    if (id === undefined) return
+    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+    const session = sessionsRef.current.get(id)
+    if (!session) {
+      if (!tabsSnapshotRef.current.documents.some((document) => document.hasDocument)) window.setTimeout(() => window.desktop.windowClose(), 0)
+      return
+    }
+    const current = tabsSnapshotRef.current
+    const removedIndex = current.documents.findIndex((item) => item.id === id)
+    const remaining = current.documents.filter((item) => item.id !== id)
+    sessionsRef.current.delete(id)
+    if (!remaining.length) { window.desktop.windowClose(); return }
+    if (id !== activeDocumentIdRef.current) {
+      const snapshot = { ...current, documents: remaining }
+      tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+      return
+    }
+    const nextSummary = remaining[Math.min(Math.max(0, removedIndex), remaining.length - 1)]
+    const next = sessionsRef.current.get(nextSummary.id)
+    if (!next) return
+    const snapshot = { currentId: next.id, documents: remaining }
+    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
+  }, [activateSession])
   const openPath = useCallback(async (path: string) => {
     try { await addOpened(await window.desktop.readPdf(path)) } catch (error) { showError(error) }
   }, [addOpened, showError])
@@ -333,18 +447,61 @@ export default function App() {
     }
     const snapshot = { currentId: next.id, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
   }, [activateSession, askConfirmation])
+  const reorderDocuments = useCallback((sourceId: number, targetId: number) => {
+    setDocumentTabs((current) => {
+      const snapshot = reorderDocumentTabs(current, sourceId, targetId)
+      tabsSnapshotRef.current = snapshot
+      return snapshot
+    })
+  }, [])
+  const detachDocument = useCallback(async (id: number, position: { x: number; y: number }) => {
+    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+    const session = sessionsRef.current.get(id)
+    if (!session) return
+    try {
+      await window.desktop.detachDocument(detachedDocument(session), position)
+    } catch (error) {
+      showError(error)
+      return
+    }
+    const current = tabsSnapshotRef.current
+    const closedIndex = current.documents.findIndex((item) => item.id === id)
+    const remaining = current.documents.filter((item) => item.id !== id)
+    sessionsRef.current.delete(id)
+    if (id !== activeDocumentIdRef.current) {
+      const snapshot = { ...current, documents: remaining }
+      tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+      return
+    }
+    let next: DocumentSession
+    if (remaining.length) {
+      const nextSummary = remaining[Math.min(Math.max(0, closedIndex), remaining.length - 1)]
+      next = sessionsRef.current.get(nextSummary.id)!
+    } else {
+      next = emptySession(nextDocumentId.current++)
+      sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
+    }
+    const snapshot = { currentId: next.id, documents: remaining }
+    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
+  }, [activateSession, showError])
 
   useEffect(() => {
     window.desktop.windowIsMaximized().then(setMaximized)
     const offMaximize = window.desktop.onWindowMaximized(setMaximized)
     const offRequestClose = window.desktop.onWindowRequestClose(closeCurrentWindow)
     const offOpen = window.desktop.onOpenPdf((path) => void openPath(path))
-    window.desktop.initialPdfs().then(async (paths) => { for (const path of paths) await openPath(path); setWindowDocumentReady(true) }).catch((error) => { showError(error); setWindowDocumentReady(true) })
-    return () => { offMaximize(); offRequestClose(); offOpen() }
-  }, [closeCurrentWindow, openPath, showError])
+    const offTransferComplete = window.desktop.onDocumentTransferComplete(finishDocumentTransfer)
+    window.desktop.initialDetachedDocument().then(async (handoff) => {
+      if (handoff) await restoreDetachedDocument(handoff)
+      const paths = await window.desktop.initialPdfs()
+      for (const path of paths) await openPath(path)
+      setWindowDocumentReady(true)
+    }).catch((error) => { showError(error); setWindowDocumentReady(true) })
+    return () => { offMaximize(); offRequestClose(); offOpen(); offTransferComplete() }
+  }, [closeCurrentWindow, finishDocumentTransfer, openPath, restoreDetachedDocument, showError])
   useEffect(() => { window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined) }, [])
   useEffect(() => {
-    const clearDragOverlay = () => setDraggingFile(false)
+    const clearDragOverlay = () => { setDraggingFile(false); setDraggingDocumentTransfer(false) }
     window.addEventListener('dragend', clearDragOverlay)
     window.addEventListener('drop', clearDragOverlay)
     window.addEventListener('blur', clearDragOverlay)
@@ -419,6 +576,18 @@ export default function App() {
     }, 250)
     readingPositionTimersRef.current.set(id, timer)
   }, [])
+  const activateFitWidth = useCallback(() => {
+    if (!hasDocument) return
+    const request = nextFitWidthRequest.current++
+    const session = { ...liveSessionRef.current, fitWidthRequest: request }
+    liveSessionRef.current = session; sessionsRef.current.set(session.id, session); setFitWidthRequest(request)
+    setPreferences((value) => {
+      if (value.fitWidth) return value
+      const next = { ...value, fitWidth: true }
+      savePreferences(next)
+      return next
+    })
+  }, [hasDocument])
   useEffect(() => {
     const persist = () => {
       const path = modelRef.current?.filePath || liveSessionRef.current.filePath
@@ -683,7 +852,16 @@ export default function App() {
   const isMac = window.desktop.platform === 'darwin'
   const visibleStatus = translateUiText(status)
   const visibleDocumentName = translateUiText(documentName)
-  return <LocalizedInterfaceCopy><div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragOver={(event) => { event.preventDefault(); setDraggingFile(true) }} onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) setDraggingFile(false) }} onDrop={(event) => {
+  return <LocalizedInterfaceCopy><div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
+    if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }
+    if (!draggingDocumentTab && isDocumentTransferDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingDocumentTransfer(true) }
+  }} onDragOver={(event) => {
+    if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }
+    if (!draggingDocumentTab && isDocumentTransferDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingDocumentTransfer(true) }
+  }} onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) { setDraggingFile(false); setDraggingDocumentTransfer(false) } }} onDrop={(event) => {
+    const transferId = documentTransferToken(event.dataTransfer)
+    if (transferId && !draggingDocumentTab) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingDocumentTransfer(false); void receiveDocumentTransfer(transferId); return }
+    if (!isExternalFileDrag(event.dataTransfer)) return
     event.preventDefault(); setDraggingFile(false); const file = [...event.dataTransfer.files].find((value) => value.name.toLowerCase().endsWith('.pdf'))
     if (!file) { setStatus('请拖入 PDF 文件'); return }
     const path = window.desktop.filePath(file)
@@ -691,15 +869,16 @@ export default function App() {
   }}>
     <header className="titlebar"><div className="brand">PDF<span>uck</span><em>v{APP_VERSION}</em></div><div className={`document-title${encrypted ? ' encrypted' : ''}`} title={`${visibleDocumentName}${encrypted ? ui('（加密，只读）', ' (Encrypted, read-only)') : ''}`}>{encrypted && <span className="document-encrypted-badge">{ui('加密', 'Encrypted')}</span>}<span>{visibleDocumentName}{dirty ? ui(' · 未保存', ' · Unsaved') : ''}</span></div><div className="file-actions"><button className="open-button" onClick={() => void chooseOpen()}>{ui('打开 PDF', 'Open PDF')}</button><button className="folder-button" disabled={!hasDocument} title={ui('在 Finder 或文件管理器中显示当前 PDF 所在文件夹', 'Show the current PDF in Finder or File Explorer')} onClick={() => void openCurrentFolder()}><span aria-hidden="true">▣</span>{ui('打开文件夹', 'Open Folder')}</button></div><div className="history-controls"><button disabled={!canUndo} title={ui('撤销 (Ctrl+Z)', 'Undo (Ctrl+Z)')} aria-label={ui('撤销', 'Undo')} onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title={ui('重做 (Ctrl+Y / Ctrl+Shift+Z)', 'Redo (Ctrl+Y / Ctrl+Shift+Z)')} aria-label={ui('重做', 'Redo')} onClick={() => void redoDocument()}>↷</button></div>
       <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
-      <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={() => viewerRef.current?.fitWidth()}>{ui('适合宽度', 'Fit Width')}</button></div>
+      <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={activateFitWidth}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button disabled={!hasDocument} onClick={activateFitWidth}>{ui('适合宽度', 'Fit Width')}</button></div>
       <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui('保存', 'Save')}</button>{!isMac && <div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div>}</header>
-    <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} />
+    <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onCreate={() => void chooseOpen()} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} />{moduleName(key)}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
       <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection?.text} onAddAiAnnotation={addAiAnnotation} onCopy={(content) => void copyText(content)} /></div>
-      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui('当前文件可能处于临时目录，请注意另存，防止走丢！', 'This file may be in a temporary folder. Save it elsewhere to avoid losing it.')}</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label={ui('关闭临时目录提示', 'Dismiss temporary-folder notice')} title={ui('关闭提示', 'Dismiss notice')}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui('当前文件可能处于临时目录，请注意另存，防止走丢！', 'This file may be in a temporary folder. Save it elsewhere to avoid losing it.')}</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label={ui('关闭临时目录提示', 'Dismiss temporary-folder notice')} title={ui('关闭提示', 'Dismiss notice')}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui('已选择：', 'Selected: ')}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui('未打开文档', 'No Document Open')}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('释放以打开 PDF', 'Drop to Open PDF')}</b><span>{hasDocument ? ui('将在当前窗口新增一个文档标签', 'A new document tab will open in this window.') : ui('将在当前标签中打开', 'The document will open in this tab.')}</span></div></div>}
+    {draggingDocumentTransfer && <div className="document-transfer-overlay"><div><b>{ui('释放以移回文档标签页', 'Drop to Move into Document Tabs')}</b><span>{ui('当前 PDF 会从独立窗口回到这里，不会丢失未保存修改。', 'The current PDF will return here from its separate window, including unsaved changes.')}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}

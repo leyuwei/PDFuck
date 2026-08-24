@@ -29,7 +29,7 @@ Copyright © 2026 github@leyuwei
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
 - **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
-- **Independent document tabs**: A single window can hold multiple PDFs, each with its own page, zoom, view mode, reading position, annotations, dirty state, and undo/redo history.
+- **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS.
 
@@ -39,15 +39,15 @@ Copyright © 2026 github@leyuwei
 
 The [Releases page](https://github.com/leyuwei/PDFuck/releases) provides two builds:
 
-- **Installer (recommended)**: `PDFuck-1.16.29-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
-- **Portable**: `PDFuck-1.16.29-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
+- **Installer (recommended)**: `PDFuck-1.17.2-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
+- **Portable**: `PDFuck-1.17.2-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
 
 If Windows SmartScreen warns about an unsigned community build, verify that the file came from this repository's Releases page and check the published checksum before continuing.
 
 ### macOS
 
-- **DMG (recommended)**: Open `PDFuck-1.16.29-macOS.dmg` and drag `PDFuck.app` to `Applications`.
-- **ZIP**: Extract `PDFuck-1.16.29-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
+- **DMG (recommended)**: Open `PDFuck-1.17.2-macOS.dmg` and drag `PDFuck.app` to `Applications`.
+- **ZIP**: Extract `PDFuck-1.17.2-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
 
 Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
 
@@ -57,7 +57,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 
 ### View
 
-- Continuous or single-page reading, page navigation, zoom, fit-to-width, and high-DPI rendering.
+- Continuous or single-page reading, page navigation, zoom, fit-to-width, and high-DPI rendering. Choosing Fit Width once makes it the default for subsequently opened PDFs.
 - Light and dark themes, a customizable app accent, and a per-document PDF paper background. Reset either color from its picker.
 - Drag-and-drop opening, recent files, single-window document tabs, and independent state per tab.
 - Reading tools for PDF search, figure/table discovery, citation links, and grammar checks.
@@ -115,7 +115,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`.
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture.
 
 Windows release builds:
 
@@ -136,7 +136,7 @@ macOS release build (run on macOS):
 npm run dist:mac
 ```
 
-This runs checks, creates a production build, and generates `release/PDFuck-1.16.29-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+This runs checks, creates a production build, and generates `release/PDFuck-1.17.2-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
 
 ## Technical Structure
 
@@ -187,7 +187,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **批注不会挡住阅读，也不会失去上下文**：侧栏可以收起为窄栏，保留数量提示；选中批注后页面只显示约 1 秒的“当前批注”聚焦框，既能确认位置，又不会留下永久遮罩。
 - **搜索结果是真正可用的定位结果**：支持大小写、模糊匹配和正则表达式，命中结果按页显示上下文，跳转后只高亮匹配文字而不是整页。
 - **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；`Shift` 加左右方向键可逐字符扩展选区，复制时自动清掉 PDF 硬回行并修复常见英文断词。
-- **每个文档标签都有自己的阅读现场**：单窗口多标签分别保存页码、缩放、连续/单页模式、阅读位置、批注和未保存状态；撤销/重做历史也按标签隔离，切换论文不会串操作。
+- **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS。
 
@@ -197,7 +197,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.16.29-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.17.2-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -208,7 +208,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 便携版
 
-下载 `PDFuck-1.16.29-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.17.2-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -220,11 +220,11 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.16.29-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-1.17.2-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.16.29-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-1.17.2-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -242,14 +242,14 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ### 查看
 
 - 连续滚动与单页查看；
-- 页码跳转、缩放、适合宽度；
+- 页码跳转、缩放、适合宽度；用户使用一次“适合宽度”后，之后打开的 PDF 会默认采用该查看方式；
 - 高 DPI 清晰渲染；
 - 支持完整的浅色与夜间暗色主题，也可自定义软件主题色，主题色会贯穿导航、标签、激活工具、选区、编辑框、焦点和主操作；亮色主题色会自动采用深色选中文字与图标，避免高亮区域失去可读性。软件主题色与每份 PDF 的纸张底色（包括原始白纸区域）均可在颜色选择器旁一键恢复默认；
 - 从资源管理器直接拖入 PDF 打开；
 - 文件未真正拖入窗口时，拖放提示会立即消失，不再遮挡界面；
 - 未打开 PDF 时显示最近使用列表，可点击快速打开；
 - 已有文档时继续打开、双击或拖入 PDF，会在同一个主窗口新增文档标签；
-- 文档标签栏支持切换、打开和单独关闭，始终不会重复创建大窗口；
+- 文档标签栏支持切换、打开、单独关闭、前后拖动排序；将标签拖出标签栏即可创建独立窗口，再拖入另一个 PDFuck 窗口会自动回归标签页，当前内存修改不丢失；
 - 每个标签保留独立页码、缩放、工具和未保存状态，原生窗口标题跟随当前 PDF 文件名。
 
 ### 编辑
@@ -366,7 +366,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.16.29-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并生成 `release/PDFuck-1.17.2-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")

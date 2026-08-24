@@ -32,6 +32,17 @@ function objectDeclaration(file, name) {
   return object
 }
 
+function arrayDeclaration(file, name) {
+  let array
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && ts.isArrayLiteralExpression(node.initializer)) array = node.initializer
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  if (!array) throw new Error(`Missing array declaration: ${name}`)
+  return array
+}
+
 function collectLocaleKeys() {
   const source = sourceFile(localesPath)
   const base = objectDeclaration(source, 'localePhrases')
@@ -82,6 +93,17 @@ function collectStaticEnglishKeys() {
   return keys
 }
 
+function collectInterfaceBridgeKeys() {
+  const bridge = sourceFile(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'))
+  const english = objectDeclaration(bridge, 'english')
+  const phrases = new Map()
+  for (const phrase of english.properties) {
+    const key = propertyName(phrase)
+    if (key) phrases.set(key, [sourceLocation(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'), phrase)])
+  }
+  return phrases
+}
+
 function sourceLocation(file, node) {
   const position = sourceFile(file).getLineAndCharacterOfPosition(node.getStart())
   return `${path.relative(root, file)}:${position.line + 1}`
@@ -100,6 +122,20 @@ function collectUiPhrases(files) {
       ts.forEachChild(node, visit)
     }
     visit(source)
+  }
+  return phrases
+}
+
+function collectAiPresetLabels() {
+  const file = path.join(root, 'src/renderer/src/lib/ai-polish.ts')
+  const source = sourceFile(file)
+  const presets = arrayDeclaration(source, 'AI_PRESETS')
+  const phrases = new Map()
+  for (const preset of presets.elements) {
+    if (!ts.isObjectLiteralExpression(preset)) continue
+    const label = preset.properties.find((property) => propertyName(property) === 'label')
+    if (!label || !ts.isPropertyAssignment(label) || !ts.isStringLiteralLike(label.initializer)) throw new Error(`Invalid AI preset label in ${sourceLocation(file, preset)}`)
+    phrases.set(label.initializer.text, [sourceLocation(file, label.initializer)])
   }
   return phrases
 }
@@ -163,9 +199,14 @@ const keys = collectLocaleKeys()
 const componentPhrases = collectComponentLiterals(components)
 const uiPhrases = collectUiPhrases(rendererFiles)
 const staticComponentPhrases = new Map([...componentPhrases].filter(([phrase]) => !uiPhrases.has(phrase)))
+const interfaceBridgePhrases = collectInterfaceBridgeKeys()
+const aiPresetLabels = collectAiPresetLabels()
 
 assertCovered('JSX interface copy', componentPhrases, keys)
+assertCovered('interface bridge copy', interfaceBridgePhrases, keys)
 assertStaticEnglishCovered(staticComponentPhrases, collectStaticEnglishKeys())
 assertCovered('ui() interface copy', uiPhrases, keys)
+assertCovered('AI preset labels', aiPresetLabels, keys)
+assertStaticEnglishCovered(aiPresetLabels, collectStaticEnglishKeys())
 assertCovered('user-facing errors', collectThrownErrors(errorFiles), keys)
-console.log(JSON.stringify({ localeAudit: 'passed', languages, componentFiles: components.length, rendererFiles: rendererFiles.length, errorFiles: errorFiles.length }, null, 2))
+console.log(JSON.stringify({ localeAudit: 'passed', languages, componentFiles: components.length, rendererFiles: rendererFiles.length, errorFiles: errorFiles.length, aiPresetLabels: aiPresetLabels.size }, null, 2))

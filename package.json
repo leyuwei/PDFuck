@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.16.29",
+  "version": "1.17.2",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -16,6 +16,7 @@
     "test:selection-cpaper-ui": "electron-vite build && node scripts/selection-cpaper-ui-smoke.cjs",
     "test:selection-scheduling": "node scripts/selection-scheduling-smoke.cjs",
     "test:selection-scheduling-ui": "electron-vite build && node scripts/selection-scheduling-ui-smoke.cjs",
+    "test:window-tabs": "electron-vite build && node scripts/window-tabs-smoke.cjs",
     "test:i18n-catalogue": "node scripts/i18n-catalogue-audit.cjs",
     "test:i18n-ui": "electron-vite build && node scripts/i18n-ui-smoke.cjs",
     "test:watch": "vitest",

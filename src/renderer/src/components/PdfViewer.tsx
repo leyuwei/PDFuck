@@ -32,6 +32,7 @@ interface ViewerProps {
   editableTextObjects: boolean
   annotationMode: boolean
   zoom: number
+  fitWidthRequest: number
   currentPage: number
   initialReadingPosition?: ReadingPosition
   onZoomChange(zoom: number): void
@@ -744,7 +745,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError, onInsight } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, fitWidthRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -767,6 +768,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const restoredDocumentRef = useRef<string | undefined>(undefined)
   const restoringPositionRef = useRef(true)
   const wheelZoomRef = useRef(zoom)
+  const handledFitWidthRequestRef = useRef(0)
   const wheelFrameRef = useRef<number | undefined>(undefined)
   const wheelAnchorRef = useRef<{ pageIndex?: number; x?: number; y?: number; clientX: number; clientY: number; baseZoom: number; viewportX: number; viewportY: number; scrollLeft: number; scrollTop: number } | undefined>(undefined)
   const handleSize = useCallback((index: number, size: { width: number; height: number }) => {
@@ -904,11 +906,16 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     }
   }, [currentPage, document, initialReadingPosition, mode, onPageChange, onReadingPositionChange, sizes, zoom])
 
-  const fitWidth = () => {
+  const fitWidth = useCallback(() => {
     const size = sizes[currentPage] || sizes[0]
     const viewport = viewportRef.current
     if (size && viewport) onZoomChange(Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width)))
-  }
+  }, [currentPage, onZoomChange, sizes])
+  useEffect(() => {
+    if (!fitWidthRequest || handledFitWidthRequestRef.current === fitWidthRequest || !document || !(sizes[currentPage] || sizes[0]) || !viewportRef.current) return
+    handledFitWidthRequestRef.current = fitWidthRequest
+    fitWidth()
+  }, [currentPage, document, fitWidth, fitWidthRequest, sizes])
   const goToPage = (pageIndex: number) => {
     const viewport = viewportRef.current
     const target = viewport?.querySelector(`[data-page="${pageIndex}"]`)

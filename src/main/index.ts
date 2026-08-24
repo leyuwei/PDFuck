@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AiRequest, AiResponse, ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle, type NativeInterfaceLanguage } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
@@ -15,13 +15,21 @@ import { requiresSaveAs } from './save-pdf'
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
   initialPaths: string[]
+  detachedDocument?: DetachedPdfDocument
   initialDelivered: boolean
   closeApproved: boolean
   interfaceLanguage: NativeInterfaceLanguage
 }
 
-function nativeText(chinese: string, english: string): string {
-  const language = mainSession?.interfaceLanguage || 'zh'
+interface PendingDocumentTransfer {
+  document: DetachedPdfDocument
+  source: MainWindowSession
+  sourceWebContentsId: number
+  claimedBy?: number
+  expiry: ReturnType<typeof setTimeout>
+}
+
+function nativeText(language: NativeInterfaceLanguage, chinese: string, english: string): string {
   if (language === 'zh') return chinese
   if (language === 'en') return english
   const translations: Record<string, Record<Exclude<NativeInterfaceLanguage, 'zh' | 'en'>, string>> = {
@@ -35,6 +43,8 @@ function nativeText(chinese: string, english: string): string {
 }
 
 let mainSession: MainWindowSession | null = null
+const windowSessions = new Map<number, MainWindowSession>()
+const documentTransfers = new Map<string, PendingDocumentTransfer>()
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
 let recentWriteQueue: Promise<void> = Promise.resolve()
@@ -248,9 +258,14 @@ async function rememberRecentPdf(path: string): Promise<void> {
   return recentWriteQueue
 }
 
+function requireWindowSession(sender: WebContents): MainWindowSession {
+  const session = windowSessions.get(sender.id)
+  if (!session || session.window.isDestroyed() || session.window.webContents !== sender) throw new Error('无效的窗口请求。')
+  return session
+}
+
 function requireMainWindow(sender: WebContents): BrowserWindow {
-  if (!mainSession || mainSession.window.isDestroyed() || mainSession.window.webContents !== sender) throw new Error('无效的窗口请求。')
-  return mainSession.window
+  return requireWindowSession(sender).window
 }
 
 function showMainWindow(): void {
@@ -263,9 +278,10 @@ function showMainWindow(): void {
 function queuePdfPath(path: string): void {
   const absolute = resolve(path)
   if (!isPdf(absolute) || !existsSync(absolute)) return
-  if (!mainSession) pendingPaths.push(absolute)
-  else if (!mainSession.initialDelivered) mainSession.initialPaths.push(absolute)
-  else mainSession.window.webContents.send('pdf:open-external', absolute)
+  const primary = mainSession && !mainSession.window.isDestroyed() ? mainSession : undefined
+  if (!primary) pendingPaths.push(absolute)
+  else if (!primary.initialDelivered) primary.initialPaths.push(absolute)
+  else primary.window.webContents.send('pdf:open-external', absolute)
   showMainWindow()
 }
 
@@ -276,7 +292,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
   await writeFile(temporary, request.data)
   const window = new BrowserWindow({
     width: 900, height: 720, show: false, skipTaskbar: true, parent, modal: true, autoHideMenuBar: true,
-    title: `${nativeText('打印', 'Print')} - ${basename(request.name || 'document.pdf')}`,
+    title: `${nativeText(requireWindowSession(parent.webContents).interfaceLanguage, '打印', 'Print')} - ${basename(request.name || 'document.pdf')}`,
     webPreferences: { plugins: true, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
   })
   printWindow = window
@@ -311,27 +327,88 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
   }
 }
 
-function createMainWindow(): BrowserWindow {
-  if (mainSession && !mainSession.window.isDestroyed()) { showMainWindow(); return mainSession.window }
+function safeDetachedPosition(position?: DetachedWindowPosition): Partial<Electron.BrowserWindowConstructorOptions> {
+  if (!Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return {}
+  return { x: Math.round(position!.x! - 320), y: Math.round(position!.y! - 44) }
+}
+
+function validDetachedDocument(value: unknown): value is DetachedPdfDocument {
+  if (!value || typeof value !== 'object') return false
+  const document = value as Partial<DetachedPdfDocument>
+  const validNumber = (candidate: unknown) => typeof candidate === 'number' && Number.isFinite(candidate)
+  return (document.data === undefined || document.data instanceof Uint8Array)
+    && typeof document.fileName === 'string'
+    && typeof document.encrypted === 'boolean'
+    && (document.password === undefined || typeof document.password === 'string')
+    && typeof document.dirty === 'boolean'
+    && validNumber(document.pageCount) && validNumber(document.currentPage) && validNumber(document.zoom)
+    && (document.viewMode === 'continuous' || document.viewMode === 'single')
+    && (document.module === 'view' || document.module === 'edit' || document.module === 'annotate' || document.module === 'save')
+    && Boolean(document.readingPosition) && validNumber(document.readingPosition?.page) && validNumber(document.readingPosition?.zoom)
+}
+
+const transferIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function cloneDetachedDocument(document: DetachedPdfDocument): DetachedPdfDocument {
+  return {
+    ...document,
+    data: document.data ? Uint8Array.from(document.data) : undefined,
+    filePath: typeof document.filePath === 'string' ? document.filePath : undefined,
+    password: typeof document.password === 'string' ? document.password : undefined,
+    readingPosition: { page: document.readingPosition.page, zoom: document.readingPosition.zoom, offset: document.readingPosition.offset || 0 }
+  }
+}
+
+function clearDocumentTransfer(transferId: string): PendingDocumentTransfer | undefined {
+  const transfer = documentTransfers.get(transferId)
+  if (transfer) {
+    clearTimeout(transfer.expiry)
+    documentTransfers.delete(transferId)
+  }
+  return transfer
+}
+
+function rememberDocumentTransfer(transferId: string, source: MainWindowSession, sourceWebContentsId: number, document: DetachedPdfDocument): void {
+  clearDocumentTransfer(transferId)
+  const expiry = setTimeout(() => {
+    const current = documentTransfers.get(transferId)
+    if (current?.expiry === expiry) documentTransfers.delete(transferId)
+  }, 60_000)
+  expiry.unref?.()
+  documentTransfers.set(transferId, { document: cloneDetachedDocument(document), source, sourceWebContentsId, expiry })
+}
+
+function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: DetachedPdfDocument; position?: DetachedWindowPosition; primary?: boolean } = {}): BrowserWindow {
+  if (options.primary && mainSession && !mainSession.window.isDestroyed()) { showMainWindow(); return mainSession.window }
   const window = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1080, minHeight: 680,
+    ...safeDetachedPosition(options.position),
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 20 } }
       : { frame: false }),
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
-  mainSession = { window, initialPaths: pendingPaths.splice(0), initialDelivered: false, closeApproved: false, interfaceLanguage: 'zh', fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
+  const session: MainWindowSession = { window, initialPaths: options.initialPaths || [], detachedDocument: options.detachedDocument, initialDelivered: false, closeApproved: false, interfaceLanguage: 'zh', fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
+  // BrowserWindow.webContents becomes invalid by the time the `closed` event
+  // fires. Keep its id while the window is alive so cleanup never touches a
+  // destroyed Electron object.
+  const webContentsId = window.webContents.id
+  windowSessions.set(webContentsId, session)
+  if (options.primary) mainSession = session
   window.on('maximize', () => window.webContents.send('window:maximized', true))
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
-  window.on('page-title-updated', (event) => { event.preventDefault(); if (mainSession) window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage)) })
+  window.on('page-title-updated', (event) => { event.preventDefault(); window.setTitle(nativeWindowTitle(session, session.interfaceLanguage)) })
   window.on('close', (event) => {
-    const session = mainSession
-    if (!session || session.window !== window || session.closeApproved || !session.dirty) return
+    if (session.closeApproved || !session.dirty) return
     event.preventDefault()
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })
-  window.on('closed', () => { if (mainSession?.window === window) mainSession = null })
+  window.on('closed', () => {
+    windowSessions.delete(webContentsId)
+    for (const [transferId, transfer] of documentTransfers) if (transfer.source === session) clearDocumentTransfer(transferId)
+    if (mainSession === session) mainSession = null
+  })
   window.once('ready-to-show', () => { window.show(); window.focus(); window.webContents.focus() })
   window.on('focus', () => { if (!window.isDestroyed()) window.webContents.focus() })
   const captureTarget = process.env.PDFUCK_CAPTURE
@@ -345,6 +422,15 @@ function createMainWindow(): BrowserWindow {
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void window.loadFile(join(__dirname, '../renderer/index.html'))
   return window
+}
+
+function createMainWindow(): BrowserWindow {
+  if (mainSession && !mainSession.window.isDestroyed()) { showMainWindow(); return mainSession.window }
+  return createAppWindow({ initialPaths: pendingPaths.splice(0), primary: true })
+}
+
+function createDetachedWindow(document: DetachedPdfDocument, position?: DetachedWindowPosition): BrowserWindow {
+  return createAppWindow({ detachedDocument: document, position })
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -362,8 +448,8 @@ app.on('open-file', (event, path) => { event.preventDefault(); queuePdfPath(path
 app.whenReady().then(() => {
   void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
-    const window = requireMainWindow(event.sender)
-    const result = await dialog.showOpenDialog(window, { title: nativeText('打开 PDF', 'Open PDF'), properties: ['openFile'], filters: [{ name: nativeText('PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
+    const session = requireWindowSession(event.sender)
+    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, '打开 PDF', 'Open PDF'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -384,10 +470,43 @@ app.whenReady().then(() => {
     return getPasswordStore().set(request.credentialKey, request.password)
   })
   ipcMain.handle('pdf:initial', (event) => {
-    requireMainWindow(event.sender)
-    if (!mainSession) return []
-    mainSession.initialDelivered = true
-    return mainSession.initialPaths.splice(0)
+    const session = requireWindowSession(event.sender)
+    session.initialDelivered = true
+    return session.initialPaths.splice(0)
+  })
+  ipcMain.handle('window:initial-detached-document', (event) => {
+    const session = requireWindowSession(event.sender)
+    const document = session.detachedDocument
+    session.detachedDocument = undefined
+    return document || null
+  })
+  ipcMain.handle('window:detach-document', (event, document: unknown, position: unknown) => {
+    requireWindowSession(event.sender)
+    if (!validDetachedDocument(document)) throw new Error('文档窗口转移请求无效。')
+    const handoff = cloneDetachedDocument(document)
+    const requestedPosition = position && typeof position === 'object' ? position as DetachedWindowPosition : undefined
+    createDetachedWindow(handoff, requestedPosition)
+  })
+  ipcMain.handle('window:begin-document-transfer', (event, transferId: unknown, document: unknown) => {
+    const source = requireWindowSession(event.sender)
+    if (typeof transferId !== 'string' || !transferIdPattern.test(transferId) || !validDetachedDocument(document)) throw new Error('文档窗口转移请求无效。')
+    rememberDocumentTransfer(transferId, source, event.sender.id, document)
+  })
+  ipcMain.handle('window:claim-document-transfer', (event, transferId: unknown) => {
+    const target = requireWindowSession(event.sender)
+    if (typeof transferId !== 'string' || !transferIdPattern.test(transferId)) return null
+    const transfer = documentTransfers.get(transferId)
+    if (!transfer || transfer.sourceWebContentsId === event.sender.id || transfer.source.window.isDestroyed() || (transfer.claimedBy !== undefined && transfer.claimedBy !== event.sender.id)) return null
+    transfer.claimedBy = event.sender.id
+    return cloneDetachedDocument(transfer.document)
+  })
+  ipcMain.handle('window:complete-document-transfer', (event, transferId: unknown) => {
+    requireWindowSession(event.sender)
+    if (typeof transferId !== 'string') return
+    const transfer = documentTransfers.get(transferId)
+    if (!transfer || transfer.claimedBy !== event.sender.id) return
+    clearDocumentTransfer(transferId)
+    if (!transfer.source.window.isDestroyed() && !transfer.source.window.webContents.isDestroyed()) transfer.source.window.webContents.send('window:document-transfer-complete', transferId)
   })
   ipcMain.handle('pdf:recent', (event) => { requireMainWindow(event.sender); return readRecentPdfs() })
   ipcMain.handle('pdf:reading-position-get', (event, path: string) => {
@@ -406,10 +525,11 @@ app.whenReady().then(() => {
     void rememberReadingPosition(request.path, request.position)
   })
   ipcMain.handle('pdf:save', async (event, request: SavePdfRequest) => {
-    const window = requireMainWindow(event.sender)
+    const session = requireWindowSession(event.sender)
+    const window = session.window
     let target = request.saveAs ? undefined : request.currentPath
     if (!target) {
-      const result = await dialog.showSaveDialog(window, { title: nativeText('保存 PDF', 'Save PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText('PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
+      const result = await dialog.showSaveDialog(window, { title: nativeText(session.interfaceLanguage, '保存 PDF', 'Save PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
       if (result.canceled || !result.filePath) return { status: 'canceled' as const }
       target = result.filePath
     }
@@ -425,10 +545,11 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
-    const window = requireMainWindow(event.sender)
+    const session = requireWindowSession(event.sender)
+    const window = session.window
     if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
     const stem = parse(request.sourceName || 'document').name
-    const result = await dialog.showSaveDialog(window, { title: `${nativeText('导出', 'Export')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
+    const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, '导出', 'Export')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null
     const selected = parse(result.filePath), many = request.pages.length > 1
     const outputs: string[] = []
@@ -457,23 +578,21 @@ app.whenReady().then(() => {
     await shell.openExternal(url)
   })
   ipcMain.on('app:set-interface-language', (event, language: unknown) => {
-    const window = requireMainWindow(event.sender)
-    if (!mainSession) return
-    mainSession.interfaceLanguage = language === 'en' || language === 'ja' || language === 'ru' || language === 'es' ? language : 'zh'
-    window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage))
+    const session = requireWindowSession(event.sender)
+    session.interfaceLanguage = language === 'en' || language === 'ja' || language === 'ru' || language === 'es' ? language : 'zh'
+    session.window.setTitle(nativeWindowTitle(session, session.interfaceLanguage))
   })
   ipcMain.on('window:update-document', (event, state: WindowDocumentState) => {
-    const window = requireMainWindow(event.sender)
-    if (!mainSession) return
-    mainSession.fileName = typeof state.fileName === 'string' ? state.fileName.slice(0, 260) : '未打开文档'
-    mainSession.dirty = Boolean(state.dirty); mainSession.hasDocument = Boolean(state.hasDocument); mainSession.encrypted = Boolean(state.encrypted)
-    window.setTitle(nativeWindowTitle(mainSession, mainSession.interfaceLanguage))
+    const session = requireWindowSession(event.sender)
+    session.fileName = typeof state.fileName === 'string' ? state.fileName.slice(0, 260) : '未打开文档'
+    session.dirty = Boolean(state.dirty); session.hasDocument = Boolean(state.hasDocument); session.encrypted = Boolean(state.encrypted)
+    session.window.setTitle(nativeWindowTitle(session, session.interfaceLanguage))
   })
   ipcMain.on('window:minimize', (event) => requireMainWindow(event.sender).minimize())
   ipcMain.on('window:toggle-maximize', (event) => { const window = requireMainWindow(event.sender); window.isMaximized() ? window.unmaximize() : window.maximize() })
   ipcMain.on('window:close', (event) => {
     const window = requireMainWindow(event.sender)
-    if (mainSession) mainSession.closeApproved = true
+    requireWindowSession(event.sender).closeApproved = true
     window.close()
   })
   ipcMain.handle('window:is-maximized', (event) => requireMainWindow(event.sender).isMaximized())

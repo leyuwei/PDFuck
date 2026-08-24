@@ -4,12 +4,14 @@ export interface AppPreferences {
   theme: AppTheme
   /** Omitted when the application uses its built-in theme colour. */
   accent?: string
+  /** Apply the current viewport width whenever a newly opened PDF becomes ready. */
+  fitWidth: boolean
   documentBackgrounds: Record<string, string>
 }
 
 const KEY = 'pdfuck.preferences.v1'
 export const DEFAULT_ACCENT = '#5575de'
-const fallback: AppPreferences = { theme: 'light', documentBackgrounds: {} }
+const fallback: AppPreferences = { theme: 'light', fitWidth: false, documentBackgrounds: {} }
 
 function validColor(value: unknown): value is string { return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) }
 
@@ -19,7 +21,7 @@ export function loadPreferences(): AppPreferences {
     // Older releases persisted the built-in blue as an explicit choice. Treat it
     // as the default so the new restore action accurately reflects its state.
     const accent = validColor(value.accent) && value.accent.toLowerCase() !== DEFAULT_ACCENT ? value.accent : undefined
-    return { theme: value.theme === 'dark' ? 'dark' : 'light', accent, documentBackgrounds: value.documentBackgrounds && typeof value.documentBackgrounds === 'object' ? value.documentBackgrounds : {} }
+    return { theme: value.theme === 'dark' ? 'dark' : 'light', accent, fitWidth: value.fitWidth === true, documentBackgrounds: value.documentBackgrounds && typeof value.documentBackgrounds === 'object' ? value.documentBackgrounds : {} }
   } catch { return fallback }
 }
 

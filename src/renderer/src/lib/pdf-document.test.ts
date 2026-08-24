@@ -66,6 +66,19 @@ describe('PdfDocumentModel', () => {
     expect(model.dirty).toBe(false)
   })
 
+  it('keeps transferred unsaved content marked dirty until the destination saves it', async () => {
+    const source = await PdfDocumentModel.load(await samplePdf(), 'sample.pdf', 'sample.pdf')
+    await source.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 80, height: 12 }], 'transfer me')
+    const destination = await PdfDocumentModel.load(source.bytes, 'sample.pdf', 'sample.pdf')
+    destination.markUnsaved()
+    expect(destination.dirty).toBe(true)
+    await destination.addAnnotation(1, 'note', [], 'new in destination', { x: 90, y: 160 })
+    await destination.undo()
+    expect(destination.dirty).toBe(true)
+    destination.markSaved('saved-copy.pdf')
+    expect(destination.dirty).toBe(false)
+  })
+
   it('restores structural page edits through the same history', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     await model.deletePages([1])

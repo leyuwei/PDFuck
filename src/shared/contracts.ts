@@ -88,6 +88,33 @@ export interface DocumentTabsSnapshot {
   documents: ManagedPdfDocument[]
 }
 
+/**
+ * A self-contained active document hand-off between Electron windows.
+ *
+ * The document data is the current in-memory PDF, so a tab can be moved to a
+ * new window without writing unsaved edits to disk first. UI-only transient
+ * selection state is intentionally not carried over.
+ */
+export interface DetachedPdfDocument {
+  data?: Uint8Array
+  filePath?: string
+  fileName: string
+  encrypted: boolean
+  password?: string
+  dirty: boolean
+  pageCount: number
+  currentPage: number
+  zoom: number
+  viewMode: 'continuous' | 'single'
+  module: 'view' | 'edit' | 'annotate' | 'save'
+  readingPosition: ReadingPosition
+}
+
+export interface DetachedWindowPosition {
+  x?: number
+  y?: number
+}
+
 export interface UpdateCheckResult {
   status: 'available' | 'current' | 'skipped' | 'unavailable'
   currentVersion: string
@@ -124,6 +151,11 @@ export interface DesktopApi {
   openReleasePage(url: string): Promise<void>
   filePath(file: File): string
   initialPdfs(): Promise<string[]>
+  initialDetachedDocument(): Promise<DetachedPdfDocument | null>
+  detachDocument(document: DetachedPdfDocument, position?: DetachedWindowPosition): Promise<void>
+  beginDocumentTransfer(transferId: string, document: DetachedPdfDocument): Promise<void>
+  claimDocumentTransfer(transferId: string): Promise<DetachedPdfDocument | null>
+  completeDocumentTransfer(transferId: string): Promise<void>
   recentPdfs(): Promise<RecentPdf[]>
   getReadingPosition(path: string): Promise<ReadingPosition | null>
   setReadingPosition(path: string, position: ReadingPosition): Promise<void>
@@ -136,5 +168,6 @@ export interface DesktopApi {
   windowIsMaximized(): Promise<boolean>
   onWindowMaximized(callback: (maximized: boolean) => void): () => void
   onWindowRequestClose(callback: () => void): () => void
+  onDocumentTransferComplete(callback: (transferId: string) => void): () => void
   onOpenPdf(callback: (path: string) => void): () => void
 }

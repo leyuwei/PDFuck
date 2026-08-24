@@ -18,6 +18,10 @@ async function assertNoChineseControls(page, scope) {
   assert.ok(!/[\u3400-\u9fff]/u.test(visible), `untranslated Chinese UI text in ${scope}: ${copy.join(' | ')}`)
 }
 
+// PDF pages and annotation bodies are user/document data. They may rightly contain
+// Chinese while the application chrome is displayed in another language.
+const interfaceControls = '.titlebar, .tool-panel, .nav-rail, .window-manager-bar, .modal-backdrop, .toast, .temporary-document-warning'
+
 async function main() {
   // The performance regression was caused by a page-wide MutationObserver.
   // Keep this source-level guard so it cannot quietly return in a future release.
@@ -28,11 +32,12 @@ async function main() {
   const app = await launch()
   try {
     const page = await app.firstWindow()
+    page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const languages = [
-      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], cjkFree: true },
-      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], cjkFree: false },
-      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], cjkFree: true },
-      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], cjkFree: true }
+      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
+      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
+      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
+      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true }
     ]
     const languageSelect = page.locator('.language-select select')
     await languageSelect.waitFor()
@@ -50,7 +55,20 @@ async function main() {
         await page.getByRole('heading', { name: module, exact: true }).waitFor()
       }
       await page.locator('.nav-rail').getByRole('button', { name: language.view, exact: true }).click()
-      if (language.cjkFree) await assertNoChineseControls(page, '.titlebar, .tool-panel, .nav-rail, .window-manager-bar')
+      const documentTransfer = await page.evaluateHandle(() => {
+        const transfer = new DataTransfer()
+        const token = '12345678-1234-1234-1234-1234567890ab'
+        transfer.setData('application/x-pdfuck-document-transfer', token)
+        transfer.setData('text/plain', `pdfuck-document-transfer:${token}`)
+        return transfer
+      })
+      await page.locator('.app-shell').dispatchEvent('dragenter', { dataTransfer: documentTransfer })
+      await page.getByText(language.transferPrompt, { exact: true }).waitFor()
+      assert.equal(await page.locator('.drop-overlay').count(), 0, 'a document return must not use the external-file overlay')
+      assert.equal(await page.locator('.document-transfer-overlay').count(), 1, 'a document return needs its own localized overlay')
+      if (language.cjkFree) await assertNoChineseControls(page, '.titlebar, .tool-panel, .nav-rail, .window-manager-bar, .document-transfer-overlay')
+      await page.locator('.app-shell').dispatchEvent('dragleave', { dataTransfer: documentTransfer, relatedTarget: null })
+      assert.equal(await page.locator('.document-transfer-overlay').count(), 0, 'the document-return overlay must clear when the drag leaves')
     }
   } finally { await app.close() }
 
@@ -69,6 +87,7 @@ async function main() {
   const documentApp = await launch([pdfPath])
   try {
     const page = await documentApp.firstWindow()
+    page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const documentPage = page.locator('.pdf-page[data-page="1"]')
     await documentPage.waitFor({ timeout: 60000 })
     await page.getByText('Ajustar al ancho', { exact: true }).waitFor()
@@ -80,27 +99,35 @@ async function main() {
     for (const chinese of ['批注列表', '回复统计', '列表字号', '单行', '实验室', '智能润色', '适合宽度']) {
       assert.equal(await page.getByText(chinese, { exact: true }).count(), 0, `untranslated UI label: ${chinese}`)
     }
+    await page.locator('.annotation-lab-launch').click()
+    for (const label of ['Explicación sencilla', 'Mejorar la lógica', 'Solo gramática', 'Redacción natural', 'Resolver incoherencias', 'Destacar puntos fuertes']) {
+      await page.locator('.ai-polish-window').getByText(label, { exact: true }).waitFor()
+    }
+    await assertNoChineseControls(page, '.ai-polish-window')
+    await page.locator('.ai-polish-window').getByRole('button', { name: 'Cerrar', exact: true }).click()
     const temporaryWarning = page.locator('.temporary-document-warning')
     if (await temporaryWarning.count()) {
-      await temporaryWarning.getByText('This file may be in a temporary folder. Save it elsewhere to avoid losing it.', { exact: true }).waitFor()
+      await temporaryWarning.getByText('Este archivo puede estar en una carpeta temporal. Guárdelo en otro lugar para no perderlo.', { exact: true }).waitFor()
     }
     await page.locator('.nav-rail').getByRole('button', { name: 'Guardar', exact: true }).click()
     await page.getByText('Seleccionar páginas e imprimir…', { exact: true }).click()
-    await page.getByText('15 páginas seleccionadas', { exact: true }).waitFor()
+    const selectionSummary = page.locator('.page-selection-summary > b')
+    await selectionSummary.waitFor()
+    assert.equal(await selectionSummary.innerText(), '15 páginas seleccionadas', 'page selection summary must use Spanish')
     await page.getByRole('button', { name: 'Imprimir las 15 páginas seleccionadas', exact: true }).waitFor()
-    await assertNoChineseControls(page, 'body')
+    await assertNoChineseControls(page, interfaceControls)
     assert.equal(await page.getByText('已选择 15 页', { exact: true }).count(), 0, 'page-selection summary was not localized')
     await page.getByRole('button', { name: 'Imprimir las 15 páginas seleccionadas', exact: true }).click()
     await page.getByText('15 páginas del documento · 15 hojas', { exact: true }).waitFor()
     await page.getByText('15 páginas usarán 15 hojas', { exact: true }).waitFor()
-    await assertNoChineseControls(page, 'body')
+    await assertNoChineseControls(page, interfaceControls)
     assert.equal(await page.getByText('15 个文档页面 · 15 张纸', { exact: true }).count(), 0, 'print overview was not localized')
     await page.getByRole('button', { name: 'Cancelar', exact: true }).last().click()
     await page.locator('.nav-rail').getByRole('button', { name: 'Anotar', exact: true }).click()
     await documentPage.click({ button: 'right', position: { x: 120, y: 120 } })
     await page.locator('.context-menu').waitFor()
     await page.locator('.context-menu').getByText('Nota', { exact: true }).waitFor()
-    await assertNoChineseControls(page, 'body')
+    await assertNoChineseControls(page, '.context-menu')
     assert.equal(await page.getByText('自由批注', { exact: true }).count(), 0, 'PDF context menu was not localized')
     await page.keyboard.press('Escape')
 
@@ -111,7 +138,7 @@ async function main() {
     await page.locator('.nav-rail').getByRole('button', { name: 'Редактирование', exact: true }).click()
     await page.getByText('Удалить страницы…', { exact: true }).click()
     await page.getByText('Массовое удаление страниц', { exact: true }).waitFor()
-    await assertNoChineseControls(page, 'body')
+    await assertNoChineseControls(page, interfaceControls)
     await page.getByRole('button', { name: 'Отмена', exact: true }).last().click()
 
     await page.locator('.nav-rail').getByRole('button', { name: 'Просмотр', exact: true }).click()

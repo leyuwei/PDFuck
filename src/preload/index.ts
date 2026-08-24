@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AiRequest, DesktopApi, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, DesktopApi, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
   platform: process.platform,
@@ -18,6 +18,11 @@ const api: DesktopApi = {
   openReleasePage: (url) => ipcRenderer.invoke('app:open-release-page', url),
   filePath: (file) => webUtils.getPathForFile(file),
   initialPdfs: () => ipcRenderer.invoke('pdf:initial'),
+  initialDetachedDocument: () => ipcRenderer.invoke('window:initial-detached-document'),
+  detachDocument: (document: DetachedPdfDocument, position?: DetachedWindowPosition) => ipcRenderer.invoke('window:detach-document', document, position),
+  beginDocumentTransfer: (transferId: string, document: DetachedPdfDocument) => ipcRenderer.invoke('window:begin-document-transfer', transferId, document),
+  claimDocumentTransfer: (transferId: string) => ipcRenderer.invoke('window:claim-document-transfer', transferId),
+  completeDocumentTransfer: (transferId: string) => ipcRenderer.invoke('window:complete-document-transfer', transferId),
   recentPdfs: () => ipcRenderer.invoke('pdf:recent'),
   getReadingPosition: (path) => ipcRenderer.invoke('pdf:reading-position-get', path),
   setReadingPosition: (path, position: ReadingPosition) => ipcRenderer.invoke('pdf:reading-position-set', { path, position }),
@@ -37,6 +42,11 @@ const api: DesktopApi = {
     const listener = () => callback()
     ipcRenderer.on('window:request-close', listener)
     return () => ipcRenderer.removeListener('window:request-close', listener)
+  },
+  onDocumentTransferComplete: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, transferId: string) => callback(transferId)
+    ipcRenderer.on('window:document-transfer-complete', listener)
+    return () => ipcRenderer.removeListener('window:document-transfer-complete', listener)
   },
   onOpenPdf: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, path: string) => callback(path)
