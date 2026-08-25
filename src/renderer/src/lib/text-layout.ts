@@ -76,7 +76,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const focusColumn = words[focus.wordIndex]?.column
   const constrainedColumn = anchorColumn !== undefined && anchorColumn === focusColumn ? anchorColumn : undefined
   const hasColumnEndpoints = anchorColumn !== undefined && focusColumn !== undefined
-  const pieces: string[] = [], rects: PdfRect[] = [], rectColumns: Array<number | undefined> = []
+  const pieces: string[] = [], rects: PdfRect[] = [], rectColumns: Array<number | undefined> = [], rectBaselines: Array<number | undefined> = []
   const startWord = words[start.wordIndex], endWord = words[end.wordIndex]
   if (!startWord || !endWord) return undefined
   const endpointHeight = Math.max(startWord?.rect.height || 0, endWord?.rect.height || 0)
@@ -156,6 +156,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const left = boundaryAt(word, from), right = boundaryAt(word, to)
     rects.push({ x: word.rect.x + left, y: word.rect.y, width: Math.max(0, right - left), height: word.rect.height })
     rectColumns.push(word.column)
+    rectBaselines.push(word.baselineY)
   }
   if (!rects.length) return undefined
   const lines: PdfRect[] = []
@@ -164,10 +165,21 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const column = rectColumns[index]
     const previous = lines.at(-1)
     const horizontalGap = previous ? Math.max(previous.x - (rect.x + rect.width), rect.x - (previous.x + previous.width), 0) : Number.POSITIVE_INFINITY
+    const previousBaseline = rectBaselines[index - 1]
+    const baseline = rectBaselines[index]
+    // A fraction's numerator, denominator and subscript can overlap the
+    // vertical band of adjacent prose.  Their rectangles must remain
+    // independent: merging only by top-coordinate moves the resulting
+    // highlight below one token and over the next row. PDF text transforms
+    // provide a stable baseline for ordinary same-line words; retain the
+    // geometric fallback for synthetic/legacy words without that metadata.
+    const sameBaseline = Boolean(previous) && (previousBaseline === undefined || baseline === undefined
+      ? Math.abs(previous!.y - rect.y) < Math.max(previous!.height, rect.height) * 0.55
+      : Math.abs(previousBaseline - baseline) <= Math.max(0.5, Math.min(previous!.height, rect.height) * 0.18))
     // Only join neighboring fragments on the same visual line. A full-width
     // union across a column gutter makes a selection appear to include text
     // from the other column, especially around short formula glyphs.
-    if (previous && lineColumns.at(-1) === column && Math.abs(previous.y - rect.y) < Math.max(previous.height, rect.height) * 0.55 && horizontalGap <= Math.max(previous.height, rect.height) * 1.6) {
+    if (previous && lineColumns.at(-1) === column && sameBaseline && horizontalGap <= Math.max(previous.height, rect.height) * 1.6) {
       const right = Math.max(previous.x + previous.width, rect.x + rect.width)
       previous.x = Math.min(previous.x, rect.x); previous.width = right - previous.x; previous.height = Math.max(previous.height, rect.height)
     } else { lines.push({ ...rect }); lineColumns.push(column) }
