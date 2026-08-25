@@ -1,12 +1,12 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { basename, dirname, extname, join, parse, resolve } from 'node:path'
+import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfImportFile, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle, type NativeInterfaceLanguage } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
@@ -35,6 +35,8 @@ function nativeText(language: NativeInterfaceLanguage, chinese: string, english:
   const translations: Record<string, Record<Exclude<NativeInterfaceLanguage, 'zh' | 'en'>, string>> = {
     '打开 PDF': { ja: 'PDF を開く', ru: 'Открыть PDF', es: 'Abrir PDF' },
     'PDF 文件': { ja: 'PDF ファイル', ru: 'PDF-файлы', es: 'Archivos PDF' },
+    '从文件合并 PDF': { ja: 'ファイルから PDF を結合', ru: 'Объединить PDF из файлов', es: 'Combinar PDF desde archivos' },
+    '可导入的文件': { ja: 'インポート可能なファイル', ru: 'Импортируемые файлы', es: 'Archivos importables' },
     '保存 PDF': { ja: 'PDF を保存', ru: 'Сохранить PDF', es: 'Guardar PDF' },
     '导出': { ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' },
     '打印': { ja: '印刷', ru: 'Печать', es: 'Imprimir' }
@@ -144,6 +146,51 @@ async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
 }
 
 const isPdf = (value: string): boolean => extname(value).toLowerCase() === '.pdf'
+const importFormat = (value: string): PdfImportFile['format'] | undefined => {
+  const extension = extname(value).toLowerCase()
+  if (extension === '.pdf') return 'pdf'
+  if (extension === '.png') return 'png'
+  if (extension === '.jpg' || extension === '.jpeg') return 'jpg'
+  return undefined
+}
+
+async function ghostscriptCandidates(): Promise<string[]> {
+  const names = process.platform === 'win32' ? ['gswin64c.exe', 'gswin32c.exe'] : ['gs']
+  const paths = (process.env.PATH || '').split(delimiter).filter(Boolean)
+  const bundled = [join(process.resourcesPath, 'ghostscript', 'bin'), join(process.resourcesPath, 'ghostscript')]
+  const programFiles = [...new Set([process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter((value): value is string => Boolean(value))) ]
+  const installed = (await Promise.all(programFiles.map(async (root) => {
+    try { return (await readdir(join(root, 'gs'), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(root, 'gs', entry.name, 'bin')) } catch { return [] }
+  }))).flat()
+  return [...bundled, ...paths, ...installed].flatMap((folder) => names.map((name) => join(folder, name))).filter(existsSync)
+}
+
+async function rasterizeEps(source: string): Promise<Uint8Array> {
+  const command = (await ghostscriptCandidates())[0]
+  if (!command) throw new Error('导入 EPS 需要本机 Ghostscript。请安装 Ghostscript 后重试。')
+  const temporary = await mkdtemp(join(app.getPath('temp'), 'pdfuck-eps-'))
+  const output = join(temporary, 'page.png')
+  try {
+    await execFileAsync(command, ['-dSAFER', '-dEPSCrop', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pngalpha', '-r144', `-sOutputFile=${output}`, source], { windowsHide: true, maxBuffer: 2 * 1024 * 1024 })
+    return new Uint8Array(await readFile(output))
+  } catch {
+    throw new Error('无法转换 EPS 文件。请确认该文件有效且 Ghostscript 可用。')
+  } finally {
+    await rm(temporary, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+async function openPdfImports(paths: string[]): Promise<PdfImportFile[]> {
+  const files: PdfImportFile[] = []
+  for (const path of paths) {
+    const format = importFormat(path)
+    const extension = extname(path).toLowerCase()
+    if (format) files.push({ name: basename(path), format, data: new Uint8Array(await readFile(path)) })
+    else if (extension === '.eps') files.push({ name: basename(path), format: 'png', data: await rasterizeEps(path) })
+    else throw new Error('仅支持导入 PDF、PNG、JPG、JPEG 或 EPS 文件。')
+  }
+  return files
+}
 
 function candidateFromArgs(args: string[]): string | null {
   const value = args.find((arg) => isPdf(arg) && existsSync(resolve(arg)))
@@ -473,6 +520,15 @@ app.whenReady().then(() => {
     const session = requireWindowSession(event.sender)
     session.initialDelivered = true
     return session.initialPaths.splice(0)
+  })
+  ipcMain.handle('pdf:choose-imports', async (event) => {
+    const session = requireWindowSession(event.sender)
+    const result = await dialog.showOpenDialog(session.window, {
+      title: nativeText(session.interfaceLanguage, '从文件合并 PDF', 'Merge PDF from Files'),
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件', 'Importable Files'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps'] }]
+    })
+    return result.canceled ? null : openPdfImports(result.filePaths)
   })
   ipcMain.handle('window:initial-detached-document', (event) => {
     const session = requireWindowSession(event.sender)

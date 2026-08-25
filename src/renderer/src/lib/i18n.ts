@@ -116,6 +116,7 @@ const storedMessages: Record<string, string> = {
   '批注内容、颜色和回复已更新': 'Annotation content, color, and reply updated', '批注颜色已更新': 'Annotation color updated',
   '批注回复已清除': 'Annotation reply cleared', '批注内容已在列表中更新': 'Annotation content updated in the list',
   '智能润色已添加到批注列表': 'AI polish result added to annotations', '已撤销上一步操作': 'Undid the previous action', '已重做上一步操作': 'Redid the previous action'
+  , '页面顺序已更新': 'Page order updated'
   , '文本高亮': 'Highlight Text', '文本替换': 'Replace Text', '文本删除': 'Delete Text', '加下划线': 'Underline Text', '自由批注': 'Note', '插入文字': 'Insert Text'
   , '已处理': 'Resolved', '想一想': 'Review Later', '不做了': 'Won’t Fix'
 }
@@ -137,6 +138,14 @@ export function translateUiText(value: string): string {
   if (failed) return `${status.failed}${translateUiText(failed[1])}`
   const annotationsAdded = value.match(/^已在 (\d+) 页添加(.+)$/u)
   if (annotationsAdded) return status.annotationsAdded.replace('$1', annotationsAdded[1] || '').replace('$2', translateUiText(annotationsAdded[2] || ''))
+  const filesMerged = value.match(/^已合并 (\d+) 个文件；请确认页面顺序$/u)
+  if (filesMerged) return ui('已合并 {count} 个文件；请确认页面顺序', 'Merged {count} file(s); confirm the page order.').replace('{count}', filesMerged[1] || '')
+  const newMergedDocument = value.match(/^已新建合并文档并导入 (\d+) 个文件；请确认页面顺序$/u)
+  if (newMergedDocument) return ui('已新建合并文档并导入 {count} 个文件；请确认页面顺序', 'Created a new merged document and imported {count} file(s); confirm the page order.').replace('{count}', newMergedDocument[1] || '')
+  const createdMergedDocument = value.match(/^已创建合并文档，已导入 (\d+) 个文件$/u)
+  if (createdMergedDocument) return ui('已创建合并文档，已导入 {count} 个文件', 'Created a merged document and imported {count} file(s)').replace('{count}', createdMergedDocument[1] || '')
+  const mergeComplete = value.match(/^已合并 (\d+) 个文件$/u)
+  if (mergeComplete) return ui('已合并 {count} 个文件', 'Merged {count} file(s)').replace('{count}', mergeComplete[1] || '')
   const annotationAdded = value.match(/^(.+)已添加$/u)
   if (annotationAdded) return status.annotationAdded.replace('$1', translateUiText(annotationAdded[1]))
   const annotationsDeleted = value.match(/^已删除 (\d+) 条批注，可按 Ctrl\/⌘Z 撤销$/u)

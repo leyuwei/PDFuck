@@ -10,6 +10,7 @@ import {
 } from './page-coordinates'
 import { fontCategory, normalizeFontFamily } from './text-fonts'
 import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
+import type { PdfImportFile } from '../../../shared/contracts'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
   highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线', ai_polish: '智能润色'
@@ -109,6 +110,12 @@ export class PdfDocumentModel {
     return model
   }
 
+  /** Start an untitled document for workflows, such as file merging, that add pages immediately. */
+  static async create(name = '未命名.pdf'): Promise<PdfDocumentModel> {
+    const document = await PDFDocument.create()
+    return PdfDocumentModel.load(await document.save({ useObjectStreams: false, addDefaultPage: false }), undefined, name)
+  }
+
   get bytes(): Uint8Array { return Uint8Array.from(this.currentBytes) }
   get pageCount(): number { return this.document.getPageCount() }
   get canUndo(): boolean { return this.undoStack.length > 0 }
@@ -205,6 +212,39 @@ export class PdfDocumentModel {
     await this.commit()
     // pdf-lib caches page wrappers; reload after structural edits so later page indices
     // always refer to the actual remaining pages.
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+  }
+
+  /** Insert PDFs or raster image files at a single document position, preserving source order. */
+  async importFiles(files: PdfImportFile[], insertionIndex = this.pageCount): Promise<void> {
+    if (!files.length) throw new Error('请至少选择一个要导入的文件。')
+    if (!Number.isInteger(insertionIndex) || insertionIndex < 0 || insertionIndex > this.pageCount) throw new Error('插入位置无效。')
+    let nextIndex = insertionIndex
+    for (const file of files) {
+      if (file.format === 'pdf') {
+        const source = await PDFDocument.load(file.data, { updateMetadata: false })
+        const pages = await this.document.copyPages(source, source.getPageIndices())
+        pages.forEach((page) => { this.document.insertPage(nextIndex, page); nextIndex += 1 })
+      } else {
+        const image = file.format === 'png' ? await this.document.embedPng(file.data) : await this.document.embedJpg(file.data)
+        const page = this.document.insertPage(nextIndex, [image.width, image.height])
+        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height })
+        nextIndex += 1
+      }
+    }
+    await this.commit()
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+  }
+
+  /** Rebuild the page tree in the caller's explicit order. */
+  async reorderPages(pageIndices: number[]): Promise<void> {
+    if (pageIndices.length !== this.pageCount || new Set(pageIndices).size !== this.pageCount || pageIndices.some((page) => page < 0 || page >= this.pageCount)) throw new Error('页面排序无效。')
+    if (pageIndices.every((page, index) => page === index)) return
+    const reordered = await PDFDocument.create()
+    const pages = await reordered.copyPages(this.document, pageIndices)
+    pages.forEach((page) => reordered.addPage(page))
+    this.document = reordered
+    await this.commit()
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
   }
 

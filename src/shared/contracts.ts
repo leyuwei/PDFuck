@@ -32,6 +32,14 @@ export interface SavePdfRequest {
   saveAs?: boolean
 }
 
+/** A file selected specifically for insertion into the active document. */
+export interface PdfImportFile {
+  name: string
+  /** EPS sources are rasterized to PNG by the trusted main process. */
+  format: 'pdf' | 'png' | 'jpg'
+  data: Uint8Array
+}
+
 /** The renderer needs to distinguish a canceled save from a target it cannot write. */
 export type SavePdfResult =
   | { status: 'saved'; path: string }
@@ -137,6 +145,7 @@ export interface AiResponse {
 export interface DesktopApi {
   readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
+  choosePdfImports(): Promise<PdfImportFile[] | null>
   readPdf(path: string): Promise<OpenedPdf>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
   openPdfFolder(path: string): Promise<void>

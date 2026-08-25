@@ -33,10 +33,11 @@ describe('WindowManagerBar', () => {
     const onReorder = vi.fn()
     const root = createRoot(container)
     await act(async () => {
-      root.render(<WindowManagerBar snapshot={snapshot} onFocus={() => undefined} onCreate={() => undefined} onClose={() => undefined} onReorder={onReorder} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />)
+      root.render(<WindowManagerBar snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={onReorder} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />)
     })
     const activeTab = container.querySelector<HTMLDivElement>('.window-tab.current')!
     expect(activeTab.draggable).toBe(true)
+    expect(container.querySelector('.new-window-button')).toBeNull()
     expect(activeTab.getAttribute('aria-label')).toContain('拖动标签可调整顺序')
     await act(async () => activeTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true })))
     expect(onReorder).toHaveBeenCalledWith(2, 3)

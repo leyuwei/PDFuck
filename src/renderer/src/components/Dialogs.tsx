@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
 import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
-import type { PrintPdfOptions, UpdateCheckResult } from '../../../shared/contracts'
+import type { PdfImportFile, PrintPdfOptions, RecentPdf, UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
 import { printPaperSize, printSheetCount } from '../lib/print-layout'
 import { LocalizedInterfaceCopy } from './InterfaceLanguageBridge'
-import { t, ui } from '../lib/i18n'
+import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
 export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply }
@@ -243,6 +243,47 @@ export function Toast({ message }: { message: string }) {
   const [visible, setVisible] = useState(true)
   useEffect(() => { setVisible(true); const timer = window.setTimeout(() => setVisible(false), 4500); return () => window.clearTimeout(timer) }, [message])
   return visible && message ? <div className="toast">{message}</div> : null
+}
+
+export function OpenPdfDialog({ recent, onCancel, onOpen, onBrowse }: { recent: RecentPdf[]; onCancel(): void; onOpen(path: string): void; onBrowse(): void }) {
+  const language = useInterfaceLanguage()
+  const recentTime = (value: string) => {
+    const date = new Date(value)
+    const locale = { zh: 'zh-CN', en: 'en-US', ja: 'ja-JP', ru: 'ru-RU', es: 'es-ES' }[language]
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  return <LocalizedInterfaceCopy><div className="modal-backdrop"><div className="modal open-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="open-pdf-title"><h2 id="open-pdf-title">打开 PDF</h2><p>从最近打开的文件继续工作，或浏览本机文件。</p><div className="open-pdf-recent recent-list">{recent.length ? recent.map((item) => <button key={item.path} type="button" className="recent-item open-pdf-recent-item" title={item.path} onClick={() => onOpen(item.path)}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty open-pdf-empty"><span>⌁</span><b>还没有最近打开的 PDF</b></div>}</div><div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" onClick={onBrowse}>浏览 PDF 文件…</button></div></div></div></LocalizedInterfaceCopy>
+}
+
+export type MergeInsertion = { position: 'start' | 'end' | 'before' | 'after'; page?: number }
+export interface MergeFilesDialogResult { files: PdfImportFile[]; insertion?: MergeInsertion }
+
+/** Choose the insertion point first; imported sources are ordered independently from the destination document. */
+export function MergeFilesDialog({ files, pageCount, creating, onCancel, onSubmit }: { files: PdfImportFile[]; pageCount: number; creating: boolean; onCancel(): void; onSubmit(result: MergeFilesDialogResult): void }) {
+  const [ordered, setOrdered] = useState(files)
+  const [position, setPosition] = useState<MergeInsertion['position']>('end')
+  const [targetPage, setTargetPage] = useState('1')
+  const [draggedIndex, setDraggedIndex] = useState<number>()
+  const target = Number(targetPage)
+  const targetValid = Number.isInteger(target) && target >= 1 && target <= pageCount
+  const valid = creating || (position === 'start' || position === 'end' || targetValid)
+  const move = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= ordered.length) return
+    setOrdered((current) => { const next = [...current]; const [file] = next.splice(from, 1); next.splice(to, 0, file!); return next })
+  }
+  const placementSummary = creating
+    ? ui('将创建一个新的合并 PDF。', 'A new merged PDF will be created.')
+    : position === 'start' ? ui('将插入到文档开头。', 'Files will be inserted at the beginning of the document.')
+      : position === 'end' ? ui('将插入到文档末尾。', 'Files will be inserted at the end of the document.')
+        : targetValid ? position === 'before'
+          ? ui('将插入到第 {page} 页之前。', 'Files will be inserted before page {page}.').replace('{page}', String(target))
+          : ui('将插入到第 {page} 页之后。', 'Files will be inserted after page {page}.').replace('{page}', String(target))
+        : ui('请输入有效的目标页码。', 'Enter a valid target page number.')
+  const submit = () => onSubmit({ files: ordered, insertion: creating ? undefined : { position, page: position === 'before' || position === 'after' ? target : undefined } })
+  return <LocalizedInterfaceCopy><div className="modal-backdrop"><div className="modal merge-files-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-files-title"><div className="merge-files-heading"><span aria-hidden="true">+</span><div><h2 id="merge-files-title">{ui('从文件合并 PDF', 'Merge PDF from Files')}</h2><p>{creating ? ui('调整导入文件的顺序后，即可创建新的合并 PDF。', 'Arrange imported files, then create a new merged PDF.') : ui('先选择插入位置，再调整导入文件的顺序。', 'Choose the insertion point first, then arrange imported files.')}</p></div></div>
+    {!creating && <section className="merge-placement"><div><b>{ui('插入位置', 'Insertion Point')}</b><small>{ui('共 {count} 页', '{count} pages').replace('{count}', String(pageCount))}</small></div><div className="merge-placement-options" role="radiogroup" aria-label={ui('插入位置', 'Insertion Point')}><button type="button" role="radio" aria-checked={position === 'start'} className={position === 'start' ? 'active' : ''} onClick={() => setPosition('start')}>{ui('文档开头', 'Beginning of Document')}</button><button type="button" role="radio" aria-checked={position === 'end'} className={position === 'end' ? 'active' : ''} onClick={() => setPosition('end')}>{ui('文档末尾', 'End of Document')}</button><button type="button" role="radio" aria-checked={position === 'before'} className={position === 'before' ? 'active' : ''} onClick={() => setPosition('before')}>{ui('某页之前', 'Before a Page')}</button><button type="button" role="radio" aria-checked={position === 'after'} className={position === 'after' ? 'active' : ''} onClick={() => setPosition('after')}>{ui('某页之后', 'After a Page')}</button></div>{(position === 'before' || position === 'after') && <label className={`merge-target-page${targetValid ? '' : ' invalid'}`}><span>{ui('目标页码', 'Target Page')}</span><div className="merge-target-page-field"><div className="merge-page-input"><input autoFocus aria-label={ui('目标页码', 'Target Page')} type="text" inputMode="numeric" pattern="[0-9]*" value={targetPage} onChange={(event) => setTargetPage(event.target.value.replace(/\D/g, ''))} /><i>{ui('页', 'Page')}</i></div><b>{position === 'before' ? ui('在此页之前插入', 'Insert before this page') : ui('在此页之后插入', 'Insert after this page')}</b></div><small>{targetValid ? ui('可输入 1 到 {count}。', 'Enter a number from 1 to {count}.').replace('{count}', String(pageCount)) : ui('请输入 1 到 {count} 之间的页码。', 'Enter a page number from 1 to {count}.').replace('{count}', String(pageCount))}</small></label>}</section>}
+    <section className="merge-source-order"><div className="merge-section-heading"><div><b>{ui('导入文件顺序', 'Imported File Order')}</b><small>{ui('拖动卡片或使用上下按钮排序；每个文件内部页面保持原有顺序。', 'Drag cards or use the arrow buttons. Pages within each file keep their original order.')}</small></div><span>{ui('{count} 个文件', '{count} files').replace('{count}', String(ordered.length))}</span></div><div className="merge-source-list">{ordered.map((file, index) => <article key={`${file.name}-${index}`} className="merge-source-item" draggable onDragStart={(event) => { setDraggedIndex(index); event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => setDraggedIndex(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedIndex !== undefined) move(draggedIndex, index); setDraggedIndex(undefined) }}><span className="merge-source-grip" aria-hidden="true">⠿</span><span className="merge-source-number">{index + 1}</span><div><b title={file.name}>{file.name}</b><small>{file.format.toUpperCase()} · {ui('保持原文件页序', 'Keep the source page order')}</small></div><div className="merge-source-actions"><button type="button" disabled={index === 0} aria-label={ui('上移文件', 'Move File Up')} title={ui('上移文件', 'Move File Up')} onClick={() => move(index, index - 1)}>↑</button><button type="button" disabled={index === ordered.length - 1} aria-label={ui('下移文件', 'Move File Down')} title={ui('下移文件', 'Move File Down')} onClick={() => move(index, index + 1)}>↓</button></div></article>)}</div></section>
+    <div className={`merge-outcome${valid ? '' : ' invalid'}`}><b>{placementSummary}</b><span>{ui('确认后将按上列顺序一次性写入。', 'After confirmation, files will be inserted together in the order above.')}</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="primary" disabled={!valid} onClick={submit}>{creating ? ui('创建合并 PDF', 'Create Merged PDF') : ui('确认并合并', 'Confirm & Merge')}</button></div></div></div></LocalizedInterfaceCopy>
 }
 
 export function ConfirmDialog({ message, onCancel, onConfirm }: { message: string; onCancel(): void; onConfirm(): void }) {

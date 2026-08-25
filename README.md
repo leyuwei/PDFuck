@@ -39,15 +39,15 @@ Copyright © 2026 github@leyuwei
 
 The [Releases page](https://github.com/leyuwei/PDFuck/releases) provides two builds:
 
-- **Installer (recommended)**: `PDFuck-1.17.2-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
-- **Portable**: `PDFuck-1.17.2-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
+- **Installer (recommended)**: `PDFuck-1.17.9-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
+- **Portable**: `PDFuck-1.17.9-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
 
 If Windows SmartScreen warns about an unsigned community build, verify that the file came from this repository's Releases page and check the published checksum before continuing.
 
 ### macOS
 
-- **DMG (recommended)**: Open `PDFuck-1.17.2-macOS.dmg` and drag `PDFuck.app` to `Applications`.
-- **ZIP**: Extract `PDFuck-1.17.2-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
+- **DMG (recommended)**: Open `PDFuck-1.17.9-macOS.dmg` and drag `PDFuck.app` to `Applications`.
+- **ZIP**: Extract `PDFuck-1.17.9-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
 
 Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
 
@@ -66,6 +66,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 
 - Crop pages with a movable selection and eight resize handles, then confirm before applying.
 - Delete the current, odd, even, or any selected pages.
+- Merge pages from existing PDF, PNG, JPG/JPEG, or EPS files, even before a PDF is opened. After import, batch-select page ranges and move them to the beginning, end, or a specified position before confirming the order. EPS is rasterized locally through Ghostscript when it is installed.
 - Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
 - Edit PDF.js-recognized text blocks in place. Multi-column pages are split into editable blocks; clearing a block and applying the change removes the original text.
 - Undo and redo page crops, page deletion, text changes, and annotation changes independently per document tab.
@@ -136,7 +137,7 @@ macOS release build (run on macOS):
 npm run dist:mac
 ```
 
-This runs checks, creates a production build, and generates `release/PDFuck-1.17.2-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+This runs checks, creates a production build, and generates `release/PDFuck-1.17.9-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
 
 ## Technical Structure
 
@@ -197,7 +198,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.17.2-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.17.9-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -208,7 +209,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 便携版
 
-下载 `PDFuck-1.17.2-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.17.9-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -220,11 +221,11 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.17.2-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-1.17.9-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.17.2-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-1.17.9-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -256,6 +257,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 - 框选裁切页面，初选后可移动并通过八个控制点精调大小；点击页面内“确认范围”后才询问是否执行裁切；
 - 当前页、奇数页、偶数页或任意组合的批量删页；
+- 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG 或 EPS 合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会在本机 Ghostscript 可用时离线栅格化导入；
 - 添加自定义字体类别、字号、颜色、粗体、斜体和对齐方式的文字；
 - 新增文字可直接选择、拖动，双击后继续编辑；
 - 激活“编辑页面文字”后，当前页所有 PDF.js 可识别文本块会自动显示边框，点击任意文本块即可原位编辑；
@@ -366,7 +368,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.17.2-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并生成 `release/PDFuck-1.17.9-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")

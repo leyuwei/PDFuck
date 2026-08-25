@@ -89,6 +89,51 @@ describe('PdfDocumentModel', () => {
     expect(model.pageCount).toBe(2)
   })
 
+  it('imports PDF and PNG files, reorders their pages, and restores both operations', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const importedPdf = await PDFDocument.create()
+    importedPdf.addPage([333, 444])
+    const pixel = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 8, 29, 99, 248, 207, 192, 240, 31, 0, 5, 128, 2, 63, 73, 194, 248, 88, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])
+    await model.importFiles([{ name: 'source.pdf', format: 'pdf', data: await importedPdf.save() }, { name: 'pixel.png', format: 'png', data: pixel }])
+    expect(model.pageCount).toBe(5)
+    expect(model.getPageSize(3)).toEqual({ width: 333, height: 444 })
+    expect(model.getPageSize(4)).toEqual({ width: 1, height: 1 })
+    await model.reorderPages([4, 3, 0, 1, 2])
+    expect(model.getPageSize(0)).toEqual({ width: 1, height: 1 })
+    expect(model.getPageSize(1)).toEqual({ width: 333, height: 444 })
+    await model.undo()
+    expect(model.getPageSize(3)).toEqual({ width: 333, height: 444 })
+    await model.undo()
+    expect(model.pageCount).toBe(3)
+    await model.redo()
+    expect(model.pageCount).toBe(5)
+  })
+
+  it('creates an empty merge document before importing its first file', async () => {
+    const model = await PdfDocumentModel.create('Merged Document.pdf')
+    expect(model.pageCount).toBe(0)
+    const source = await PDFDocument.create(); source.addPage([420, 300])
+    await model.importFiles([{ name: 'first.pdf', format: 'pdf', data: await source.save() }])
+    expect(model.fileName).toBe('Merged Document.pdf')
+    expect(model.pageCount).toBe(1)
+    expect(model.dirty).toBe(true)
+  })
+
+  it('inserts imported files at the requested position without changing source order', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const first = await PDFDocument.create(); first.addPage([333, 444])
+    const second = await PDFDocument.create(); second.addPage([555, 222])
+    await model.importFiles([
+      { name: 'first.pdf', format: 'pdf', data: await first.save() },
+      { name: 'second.pdf', format: 'pdf', data: await second.save() }
+    ], 1)
+    expect(model.pageCount).toBe(5)
+    expect(model.getPageSize(0)).toEqual({ width: 612, height: 792 })
+    expect(model.getPageSize(1)).toEqual({ width: 333, height: 444 })
+    expect(model.getPageSize(2)).toEqual({ width: 555, height: 222 })
+    expect(model.getPageSize(3)).toEqual({ width: 612, height: 792 })
+  })
+
   it('creates all six annotations and persists list edits and movement', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const markupKinds: AnnotationKind[] = ['highlight', 'replace', 'delete', 'underline']

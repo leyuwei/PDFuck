@@ -9,7 +9,6 @@ interface DetachPosition { x: number; y: number }
 interface Props {
   snapshot: DocumentTabsSnapshot
   onFocus(id: number): void
-  onCreate(): void
   onClose(id: number): void
   onReorder(sourceId: number, targetId: number): void
   onDetach(id: number, position: DetachPosition): void
@@ -29,7 +28,7 @@ export function reorderDocumentTabs(snapshot: DocumentTabsSnapshot, sourceId: nu
   return { ...snapshot, documents }
 }
 
-export function WindowManagerBar({ snapshot, onFocus, onCreate, onClose, onReorder, onDetach, onBeginTransfer, onTabDragStateChange }: Props) {
+export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDetach, onBeginTransfer, onTabDragStateChange }: Props) {
   useInterfaceLanguage()
   const tabsRef = useRef<HTMLDivElement>(null)
   const draggingId = useRef<number | undefined>(undefined)
@@ -79,6 +78,5 @@ export function WindowManagerBar({ snapshot, onFocus, onCreate, onClose, onReord
         </div>
       })}
     </div>
-    <button type="button" className="new-window-button" onClick={onCreate} title={ui('在当前窗口打开另一份 PDF', 'Open another PDF in this window')}><span>＋</span> {ui('打开 PDF', 'Open PDF')}</button>
   </section>
 }
