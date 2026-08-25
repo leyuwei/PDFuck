@@ -8,6 +8,7 @@ tmp/
 *.spec
 node_modules/
 out/
+output/
 release/
 # Windows 发布产物：便携版、NSIS 安装程序及更新元数据
 PDFuck-*-Windows.exe
