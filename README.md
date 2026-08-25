@@ -19,7 +19,7 @@ Copyright © 2026 github@leyuwei
 ## Why PDFuck
 
 - **Find figures and tables in one click**: Detects captions such as `Figure`, `Fig.`, `Table`, `图`, and `表`, plus page images and likely tables without standard captions. Results are grouped by page and focus the target when selected.
-- **Five interface languages**: Switch between Simplified Chinese, English, Japanese, Russian, and Spanish from the View panel. Window titles, native file dialogs, notices, dialogs, printing, and export flows follow the selected language.
+- **Five interface languages**: Switch between Simplified Chinese, English, Japanese, Russian, and Spanish from the View panel. Window titles, native file dialogs, notices, dialogs, printing, and export flows follow the selected language, and the choice persists after restart.
 - **Link citations to references**: Recognizes common numeric (`[1]`, `[2-4]`) and author-year citations and creates clickable links between in-text citations and bibliography entries.
 - **Lightweight paper-oriented grammar checks**: Flags common English spelling, repeated-word, and subject-verb agreement issues and links each result back to its context. It is a review aid, not an uncontrolled rewrite engine.
 - **Edit PDF text as editable objects**: PDF.js text blocks are regrouped into natural chunks. New text inherits the source font, size, weight, style, alignment, color, and sampled page background, and remains movable and editable after saving.
@@ -31,7 +31,8 @@ Copyright © 2026 github@leyuwei
 - **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
-- **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS.
+- **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster exports support 72-600 DPI.
+- **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
 ## Download and Install
 
@@ -39,15 +40,15 @@ Copyright © 2026 github@leyuwei
 
 The [Releases page](https://github.com/leyuwei/PDFuck/releases) provides two builds:
 
-- **Installer (recommended)**: `PDFuck-1.17.9-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
-- **Portable**: `PDFuck-1.17.9-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
+- **Installer (recommended)**: `PDFuck-1.17.11-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
+- **Portable**: `PDFuck-1.17.11-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
 
 If Windows SmartScreen warns about an unsigned community build, verify that the file came from this repository's Releases page and check the published checksum before continuing.
 
 ### macOS
 
-- **DMG (recommended)**: Open `PDFuck-1.17.9-macOS.dmg` and drag `PDFuck.app` to `Applications`.
-- **ZIP**: Extract `PDFuck-1.17.9-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
+- **DMG (recommended)**: Open `PDFuck-1.17.11-macOS.dmg` and drag `PDFuck.app` to `Applications`.
+- **ZIP**: Extract `PDFuck-1.17.11-macOS.zip` and run the app directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
 
 Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
 
@@ -58,7 +59,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 ### View
 
 - Continuous or single-page reading, page navigation, zoom, fit-to-width, and high-DPI rendering. Choosing Fit Width once makes it the default for subsequently opened PDFs.
-- Light and dark themes, a customizable app accent, and a per-document PDF paper background. Reset either color from its picker.
+- Light and dark themes, a customizable app accent, and a per-document PDF paper background. Both colors have a full picker with HEX input, presets, and reset controls.
 - Drag-and-drop opening, recent files, single-window document tabs, and independent state per tab.
 - Reading tools for PDF search, figure/table discovery, citation links, and grammar checks.
 
@@ -77,12 +78,12 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Use the page context menu or the floating selection toolbar to create annotations.
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
-- The Annotation Lab provides AI Polish presets such as plain-language explanation, logic review, grammar-only checking, human-like phrasing, inconsistency detection, and custom prompts. Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, and KIMI. API keys are kept in local browser storage.
+- The Annotation Lab provides AI Polish presets for plain-language explanation, logic review, grammar-only checking, human-like phrasing, inconsistency detection, highlighting contributions, and custom prompts. Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. API keys and model settings are kept in local browser storage.
 
 ### Save, Print, and Export
 
 - Save or Save As PDF, including unsaved in-memory changes.
-- Print all, current, odd, even, or arbitrary non-contiguous pages.
+- Print all, current, odd, even, or arbitrary non-contiguous pages. The print preview supports paper size, portrait/landscape orientation, simplex or duplex printing, multi-page layouts, scaling, and optional page frames.
 - Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS support 72-600 DPI and preserve original page-number suffixes such as `_001` and `_003`.
 
 ## Keyboard Shortcuts
@@ -137,7 +138,7 @@ macOS release build (run on macOS):
 npm run dist:mac
 ```
 
-This runs checks, creates a production build, and generates `release/PDFuck-1.17.9-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+This runs checks, creates a production build, and generates `release/PDFuck-1.17.11-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
 
 ## Technical Structure
 
@@ -176,7 +177,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ## 为什么值得一试
 
 - **一键找到论文里的图和表**：自动识别 `Figure`、`Fig.`、`Table`、`图`、`表` 等标题，也能发现没有规范标题的页面图像和疑似表格；结果按页列出，点击即可跳转并短暂聚焦目标。
-- **五种界面语言**：可在查看面板通过紧凑下拉框即时切换简体中文、English、日本語、Русский 与 Español；窗口标题、系统文件对话框、提示、弹窗、打印与导出流程会同步使用所选语言。
+- **五种界面语言**：可在查看面板通过紧凑下拉框即时切换简体中文、English、日本語、Русский 与 Español；窗口标题、系统文件对话框、提示、弹窗、打印与导出流程会同步使用所选语言，重启后仍会保留选择。
 - **引文和参考文献自动连线**：识别 `[1]`、`[2-4]`、作者-年份等常见引文格式，在正文引用与参考文献条目之间建立可点击关联，返修时不用手动翻页对照。
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
@@ -191,6 +192,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS。
+- **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
 ## Windows 下载与安装
 
@@ -198,7 +200,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.17.9-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-1.17.11-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -209,7 +211,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 便携版
 
-下载 `PDFuck-1.17.9-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-1.17.11-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -221,11 +223,11 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.17.9-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-1.17.11-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.17.9-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-1.17.11-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -252,6 +254,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 已有文档时继续打开、双击或拖入 PDF，会在同一个主窗口新增文档标签；
 - 文档标签栏支持切换、打开、单独关闭、前后拖动排序；将标签拖出标签栏即可创建独立窗口，再拖入另一个 PDFuck 窗口会自动回归标签页，当前内存修改不丢失；
 - 每个标签保留独立页码、缩放、工具和未保存状态，原生窗口标题跟随当前 PDF 文件名。
+- 打包版本启动后会在后台检查 GitHub Releases；更新提示支持下载、稍后提醒和跳过当前版本。
 
 ### 编辑
 
@@ -311,7 +314,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ### 保存、打印与导出
 
 - 保存或另存为 PDF；
-- 打印前选择全部、当前、奇数、偶数或任意不连续页面；
+- 打印前选择全部、当前、奇数、偶数或任意不连续页面，并在预览中设置纸张、方向、单双面、每张纸多页拼版、缩放和页面边框；
 - 输入 `1-3, 5, 8-10` 即可快速指定页码，错误范围会即时提示；
 - 把指定页面导出为新 PDF，或导出 PNG、JPG、EPS；
 - 图片与 EPS 支持 72–600 DPI，并保留原文档页码后缀，例如 `_001`、`_003`。
@@ -368,7 +371,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.17.9-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并生成 `release/PDFuck-1.17.11-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")
