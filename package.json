@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.17.9",
+  "version": "1.17.10",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -24,7 +24,9 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:win:installer": "npm run build && electron-builder --win nsis",
     "dist:win:portable": "npm run build && electron-builder --win portable",
-    "dist:mac": "npm run build && electron-builder --mac dmg"
+    "dist:mac": "npm run build && electron-builder --mac dmg",
+    "test:selection-m91474": "node scripts/selection-m91474-smoke.cjs",
+    "test:selection-m91474-ui": "electron-vite build && node scripts/selection-m91474-ui-smoke.cjs"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",

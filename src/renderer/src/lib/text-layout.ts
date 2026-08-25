@@ -114,7 +114,12 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // remain in their PDF reading order because their fragments share the band.
   const visualBandIndices = useVisualBlock
     ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined ? word.visualBlock === blockId : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
-    : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45 && endpointYGap <= endpointHeight * 1.35
+    // Once a same-column drag crosses a visual row, selection must use page
+    // geometry rather than the PDF object stream. Equations can emit their
+    // small superscripts before the surrounding base characters; those items
+    // still sit inside the endpoint band, so the former out-of-band fallback
+    // never ran and the range skipped or reordered visible text.
+    : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
       ? words.map((word, index) => ({ word, index })).filter(({ word }) => {
         const y = word.rect.y
         const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY)

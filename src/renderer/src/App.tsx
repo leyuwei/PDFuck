@@ -24,7 +24,7 @@ import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type Ap
 import { documentTransferToken, isDocumentTransferDrag } from './lib/document-transfer'
 import { t, translateUiText, ui, useInterfaceLanguage } from './lib/i18n'
 
-const APP_VERSION = '1.17.9'
+const APP_VERSION = '1.17.10'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
