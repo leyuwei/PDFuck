@@ -14,6 +14,8 @@ async function samplePdf(): Promise<Uint8Array> {
   return document.save()
 }
 
+const transparentPng = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4H8DlAAAFRQGaEXGl/wAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0))
+
 describe('PdfDocumentModel', () => {
   it('opens, crops, deletes, writes text and reopens a saved document', async () => {
     const model = await PdfDocumentModel.load(await samplePdf(), 'sample.pdf', 'sample.pdf')
@@ -107,6 +109,32 @@ describe('PdfDocumentModel', () => {
     expect(model.pageCount).toBe(3)
     await model.redo()
     expect(model.pageCount).toBe(5)
+  })
+
+  it('places consecutive rotated transparent PNGs and reopens their editable source data', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const firstId = await model.addImage(0, transparentPng, 'png', { x: 120, y: 180, width: 220, height: 140 }, 37, 'first.png', 220 / 140, true)
+    const afterFirstImage = model.bytes
+    const secondId = await model.addImage(0, transparentPng, 'png', { x: 320, y: 380, width: 140, height: 90 }, 12, 'second.png', 140 / 90, false)
+    expect(model.dirty).toBe(true)
+    expect(model.bytes).not.toEqual(afterFirstImage)
+    // pdf-lib emits a soft mask for color-type-6 PNGs, preserving alpha instead
+    // of flattening transparent pixels against the page background.
+    expect(new TextDecoder('latin1').decode(model.bytes)).toContain('/SMask')
+    const reopenedPdf = await PDFDocument.load(model.bytes)
+    expect(reopenedPdf.getPageCount()).toBe(3)
+    expect(new TextDecoder('latin1').decode(await reopenedPdf.save())).toContain('/SMask')
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.images()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: firstId, pageIndex: 0, name: 'first.png', rotation: 37, lockAspectRatio: true, rect: { x: 120, y: 180, width: 220, height: 140 }, data: transparentPng }),
+      expect.objectContaining({ id: secondId, pageIndex: 0, name: 'second.png', rotation: 12, lockAspectRatio: false, rect: { x: 320, y: 380, width: 140, height: 90 }, data: transparentPng })
+    ]))
+    await reopened.updateImage(firstId, { x: 44, y: 58, width: 160, height: 100 }, 91, 1.6, false)
+    expect(reopened.images().find((image) => image.id === firstId)).toEqual(expect.objectContaining({ rotation: 91, lockAspectRatio: false, rect: { x: 44, y: 58, width: 160, height: 100 } }))
+    await reopened.deleteImage(secondId)
+    expect(reopened.images().map((image) => image.id)).toEqual([firstId])
+    await reopened.undo()
+    expect(reopened.images().map((image) => image.id).sort()).toEqual([firstId, secondId].sort())
   })
 
   it('creates an empty merge document before importing its first file', async () => {
@@ -232,6 +260,21 @@ describe('PdfDocumentModel', () => {
     expect(model.pageCount).toBe(3)
     expect([0, 1, 2].map((page) => model.getPageSize(page).width)).toEqual([600, 602, 604])
     await expect(model.deletePages([0, 1, 2])).rejects.toThrow('全部页面')
+  })
+
+  it('arranges retained pages in the requested order as one undoable operation', async () => {
+    const source = await PDFDocument.create()
+    for (let index = 0; index < 5; index += 1) source.addPage([600 + index, 700])
+    const model = await PdfDocumentModel.load(await source.save())
+    const imageId = await model.addImage(4, transparentPng, 'png', { x: 32, y: 48, width: 90, height: 60 }, 15)
+    await model.arrangePages([4, 1, 3])
+    expect(model.pageCount).toBe(3)
+    expect([0, 1, 2].map((page) => model.getPageSize(page).width)).toEqual([604, 601, 603])
+    expect(model.images()).toEqual([expect.objectContaining({ id: imageId, pageIndex: 0 })])
+    await model.undo()
+    expect(model.pageCount).toBe(5)
+    expect([0, 1, 2, 3, 4].map((page) => model.getPageSize(page).width)).toEqual([600, 601, 602, 603, 604])
+    await expect(model.arrangePages([])).rejects.toThrow('页面排序无效')
   })
 
   it('creates a non-destructive PDF subset in the selected order', async () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageDeleteDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageSelectionDialog, PrintOptionsDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar, reorderDocumentTabs } from './components/WindowManagerBar'
@@ -8,8 +8,8 @@ import { LocalizedInterfaceCopy } from './components/InterfaceLanguageBridge'
 import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ModuleKey, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
-import type { DetachedPdfDocument, DocumentTabsSnapshot, ManagedPdfDocument, PdfImportFile, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
+import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
 import { normalizeCopiedText } from './lib/clipboard-text'
@@ -22,9 +22,10 @@ import { fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor,
 import { bindTextSelectionToPage, type PageTextSelection } from './lib/page-text-selection'
 import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type AppPreferences } from './lib/app-preferences'
 import { documentTransferToken, isDocumentTransferDrag } from './lib/document-transfer'
+import { initialImageRect } from './lib/image-geometry'
 import { t, translateUiText, ui, useInterfaceLanguage } from './lib/i18n'
 
-const APP_VERSION = '1.17.11'
+const APP_VERSION = '1.18.4'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 
@@ -32,7 +33,7 @@ function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes('Files')
 }
 
-type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'delete_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string } | null
+type DialogState = { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'print' | 'export' } | { type: 'print_options'; pages: number[] } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string } | null
 
 interface DocumentSession {
   id: number
@@ -49,6 +50,7 @@ interface DocumentSession {
   readingPosition: ReadingPosition
   annotations: AnnotationRecord[]
   textObjects: TextObjectRecord[]
+  imageObjects: ImageObjectRecord[]
   selectedAnnotation?: string
   annotationFocusToken: number
   selection?: PageTextSelection
@@ -62,7 +64,7 @@ interface DocumentSession {
 }
 
 function emptySession(id: number): DocumentSession {
-  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, fitWidthRequest: 0, pageCount: 0, currentPage: 0, readingPosition: { page: 0, zoom: 1, offset: 0 }, annotations: [], textObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, encrypted: false, documentName: '未打开文档', status: '准备就绪' }
+  return { id, module: 'view', tool: 'none', viewMode: 'continuous', zoom: 1, fitWidthRequest: 0, pageCount: 0, currentPage: 0, readingPosition: { page: 0, zoom: 1, offset: 0 }, annotations: [], textObjects: [], imageObjects: [], annotationFocusToken: 0, dirty: false, canUndo: false, canRedo: false, encrypted: false, documentName: '未打开文档', status: '准备就绪' }
 }
 
 function sessionSummary(session: DocumentSession): ManagedPdfDocument {
@@ -97,6 +99,24 @@ function styledTextRaster(text: string, rect: PdfRect, value: TextDialogValue): 
     context.save(); context.translate(anchor, line.top); context.scale(horizontalScale, 1); context.fillText(line.text, 0, 0); context.restore()
   })
   return new Promise((resolve, reject) => canvas.toBlob(async (blob) => blob ? resolve(new Uint8Array(await blob.arrayBuffer())) : reject(new Error('文字图像编码失败。')), 'image/png'))
+}
+
+async function imagePreviewSource(file: ImageImportFile): Promise<{ source: string; width: number; height: number }> {
+  const bytes = new Uint8Array(file.data.length); bytes.set(file.data)
+  const source = URL.createObjectURL(new Blob([bytes.buffer], { type: file.format === 'png' ? 'image/png' : 'image/jpeg' }))
+  try {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => reject(new Error(ui('无法读取所选图片。请确认文件未损坏。', 'Unable to read the selected image. Check that the file is not corrupted.')))
+      image.src = source
+    })
+    if (!dimensions.width || !dimensions.height) throw new Error(ui('所选图片没有可用尺寸。', 'The selected image has no usable dimensions.'))
+    return { source, ...dimensions }
+  } catch (error) {
+    URL.revokeObjectURL(source)
+    throw error
+  }
 }
 
 function RecentWelcome({ recent, onOpen, onChoose }: { recent: RecentPdf[]; onOpen(path: string): void; onChoose(): void }) {
@@ -171,6 +191,8 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(0)
   const [annotations, setAnnotations] = useState<AnnotationRecord[]>([])
   const [textObjects, setTextObjects] = useState<TextObjectRecord[]>([])
+  const [imageObjects, setImageObjects] = useState<ImageObjectRecord[]>([])
+  const [imageDraft, setImageDraft] = useState<ImageDraft>()
   const [selectedAnnotation, setSelectedAnnotation] = useState<string>()
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [focusedAnnotation, setFocusedAnnotation] = useState<string>()
@@ -210,17 +232,22 @@ export default function App() {
   const documentBackground = preferences.documentBackgrounds[documentBackgroundKey] || (preferences.theme === 'dark' ? '#afbbd0' : '#ffffff')
 
   useEffect(() => { window.desktop.setInterfaceLanguage(interfaceLanguage) }, [interfaceLanguage])
+  const imageDraftSource = imageDraft?.source
+  useEffect(() => () => { if (imageDraftSource) URL.revokeObjectURL(imageDraftSource) }, [imageDraftSource])
+  // A staged image belongs to the active document only. Do not let it leak to
+  // an equally numbered page in another tab when the user switches documents.
+  useEffect(() => { setImageDraft(undefined) }, [activeDocumentId])
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
-  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
+  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, imageObjects, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
   sessionsRef.current.set(activeDocumentId, liveSessionRef.current)
 
   const syncModel = useCallback((message: string, refreshDocument = true) => {
     const model = modelRef.current
     if (!model) return
     if (refreshDocument) setData(model.bytes)
-    setAnnotations(model.annotations()); setTextObjects(model.textObjects()); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty
+    setAnnotations(model.annotations()); setTextObjects(model.textObjects()); setImageObjects(model.images()); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty
     setPageCount(model.pageCount); setCurrentPage((value) => Math.min(value, model.pageCount - 1)); setStatus(message)
   }, [])
   const showError = useCallback((error: unknown) => {
@@ -244,7 +271,7 @@ export default function App() {
     annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty; readingPositionRef.current = session.readingPosition
     setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest)
-    setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects)
+    setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
     setTemporaryWarningDismissed(false); setInsight(undefined)
@@ -311,7 +338,7 @@ export default function App() {
         ? { ...readingPosition, page: Math.min(readingPosition.page, Math.max(0, (model?.pageCount || pageCountFromProbe) - 1)) }
         : { page: 0, zoom: 1, offset: 0 },
       documentName: model?.fileName || opened.name, pageCount: model?.pageCount || pageCountFromProbe,
-      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [],
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], imageObjects: model?.images() || [],
       status: encryptedDocument ? `已用密码打开 · 加密文档只读${passwordSaveFailed ? ' · 系统安全存储不可用，未保存密码' : ''}` : `已打开 · ${opened.path}`
     }
     sessionsRef.current.set(id, session)
@@ -334,7 +361,7 @@ export default function App() {
       encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
       module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0,
       pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
-      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], status: ui('已在独立窗口中打开文档', 'Document opened in a separate window')
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], imageObjects: model?.images() || [], status: ui('已在独立窗口中打开文档', 'Document opened in a separate window')
     }
     sessionsRef.current.set(id, session)
     const snapshot = { currentId: id, documents: [sessionSummary(session)] }
@@ -355,7 +382,7 @@ export default function App() {
       encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
       module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0,
       pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
-      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], status: ui('已移回文档标签页', 'Document moved back into document tabs')
+      annotations: model?.annotations() || [], textObjects: model?.textObjects() || [], imageObjects: model?.images() || [], status: ui('已移回文档标签页', 'Document moved back into document tabs')
     }
     sessionsRef.current.set(id, session)
     const documents = replaceBlank ? current.documents.map((item) => item.id === id ? sessionSummary(session) : item) : [...current.documents, sessionSummary(session)]
@@ -639,6 +666,64 @@ export default function App() {
       syncModel(creating ? `已创建合并文档，已导入 ${files.length} 个文件` : `已合并 ${files.length} 个文件`)
     } catch (error) { showError(error) }
   }, [showError, syncModel])
+  const beginImagePlacement = useCallback(async () => {
+    const model = modelRef.current
+    if (!model) return
+    const pageIndex = currentPage
+    const documentId = activeDocumentIdRef.current
+    try {
+      const file = await window.desktop.chooseImage()
+      if (!file) return
+      const preview = await imagePreviewSource(file)
+      if (modelRef.current !== model || activeDocumentIdRef.current !== documentId) { URL.revokeObjectURL(preview.source); return }
+      const rect = initialImageRect({ width: preview.width, height: preview.height }, model.getPageSize(pageIndex))
+      setTool('none')
+      setImageDraft({ pageIndex, name: file.name, data: file.data, format: file.format, source: preview.source, rect, aspectRatio: preview.width / preview.height, lockAspectRatio: true, rotation: 0 })
+      setStatus('图片已导入当前页；可按需切换比例锁，再拖动、缩放或旋转后点击确认添加')
+      viewerRef.current?.goToPage(pageIndex)
+    } catch (error) { showError(error) }
+  }, [currentPage, showError])
+  const confirmImagePlacement = useCallback(async () => {
+    const draft = imageDraft, model = modelRef.current
+    if (!draft || !model) return
+    try {
+      if (draft.id) {
+        await model.updateImage(draft.id, draft.rect, draft.rotation, draft.aspectRatio, draft.lockAspectRatio)
+        syncModel('图片已更新；可保存 PDF 以保留修改')
+      } else {
+        await model.addImage(draft.pageIndex, draft.data, draft.format, draft.rect, draft.rotation, draft.name, draft.aspectRatio, draft.lockAspectRatio)
+        syncModel('图片已添加到当前页面；可保存 PDF 以保留修改')
+      }
+      setImageDraft(undefined)
+    } catch (error) { showError(error) }
+  }, [imageDraft, showError, syncModel])
+  const beginImageEdit = useCallback(async (image: ImageObjectRecord) => {
+    const model = modelRef.current
+    if (!model || imageDraft) return
+    try {
+      const preview = await imagePreviewSource(image)
+      if (modelRef.current !== model || !model.images().some((candidate) => candidate.id === image.id)) { URL.revokeObjectURL(preview.source); return }
+      setTool('none')
+      setImageDraft({ ...image, source: preview.source })
+      setCurrentPage(image.pageIndex)
+      viewerRef.current?.goToPage(image.pageIndex)
+      setStatus('正在编辑已添加图片；可调整位置、尺寸、旋转和比例锁后确认')
+    } catch (error) { showError(error) }
+  }, [imageDraft, showError])
+  const deleteImagePlacement = useCallback(async () => {
+    const draft = imageDraft, model = modelRef.current
+    if (!draft?.id || !model) return
+    try {
+      await model.deleteImage(draft.id)
+      syncModel('图片已删除；可按 Ctrl/⌘Z 撤销')
+      setImageDraft(undefined)
+    } catch (error) { showError(error) }
+  }, [imageDraft, showError, syncModel])
+  const cancelImagePlacement = useCallback(() => {
+    if (!imageDraft) return
+    setImageDraft(undefined)
+    setStatus('已取消添加图片')
+  }, [imageDraft])
   const addSelectionAnnotations = useCallback(async (kind: AnnotationKind, value: TextSelection, content = '', color?: string, fallbackPageIndex = currentPage) => {
     const segments = value.segments?.length ? value.segments : [{ pageIndex: fallbackPageIndex, text: value.text, rects: value.rects }]
     await mutate(async (model) => {
@@ -899,8 +984,8 @@ export default function App() {
       <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui('保存', 'Save')}</button>{!isMac && <div className="window-controls"><button onClick={window.desktop.windowMinimize}>—</button><button onClick={window.desktop.windowToggleMaximize}>{maximized ? '❐' : '□'}</button><button className="close" onClick={closeCurrentWindow}>×</button></div>}</header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} />{moduleName(key)}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
-      <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'delete_pages' })} onMergeFiles={() => void mergeFiles()} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection?.text} onAddAiAnnotation={addAiAnnotation} onCopy={(content) => void copyText(content)} /></div>
-      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui('当前文件可能处于临时目录，请注意另存，防止走丢！', 'This file may be in a temporary folder. Save it elsewhere to avoid losing it.')}</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label={ui('关闭临时目录提示', 'Dismiss temporary-folder notice')} title={ui('关闭提示', 'Dismiss notice')}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      <ToolPanel module={module} activeTool={tool} mode={viewMode} disabled={!hasDocument || encrypted} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'page_selection', purpose: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection?.text} onAddAiAnnotation={addAiAnnotation} onCopy={(content) => void copyText(content)} /></div>
+      <section className="document-area">{temporaryDocument && !temporaryWarningDismissed && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui('当前文件可能处于临时目录，请注意另存，防止走丢！', 'This file may be in a temporary folder. Save it elsewhere to avoid losing it.')}</b><button type="button" onClick={() => setTemporaryWarningDismissed(true)} aria-label={ui('关闭临时目录提示', 'Dismiss temporary-folder notice')} title={ui('关闭提示', 'Dismiss notice')}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onAction={(action) => void handleCanvasAction(action)} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={setImageDraft} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui('已选择：', 'Selected: ')}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui('未打开文档', 'No Document Open')}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('释放以打开 PDF', 'Drop to Open PDF')}</b><span>{hasDocument ? ui('将在当前窗口新增一个文档标签', 'A new document tab will open in this window.') : ui('将在当前标签中打开', 'The document will open in this tab.')}</span></div></div>}
@@ -911,7 +996,7 @@ export default function App() {
     {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}
     {dialog?.type === 'save_as_required' && <SaveAsRequiredDialog target={dialog.target} onCancel={() => setDialog(null)} onSaveAs={() => { setDialog(null); void savePdf(true) }} />}
     {dialog?.type === 'open_pdf' && <OpenPdfDialog recent={recentFiles} onCancel={() => setDialog(null)} onOpen={(path) => { setDialog(null); void openPath(path) }} onBrowse={() => { setDialog(null); void chooseOpen() }} />}
-    {dialog?.type === 'delete_pages' && <PageDeleteDialog pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void mutate((model) => model.deletePages(pages), `已删除 ${pages.length} 个页面`) }} />}
+    {dialog?.type === 'manage_pages' && data && <PageManagerDialog data={data} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(order) => { setDialog(null); void mutate((model) => model.arrangePages(order), '页面已调整；可保存 PDF 以保留修改') }} />}
     {dialog?.type === 'merge_files' && <MergeFilesDialog files={dialog.files} pageCount={dialog.pageCount} creating={dialog.creating} onCancel={() => setDialog(null)} onSubmit={(result) => { setDialog(null); void confirmMergeFiles(result.files, result.insertion) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { const purpose = dialog.purpose; if (purpose === 'print') setDialog({ type: 'print_options', pages }); else { setDialog(null); void exportPages(pages) } }} />}
     {dialog?.type === 'crop_confirm' && <ConfirmDialog message={ui('将当前页面裁切为框选区域？', 'Crop the current page to the selected area?')} onCancel={() => setDialog(null)} onConfirm={() => { const crop = dialog; setDialog(null); void mutate((value) => value.cropPage(crop.pageIndex, crop.rect), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”'); setTool('none') }} />}

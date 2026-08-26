@@ -1,7 +1,7 @@
 import { PDFDocument, rgb } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import type { PrintPdfOptions } from '../../../shared/contracts'
-import { imposePdfForPrint, printCellsForSheet, printPaperSize, printSheetCount } from './print-layout'
+import { DEFAULT_PRINT_PDF_OPTIONS, imposePdfForPrint, printCellsForSheet, printPaperSize, printSheetCount } from './print-layout'
 
 const options: PrintPdfOptions = { pageSize: 'A4', landscape: true, duplex: 'simplex', multiPage: true, rows: 2, columns: 2, scale: 100, frame: true }
 
@@ -15,6 +15,11 @@ async function samplePdf(pageCount = 5): Promise<Uint8Array> {
 }
 
 describe('print layout', () => {
+  it('defaults to a clean output with no page frame', () => {
+    expect(DEFAULT_PRINT_PDF_OPTIONS.frame).toBe(false)
+    expect(DEFAULT_PRINT_PDF_OPTIONS.multiPage).toBe(false)
+  })
+
   it('calculates paper orientation and bounded grid cells', () => {
     expect(printPaperSize(options)).toEqual([841.89, 595.28])
     expect(printSheetCount(5, options)).toBe(2)

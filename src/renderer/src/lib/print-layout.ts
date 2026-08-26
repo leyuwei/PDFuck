@@ -10,6 +10,11 @@ const PAPER_SIZES: Record<PrintPdfOptions['pageSize'], [number, number]> = {
   Tabloid: [792, 1224]
 }
 
+/** Initial UI settings deliberately preserve the source page without an added frame. */
+export const DEFAULT_PRINT_PDF_OPTIONS: PrintPdfOptions = {
+  pageSize: 'A4', landscape: false, duplex: 'simplex', multiPage: false, rows: 2, columns: 2, scale: 100, frame: false
+}
+
 export interface PrintCellLayout {
   pageIndex: number
   x: number

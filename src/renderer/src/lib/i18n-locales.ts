@@ -402,6 +402,57 @@ export const phraseTranslations: Record<string, Record<'en' | AdditionalInterfac
   , '目标页码': { en: 'Target Page', ja: '対象ページ', ru: 'Целевая страница', es: 'Página de destino' }
   , '在此页之前插入': { en: 'Insert before this page', ja: 'このページの前に挿入', ru: 'Вставить перед этой страницей', es: 'Insertar antes de esta página' }
   , '在此页之后插入': { en: 'Insert after this page', ja: 'このページの後に挿入', ru: 'Вставить после этой страницы', es: 'Insertar después de esta página' }
+  , '直接调整页面或添加带格式的文字和图片内容。': { en: 'Adjust pages directly or add formatted text and images.', ja: 'ページを直接調整し、書式付きの文字や画像を追加します。', ru: 'Настраивайте страницы и добавляйте форматированный текст и изображения.', es: 'Ajuste páginas directamente o añada texto e imágenes con formato.' }
+  , '导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。': { en: 'Import PNG or JPG, then position, resize, rotate, and confirm it on this page.', ja: 'PNG または JPG を読み込み、このページで位置・サイズ・回転を調整して確定します。', ru: 'Импортируйте PNG или JPG, затем настройте положение, размер и поворот на этой странице и подтвердите.', es: 'Importe PNG o JPG y ajuste la posición, el tamaño y la rotación en esta página antes de confirmar.' }
+  , '在页面上添加图片…': { en: 'Add Image to Page…', ja: 'ページに画像を追加…', ru: 'Добавить изображение на страницу…', es: 'Añadir imagen a la página…' }
+  , '拖动图片调整位置': { en: 'Drag image to reposition', ja: '画像をドラッグして位置を調整', ru: 'Перетащите изображение, чтобы изменить положение', es: 'Arrastre la imagen para cambiar su posición' }
+  , '待添加图片': { en: 'Image Preview', ja: '画像プレビュー', ru: 'Предпросмотр изображения', es: 'Vista previa de imagen' }
+  , '拖动旋转控制点调整图片角度': { en: 'Drag rotation handle to rotate image', ja: '回転ハンドルをドラッグして画像を回転', ru: 'Перетащите маркер поворота, чтобы повернуть изображение', es: 'Arrastre el control de rotación para girar la imagen' }
+  , '拖动控制点调整图片大小': { en: 'Drag handle to resize image', ja: 'ハンドルをドラッグして画像サイズを変更', ru: 'Перетащите маркер, чтобы изменить размер изображения', es: 'Arrastre el control para cambiar el tamaño de la imagen' }
+  , '拖动、缩放、旋转或切换比例锁后确认': { en: 'Move, resize, rotate, or change the aspect lock, then confirm', ja: '移動・サイズ変更・回転・縦横比ロックの切替後に確定', ru: 'Переместите, измените размер, поверните или измените блокировку пропорций, затем подтвердите', es: 'Mueva, cambie el tamaño, gire o cambie el bloqueo de proporciones y luego confirme' }
+  , '已锁定原始比例': { en: 'Original aspect ratio locked', ja: '元の縦横比を固定中', ru: 'Исходные пропорции заблокированы', es: 'Proporción original bloqueada' }
+  , '未锁定原始比例': { en: 'Original aspect ratio unlocked', ja: '元の縦横比は固定されていません', ru: 'Исходные пропорции не заблокированы', es: 'Proporción original desbloqueada' }
+  , '比例已锁定': { en: 'Ratio Locked', ja: '比率を固定', ru: 'Пропорции заблокированы', es: 'Proporción bloqueada' }
+  , '比例未锁定': { en: 'Ratio Unlocked', ja: '比率を解除', ru: 'Пропорции не заблокированы', es: 'Proporción desbloqueada' }
+  , '确认添加图片': { en: 'Confirm Add Image', ja: '画像の追加を確定', ru: 'Подтвердить добавление изображения', es: 'Confirmar añadir imagen' }
+  , '无法读取所选图片。请确认文件未损坏。': { en: 'Unable to read the selected image. Check that the file is not corrupted.', ja: '選択した画像を読み取れません。ファイルが破損していないか確認してください。', ru: 'Не удалось прочитать выбранное изображение. Проверьте, не повреждён ли файл.', es: 'No se puede leer la imagen seleccionada. Compruebe que el archivo no esté dañado.' }
+  , '所选图片没有可用尺寸。': { en: 'The selected image has no usable dimensions.', ja: '選択した画像に使用可能なサイズがありません。', ru: 'У выбранного изображения нет допустимых размеров.', es: 'La imagen seleccionada no tiene dimensiones utilizables.' }
+  , '图片已导入当前页；可按需切换比例锁，再拖动、缩放或旋转后点击确认添加': { en: 'Image imported to the current page. Toggle the aspect lock as needed, then move, resize, or rotate it before confirming.', ja: '画像を現在のページに読み込みました。必要に応じて縦横比ロックを切り替え、移動・サイズ変更・回転後に確定してください。', ru: 'Изображение импортировано на текущую страницу. При необходимости переключите блокировку пропорций, затем переместите, измените размер или поверните его перед подтверждением.', es: 'La imagen se importó a la página actual. Cambie el bloqueo de proporciones según sea necesario y luego muévala, cambie su tamaño o gírela antes de confirmar.' }
+  , '图片已添加到当前页面；可保存 PDF 以保留修改': { en: 'Image added to the current page. Save the PDF to keep the change.', ja: '画像を現在のページに追加しました。変更を保持するには PDF を保存してください。', ru: 'Изображение добавлено на текущую страницу. Сохраните PDF, чтобы сохранить изменения.', es: 'La imagen se añadió a la página actual. Guarde el PDF para conservar el cambio.' }
+  , '已取消添加图片': { en: 'Image insertion canceled', ja: '画像の追加をキャンセルしました', ru: 'Добавление изображения отменено', es: 'Se canceló la inserción de la imagen' }
+  , '仅支持导入 PNG、JPG 或 JPEG 图片。': { en: 'Only PNG, JPG, or JPEG images can be imported.', ja: 'PNG、JPG、JPEG の画像のみインポートできます。', ru: 'Можно импортировать только изображения PNG, JPG или JPEG.', es: 'Solo se pueden importar imágenes PNG, JPG o JPEG.' }
+  , '所选文件不是有效的 PNG 或 JPEG 图片。': { en: 'The selected file is not a valid PNG or JPEG image.', ja: '選択したファイルは有効な PNG または JPEG 画像ではありません。', ru: 'Выбранный файл не является допустимым изображением PNG или JPEG.', es: 'El archivo seleccionado no es una imagen PNG o JPEG válida.' }
+  , '导入的图片没有可用内容。': { en: 'The imported image has no usable content.', ja: 'インポートした画像に使用可能な内容がありません。', ru: 'В импортированном изображении нет доступного содержимого.', es: 'La imagen importada no tiene contenido utilizable.' }
+  , '要添加图片的页面不存在。': { en: 'The page selected for the image no longer exists.', ja: '画像を追加するページが存在しません。', ru: 'Страница для добавления изображения больше не существует.', es: 'La página seleccionada para la imagen ya no existe.' }
+  , '图片位置或尺寸无效。': { en: 'The image position or size is invalid.', ja: '画像の位置またはサイズが無効です。', ru: 'Недопустимое положение или размер изображения.', es: 'La posición o el tamaño de la imagen no son válidos.' }
+  , '管理页面…': { en: 'Manage Pages…', ja: 'ページを管理…', ru: 'Управление страницами…', es: 'Gestionar páginas…' }
+  , '预览、调整顺序并批量删除页面。': { en: 'Preview, reorder, and remove pages in a batch.', ja: 'ページをプレビューし、並べ替えと一括削除を行います。', ru: 'Просматривайте, меняйте порядок и удаляйте страницы пакетно.', es: 'Previsualice, reordene y elimine páginas en lote.' }
+  , '页面管理': { en: 'Manage Pages', ja: 'ページを管理', ru: 'Управление страницами', es: 'Gestionar páginas' }
+  , '拖动缩略图调整顺序；勾选后可批量删除页面。': { en: 'Drag thumbnails to reorder pages; select pages to remove them in one batch.', ja: 'サムネイルをドラッグして並べ替え、選択したページをまとめて削除できます。', ru: 'Перетаскивайте миниатюры для сортировки и отмечайте страницы для пакетного удаления.', es: 'Arrastre miniaturas para reordenar y seleccione páginas para eliminarlas en lote.' }
+  , '保留': { en: 'Keep', ja: '保持', ru: 'Оставить', es: 'Conservar' }
+  , '标记当前页删除': { en: 'Mark Current Page for Removal', ja: '現在のページを削除対象にする', ru: 'Пометить текущую страницу для удаления', es: 'Marcar la página actual para eliminar' }
+  , '清除删除标记': { en: 'Clear Removal Marks', ja: '削除マークをクリア', ru: 'Снять пометки удаления', es: 'Borrar marcas de eliminación' }
+  , '拖动卡片可调整最终页面顺序': { en: 'Drag a card to set the final page order', ja: 'カードをドラッグして最終ページ順を設定', ru: 'Перетащите карточку, чтобы задать итоговый порядок страниц', es: 'Arrastre una tarjeta para establecer el orden final de las páginas' }
+  , '页面预览与排序': { en: 'Page previews and order', ja: 'ページのプレビューと順序', ru: 'Предпросмотр и порядок страниц', es: 'Vistas previas y orden de páginas' }
+  , '顺序': { en: 'Order', ja: '順序', ru: 'Порядок', es: 'Orden' }
+  , '取消删除此页': { en: 'Keep this page', ja: 'このページを残す', ru: 'Оставить эту страницу', es: 'Conservar esta página' }
+  , '标记删除此页': { en: 'Mark this page for removal', ja: 'このページを削除対象にする', ru: 'Пометить эту страницу для удаления', es: 'Marcar esta página para eliminar' }
+  , '删除': { en: 'Remove', ja: '削除', ru: 'Удалить', es: 'Eliminar' }
+  , '正在生成预览…': { en: 'Generating preview…', ja: 'プレビューを生成中…', ru: 'Создание предпросмотра…', es: 'Generando vista previa…' }
+  , '原页面': { en: 'Original', ja: '元のページ', ru: 'Исходная', es: 'Original' }
+  , '不能删除全部页面，请至少保留一页。': { en: 'You cannot remove every page. Keep at least one page.', ja: 'すべてのページを削除することはできません。少なくとも 1 ページ残してください。', ru: 'Нельзя удалить все страницы. Оставьте хотя бы одну страницу.', es: 'No puede eliminar todas las páginas. Conserve al menos una página.' }
+  , '应用页面调整': { en: 'Apply Page Changes', ja: 'ページ変更を適用', ru: 'Применить изменения страниц', es: 'Aplicar cambios de páginas' }
+  , '点击已添加图片重新编辑': { en: 'Click an added image to edit it again', ja: '追加した画像をクリックして再編集', ru: 'Щёлкните добавленное изображение, чтобы снова его изменить', es: 'Haga clic en una imagen añadida para editarla de nuevo' }
+  , '正在编辑已添加图片': { en: 'Editing Added Image', ja: '追加した画像を編集中', ru: 'Редактирование добавленного изображения', es: 'Editando imagen añadida' }
+  , '正在编辑已添加图片；可调整位置、尺寸、旋转和比例锁后确认': { en: 'Editing an added image. Adjust its position, size, rotation, and aspect lock, then confirm.', ja: '追加した画像を編集中です。位置・サイズ・回転・縦横比ロックを調整して確定してください。', ru: 'Редактирование добавленного изображения. Настройте положение, размер, поворот и блокировку пропорций, затем подтвердите.', es: 'Editando una imagen añadida. Ajuste la posición, el tamaño, la rotación y el bloqueo de proporciones, y luego confirme.' }
+  , '编辑图片': { en: 'Edit Image', ja: '画像を編集', ru: 'Редактировать изображение', es: 'Editar imagen' }
+  , '删除图片': { en: 'Delete Image', ja: '画像を削除', ru: 'Удалить изображение', es: 'Eliminar imagen' }
+  , '确认更新图片': { en: 'Confirm Image Changes', ja: '画像の変更を確定', ru: 'Подтвердить изменения изображения', es: 'Confirmar cambios de imagen' }
+  , '图片已更新；可保存 PDF 以保留修改': { en: 'Image updated. Save the PDF to keep the change.', ja: '画像を更新しました。変更を保持するには PDF を保存してください。', ru: 'Изображение обновлено. Сохраните PDF, чтобы сохранить изменения.', es: 'La imagen se actualizó. Guarde el PDF para conservar el cambio.' }
+  , '图片已删除；可按 Ctrl/⌘Z 撤销': { en: 'Image deleted. Press Ctrl/⌘Z to undo.', ja: '画像を削除しました。Ctrl/⌘Z で元に戻せます。', ru: 'Изображение удалено. Нажмите Ctrl/⌘Z, чтобы отменить.', es: 'La imagen se eliminó. Pulse Ctrl/⌘Z para deshacer.' }
+  , '页面已调整；可保存 PDF 以保留修改': { en: 'Pages updated. Save the PDF to keep the changes.', ja: 'ページを更新しました。変更を保持するには PDF を保存してください。', ru: 'Страницы обновлены. Сохраните PDF, чтобы сохранить изменения.', es: 'Las páginas se actualizaron. Guarde el PDF para conservar los cambios.' }
+  , '找不到这张图片，它可能已经被删除。': { en: 'This image could not be found; it may already have been deleted.', ja: 'この画像が見つかりません。すでに削除された可能性があります。', ru: 'Не удалось найти это изображение: возможно, оно уже удалено.', es: 'No se encontró esta imagen; es posible que ya se haya eliminado.' }
+  , '图片的可编辑数据已损坏。': { en: 'The image’s editable data is damaged.', ja: '画像の編集可能データが破損しています。', ru: 'Редактируемые данные изображения повреждены.', es: 'Los datos editables de la imagen están dañados.' }
 }
 
 for (const [phrase, translations] of Object.entries(phraseTranslations)) {

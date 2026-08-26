@@ -1,15 +1,16 @@
 import {
-  PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRef, PDFString,
-  StandardFonts, rgb, type PDFFont, type PDFPage
+  PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
+  StandardFonts, degrees, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
-  displayRectToPdfBounds, displayRectsToPdfQuads, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
+  applyMatrix, displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
   type PageGeometry
 } from './page-coordinates'
 import { fontCategory, normalizeFontFamily } from './text-fonts'
 import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
+import { rotatedImageBounds } from './image-geometry'
 import type { PdfImportFile } from '../../../shared/contracts'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
@@ -236,10 +237,144 @@ export class PdfDocumentModel {
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
   }
 
+  private imageEntries(): AnnotationEntry[] {
+    return this.annotationEntries().filter((entry) => decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckImage'))) === 'true')
+  }
+
+  private imageData(dict: PDFDict): Uint8Array {
+    const object = dict.get(PDFName.of('PDFuckImageData'))
+    const stream = object instanceof PDFRef ? this.document.context.lookup(object) : object
+    if (!(stream instanceof PDFRawStream)) throw new Error('图片的可编辑数据已损坏。')
+    return Uint8Array.from(stream.getContents())
+  }
+
+  private imageRecord(entry: AnnotationEntry): ImageObjectRecord {
+    const dict = entry.dict
+    const format = decodeObject(this.document, dict.get(PDFName.of('PDFuckImageFormat'))).toLowerCase() === 'jpg' ? 'jpg' : 'png'
+    const rect: PdfRect = {
+      x: numberValue(this.document, dict.get(PDFName.of('PDFuckImageX')), 0),
+      y: numberValue(this.document, dict.get(PDFName.of('PDFuckImageY')), 0),
+      width: numberValue(this.document, dict.get(PDFName.of('PDFuckImageWidth')), 1),
+      height: numberValue(this.document, dict.get(PDFName.of('PDFuckImageHeight')), 1)
+    }
+    const id = decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`
+    const aspectRatio = numberValue(this.document, dict.get(PDFName.of('PDFuckImageAspectRatio')), rect.width / Math.max(1, rect.height))
+    return {
+      id,
+      pageIndex: entry.pageIndex,
+      name: decodeObject(this.document, dict.get(PDFName.of('PDFuckImageName'))) || 'image',
+      data: this.imageData(dict),
+      format,
+      rect,
+      aspectRatio: Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : rect.width / Math.max(1, rect.height),
+      lockAspectRatio: decodeObject(this.document, dict.get(PDFName.of('PDFuckImageLock'))) !== 'false',
+      rotation: numberValue(this.document, dict.get(PDFName.of('PDFuckImageRotation')), 0)
+    }
+  }
+
+  images(): ImageObjectRecord[] {
+    return this.imageEntries().flatMap((entry) => {
+      try { return [this.imageRecord(entry)] } catch { return [] }
+    })
+  }
+
+  private findImage(id: string): AnnotationEntry {
+    const entry = this.imageEntries().find((candidate) => {
+      const current = decodeObject(this.document, candidate.dict.get(PDFName.of('NM'))) || `${candidate.pageIndex}:${candidate.ref?.toString() || candidate.index}`
+      return current === id
+    })
+    if (!entry) throw new Error('找不到这张图片，它可能已经被删除。')
+    return entry
+  }
+
+  private validImageRect(rect: PdfRect): void {
+    if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y) || !Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) throw new Error('图片位置或尺寸无效。')
+  }
+
+  private async imageAppearance(page: PDFPage, data: Uint8Array, format: 'png' | 'jpg', rect: PdfRect, rotation: number): Promise<{ bounds: number[]; appearance: PDFRef }> {
+    const image = format === 'png' ? await this.document.embedPng(data) : await this.document.embedJpg(data)
+    const geometry = pageGeometry(page)
+    const inverse = inverseMatrix(pageViewportMatrix(geometry))
+    const screenAngle = ((rotation % 360) + 360) % 360 * Math.PI / 180
+    const cosine = Math.cos(screenAngle), sine = Math.sin(screenAngle)
+    const pdfXAxis = { x: inverse[0] * cosine + inverse[2] * sine, y: inverse[1] * cosine + inverse[3] * sine }
+    const angle = Math.atan2(pdfXAxis.y, pdfXAxis.x)
+    const a = Math.cos(angle) * rect.width, b = Math.sin(angle) * rect.width
+    const c = -Math.sin(angle) * rect.height, d = Math.cos(angle) * rect.height
+    const xs = [0, a, c, a + c], ys = [0, b, d, b + d]
+    const localWidth = Math.max(...xs) - Math.min(...xs), localHeight = Math.max(...ys) - Math.min(...ys)
+    const displayBounds = rotatedImageBounds(rect, rotation)
+    const bounds = displayRectToPdfBounds(displayBounds, geometry)
+    const appearance = this.document.context.flateStream(`q ${a} ${b} ${c} ${d} ${-Math.min(...xs)} ${-Math.min(...ys)} cm /Im0 Do Q`, {
+      Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, Math.max(1, localWidth), Math.max(1, localHeight)], Resources: { XObject: { Im0: image.ref } }
+    })
+    return { bounds, appearance: this.document.context.register(appearance) }
+  }
+
+  private async writeImageAnnotation(dict: PDFDict, page: PDFPage, data: Uint8Array, format: 'png' | 'jpg', name: string, rect: PdfRect, rotation: number, aspectRatio: number, lockAspectRatio: boolean): Promise<void> {
+    const preview = await this.imageAppearance(page, data, format, rect, rotation)
+    dict.set(PDFName.of('Type'), PDFName.of('Annot'))
+    dict.set(PDFName.of('Subtype'), PDFName.of('Stamp'))
+    dict.set(PDFName.of('Rect'), this.document.context.obj(preview.bounds))
+    dict.set(PDFName.of('Contents'), pdfString(name))
+    dict.set(PDFName.of('T'), pdfString('PDFuck'))
+    dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    dict.set(PDFName.of('F'), PDFNumber.of(4))
+    dict.set(PDFName.of('AP'), this.document.context.obj({ N: preview.appearance }))
+    dict.set(PDFName.of('PDFuckImage'), PDFName.of('true'))
+    dict.set(PDFName.of('PDFuckImageFormat'), PDFName.of(format))
+    dict.set(PDFName.of('PDFuckImageName'), pdfString(name))
+    dict.set(PDFName.of('PDFuckImageX'), PDFNumber.of(rect.x))
+    dict.set(PDFName.of('PDFuckImageY'), PDFNumber.of(rect.y))
+    dict.set(PDFName.of('PDFuckImageWidth'), PDFNumber.of(rect.width))
+    dict.set(PDFName.of('PDFuckImageHeight'), PDFNumber.of(rect.height))
+    dict.set(PDFName.of('PDFuckImageRotation'), PDFNumber.of(rotation))
+    dict.set(PDFName.of('PDFuckImageAspectRatio'), PDFNumber.of(aspectRatio))
+    dict.set(PDFName.of('PDFuckImageLock'), PDFName.of(lockAspectRatio ? 'true' : 'false'))
+  }
+
+  /** Add a portable Stamp annotation with source bytes and geometry metadata. */
+  async addImage(pageIndex: number, data: Uint8Array, format: 'png' | 'jpg', rect: PdfRect, rotation = 0, name = 'image', aspectRatio = rect.width / Math.max(1, rect.height), lockAspectRatio = true): Promise<string> {
+    if (!data.length) throw new Error('导入的图片没有可用内容。')
+    if (pageIndex < 0 || pageIndex >= this.pageCount) throw new Error('要添加图片的页面不存在。')
+    this.validImageRect(rect)
+    const page = this.document.getPage(pageIndex)
+    const dictionary = this.document.context.obj({})
+    const id = `pdfuck-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    dictionary.set(PDFName.of('NM'), pdfString(id))
+    dictionary.set(PDFName.of('PDFuckImageData'), this.document.context.register(this.document.context.stream(Uint8Array.from(data), { Type: 'EmbeddedFile' })))
+    await this.writeImageAnnotation(dictionary, page, data, format, name, rect, rotation, aspectRatio, lockAspectRatio)
+    page.node.addAnnot(this.document.context.register(dictionary))
+    await this.commit()
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+    return id
+  }
+
+  async updateImage(id: string, rect: PdfRect, rotation: number, aspectRatio: number, lockAspectRatio: boolean): Promise<void> {
+    this.validImageRect(rect)
+    const entry = this.findImage(id), record = this.imageRecord(entry)
+    await this.writeImageAnnotation(entry.dict, entry.page, record.data, record.format, record.name, rect, rotation, aspectRatio, lockAspectRatio)
+    await this.commit()
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+  }
+
+  async deleteImage(id: string): Promise<void> {
+    const entry = this.findImage(id)
+    entry.page.node.Annots()?.remove(entry.index)
+    await this.commit()
+    this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+  }
+
   /** Rebuild the page tree in the caller's explicit order. */
   async reorderPages(pageIndices: number[]): Promise<void> {
-    if (pageIndices.length !== this.pageCount || new Set(pageIndices).size !== this.pageCount || pageIndices.some((page) => page < 0 || page >= this.pageCount)) throw new Error('页面排序无效。')
-    if (pageIndices.every((page, index) => page === index)) return
+    if (pageIndices.length !== this.pageCount) throw new Error('页面排序无效。')
+    await this.arrangePages(pageIndices)
+  }
+
+  /** Keep and arrange the supplied original page indices in a single undoable edit. */
+  async arrangePages(pageIndices: number[]): Promise<void> {
+    if (!pageIndices.length || new Set(pageIndices).size !== pageIndices.length || pageIndices.some((page) => page < 0 || page >= this.pageCount)) throw new Error('页面排序无效。')
+    if (pageIndices.length === this.pageCount && pageIndices.every((page, index) => page === index)) return
     const reordered = await PDFDocument.create()
     const pages = await reordered.copyPages(this.document, pageIndices)
     pages.forEach((page) => reordered.addPage(page))

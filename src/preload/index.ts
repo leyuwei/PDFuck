@@ -5,6 +5,7 @@ const api: DesktopApi = {
   platform: process.platform,
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   choosePdfImports: () => ipcRenderer.invoke('pdf:choose-imports'),
+  chooseImage: () => ipcRenderer.invoke('image:choose'),
   readPdf: (path) => ipcRenderer.invoke('pdf:read', path),
   getPdfPassword: (credentialKey) => ipcRenderer.invoke('pdf:password-get', credentialKey),
   openPdfFolder: (path) => ipcRenderer.invoke('pdf:open-folder', path),

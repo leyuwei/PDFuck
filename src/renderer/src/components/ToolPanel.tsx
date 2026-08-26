@@ -20,6 +20,7 @@ interface Props {
   onMode(mode: ViewMode): void
   onDeletePages(): void
   onMergeFiles(): void
+  onAddImage?(): void
   onSave(saveAs?: boolean): void
   onPrint(): void
   printing: boolean
@@ -112,12 +113,13 @@ export function ToolPanel(props: Props) {
       <h3>{ui('阅读工具', 'Reading Tools')}</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>{ui('搜索 PDF', 'Search PDF')} <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>{ui('一键图表', 'Find Figures & Tables')}</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? ui('关闭引文标记', 'Hide Citation Links') : ui('关联引文', 'Link Citations')}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>{ui('语法检查', 'Grammar Check')}</button>
       {readOnly && <div className="encrypted-readonly"><b>{ui('加密文档 · 只读', 'Encrypted Document · Read-only')}</b><span>{ui('当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。', 'The editor cannot safely write back to this encrypted PDF. Reading and zoom remain available.')}</span></div>}
       <div className="info-card"><b>{ui('阅读提示', 'Reading Tip')}</b><span>{ui('Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。', 'Use Ctrl/⌘ + wheel to zoom; Alt/Option + arrow keys to change pages.')}</span></div></section>}
-    {module === 'edit' && <section><h2>{ui('编辑', 'Edit')}</h2><p className="subtitle">{ui('直接调整页面或添加带格式的文字内容。', 'Adjust pages directly or add formatted text.')}</p><h3>{ui('页面', 'Page')}</h3>
+    {module === 'edit' && <section><h2>{ui('编辑', 'Edit')}</h2><p className="subtitle">{ui('直接调整页面或添加带格式的文字和图片内容。', 'Adjust pages directly or add formatted text and images.')}</p><h3>{ui('页面', 'Page')}</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint={ui('拖动框选要保留的页面区域', 'Drag to select the area to keep.')}>{ui('框选裁切页面', 'Crop Page')}</ToolButton>
       <PanelAction disabled={readOnly} onClick={props.onMergeFiles} hint={ui('无需先打开 PDF；选择插入位置并调整导入文件顺序。', 'No PDF needs to be open. Choose an insertion point and arrange imported files.')}>{ui('从文件合并 PDF…', 'Merge PDF from Files…')}</PanelAction>
-      <PanelAction tone="danger" disabled={disabled} onClick={props.onDeletePages} hint={ui('一次选择多个页面并统一删除。', 'Select multiple pages and remove them together.')}>{ui('批量删除页面…', 'Delete Pages…')}</PanelAction><h3>{ui('内容', 'Content')}</h3>
+      <PanelAction disabled={disabled} onClick={props.onDeletePages} hint={ui('预览、调整顺序并批量删除页面。', 'Preview, reorder, and remove pages in a batch.')}>{ui('管理页面…', 'Manage Pages…')}</PanelAction><h3>{ui('内容', 'Content')}</h3>
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint={ui('显示当前页文本块，点击任意一处直接编辑', 'Show text blocks on this page and click one to edit.')}>{ui('编辑页面文字', 'Edit Page Text')}</ToolButton>
-      <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint={ui('拖出文本框后设置内容和格式', 'Drag out a text box, then set its content and formatting.')}>{ui('在页面上添加文字', 'Add Text to Page')}</ToolButton></section>}
+      <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint={ui('拖出文本框后设置内容和格式', 'Drag out a text box, then set its content and formatting.')}>{ui('在页面上添加文字', 'Add Text to Page')}</ToolButton>
+      <PanelAction disabled={disabled} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。', 'Import PNG or JPG, then position, resize, rotate, and confirm it on this page.')}>{ui('在页面上添加图片…', 'Add Image to Page…')}</PanelAction></section>}
     {module === 'annotate' && <section><h2>{ui('批注', 'Annotate')}</h2><p className="subtitle">{ui('拖动框选文字；Ctrl/⌘ 加选，Shift 选择连续批注，Delete 批量删除。', 'Drag to select text; Ctrl/⌘ adds selections, Shift selects a range, and Delete removes annotations in bulk.')}</p><h3>{ui('文本批注', 'Text Annotations')}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint={ui('框选文字 · Ctrl+H / ⌘H', 'Select text · Ctrl+H / ⌘H')}>{ui('文本高亮', 'Highlight Text')}</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint={ui('框选原文 · Ctrl+R / ⌘R', 'Select original text · Ctrl+R / ⌘R')}>{ui('文本替换', 'Replace Text')}</ToolButton>

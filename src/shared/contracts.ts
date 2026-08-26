@@ -40,6 +40,14 @@ export interface PdfImportFile {
   data: Uint8Array
 }
 
+/** A raster image selected for placement on an existing PDF page. */
+export interface ImageImportFile {
+  name: string
+  /** PNG keeps its alpha channel; JPEG is embedded without a transparency mask. */
+  format: 'png' | 'jpg'
+  data: Uint8Array
+}
+
 /** The renderer needs to distinguish a canceled save from a target it cannot write. */
 export type SavePdfResult =
   | { status: 'saved'; path: string }
@@ -146,6 +154,7 @@ export interface DesktopApi {
   readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
   choosePdfImports(): Promise<PdfImportFile[] | null>
+  chooseImage(): Promise<ImageImportFile | null>
   readPdf(path: string): Promise<OpenedPdf>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
   openPdfFolder(path: string): Promise<void>

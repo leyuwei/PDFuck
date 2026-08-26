@@ -136,8 +136,11 @@ async function main() {
     await documentLanguage.selectOption('ru')
     await page.getByRole('heading', { name: 'Просмотр', exact: true }).waitFor()
     await page.locator('.nav-rail').getByRole('button', { name: 'Редактирование', exact: true }).click()
-    await page.getByText('Удалить страницы…', { exact: true }).click()
-    await page.getByText('Массовое удаление страниц', { exact: true }).waitFor()
+    await page.getByText('Управление страницами…', { exact: true }).click()
+    await page.getByRole('heading', { name: 'Управление страницами', exact: true }).waitFor()
+    await page.getByRole('heading', { name: 'Раскадровка страниц', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Применить изменения', exact: true }).waitFor()
+    assert.equal(await page.locator('.page-manager-card').count(), 15, 'page manager must preview the visible Russian document group')
     await assertNoChineseControls(page, interfaceControls)
     await page.getByRole('button', { name: 'Отмена', exact: true }).last().click()
 

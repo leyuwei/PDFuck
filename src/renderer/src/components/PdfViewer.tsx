@@ -1,9 +1,10 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationMode, getDocument, OPS, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
-import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
+import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
 import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
+import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
 import { canvasOutputScale, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
@@ -29,6 +30,8 @@ interface ViewerProps {
   focusedAnnotationId?: string
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
+  imageObjects: ImageObjectRecord[]
+  imageDraft?: ImageDraft
   editableTextObjects: boolean
   annotationMode: boolean
   zoom: number
@@ -50,6 +53,11 @@ interface ViewerProps {
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
   onTextObjectEdit(textObject: TextObjectRecord): void
+  onImageEdit(image: ImageObjectRecord): void
+  onImageDraftChange(draft: ImageDraft): void
+  onImageDraftConfirm(): void
+  onImageDraftCancel(): void
+  onImageDraftDelete(): void
   onError(error: Error): void
   onInsight(kind: 'visual' | 'citation' | 'grammar', hits: InsightHit[] | CitationLink[] | GrammarIssue[]): void
 }
@@ -64,6 +72,8 @@ interface PageProps {
   focusedAnnotationId?: string
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
+  imageObjects: ImageObjectRecord[]
+  imageDraft?: ImageDraft
   editableTextObjects: boolean
   activePage: boolean
   annotationMode: boolean
@@ -86,6 +96,11 @@ interface PageProps {
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
   onTextObjectEdit(textObject: TextObjectRecord): void
+  onImageEdit(image: ImageObjectRecord): void
+  onImageDraftChange(draft: ImageDraft): void
+  onImageDraftConfirm(): void
+  onImageDraftCancel(): void
+  onImageDraftDelete(): void
   onSize(pageIndex: number, size: { width: number; height: number }): void
   onError(error: Error): void
   grammarTerms: string[]
@@ -335,6 +350,74 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
   >{textObject.text}</div>
 }
 
+function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObjectRecord; zoom: number; editable: boolean; onEdit(image: ImageObjectRecord): void }) {
+  useInterfaceLanguage()
+  const [source, setSource] = useState('')
+  useEffect(() => {
+    const bytes = new Uint8Array(image.data.length); bytes.set(image.data)
+    const url = URL.createObjectURL(new Blob([bytes.buffer], { type: image.format === 'png' ? 'image/png' : 'image/jpeg' }))
+    setSource(url)
+    return () => URL.revokeObjectURL(url)
+  }, [image.data, image.format, image.id])
+  return <div className={`saved-image${editable ? ' editable' : ''}`} style={{ left: image.rect.x * zoom, top: image.rect.y * zoom, width: image.rect.width * zoom, height: image.rect.height * zoom, transform: `rotate(${image.rotation}deg)` }} title={editable ? ui('点击已添加图片重新编辑', 'Click an added image to edit it again') : image.name}
+    onPointerDown={(event) => { if (editable) event.stopPropagation() }} onClick={(event) => { if (!editable) return; event.stopPropagation(); onEdit(image) }}>
+    {source && <img src={source} alt={image.name} draggable={false} />}
+  </div>
+}
+
+function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel, onDelete }: { draft: ImageDraft; zoom: number; bounds: { width: number; height: number }; onChange(draft: ImageDraft): void; onConfirm(): void; onCancel(): void; onDelete(): void }) {
+  useInterfaceLanguage()
+  const interaction = useRef<{ kind: 'move' | 'resize' | 'rotate'; handle?: ImageResizeHandle; x: number; y: number; initial: ImageDraft } | undefined>(undefined)
+  const begin = (kind: 'move' | 'resize' | 'rotate', event: React.PointerEvent, handle?: ImageResizeHandle) => {
+    if (event.button !== 0) return
+    event.preventDefault(); event.stopPropagation()
+    interaction.current = { kind, handle, x: event.clientX, y: event.clientY, initial: draft }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const move = (event: React.PointerEvent) => {
+    const active = interaction.current
+    if (!active) return
+    event.preventDefault(); event.stopPropagation()
+    const delta = { x: (event.clientX - active.x) / zoom, y: (event.clientY - active.y) / zoom }
+    if (active.kind === 'move') onChange({ ...active.initial, rect: moveImageRect(active.initial.rect, delta, active.initial.rotation, bounds) })
+    else if (active.kind === 'resize' && active.handle) onChange({ ...active.initial, rect: resizeImageRect(active.initial.rect, active.handle, delta, active.initial.rotation, bounds, { lockAspectRatio: active.initial.lockAspectRatio, aspectRatio: active.initial.aspectRatio }) })
+    else {
+      const center = { x: active.initial.rect.x + active.initial.rect.width / 2, y: active.initial.rect.y + active.initial.rect.height / 2 }
+      const knobOffset = rotateImageVector({ x: 0, y: -active.initial.rect.height / 2 - 27 / zoom }, active.initial.rotation)
+      const pagePointer = { x: center.x + knobOffset.x + delta.x, y: center.y + knobOffset.y + delta.y }
+      onChange({ ...active.initial, rotation: imageRotationForPointer(center, pagePointer, event.shiftKey) })
+    }
+  }
+  const finish = (event: React.PointerEvent) => {
+    if (!interaction.current) return
+    event.preventDefault(); event.stopPropagation(); interaction.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const displayed = rotatedImageBounds(draft.rect, draft.rotation)
+  const actionWidth = draft.id ? 432 : 318
+  const actionLeft = Math.max(4, Math.min(bounds.width * zoom - actionWidth - 4, (displayed.x + displayed.width / 2) * zoom - actionWidth / 2))
+  const actionBelow = displayed.y + displayed.height + 44 / zoom <= bounds.height
+  const actionTop = actionBelow ? (displayed.y + displayed.height) * zoom + 8 : Math.max(4, displayed.y * zoom - 42)
+  const handles: ImageResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+  return <LocalizedInterfaceCopy><>
+    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui('拖动图片调整位置', 'Drag image to reposition')}
+      onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
+      <img src={draft.source} alt={draft.name} draggable={false} />
+      <span className="image-draft-label">{draft.id ? ui('正在编辑已添加图片', 'Editing Added Image') : ui('待添加图片', 'Image Preview')}</span>
+      <span className="image-rotate-stem" aria-hidden />
+      <span className="image-rotate-handle" aria-label={ui('拖动旋转控制点调整图片角度', 'Drag rotation handle to rotate image')} title={ui('拖动旋转控制点调整图片角度', 'Drag rotation handle to rotate image')} onPointerDown={(event) => begin('rotate', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
+      {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui('拖动控制点调整图片大小', 'Drag handle to resize image')} title={ui('拖动控制点调整图片大小', 'Drag handle to resize image')} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
+    </div>
+    <div className={`image-draft-actions${draft.id ? ' has-delete' : ''}`} style={{ left: actionLeft, top: actionTop, minWidth: actionWidth }} onPointerDown={(event) => event.stopPropagation()}>
+      <span>{ui('拖动、缩放、旋转或切换比例锁后确认', 'Move, resize, rotate, or change the aspect lock, then confirm')}</span>
+      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui('已锁定原始比例', 'Original aspect ratio locked') : ui('未锁定原始比例', 'Original aspect ratio unlocked')} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui('比例已锁定', 'Ratio Locked') : ui('比例未锁定', 'Ratio Unlocked')}</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui('取消', 'Cancel')}</button>
+      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui('删除图片', 'Delete Image')}</button>}
+      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui('确认更新图片', 'Confirm Image Changes') : ui('确认添加图片', 'Confirm Add Image')}</button>
+    </div>
+  </></LocalizedInterfaceCopy>
+}
+
 function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor, onCancel, onSave }: { region: EditableTextRegion; zoom: number; pageSize: { width: number; height: number }; initialColor: string; backgroundColor: string; onCancel(): void; onSave(text: string, style: TextStyle): void }) {
   const [text, setText] = useState(region.text)
   const [style, setStyle] = useState<TextStyle>({ ...region.style, color: initialColor })
@@ -413,7 +496,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -725,6 +808,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
+    {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
+    {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
@@ -745,7 +830,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, editableTextObjects, annotationMode, zoom, fitWidthRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onError, onInsight } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, annotationMode, zoom, fitWidthRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -864,6 +949,10 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     restoredDocumentRef.current = undefined
     restoringPositionRef.current = true
     if (!data?.length) { setDocument(undefined); return }
+    // Fully unmount old pages while a replacement byte stream is loading.
+    // This prevents PDF.js from retaining a previously painted canvas when a
+    // user confirms a new image on the same page.
+    setDocument(undefined); setSizes({})
     let active = true
     const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
     task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => onError(error instanceof Error ? error : new Error(String(error))))
@@ -1051,8 +1140,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
-      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} searchFocusPage={searchFocusPage} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} searchFocusPage={searchFocusPage} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onJump={goToPage} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })

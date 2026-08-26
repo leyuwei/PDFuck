@@ -6,7 +6,7 @@ import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
-import { printPaperSize, printSheetCount } from '../lib/print-layout'
+import { DEFAULT_PRINT_PDF_OPTIONS, printPaperSize, printSheetCount } from '../lib/print-layout'
 import { LocalizedInterfaceCopy } from './InterfaceLanguageBridge'
 import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 
@@ -130,6 +130,235 @@ export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }:
     <div className="modal-actions"><button onClick={onCancel}>取消</button><button className="danger" disabled={!selected.size || allSelected} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>删除所选页面</button></div></div></div></LocalizedInterfaceCopy>
 }
 
+const PAGE_MANAGER_WINDOW_SIZE = 20
+
+type PageManagerIconName = 'close' | 'grip' | 'previous' | 'next' | 'trash' | 'restore' | 'reset' | 'pages'
+
+function PageManagerIcon({ name }: { name: PageManagerIconName }) {
+  if (name === 'grip') return <svg viewBox="0 0 20 20" aria-hidden="true"><circle key="a" cx="6" cy="5" r="1.45" /><circle key="b" cx="14" cy="5" r="1.45" /><circle key="c" cx="6" cy="10" r="1.45" /><circle key="d" cx="14" cy="10" r="1.45" /><circle key="e" cx="6" cy="15" r="1.45" /><circle key="f" cx="14" cy="15" r="1.45" /></svg>
+  if (name === 'trash') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 6.2h11M8 3.7h4M6.2 6.2l.6 10.1h6.4l.6-10.1M8.4 9v4.8M11.6 9v4.8" /></svg>
+  if (name === 'restore') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9.2a6.2 6.2 0 1 0 1.6-3.8L3.8 7.1M3.8 3.9v3.2H7" /></svg>
+  if (name === 'reset') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.3 8a6 6 0 1 1 .7 5.4M4.3 8V4.7M4.3 8h3.3" /></svg>
+  if (name === 'pages') return <svg viewBox="0 0 20 20" aria-hidden="true"><rect key="page" x="5.2" y="3.2" width="9.8" height="12.8" rx="1.4" /><path key="back" d="M3 6v9.2A1.8 1.8 0 0 0 4.8 17H12" /></svg>
+  if (name === 'close') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>
+  if (name === 'previous') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.8-5.2 5.2 5.2 5.2" /></svg>
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.8 5.2 5.2-5.2 5.2" /></svg>
+}
+
+type PageManagerDropPlacement = 'before' | 'after'
+type PageManagerDragVisual = { page: number; targetPage?: number; placement?: PageManagerDropPlacement; x: number; y: number }
+
+/** A storyboard workspace: final card order is the PDF order, selected cards are removed. */
+export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pageOrder: number[]): void }) {
+  useInterfaceLanguage()
+  const initialOrder = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
+  const [order, setOrder] = useState(initialOrder)
+  const [removed, setRemoved] = useState<Set<number>>(() => new Set<number>())
+  const [windowIndex, setWindowIndex] = useState(() => Math.floor(currentPage / PAGE_MANAGER_WINDOW_SIZE))
+  const [jumpValue, setJumpValue] = useState('')
+  const [moveValue, setMoveValue] = useState('')
+  const [focusedPage, setFocusedPage] = useState(currentPage)
+  const [dragVisual, setDragVisual] = useState<PageManagerDragVisual>()
+  const galleryRef = useRef<HTMLDivElement>(null)
+  const pointerDrag = useRef<{ pointerId: number; page: number; x: number; y: number; active: boolean; targetPage?: number; placement?: PageManagerDropPlacement } | undefined>(undefined)
+  const windowCount = Math.max(1, Math.ceil(order.length / PAGE_MANAGER_WINDOW_SIZE))
+  const visibleStart = Math.min(windowIndex, windowCount - 1) * PAGE_MANAGER_WINDOW_SIZE
+  const visibleOrder = order.slice(visibleStart, visibleStart + PAGE_MANAGER_WINDOW_SIZE)
+  const thumbnails = usePrintThumbnails(data, visibleOrder, 360, 460)
+  const kept = order.filter((page) => !removed.has(page))
+  const reordered = order.some((page, index) => page !== initialOrder[index])
+  const hasChanges = reordered || removed.size > 0
+  const focusedPosition = Math.max(0, order.indexOf(focusedPage))
+  const requestedMovePosition = Number(moveValue) - 1
+  const validMovePosition = Number.isInteger(requestedMovePosition) && requestedMovePosition >= 0 && requestedMovePosition < order.length && requestedMovePosition !== focusedPosition
+
+  useEffect(() => { setWindowIndex((current) => Math.min(current, windowCount - 1)) }, [windowCount])
+  useEffect(() => { if (galleryRef.current) galleryRef.current.scrollTop = 0 }, [windowIndex])
+  useEffect(() => {
+    const cancelDrag = () => { pointerDrag.current = undefined; setDragVisual(undefined) }
+    window.addEventListener('blur', cancelDrag)
+    return () => window.removeEventListener('blur', cancelDrag)
+  }, [])
+
+  const focusPage = (page: number) => { setFocusedPage(page); setMoveValue('') }
+  const goToWindow = (nextWindow: number) => {
+    const normalized = Math.max(0, Math.min(windowCount - 1, nextWindow))
+    setWindowIndex(normalized)
+    focusPage(order[normalized * PAGE_MANAGER_WINDOW_SIZE] ?? order[0] ?? 0)
+  }
+  const reorderPage = (page: number, targetPage: number, placement: PageManagerDropPlacement) => setOrder((current) => {
+    if (page === targetPage) return current
+    const from = current.indexOf(page)
+    if (from < 0 || !current.includes(targetPage)) return current
+    const next = current.filter((value) => value !== page)
+    const target = next.indexOf(targetPage)
+    next.splice(target + (placement === 'after' ? 1 : 0), 0, page)
+    return next
+  })
+  const movePageBy = (page: number, direction: -1 | 1) => {
+    const from = order.indexOf(page), target = from + direction
+    if (from < 0 || target < 0 || target >= order.length) return
+    const targetPage = order[target]
+    reorderPage(page, targetPage, direction < 0 ? 'before' : 'after')
+    setWindowIndex(Math.floor(target / PAGE_MANAGER_WINDOW_SIZE))
+    focusPage(page)
+  }
+  const moveFocusedToPosition = () => {
+    if (!validMovePosition) return
+    setOrder((current) => {
+      const next = current.filter((page) => page !== focusedPage)
+      next.splice(requestedMovePosition, 0, focusedPage)
+      return next
+    })
+    setWindowIndex(Math.floor(requestedMovePosition / PAGE_MANAGER_WINDOW_SIZE))
+    setMoveValue('')
+  }
+  const toggleRemoved = (page: number) => {
+    setRemoved((current) => { const next = new Set(current); next.has(page) ? next.delete(page) : next.add(page); return next })
+    focusPage(page)
+  }
+  const markCurrent = () => {
+    setRemoved((current) => new Set(current).add(currentPage))
+    const position = order.indexOf(currentPage)
+    if (position >= 0) setWindowIndex(Math.floor(position / PAGE_MANAGER_WINDOW_SIZE))
+    focusPage(currentPage)
+  }
+  const resetChanges = () => {
+    setOrder(initialOrder)
+    setRemoved(new Set())
+    setWindowIndex(Math.floor(currentPage / PAGE_MANAGER_WINDOW_SIZE))
+    focusPage(currentPage)
+  }
+  const jumpToOriginalPage = () => {
+    const originalPage = Number(jumpValue) - 1
+    if (!Number.isInteger(originalPage) || originalPage < 0 || originalPage >= pageCount) return
+    const position = order.indexOf(originalPage)
+    if (position < 0) return
+    setWindowIndex(Math.floor(position / PAGE_MANAGER_WINDOW_SIZE))
+    focusPage(originalPage)
+    setJumpValue('')
+  }
+  const detectDrop = (clientX: number, clientY: number) => {
+    const target = window.document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-page-manager-page]')
+    const targetPage = Number(target?.dataset.pageManagerPage)
+    if (!target || !Number.isInteger(targetPage)) return undefined
+    const rect = target.getBoundingClientRect()
+    const columns = galleryRef.current ? window.getComputedStyle(galleryRef.current).gridTemplateColumns.split(' ').filter(Boolean).length : 1
+    const placement: PageManagerDropPlacement = columns <= 1
+      ? clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+      : clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+    return { targetPage, placement }
+  }
+  const beginPointerDrag = (event: React.PointerEvent<HTMLButtonElement>, page: number) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    pointerDrag.current = { pointerId: event.pointerId, page, x: event.clientX, y: event.clientY, active: false }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    focusPage(page)
+  }
+  const continuePointerDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDrag.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return
+    drag.active = true
+    const gallery = galleryRef.current
+    if (gallery) {
+      const bounds = gallery.getBoundingClientRect()
+      if (event.clientY < bounds.top + 54) gallery.scrollTop -= 26
+      else if (event.clientY > bounds.bottom - 54) gallery.scrollTop += 26
+    }
+    const drop = detectDrop(event.clientX, event.clientY)
+    drag.targetPage = drop?.targetPage === drag.page ? undefined : drop?.targetPage
+    drag.placement = drag.targetPage === undefined ? undefined : drop?.placement
+    setDragVisual({ page: drag.page, targetPage: drag.targetPage, placement: drag.placement, x: event.clientX, y: event.clientY })
+  }
+  const finishPointerDrag = (event: React.PointerEvent<HTMLButtonElement>, commit = true) => {
+    const drag = pointerDrag.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    event.preventDefault()
+    event.stopPropagation()
+    pointerDrag.current = undefined
+    setDragVisual(undefined)
+    if (commit && drag.active && drag.targetPage !== undefined && drag.placement) reorderPage(drag.page, drag.targetPage, drag.placement)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const handleDragKey = (event: React.KeyboardEvent<HTMLButtonElement>, page: number) => {
+    if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return
+    event.preventDefault()
+    event.stopPropagation()
+    movePageBy(page, event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
+  }
+
+  return <LocalizedInterfaceCopy><div className="modal-backdrop page-manager-backdrop"><div className="modal page-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
+    <header className="page-manager-heading">
+      <div className="page-manager-title-mark"><PageManagerIcon name="pages" /></div>
+      <div className="page-manager-heading-copy"><h2 id="page-manager-title">{t('page.managerTitle')}</h2><p>{t('page.managerDescription')}</p></div>
+      <div className="page-manager-stats" aria-label={t('page.managerStatus')}><span><small>{t('page.managerTotal')}</small><b>{pageCount}</b></span><span><small>{t('page.managerRemoveCount')}</small><b>{removed.size}</b></span><span className="primary"><small>{t('page.managerRemaining')}</small><b>{kept.length}</b></span></div>
+      <button type="button" className="page-manager-close" title={t('page.managerClose')} aria-label={t('page.managerClose')} onClick={onCancel}><PageManagerIcon name="close" /></button>
+    </header>
+
+    <div className="page-manager-commandbar">
+      <div className="page-manager-batch-actions">
+        <button type="button" onClick={markCurrent}><PageManagerIcon name="trash" /><span>{t('page.managerMarkCurrent')}</span></button>
+        <button type="button" disabled={!removed.size} onClick={() => setRemoved(new Set())}><PageManagerIcon name="restore" /><span>{t('page.managerClearRemoval')}</span></button>
+        <button type="button" disabled={!hasChanges} onClick={resetChanges}><PageManagerIcon name="reset" /><span>{t('page.managerReset')}</span></button>
+      </div>
+      <div className="page-manager-pager">
+        <button type="button" disabled={windowIndex <= 0} title={t('page.managerPreviousGroup')} aria-label={t('page.managerPreviousGroup')} onClick={() => goToWindow(windowIndex - 1)}><PageManagerIcon name="previous" /></button>
+        <div><b>{t('page.managerRange', { start: visibleStart + 1, end: Math.min(order.length, visibleStart + PAGE_MANAGER_WINDOW_SIZE), count: order.length })}</b><span>{t('page.managerGroup', { current: windowIndex + 1, count: windowCount })}</span></div>
+        <button type="button" disabled={windowIndex >= windowCount - 1} title={t('page.managerNextGroup')} aria-label={t('page.managerNextGroup')} onClick={() => goToWindow(windowIndex + 1)}><PageManagerIcon name="next" /></button>
+      </div>
+      <label className="page-manager-jump"><span>{t('page.managerJump')}</span><input value={jumpValue} inputMode="numeric" pattern="[0-9]*" placeholder={t('page.managerJumpPlaceholder')} aria-label={t('page.managerJumpPlaceholder')} onChange={(event) => setJumpValue(event.target.value.replace(/\D/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') jumpToOriginalPage() }} /><button type="button" disabled={!jumpValue} onClick={jumpToOriginalPage}>{t('page.managerJumpAction')}</button></label>
+    </div>
+
+    <div className="page-manager-workspace">
+      <section className="page-manager-storyboard" aria-labelledby="page-manager-storyboard-title">
+        <div className="page-manager-section-heading"><div><h3 id="page-manager-storyboard-title">{t('page.managerStoryboard')}</h3><p>{t('page.managerOnDemandHint', { count: PAGE_MANAGER_WINDOW_SIZE })}</p></div><span>{t('page.managerDragHint')}</span></div>
+        <div ref={galleryRef} className="page-manager-grid" aria-label={t('page.managerStoryboard')}>
+          {visibleOrder.map((page, visibleIndex) => {
+            const index = visibleStart + visibleIndex
+            const isRemoved = removed.has(page)
+            const dropClass = dragVisual?.targetPage === page && dragVisual.placement ? ` drop-${dragVisual.placement}` : ''
+            return <article key={page} data-page-manager-page={page} className={`page-manager-card${isRemoved ? ' removed' : ''}${focusedPage === page ? ' focused' : ''}${dragVisual?.page === page ? ' dragging' : ''}${dropClass}`} onClick={() => focusPage(page)}>
+              <div className="page-manager-card-top">
+                <button type="button" className="page-manager-drag-handle" title={t('page.managerDragHandle')} aria-label={t('page.managerDragHandle', { position: index + 1 })} onClick={() => focusPage(page)} onKeyDown={(event) => handleDragKey(event, page)} onPointerDown={(event) => beginPointerDrag(event, page)} onPointerMove={continuePointerDrag} onPointerUp={(event) => finishPointerDrag(event)} onPointerCancel={(event) => finishPointerDrag(event, false)} onLostPointerCapture={() => { if (pointerDrag.current?.page === page) { pointerDrag.current = undefined; setDragVisual(undefined) } }}><PageManagerIcon name="grip" /><span>{t('page.managerPosition', { position: index + 1 })}</span></button>
+                <button type="button" className="page-manager-remove-toggle" aria-pressed={isRemoved} title={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} aria-label={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} onClick={(event) => { event.stopPropagation(); toggleRemoved(page) }}>{isRemoved ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}</button>
+              </div>
+              <button type="button" className="page-manager-thumbnail" onClick={(event) => { event.stopPropagation(); focusPage(page) }} aria-label={t('page.preview', { page: page + 1 })}>
+                {thumbnails[page] ? <img draggable={false} src={thumbnails[page]} alt="" /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+                <span className="page-manager-original-badge">{t('page.managerOriginalShort', { page: page + 1 })}</span>
+                {page === currentPage && <span className="page-manager-current-badge">{t('page.managerCurrentBadge')}</span>}
+                {isRemoved && <span className="page-manager-removed-badge"><PageManagerIcon name="trash" />{t('page.managerMarkedForRemoval')}</span>}
+              </button>
+            </article>
+          })}
+        </div>
+      </section>
+
+      <aside className="page-manager-inspector" aria-label={t('page.managerInspector')}>
+        <header><div><small>{t('page.managerInspector')}</small><h3>{t('page.managerFocusedPage', { position: focusedPosition + 1 })}</h3></div>{focusedPage === currentPage && <span>{t('page.managerCurrentBadge')}</span>}</header>
+        <div className={`page-manager-inspector-preview${removed.has(focusedPage) ? ' removed' : ''}`}>
+          {thumbnails[focusedPage] ? <img draggable={false} src={thumbnails[focusedPage]} alt={t('page.preview', { page: focusedPage + 1 })} /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+          {removed.has(focusedPage) && <b>{t('page.managerMarkedForRemoval')}</b>}
+        </div>
+        <dl><div><dt>{t('page.managerFinalPosition')}</dt><dd>{focusedPosition + 1}</dd></div><div><dt>{t('page.managerOriginalPage')}</dt><dd>{focusedPage + 1}</dd></div></dl>
+        <div className="page-manager-move-control"><label htmlFor="page-manager-position">{t('page.managerMoveTo')}</label><div><input id="page-manager-position" value={moveValue} inputMode="numeric" pattern="[0-9]*" placeholder={String(focusedPosition + 1)} onChange={(event) => setMoveValue(event.target.value.replace(/\D/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') moveFocusedToPosition() }} /><button type="button" disabled={!validMovePosition} onClick={moveFocusedToPosition}>{t('page.managerMoveAction')}</button></div><small>{t('page.managerMoveHint', { count: pageCount })}</small></div>
+        <button type="button" className={`page-manager-inspector-remove${removed.has(focusedPage) ? ' restore' : ''}`} onClick={() => toggleRemoved(focusedPage)}>{removed.has(focusedPage) ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}<span>{removed.has(focusedPage) ? t('page.managerRestorePage') : t('page.managerRemovePage')}</span></button>
+        <p className="page-manager-keyboard-hint">{t('page.managerKeyboardHint')}</p>
+      </aside>
+    </div>
+
+    {dragVisual && <div className="page-manager-drag-preview" style={{ left: dragVisual.x, top: dragVisual.y }}><PageManagerIcon name="grip" /><span>{t('page.managerDraggingPage', { page: dragVisual.page + 1 })}</span></div>}
+    <footer className="page-manager-footer">
+      <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : reordered ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>
+      <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t('page.managerCancel')}</button><button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept)}>{t('page.managerApply')}</button></div>
+    </footer>
+  </div></div></LocalizedInterfaceCopy>
+}
+
 export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'print' | 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
   const allPages = allPageIndices(pageCount)
   const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
@@ -157,51 +386,66 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
   </div></div></LocalizedInterfaceCopy>
 }
 
-function usePrintThumbnails(data: Uint8Array, pageIndices: number[]): Record<number, string> {
+function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 220, maxHeight = 280): Record<number, string> {
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
   const cache = useRef<Record<number, string>>({})
   const pageKey = pageIndices.join(',')
+  const wantsThumbnails = pageIndices.length > 0
   useEffect(() => {
     let active = true
+    cache.current = {}
+    setThumbnails({})
+    setDocument(undefined)
+    if (!wantsThumbnails) return () => { active = false }
     const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
     task.promise.then((value) => { if (active) setDocument(value) }).catch(() => undefined)
     return () => { active = false; void task.destroy() }
-  }, [data])
+  }, [data, wantsThumbnails])
   useEffect(() => {
     if (!document) return
     let cancelled = false
+    const wanted = new Set(pageIndices)
+    cache.current = Object.fromEntries(Object.entries(cache.current).filter(([page]) => wanted.has(Number(page))))
+    setThumbnails({ ...cache.current })
     const render = async () => {
-      for (const pageIndex of pageIndices) {
-        if (cache.current[pageIndex] || cancelled) continue
-        const page = await document.getPage(pageIndex + 1)
-        const base = page.getViewport({ scale: 1 })
-        const viewport = page.getViewport({ scale: Math.min(220 / base.width, 280 / base.height) })
-        const canvas = window.document.createElement('canvas')
-        canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
-        const context = canvas.getContext('2d', { alpha: false })
-        if (!context) continue
-        await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
-        if (cancelled) return
-        cache.current[pageIndex] = canvas.toDataURL('image/png')
-        setThumbnails({ ...cache.current })
+      let cursor = 0
+      const worker = async () => {
+        while (!cancelled) {
+          const pageIndex = pageIndices[cursor++]
+          if (pageIndex === undefined) return
+          if (cache.current[pageIndex]) continue
+          const page = await document.getPage(pageIndex + 1)
+          const base = page.getViewport({ scale: 1 })
+          const viewport = page.getViewport({ scale: Math.min(maxWidth / base.width, maxHeight / base.height) })
+          const canvas = window.document.createElement('canvas')
+          canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
+          const context = canvas.getContext('2d', { alpha: false })
+          if (!context) continue
+          await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+          if (cancelled) return
+          cache.current[pageIndex] = canvas.toDataURL('image/png')
+          setThumbnails({ ...cache.current })
+        }
       }
+      await Promise.all(Array.from({ length: Math.min(4, pageIndices.length) }, worker))
     }
     void render().catch(() => undefined)
     return () => { cancelled = true }
-  }, [document, pageKey])
+  }, [document, pageKey, maxHeight, maxWidth])
   return thumbnails
 }
 
 export function PrintOptionsDialog({ data, pages, onCancel, onSubmit }: { data: Uint8Array; pages: number[]; onCancel(): void; onSubmit(options: PrintPdfOptions): void }) {
-  const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>('A4')
-  const [landscape, setLandscape] = useState(false)
-  const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>('simplex')
-  const [multiPage, setMultiPage] = useState(false)
-  const [rows, setRows] = useState(2)
-  const [columns, setColumns] = useState(2)
-  const [scale, setScale] = useState(100)
-  const [frame, setFrame] = useState(true)
+  const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>(DEFAULT_PRINT_PDF_OPTIONS.pageSize)
+  const [landscape, setLandscape] = useState(DEFAULT_PRINT_PDF_OPTIONS.landscape)
+  const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>(DEFAULT_PRINT_PDF_OPTIONS.duplex)
+  const [multiPage, setMultiPage] = useState(DEFAULT_PRINT_PDF_OPTIONS.multiPage)
+  const [rows, setRows] = useState(DEFAULT_PRINT_PDF_OPTIONS.rows)
+  const [columns, setColumns] = useState(DEFAULT_PRINT_PDF_OPTIONS.columns)
+  const [scale, setScale] = useState(DEFAULT_PRINT_PDF_OPTIONS.scale)
+  // A border changes the actual PDF output, so leave it off unless requested.
+  const [frame, setFrame] = useState(DEFAULT_PRINT_PDF_OPTIONS.frame)
   const [sheetIndex, setSheetIndex] = useState(0)
   const options = useMemo<PrintPdfOptions>(() => ({ pageSize, landscape, duplex, multiPage, rows, columns, scale, frame }), [pageSize, landscape, duplex, multiPage, rows, columns, scale, frame])
   const perSheet = multiPage ? rows * columns : 1

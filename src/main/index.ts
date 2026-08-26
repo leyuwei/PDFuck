@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfImportFile, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle, type NativeInterfaceLanguage } from '../shared/window-session'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
@@ -37,6 +37,8 @@ function nativeText(language: NativeInterfaceLanguage, chinese: string, english:
     'PDF 文件': { ja: 'PDF ファイル', ru: 'PDF-файлы', es: 'Archivos PDF' },
     '从文件合并 PDF': { ja: 'ファイルから PDF を結合', ru: 'Объединить PDF из файлов', es: 'Combinar PDF desde archivos' },
     '可导入的文件': { ja: 'インポート可能なファイル', ru: 'Импортируемые файлы', es: 'Archivos importables' },
+    '选择要添加的图片': { ja: '追加する画像を選択', ru: 'Добавить изображение', es: 'Elegir imagen para añadir' },
+    '图片文件': { ja: '画像ファイル', ru: 'Файлы изображений', es: 'Archivos de imagen' },
     '保存 PDF': { ja: 'PDF を保存', ru: 'Сохранить PDF', es: 'Guardar PDF' },
     '导出': { ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' },
     '打印': { ja: '印刷', ru: 'Печать', es: 'Imprimir' }
@@ -154,6 +156,18 @@ const importFormat = (value: string): PdfImportFile['format'] | undefined => {
   return undefined
 }
 
+function imageFormat(value: string): ImageImportFile['format'] | undefined {
+  const extension = extname(value).toLowerCase()
+  if (extension === '.png') return 'png'
+  if (extension === '.jpg' || extension === '.jpeg') return 'jpg'
+  return undefined
+}
+
+function matchesImageSignature(data: Uint8Array, format: ImageImportFile['format']): boolean {
+  if (format === 'png') return data.length >= 8 && data[0] === 137 && data[1] === 80 && data[2] === 78 && data[3] === 71 && data[4] === 13 && data[5] === 10 && data[6] === 26 && data[7] === 10
+  return data.length >= 3 && data[0] === 255 && data[1] === 216 && data[2] === 255
+}
+
 async function ghostscriptCandidates(): Promise<string[]> {
   const names = process.platform === 'win32' ? ['gswin64c.exe', 'gswin32c.exe'] : ['gs']
   const paths = (process.env.PATH || '').split(delimiter).filter(Boolean)
@@ -190,6 +204,14 @@ async function openPdfImports(paths: string[]): Promise<PdfImportFile[]> {
     else throw new Error('仅支持导入 PDF、PNG、JPG、JPEG 或 EPS 文件。')
   }
   return files
+}
+
+async function openImageImport(path: string): Promise<ImageImportFile> {
+  const format = imageFormat(path)
+  if (!format) throw new Error('仅支持导入 PNG、JPG 或 JPEG 图片。')
+  const data = new Uint8Array(await readFile(path))
+  if (!matchesImageSignature(data, format)) throw new Error('所选文件不是有效的 PNG 或 JPEG 图片。')
+  return { name: basename(path), format, data }
 }
 
 function candidateFromArgs(args: string[]): string | null {
@@ -529,6 +551,15 @@ app.whenReady().then(() => {
       filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件', 'Importable Files'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps'] }]
     })
     return result.canceled ? null : openPdfImports(result.filePaths)
+  })
+  ipcMain.handle('image:choose', async (event) => {
+    const session = requireWindowSession(event.sender)
+    const result = await dialog.showOpenDialog(session.window, {
+      title: nativeText(session.interfaceLanguage, '选择要添加的图片', 'Choose an Image to Add'),
+      properties: ['openFile'],
+      filters: [{ name: nativeText(session.interfaceLanguage, '图片文件', 'Image Files'), extensions: ['png', 'jpg', 'jpeg'] }]
+    })
+    return result.canceled ? null : openImageImport(result.filePaths[0])
   })
   ipcMain.handle('window:initial-detached-document', (event) => {
     const session = requireWindowSession(event.sender)

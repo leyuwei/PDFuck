@@ -70,6 +70,37 @@ export interface TextObjectRecord {
   style: TextStyle
 }
 
+/** A not-yet-persisted image preview being positioned on one PDF page. */
+export interface ImageDraft {
+  /** Present when repositioning an image that already exists in the PDF. */
+  id?: string
+  pageIndex: number
+  name: string
+  data: Uint8Array
+  format: 'png' | 'jpg'
+  source: string
+  rect: PdfRect
+  /** The source image ratio, retained when the placement lock is enabled. */
+  aspectRatio: number
+  /** Keep resize operations proportional to the imported image. */
+  lockAspectRatio: boolean
+  /** Clockwise degrees in the page's displayed coordinate system. */
+  rotation: number
+}
+
+/** A PDFuck image annotation that remains editable after saving and reopening. */
+export interface ImageObjectRecord {
+  id: string
+  pageIndex: number
+  name: string
+  data: Uint8Array
+  format: 'png' | 'jpg'
+  rect: PdfRect
+  aspectRatio: number
+  lockAspectRatio: boolean
+  rotation: number
+}
+
 export interface CanvasAction {
   pageIndex: number
   tool: Tool
