@@ -1,3 +1,427 @@
+export type InterfaceLanguage = 'zh' | 'en' | 'ja' | 'ru' | 'es'
+export const INTERFACE_LANGUAGES: readonly InterfaceLanguage[] = ['zh', 'en', 'ja', 'ru', 'es']
+
+/** English lives here with every other locale; call sites contain message keys only. */
+export const englishPhrases: Record<string, string> = {
+  " · 未保存": " · Unsaved",
+  "。新版安装包已经发布，可前往 GitHub Releases 下载。": ". The new installer is available on GitHub Releases.",
+  "（加密，只读）": " (Encrypted, read-only)",
+  "{count} 个文件": "{count} files",
+  "← 拖动调节 →": "← Drag to adjust →",
+  "白色": "White",
+  "饱和度和明度": "Saturation and brightness",
+  "保持原文件页序": "Keep the source page order",
+  "保存": "Save",
+  "保存 PDF": "Save PDF",
+  "保存完整文档，或只打印、导出真正需要的页面。": "Save the complete document, or print and export only the pages you need.",
+  "保存修改": "Save Changes",
+  "保存需要新位置": "A New Save Location Is Required",
+  "保留": "Keep",
+  "本地保存的密码已失效，请输入当前密码。": "The locally saved password is no longer valid. Enter the current password.",
+  "比例未锁定": "Ratio Unlocked",
+  "比例已锁定": "Ratio Locked",
+  "编辑": "Edit",
+  "编辑批注": "Edit Annotation",
+  "编辑批注内容…": "Edit Annotation…",
+  "编辑文字": "Edit Text",
+  "编辑文字：": "Edit text: ",
+  "编辑页面文字": "Edit Page Text",
+  "不能删除全部页面，请至少取消选择一页。": "You cannot delete every page. Leave at least one page unselected.",
+  "不再提示此版本": "Do not remind me about this version",
+  "不做了": "Won’t Fix",
+  "操作失败": "Action failed",
+  "插入位置": "Insertion Point",
+  "插入文字": "Insert Text",
+  "查看": "View",
+  "常用正则表达式": "Common Regular Expressions",
+  "撤销": "Undo",
+  "撤销 (Ctrl+Z)": "Undo (Ctrl+Z)",
+  "橙色": "Orange",
+  "创建合并 PDF": "Create Merged PDF",
+  "此文档受密码保护，请验证后继续。": "This document is password protected. Verify it to continue.",
+  "此文档已确认受密码保护。继续后，PDFuck 会尝试读取本机保存的打开密码；如果你选择保存新密码，也会交给系统安全存储保护。": "This document is confirmed as password protected. Continuing lets PDFuck try the saved local password; any newly saved password is protected by system secure storage.",
+  "从文件合并 PDF": "Merge PDF from Files",
+  "从文件合并 PDF…": "Merge PDF from Files…",
+  "粗体": "Bold",
+  "打开": "Open",
+  "打开 PDF": "Open PDF",
+  "打开 PDF 开始工作": "Open a PDF to Get Started",
+  "打开保存工具": "Open Save tools",
+  "打开编辑工具": "Open Edit tools",
+  "打开查看工具": "Open View tools",
+  "打开过的文件可以从这里一键继续阅读": "Resume reading any previous file in one click.",
+  "打开批注工具": "Open Annotate tools",
+  "打开文件夹": "Open Folder",
+  "打开系统打印": "Open System Print",
+  "打印": "Print",
+  "打印时保留浅灰分隔线": "Keep light-gray separators when printing.",
+  "打印预览": "Print Preview",
+  "待添加图片": "Image Preview",
+  "单面": "Single-sided",
+  "单面打印": "Single-sided",
+  "单行": "Single Line",
+  "单页查看": "Single Page",
+  "单页铺放": "One page per sheet",
+  "当前 PDF 会从独立窗口回到这里，不会丢失未保存修改。": "The current PDF will return here from its separate window, including unsaved changes.",
+  "当前版本 ": "Current version ",
+  "当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。": "The editor cannot safely write back to this encrypted PDF. Reading and zoom remain available.",
+  "当前文件可能处于临时目录，请注意另存，防止走丢！": "This file may be in a temporary folder. Save it elsewhere to avoid losing it.",
+  "当前页": "Current Page",
+  "导出": "Export",
+  "导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。": "Import PNG or JPG, then position, resize, rotate, and confirm it on this page.",
+  "导入文件顺序": "Imported File Order",
+  "点击已添加图片重新编辑": "Click an added image to edit it again",
+  "点击直接编辑这段文字": "Click to edit this text.",
+  "靛蓝": "Indigo",
+  "调整导入文件的顺序后，即可创建新的合并 PDF。": "Arrange imported files, then create a new merged PDF.",
+  "调整批注列表宽度": "Resize annotation list",
+  "对齐": "Alignment",
+  "多行": "Multi-line",
+  "发现新版本 ": "New version available: ",
+  "反选": "Invert",
+  "服务商": "Provider",
+  "复制": "Copy",
+  "复制参考文献": "Copy reference",
+  "复制回复": "Copy Response",
+  "复制全部参考文献": "Copy all references",
+  "高亮说明": "Highlight description",
+  "个文件": "files",
+  "工具": "tools",
+  "共 {count} 页": "{count} pages",
+  "关闭": "Close",
+  "关闭打印设置": "Close print settings",
+  "关闭结果": "Close results",
+  "关闭临时目录提示": "Dismiss temporary-folder notice",
+  "关闭模型设置": "Close model settings",
+  "关闭提示": "Dismiss notice",
+  "关闭文档标签": "Close document tab",
+  "关闭引文标记": "Hide Citation Links",
+  "关闭引文信息": "Close citation details",
+  "关联引文": "Link Citations",
+  "管理页面…": "Manage Pages…",
+  "还没有批注": "No annotations yet",
+  "合并多页到一张纸": "Print Multiple Pages per Sheet",
+  "合并为一个 PDF": "Combine into One PDF",
+  "合并文档.pdf": "Merged Document.pdf",
+  "横向": "Landscape",
+  "琥珀": "Amber",
+  "恢复默认": "Restore Defaults",
+  "恢复默认 PDF 纸张背景": "Restore default PDF paper background",
+  "恢复默认软件主题色": "Restore default app accent",
+  "回复": "Reply",
+  "回复统计": "Reply Summary",
+  "继续尝试": "Continue",
+  "加密": "Encrypted",
+  "加密 PDF": "Encrypted PDF",
+  "加密 PDF 以只读模式打开": "Encrypted PDF opened read-only",
+  "加密文档 · 只读": "Encrypted Document · Read-only",
+  "加密文档将以只读模式打开": "The encrypted document will open read-only.",
+  "加下划线": "Underline Text",
+  "将插入到第 {page} 页之后。": "Files will be inserted after page {page}.",
+  "将插入到第 {page} 页之前。": "Files will be inserted before page {page}.",
+  "将插入到文档开头。": "Files will be inserted at the beginning of the document.",
+  "将插入到文档末尾。": "Files will be inserted at the end of the document.",
+  "将创建一个新的合并 PDF。": "A new merged PDF will be created.",
+  "将当前所有修改写回此文件。": "Write all current changes back to this file.",
+  "将当前页面裁切为框选区域？": "Crop the current page to the selected area?",
+  "将在当前标签中打开": "The document will open in this tab.",
+  "将在当前窗口新增一个文档标签": "A new document tab will open in this window.",
+  "接口地址": "API Endpoint",
+  "解锁并打开": "Unlock & Open",
+  "界面语言": "Interface Language",
+  "仅作用于当前 PDF": "Current PDF only",
+  "紧凑": "Compact",
+  "居中": "Center",
+  "开始润色": "Polish Text",
+  "可导入的文件": "Importable Files",
+  "可输入 1 到 {count}。": "Enter a number from 1 to {count}.",
+  "可选不连续页码；文件名保留原文档页码后缀。": "Non-contiguous pages are supported; filenames keep the original page suffix.",
+  "可选择连续或不连续页码，包含尚未保存的修改。": "Choose continuous or non-contiguous pages, including unsaved changes.",
+  "可以补充说明并选择醒目的标记颜色。": "Add an optional note and choose a visible marker color.",
+  "可直接按字符框选 PDF 文字，按 Ctrl+C 或右键复制": "Select PDF text precisely by character, then press Ctrl+C or right-click to copy.",
+  "可直接点选页面，也可输入不连续页码和范围。": "Click pages directly, or enter non-contiguous page numbers and ranges.",
+  "控制按钮与强调色": "Buttons and highlights",
+  "快速打开": "Quick Open",
+  "宽松": "Relaxed",
+  "框选裁切页面": "Crop Page",
+  "框选文字 · Ctrl+H / ⌘H": "Select text · Ctrl+H / ⌘H",
+  "框选文字 · Ctrl+I / ⌘I": "Select text · Ctrl+I / ⌘I",
+  "框选文字 · Ctrl+U / ⌘U": "Select text · Ctrl+U / ⌘U",
+  "框选文字 · Delete": "Select text · Delete",
+  "框选原文 · Ctrl+R / ⌘R": "Select original text · Ctrl+R / ⌘R",
+  "蓝色": "Blue",
+  "连续滚动": "Continuous",
+  "亮蓝": "Bright Blue",
+  "列表字号": "List Font Size",
+  "列数": "Columns",
+  "另存为 PDF…": "Save As PDF…",
+  "莓紫": "Berry Purple",
+  "每页单独 PDF": "One PDF per Page",
+  "每张纸页数": "Pages per Sheet",
+  "密码": "Password",
+  "密码保护的只读文档": "Password-protected read-only document",
+  "密码不正确，请重新输入。": "Incorrect password. Please try again.",
+  "明黄": "Bright Yellow",
+  "明快": "Bright",
+  "模糊匹配": "Fuzzy Match",
+  "模型": "Model",
+  "模型设置": "Model Settings",
+  "墨黑": "Ink Black",
+  "墨绿": "Deep Green",
+  "某页之后": "After a Page",
+  "某页之前": "Before a Page",
+  "目标页码": "Target Page",
+  "目录：": "Folder: ",
+  "内容": "Content",
+  "内容（双击编辑）": "Content (double-click to edit)",
+  "你的修改仍保留在当前窗口": "Your changes remain in this window",
+  "你可能会看到系统安全授权": "You may see a system security prompt",
+  "你正在使用 ": "You are using ",
+  "暖灰": "Warm Gray",
+  "偶数页": "Even Pages",
+  "批量删除页面": "Delete Pages",
+  "批量删除页面…": "Delete Pages…",
+  "批注": "Annotate",
+  "批注列表": "Annotation List",
+  "批注模式：按字符精准框选文字；右键可复制或添加批注": "Annotation mode: select text precisely by character; right-click to copy or add an annotation.",
+  "批注内容": "Annotation content",
+  "批注设置": "Annotation Settings",
+  "批注颜色：": "Annotation color: ",
+  "匹配大小写": "Match Case",
+  "拼版": "layout",
+  "奇数页": "Odd Pages",
+  "前往下载": "Download",
+  "浅灰蓝": "Pale Blue Gray",
+  "青绿": "Teal",
+  "清除": "Clear",
+  "清空": "Clear",
+  "请确认": "Please Confirm",
+  "请输入 1 到 {count} 之间的页码。": "Enter a page number from 1 to {count}.",
+  "请输入有效的目标页码。": "Enter a valid target page number.",
+  "请先框选 PDF 文字": "Select text in the PDF first",
+  "取消": "Cancel",
+  "全部": "All",
+  "确定": "Confirm",
+  "确认并合并": "Confirm & Merge",
+  "确认更新图片": "Confirm Image Changes",
+  "确认后将按上列顺序一次性写入。": "After confirmation, files will be inserted together in the order above.",
+  "确认添加图片": "Confirm Add Image",
+  "软件主题色": "App Accent",
+  "润色提示词": "Polishing instruction",
+  "色相": "Hue",
+  "森林绿": "Forest Green",
+  "删除": "Delete",
+  "删除标记": "Deletion mark",
+  "删除批注": "Delete Annotation",
+  "删除所选页面": "Delete Selected Pages",
+  "删除图片": "Delete Image",
+  "删除这条批注": "Delete This Annotation",
+  "珊瑚红": "Coral Red",
+  "上一张纸": "Previous Sheet",
+  "上移文件": "Move File Up",
+  "尚未选择页面": "No pages selected",
+  "稍后提醒": "Remind me later",
+  "设置文字内容和显示格式。添加后可在页面上拖动，双击可再次编辑。": "Set the text and its formatting. Drag it after adding; double-click to edit again.",
+  "深蓝": "Deep Blue",
+  "石墨": "Graphite",
+  "实验室": "Lab",
+  "使用本机安全存储": "Use Local Secure Storage",
+  "使用系统安全存储加密，下次打开时自动尝试": "Encrypted with system secure storage and tried automatically next time.",
+  "适合宽度": "Fit Width",
+  "释放以打开 PDF": "Drop to Open PDF",
+  "释放以移回文档标签页": "Drop to Move into Document Tabs",
+  "收起": "Collapse",
+  "收起保存工具": "Collapse Save tools",
+  "收起编辑工具": "Collapse Edit tools",
+  "收起查看工具": "Collapse View tools",
+  "收起回复统计": "Collapse reply summary",
+  "收起批注工具": "Collapse Annotate tools",
+  "收起批注列表": "Collapse annotation list",
+  "收起统计": "Collapse summary",
+  "受保护的 PDF": "Protected PDF",
+  "输出清晰度": "Output Resolution",
+  "输出效果与下方纸张比例一致": "Output matches the paper proportions below.",
+  "输入打开密码": "Enter Password",
+  "双面": "Double-sided",
+  "双面 · 短边翻页": "Double-sided · Short Edge",
+  "双面 · 长边翻页": "Double-sided · Long Edge",
+  "搜索": "Search",
+  "搜索 PDF": "Search PDF",
+  "搜索文档": "Search Document",
+  "缩放": "Scale",
+  "所选": "Selected",
+  "所选图片没有可用尺寸。": "The selected image has no usable dimensions.",
+  "锁": "Lock",
+  "替换为": "Replace with",
+  "添加": "Add",
+  "添加到批注": "Add to Annotations",
+  "添加文字": "Add Text",
+  "填写批注内容，并选择适合的标记颜色。": "Enter the annotation content and choose a suitable marker color.",
+  "条": "items",
+  "条批注": "annotations",
+  "跳过并手动输入": "Skip and Enter Manually",
+  "图表定位结果": "Figures & Tables",
+  "图片文件": "Image Files",
+  "推荐色": "Suggested Colors",
+  "拖出文本框后设置内容和格式": "Drag out a text box, then set its content and formatting.",
+  "拖动、缩放、旋转或切换比例锁后确认": "Move, resize, rotate, or change the aspect lock, then confirm",
+  "拖动标签可调整顺序、移回另一个 PDFuck 窗口或拖出标签栏打开新窗口：": "Drag to reorder, move to another PDFuck window, or drag outside the tab bar to open a new window: ",
+  "拖动标签可调整顺序；拖到另一个 PDFuck 窗口可移回标签页；拖出标签栏可在新窗口打开": "Drag to reorder; drag to another PDFuck window to move it back into tabs; drag outside the tab bar to open in a new window",
+  "拖动调整批注列表宽度": "Drag to resize annotation list",
+  "拖动浮窗": "Drag toolbar",
+  "拖动卡片或使用上下按钮排序；每个文件内部页面保持原有顺序。": "Drag cards or use the arrow buttons. Pages within each file keep their original order.",
+  "拖动控制点调整图片大小": "Drag handle to resize image",
+  "拖动框选文字；Ctrl/⌘ 加选，Shift 选择连续批注，Delete 批量删除。": "Drag to select text; Ctrl/⌘ adds selections, Shift selects a range, and Delete removes annotations in bulk.",
+  "拖动框选要保留的页面区域": "Drag to select the area to keep.",
+  "拖动批注快捷浮窗": "Drag annotation toolbar",
+  "拖动色彩面板选择任意颜色，或输入精确 HEX 值": "Drag in the color field to choose any color, or enter an exact HEX value.",
+  "拖动图片调整位置": "Drag image to reposition",
+  "拖动旋转控制点调整图片角度": "Drag rotation handle to rotate image",
+  "完成": "Done",
+  "未保存": "Unsaved",
+  "未保存到磁盘": "Not saved to disk",
+  "未打开": "Not Open",
+  "未打开文档": "No Document Open",
+  "未发现可定位项目": "No matching items found",
+  "未回复": "Unreplied",
+  "未锁定原始比例": "Original aspect ratio unlocked",
+  "未选择": "Not Selected",
+  "位置批注": "Position Annotations",
+  "文本高亮": "Highlight Text",
+  "文本批注": "Text Annotations",
+  "文本删除": "Delete Text",
+  "文本替换": "Replace Text",
+  "文档标签": "Document Tabs",
+  "文档开头": "Beginning of Document",
+  "文档末尾": "End of Document",
+  "文件格式": "File Format",
+  "无法读取所选图片。请确认文件未损坏。": "Unable to read the selected image. Check that the file is not corrupted.",
+  "无法直接保存此文件": "This File Cannot Be Saved Here",
+  "无需先打开 PDF；选择插入位置并调整导入文件顺序。": "No PDF needs to be open. Choose an insertion point and arrange imported files.",
+  "下划线说明": "Underline description",
+  "下一张纸": "Next Sheet",
+  "下移文件": "Move File Down",
+  "先选择插入位置，再调整导入文件的顺序。": "Choose the insertion point first, then arrange imported files.",
+  "显示": "Show",
+  "显示当前页文本块，点击任意一处直接编辑": "Show text blocks on this page and click one to edit.",
+  "显示页面边框": "Show Page Borders",
+  "想一想": "Review Later",
+  "斜体": "Italic",
+  "新标签": "New Tab",
+  "行距": "Line Spacing",
+  "行数": "Rows",
+  "选择 PDF 文件": "Choose PDF File",
+  "选择适合当前阅读场景的页面布局。": "Choose a page layout for your reading flow.",
+  "选择位置另存…": "Choose Another Location…",
+  "选择文字 · Ctrl+N / ⌘N": "Select text · Ctrl+N / ⌘N",
+  "选择文字 · Insert": "Select text · Insert",
+  "选择新位置保存，原文件保持不变。": "Choose a new location and keep the original file unchanged.",
+  "选择要打印的页面": "Select Pages to Print",
+  "选择要导出的页面": "Select Pages to Export",
+  "选择要删除的页码。删除后至少需要保留一页。": "Choose pages to delete. At least one page must remain.",
+  "选择要添加的图片": "Choose an Image to Add",
+  "选择页面并打印…": "Select Pages & Print…",
+  "选择页面并导出…": "Select Pages & Export…",
+  "颜色": "Color",
+  "颜色浓度与明暗": "Saturation & Brightness",
+  "颜色与回复": "Color & Reply",
+  "也可以把 PDF 文件直接拖到窗口中": "You can also drag a PDF file into this window.",
+  "页": "Page",
+  "页码范围": "Page Range",
+  "页面": "Page",
+  "页面布局": "Page Layout",
+  "页面方向": "Orientation",
+  "夜间": "Dark",
+  "一键图表": "Find Figures & Tables",
+  "已保存": "Saved",
+  "已处理": "Resolved",
+  "已创建合并文档，已导入 {count} 个文件": "Created a merged document and imported {count} file(s)",
+  "已复制参考文献": "Reference copied",
+  "已合并 {count} 个文件": "Merged {count} file(s)",
+  "已合并 {count} 个文件；请确认页面顺序": "Merged {count} file(s); confirm the page order.",
+  "已锁定原始比例": "Original aspect ratio locked",
+  "已新建合并文档并导入 {count} 个文件；请确认页面顺序": "Created a new merged document and imported {count} file(s); confirm the page order.",
+  "已选择": "Selected",
+  "已选择：": "Selected: ",
+  "已移回文档标签页": "Document moved back into document tabs",
+  "已在独立窗口中打开文档": "Document opened in a separate window",
+  "引文关联结果": "Citation Links",
+  "隐藏": "Hide",
+  "印刷方式": "Print Mode",
+  "有未保存修改": "Has unsaved changes",
+  "右对齐": "Right",
+  "语法检查": "Grammar Check",
+  "语法检查结果": "Grammar Results",
+  "预览、调整顺序并批量删除页面。": "Preview, reorder, and remove pages in a batch.",
+  "阅读、编辑、批注与导出，都在一个干净的窗口里完成。": "Read, edit, annotate, and export in one focused workspace.",
+  "阅读工具": "Reading Tools",
+  "阅读提示": "Reading Tip",
+  "在 Finder 或文件管理器中显示当前 PDF 所在文件夹": "Show the current PDF in Finder or File Explorer",
+  "在此设备上保存密码": "Save password on this device",
+  "在此页之后插入": "Insert after this page",
+  "在此页之前插入": "Insert before this page",
+  "在当前窗口打开另一份 PDF": "Open another PDF in this window",
+  "在页面上框选文字开始批注": "Select text on the page to start annotating.",
+  "在页面上添加图片…": "Add Image to Page…",
+  "在页面上添加文字": "Add Text to Page",
+  "暂不保存": "Don’t Save Yet",
+  "暂无记录": "No recent files",
+  "展开": "Expand",
+  "展开回复统计": "Expand reply summary",
+  "展开批注列表": "Expand annotation list",
+  "展开统计": "Expand summary",
+  "这是 macOS 钥匙串或 Windows 系统凭据保护的正常提示，仅用于保护这个 PDF 的密码。普通未加密 PDF 不会触发此流程。": "This is a normal macOS Keychain or Windows credential prompt used only to protect this PDF password. Ordinary unencrypted PDFs do not trigger this flow.",
+  "正文": "Body",
+  "正在编辑已添加图片": "Editing Added Image",
+  "正在打开打印对话框…": "Opening print dialog…",
+  "正在获取回复…": "Getting response…",
+  "正在生成预览": "Generating preview",
+  "正在添加…": "Adding…",
+  "正则表达式": "Regular Expression",
+  "支持逗号、空格和短横线；页码可不连续": "Commas, spaces, and hyphens are supported; pages need not be consecutive.",
+  "直接调整页面或添加带格式的文字和图片内容。": "Adjust pages directly or add formatted text and images.",
+  "直接调整页面或添加带格式的文字内容。": "Adjust pages directly or add formatted text.",
+  "纸张尺寸": "Paper Size",
+  "纸张设置": "Paper Settings",
+  "纸张预览": "Paper Preview",
+  "指定页面导出": "Export Selected Pages",
+  "智能润色": "AI Polish",
+  "智能润色 (Ctrl/⌘I)": "AI Polish (Ctrl/⌘I)",
+  "智能润色模型设置": "AI Polish Model Settings",
+  "重做": "Redo",
+  "重做 (Ctrl+Y / Ctrl+Shift+Z)": "Redo (Ctrl+Y / Ctrl+Shift+Z)",
+  "主题": "Theme",
+  "状态": "Status",
+  "状态：": "Status: ",
+  "准备就绪": "Ready",
+  "紫色": "Purple",
+  "字号": "Font Size",
+  "字体": "Font",
+  "自定义 OpenAI 兼容": "Custom OpenAI-compatible",
+  "自定义回复": "Custom reply",
+  "自定义回复…": "Custom reply…",
+  "自定义批注颜色": "Custom annotation color",
+  "自定义颜色": "Custom color",
+  "自由批注": "Note",
+  "纵向": "Portrait",
+  "最近打开": "Recent Files",
+  "最近打开的 PDF 会显示在这里": "Recently opened PDFs appear here",
+  "最新版本 ": "Latest version ",
+  "左对齐": "Left",
+  "API 密钥": "API Key",
+  "API Key": "API Key",
+  "Claude / 中转": "Claude / Relay",
+  "Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。": "Use Ctrl/⌘ + wheel to zoom; Alt/Option + arrow keys to change pages.",
+  "OpenAI / 中转": "OpenAI / Relay",
+  "PDF 输出方式": "PDF Output",
+  "PDF 文档标签管理": "PDF document tabs",
+  "PDF 文件": "PDF Files",
+  "PDF 纸张背景": "PDF Paper Background",
+  "PDF 纸张背景仅保存在当前文档的本机偏好中。": "The paper background is stored locally for this PDF only.",
+  "PDFuck 更新检测": "PDFuck Update Check",
+  "PDFuck 将按右侧预览直接生成拼版": "PDFuck will generate the layout shown in the preview."
+}
+
 export type AdditionalInterfaceLanguage = 'ja' | 'ru' | 'es'
 
 /**
@@ -453,10 +877,232 @@ export const phraseTranslations: Record<string, Record<'en' | AdditionalInterfac
   , '页面已调整；可保存 PDF 以保留修改': { en: 'Pages updated. Save the PDF to keep the changes.', ja: 'ページを更新しました。変更を保持するには PDF を保存してください。', ru: 'Страницы обновлены. Сохраните PDF, чтобы сохранить изменения.', es: 'Las páginas se actualizaron. Guarde el PDF para conservar los cambios.' }
   , '找不到这张图片，它可能已经被删除。': { en: 'This image could not be found; it may already have been deleted.', ja: 'この画像が見つかりません。すでに削除された可能性があります。', ru: 'Не удалось найти это изображение: возможно, оно уже удалено.', es: 'No se encontró esta imagen; es posible que ya se haya eliminado.' }
   , '图片的可编辑数据已损坏。': { en: 'The image’s editable data is damaged.', ja: '画像の編集可能データが破損しています。', ru: 'Редактируемые данные изображения повреждены.', es: 'Los datos editables de la imagen están dañados.' }
+  , '双倍': { en: 'Double', ja: '2 倍', ru: 'Двойной', es: 'Doble' }
+  , '应用': { en: 'Apply', ja: '適用', ru: 'Применить', es: 'Aplicar' }
+  , '段落': { en: 'Paragraph', ja: '段落', ru: 'Абзац', es: 'Párrafo' }
+  , '段前': { en: 'Before', ja: '前', ru: 'Перед', es: 'Antes' }
+  , '段后': { en: 'After', ja: '後', ru: 'После', es: 'Después' }
+  , '字符': { en: 'Character', ja: '文字', ru: 'Символы', es: 'Carácter' }
+  , '间距': { en: 'Spacing', ja: '間隔', ru: 'Интервал', es: 'Espaciado' }
+  , '宽度': { en: 'Width', ja: '幅', ru: 'Ширина', es: 'Ancho' }
+  , '可能是只读文件、正被其他程序占用，或所在文件夹禁止写入。': { en: 'The file may be read-only, in use by another application, or stored in a folder that does not allow writing.', ja: 'ファイルが読み取り専用、別のアプリで使用中、または保存先フォルダーへの書き込みが許可されていない可能性があります。', ru: 'Файл может быть доступен только для чтения, использоваться другой программой или находиться в папке без разрешения на запись.', es: 'Es posible que el archivo sea de solo lectura, que otra aplicación lo esté usando o que la carpeta no permita escribir.' }
+  , '请选择其他位置另存，原文件不会被改动。': { en: 'Save to another location; the original file will not be changed.', ja: '別の場所に保存してください。元のファイルは変更されません。', ru: 'Сохраните в другом месте; исходный файл не будет изменён.', es: 'Guarde en otra ubicación; el archivo original no se modificará.' }
+  , '查看引文：': { en: 'View citation: ', ja: '引用を表示: ', ru: 'Просмотреть цитату: ', es: 'Ver cita: ' }
+  , '查看参考文献：': { en: 'View reference: ', ja: '参考文献を表示: ', ru: 'Просмотреть источник: ', es: 'Ver referencia: ' }
+  , '确认关闭': { en: 'Close Anyway', ja: '閉じる', ru: 'Всё равно закрыть', es: 'Cerrar de todos modos' }
+  , '未保存的修改': { en: 'Unsaved Changes', ja: '未保存の変更', ru: 'Несохранённые изменения', es: 'Cambios sin guardar' }
+  , '显示语言': { en: 'Display Language', ja: '表示言語', ru: 'Язык отображения', es: 'Idioma de visualización' }
+  , '选择 PDFuck 的显示语言。': { en: 'Choose the language PDFuck uses for its interface.', ja: 'PDFuck の表示言語を選択します。', ru: 'Выберите язык интерфейса PDFuck.', es: 'Elige el idioma de visualización de PDFuck.' }
+  , '当前配色': { en: 'Current Palette', ja: 'ライト', ru: 'Светлая', es: 'Claro' }
+  , '疑似表格': { en: 'Possible Table', ja: '表の可能性', ru: 'Возможная таблица', es: 'Posible tabla' }
+  , '重复单词': { en: 'Repeated Word', ja: '単語の重複', ru: 'Повтор слова', es: 'Palabra repetida' }
+  , '主谓一致': { en: 'Subject–Verb Agreement', ja: '主語と動詞の一致', ru: 'Согласование подлежащего и сказуемого', es: 'Concordancia entre sujeto y verbo' }
+  , '微软雅黑': { en: 'Microsoft YaHei', ja: 'Microsoft YaHei', ru: 'Microsoft YaHei', es: 'Microsoft YaHei' }
+  , '黑体': { en: 'SimHei', ja: 'SimHei', ru: 'SimHei', es: 'SimHei' }
+  , '宋体': { en: 'SimSun', ja: 'SimSun', ru: 'SimSun', es: 'SimSun' }
+  , '楷体': { en: 'KaiTi', ja: 'KaiTi', ru: 'KaiTi', es: 'KaiTi' }
+  , '仿宋': { en: 'FangSong', ja: 'FangSong', ru: 'FangSong', es: 'FangSong' }
+  , '系统打印失败。': { en: 'System printing failed.', ja: 'システム印刷に失敗しました。', ru: 'Не удалось выполнить системную печать.', es: 'Error de impresión del sistema.' }
+  , '服务未返回详细原因': { en: 'The service did not provide details', ja: 'サービスから詳細な理由が返されませんでした', ru: 'Сервис не предоставил подробностей', es: 'El servicio no proporcionó detalles' }
+  , '未命名.pdf': { en: 'Untitled.pdf', ja: '無題.pdf', ru: 'Без имени.pdf', es: 'Sin título.pdf' }
+  , '[加密] ': { en: '[Encrypted] ', ja: '[暗号化] ', ru: '[Зашифровано] ', es: '[Cifrado] ' }
+  , 'PDF 文件': { en: 'PDF Files', ja: 'PDF ファイル', ru: 'PDF-файлы', es: 'Archivos PDF' }
+  , '可导入的文件': { en: 'Importable Files', ja: 'インポート可能なファイル', ru: 'Импортируемые файлы', es: 'Archivos importables' }
+  , '选择要添加的图片': { en: 'Choose an Image to Add', ja: '追加する画像を選択', ru: 'Добавить изображение', es: 'Elegir imagen para añadir' }
+  , '图片文件': { en: 'Image Files', ja: '画像ファイル', ru: 'Файлы изображений', es: 'Archivos de imagen' }
+  , '导出': { en: 'Export', ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' }
 }
 
 for (const [phrase, translations] of Object.entries(phraseTranslations)) {
   localePhrases.ja[phrase] = translations.ja
   localePhrases.ru[phrase] = translations.ru
   localePhrases.es[phrase] = translations.es
+  englishPhrases[phrase] = translations.en
+}
+
+export function translateCataloguePhrase(language: InterfaceLanguage, source: string): string {
+  if (language === 'zh') return source
+  if (language === 'en') {
+    const translated = englishPhrases[source]
+    if (translated) return translated
+  } else {
+    const translated = localePhrases[language][source]
+    if (translated) return translated
+  }
+  throw new Error(`Missing ${language} interface translation: ${source}`)
+}
+
+export function hasCataloguePhrase(source: string): boolean {
+  return Object.prototype.hasOwnProperty.call(englishPhrases, source)
+}
+
+interface StatusTemplates {
+  failed: string
+  saved: string
+  copied: string
+  preparingPrint: string
+  sentPrint: string
+  preparingExport: string
+  exportedPdf: string
+  exportedPdfs: string
+  exportedFiles: string
+  exporting: string
+  selected: string
+  deletedPages: string
+  annotationAdded: string
+  annotationsAdded: string
+  annotationsDeleted: string
+  replied: string
+  requestFailed: string
+}
+
+const statusTemplates: Record<Exclude<InterfaceLanguage, 'zh'>, StatusTemplates> = {
+  en: {
+    failed: 'Action failed: ', saved: 'Saved · ', copied: 'Copied $1 characters · line breaks removed', preparingPrint: 'Preparing to print $1 pages…', sentPrint: 'Sent $1 pages to the printer', preparingExport: 'Preparing to export $1 pages…', exportedPdf: 'Exported $1 PDF pages as one file · ', exportedPdfs: 'Exported $1 PDF files · ', exportedFiles: 'Exported $1 files · ', exporting: 'Exporting $1/$2 · original page $3…', selected: 'Selected: ', deletedPages: 'Deleted $1 pages', annotationAdded: '$1 added', annotationsAdded: 'Added $2 on $1 pages', annotationsDeleted: 'Deleted $1 annotations. Press Ctrl/⌘Z to undo.', replied: 'Replied: ', requestFailed: 'Request failed ($1): '
+  },
+  ja: {
+    failed: '操作に失敗しました: ', saved: '保存済み · ', copied: '$1 文字をコピーし、改行を削除しました', preparingPrint: '$1 ページを印刷用に準備中…', sentPrint: '$1 ページをプリンターに送信しました', preparingExport: '$1 ページをエクスポート用に準備中…', exportedPdf: '$1 ページを 1 つの PDF としてエクスポートしました · ', exportedPdfs: '$1 個の PDF ファイルをエクスポートしました · ', exportedFiles: '$1 個のファイルをエクスポートしました · ', exporting: '$1/$2 をエクスポート中・元の文書の $3 ページ…', selected: '選択: ', deletedPages: '$1 ページを削除しました', annotationAdded: '$1を追加しました', annotationsAdded: '$1 ページに $2 を追加しました', annotationsDeleted: '$1 件の注釈を削除しました。Ctrl/⌘Z で元に戻せます。', replied: '返信: ', requestFailed: 'リクエストに失敗しました（$1）：'
+  },
+  ru: {
+    failed: 'Сбой операции: ', saved: 'Сохранено · ', copied: 'Скопировано символов: $1 · переносы строк удалены', preparingPrint: 'Подготовка к печати: $1 стр.…', sentPrint: 'На принтер отправлено страниц: $1', preparingExport: 'Подготовка к экспорту: $1 стр.…', exportedPdf: 'Экспортировано $1 страниц в один PDF · ', exportedPdfs: 'Экспортировано PDF-файлов: $1 · ', exportedFiles: 'Экспортировано файлов: $1 · ', exporting: 'Экспорт $1/$2 · исходная страница $3…', selected: 'Выбрано: ', deletedPages: 'Удалено страниц: $1', annotationAdded: '$1 добавлено', annotationsAdded: 'Добавлено $2 на $1 стр.', annotationsDeleted: 'Удалено аннотаций: $1. Нажмите Ctrl/⌘Z, чтобы отменить.', replied: 'Ответ: ', requestFailed: 'Ошибка запроса ($1): '
+  },
+  es: {
+    failed: 'Error de operación: ', saved: 'Guardado · ', copied: '$1 caracteres copiados · saltos de línea eliminados', preparingPrint: 'Preparando impresión de $1 páginas…', sentPrint: 'Se enviaron $1 páginas a la impresora', preparingExport: 'Preparando exportación de $1 páginas…', exportedPdf: 'Se exportaron $1 páginas en un PDF · ', exportedPdfs: 'Se exportaron $1 archivos PDF · ', exportedFiles: 'Se exportaron $1 archivos · ', exporting: 'Exportando $1/$2 · página original $3…', selected: 'Seleccionado: ', deletedPages: 'Se eliminaron $1 páginas', annotationAdded: 'Se añadió $1', annotationsAdded: 'Se añadió $2 en $1 páginas', annotationsDeleted: 'Se eliminaron $1 anotaciones. Pulse Ctrl/⌘Z para deshacer.', replied: 'Respondido: ', requestFailed: 'La solicitud falló ($1): '
+  }
+}
+
+/** Translate status strings kept in document session state without touching user or PDF text. */
+export function translateStoredUiText(language: InterfaceLanguage, value: string): string {
+  if (language === 'zh') return value
+  const translate = (source: string) => translateCataloguePhrase(language, source)
+  if (hasCataloguePhrase(value)) return translate(value)
+  const status = statusTemplates[language]
+  const failed = value.match(/^操作失败：([\s\S]+)$/u)
+  if (failed) return `${status.failed}${translateStoredUiText(language, failed[1] || '')}`
+  const requestFailed = value.match(/^请求失败（([^）]+)）：([\s\S]+)$/u)
+  if (requestFailed) return `${status.requestFailed.replace('$1', requestFailed[1] || '')}${translateStoredUiText(language, requestFailed[2] || '')}`
+  const annotationsAdded = value.match(/^已在 (\d+) 页添加(.+)$/u)
+  if (annotationsAdded) return status.annotationsAdded.replace('$1', annotationsAdded[1] || '').replace('$2', translateStoredUiText(language, annotationsAdded[2] || ''))
+  const filesMerged = value.match(/^已合并 (\d+) 个文件；请确认页面顺序$/u)
+  if (filesMerged) return translate('已合并 {count} 个文件；请确认页面顺序').replace('{count}', filesMerged[1] || '')
+  const newMergedDocument = value.match(/^已新建合并文档并导入 (\d+) 个文件；请确认页面顺序$/u)
+  if (newMergedDocument) return translate('已新建合并文档并导入 {count} 个文件；请确认页面顺序').replace('{count}', newMergedDocument[1] || '')
+  const createdMergedDocument = value.match(/^已创建合并文档，已导入 (\d+) 个文件$/u)
+  if (createdMergedDocument) return translate('已创建合并文档，已导入 {count} 个文件').replace('{count}', createdMergedDocument[1] || '')
+  const mergeComplete = value.match(/^已合并 (\d+) 个文件$/u)
+  if (mergeComplete) return translate('已合并 {count} 个文件').replace('{count}', mergeComplete[1] || '')
+  const annotationAdded = value.match(/^(.+)已添加$/u)
+  if (annotationAdded) return status.annotationAdded.replace('$1', translateStoredUiText(language, annotationAdded[1] || ''))
+  const annotationsDeleted = value.match(/^已删除 (\d+) 条批注，可按 Ctrl\/⌘Z 撤销$/u)
+  if (annotationsDeleted) return status.annotationsDeleted.replace('$1', annotationsDeleted[1] || '')
+  const replied = value.match(/^已回复：([\s\S]+)$/u)
+  if (replied) return `${status.replied}${translateStoredUiText(language, replied[1] || '')}`
+  if (value.includes(' · ')) {
+    const chunks = value.split(' · ')
+    const localized = chunks.map((chunk) => hasCataloguePhrase(chunk) ? translate(chunk) : chunk)
+    if (localized.some((chunk, index) => chunk !== chunks[index])) return localized.join(' · ')
+  }
+  return value
+    .replace(/^操作失败：/, status.failed)
+    .replace(/^已保存 · /, status.saved)
+    .replace(/^已复制 (\d+) 个字符 · 已自动去除回行$/, status.copied)
+    .replace(/^正在准备打印 (\d+) 页…$/, status.preparingPrint)
+    .replace(/^已发送 (\d+) 页到打印机$/, status.sentPrint)
+    .replace(/^正在准备导出 (\d+) 页…$/, status.preparingExport)
+    .replace(/^已合并导出 (\d+) 页 PDF · /, status.exportedPdf)
+    .replace(/^已导出 (\d+) 个 PDF 文件 · /, status.exportedPdfs)
+    .replace(/^已导出 (\d+) 个文件 · /, status.exportedFiles)
+    .replace(/^正在导出 (\d+)\/(\d+) · 原文档第 (\d+) 页…$/, status.exporting)
+    .replace(/^已选择：/, status.selected)
+    .replace(/^已删除 (\d+) 个页面$/, status.deletedPages)
+}
+
+export const parameterMessages = {
+  zh: {
+    'page.selected': '已选择 {count} 页', 'page.count': '{count} 页', 'page.action': '{action}所选 {count} 页', 'page.print': '打印', 'page.export': '导出',
+    'print.overview': '{pages} 个文档页面 · {sheets} 张纸', 'print.layout': '{pages} 页将使用 {sheets} 张纸', 'print.perSheet': '{count} 页/张', 'print.onePerSheet': '1 页/张', 'print.summary': '{size} · {orientation} · {duplex}',
+    'annotation.selected': '已选 {count}', 'annotation.current': '当前批注',
+    'crop.label': '裁切区域', 'crop.confirm': '确认范围', 'crop.confirmMessage': '将当前页面裁切为框选区域？',
+    'theme.set': '设置{label}', 'theme.dialog': '{label}颜色面板', 'theme.close': '关闭{label}颜色面板', 'theme.hex': '{label} HEX 色值',
+    'close.app': '有 {count} 个文档包含未保存的修改，确定关闭 PDFuck 吗？', 'close.document': '{name} 有未保存的修改，确定关闭这个文档标签吗？',
+    'page.deleteSummary': '将删除 {remove} 页，保留 {keep} 页。', 'page.rangeInvalid': '无法识别：{value}', 'page.selectForAction': '请至少选择一页进行{action}', 'page.preview': '第 {page} 页预览', 'page.managerSummary': '将保留 {count} 页，页面顺序和删除操作将一次性应用。', 'page.managerDisplay': '显示方式', 'page.managerThumbnails': '缩略图', 'page.managerCompact': '紧凑列表', 'page.managerPreviousGroup': '上一组页面', 'page.managerNextGroup': '下一组页面', 'page.managerRange': '显示第 {start}-{end} 页，共 {count} 页', 'page.managerJump': '跳至原页', 'page.managerJumpPlaceholder': '原页码', 'page.managerJumpAction': '跳转', 'page.managerPerformanceHint': '大文档默认使用紧凑列表；缩略图仅为当前组按需生成。', 'page.managerDragHandle': '拖动第 {position} 位页面以调整顺序', 'page.managerOriginal': '原页面 {page}',
+    'page.managerTitle': '页面管理', 'page.managerDescription': '拖动页面调整顺序，选择页面批量删除；所有更改将在确认后一起应用。', 'page.managerStatus': '页面调整概况', 'page.managerTotal': '总页数', 'page.managerRemoveCount': '待删除', 'page.managerRemaining': '将保留', 'page.managerClose': '关闭页面管理',
+    'page.managerMarkCurrent': '标记当前页删除', 'page.managerClearRemoval': '清除删除标记', 'page.managerReset': '重置全部调整', 'page.managerGroup': '第 {current}/{count} 组', 'page.managerStoryboard': '页面故事板', 'page.managerOnDemandHint': '每组按需生成 {count} 页预览，切换组时自动释放上一组。', 'page.managerDragHint': '拖动排序 · 点击查看大图', 'page.managerPosition': '位置 {position}',
+    'page.managerRestorePage': '取消删除此页', 'page.managerRemovePage': '删除此页', 'page.managerGeneratingPreview': '正在生成预览…', 'page.managerOriginalShort': '原 {page}', 'page.managerCurrentBadge': '当前页', 'page.managerMarkedForRemoval': '待删除', 'page.managerInspector': '页面详情', 'page.managerFocusedPage': '第 {position} 位',
+    'page.managerFinalPosition': '最终位置', 'page.managerOriginalPage': '原始页码', 'page.managerMoveTo': '移至指定位置', 'page.managerMoveAction': '移动', 'page.managerMoveHint': '输入 1 到 {count} 之间的位置，可跨组移动。', 'page.managerKeyboardHint': '聚焦拖动条后，可使用方向键逐页移动。', 'page.managerDraggingPage': '正在移动原页面 {page}',
+    'page.managerInvalid': '不能删除全部页面', 'page.managerInvalidHint': '请至少保留一页后再应用。', 'page.managerSummaryChanged': '将保留 {keep} 页，删除 {remove} 页', 'page.managerSummaryClean': '尚未进行页面调整', 'page.managerReordered': '页面顺序已调整；删除与排序会同时应用。', 'page.managerReady': '拖动页面排序，或选择不需要的页面。', 'page.managerCancel': '取消', 'page.managerApply': '应用页面调整',
+    'search.results': '找到 {count} 个结果', 'search.page': '第 {page} 页', 'insight.items': '{count} 项', 'insight.page': '第 {page} 页 · {label}', 'footer.page': '{pages} 页 · 第 {page} 页',
+    'annotation.count': '{count} 条批注', 'annotation.pageLabel': '第 {page} 页批注', 'annotation.settings': '设置第 {page} 页批注', 'annotation.jumpToFirst': '跳转到第一条{status}批注', 'annotation.noneForStatus': '没有{status}批注', 'annotation.delete': '删除批注', 'annotation.deleteMany': '删除 {count} 条批注', 'annotation.replyTitle': '{label}：{content}'
+    , 'update.availableTitle': '发现新版本 {version}', 'update.description': '你正在使用 {current}。新版安装包已经发布，可前往 GitHub Releases 下载。', 'update.current': '当前版本 {version}', 'update.latest': '最新版本 {version}'
+  },
+  en: {
+    'page.selected': '{count} pages selected', 'page.count': '{count} pages', 'page.action': '{action} Selected {count} Pages', 'page.print': 'Print', 'page.export': 'Export',
+    'print.overview': '{pages} document pages · {sheets} sheets', 'print.layout': '{pages} pages will use {sheets} sheets', 'print.perSheet': '{count} pages/sheet', 'print.onePerSheet': '1 page/sheet', 'print.summary': '{size} · {orientation} · {duplex}',
+    'annotation.selected': '{count} selected', 'annotation.current': 'Current Annotation',
+    'crop.label': 'Crop Area', 'crop.confirm': 'Confirm Area', 'crop.confirmMessage': 'Crop the current page to the selected area?',
+    'theme.set': 'Set {label}', 'theme.dialog': '{label} Color Picker', 'theme.close': 'Close {label} Color Picker', 'theme.hex': '{label} HEX value',
+    'close.app': '{count} document(s) have unsaved changes. Close PDFuck?', 'close.document': '{name} has unsaved changes. Close this document tab?',
+    'page.deleteSummary': 'Delete {remove} pages and keep {keep} pages.', 'page.rangeInvalid': 'Unrecognized: {value}', 'page.selectForAction': 'Select at least one page to {action}', 'page.preview': 'Preview of page {page}', 'page.managerSummary': 'Will keep {count} page(s); reordering and removal are applied together.', 'page.managerDisplay': 'Display', 'page.managerThumbnails': 'Thumbnails', 'page.managerCompact': 'Compact List', 'page.managerPreviousGroup': 'Previous Page Group', 'page.managerNextGroup': 'Next Page Group', 'page.managerRange': 'Showing pages {start}-{end} of {count}', 'page.managerJump': 'Go to Original', 'page.managerJumpPlaceholder': 'Original page', 'page.managerJumpAction': 'Go', 'page.managerPerformanceHint': 'Large documents open in Compact List; thumbnails are generated only for the current group.', 'page.managerDragHandle': 'Drag page at position {position} to reorder', 'page.managerOriginal': 'Original page {page}',
+    'page.managerTitle': 'Manage Pages', 'page.managerDescription': 'Drag pages to reorder them or select several to remove. All changes are applied together after confirmation.', 'page.managerStatus': 'Page change summary', 'page.managerTotal': 'Total', 'page.managerRemoveCount': 'Remove', 'page.managerRemaining': 'Remaining', 'page.managerClose': 'Close page manager',
+    'page.managerMarkCurrent': 'Remove Current Page', 'page.managerClearRemoval': 'Clear Removal Marks', 'page.managerReset': 'Reset All Changes', 'page.managerGroup': 'Group {current} of {count}', 'page.managerStoryboard': 'Page Storyboard', 'page.managerOnDemandHint': 'Previews are generated for {count} pages at a time and the previous group is released.', 'page.managerDragHint': 'Drag to reorder · Click for large preview', 'page.managerPosition': 'Position {position}',
+    'page.managerRestorePage': 'Keep This Page', 'page.managerRemovePage': 'Remove This Page', 'page.managerGeneratingPreview': 'Generating preview…', 'page.managerOriginalShort': 'Original {page}', 'page.managerCurrentBadge': 'Current Page', 'page.managerMarkedForRemoval': 'Will be removed', 'page.managerInspector': 'Page Details', 'page.managerFocusedPage': 'Position {position}',
+    'page.managerFinalPosition': 'Final position', 'page.managerOriginalPage': 'Original page', 'page.managerMoveTo': 'Move to position', 'page.managerMoveAction': 'Move', 'page.managerMoveHint': 'Enter a position from 1 to {count} to move across groups.', 'page.managerKeyboardHint': 'Focus a drag bar and use the arrow keys to move one page at a time.', 'page.managerDraggingPage': 'Moving original page {page}',
+    'page.managerInvalid': 'Every page cannot be removed', 'page.managerInvalidHint': 'Keep at least one page before applying changes.', 'page.managerSummaryChanged': 'Keep {keep} pages and remove {remove}', 'page.managerSummaryClean': 'No page changes yet', 'page.managerReordered': 'Page order changed; reordering and removal will be applied together.', 'page.managerReady': 'Drag pages to reorder, or select pages you no longer need.', 'page.managerCancel': 'Cancel', 'page.managerApply': 'Apply Page Changes',
+    'search.results': '{count} results found', 'search.page': 'Page {page}', 'insight.items': '{count} items', 'insight.page': 'Page {page} · {label}', 'footer.page': '{pages} pages · Page {page}',
+    'annotation.count': '{count} annotations', 'annotation.pageLabel': 'Annotation on page {page}', 'annotation.settings': 'Configure annotation on page {page}', 'annotation.jumpToFirst': 'Jump to the first {status} annotation', 'annotation.noneForStatus': 'No {status} annotations', 'annotation.delete': 'Delete Annotation', 'annotation.deleteMany': 'Delete {count} Annotations', 'annotation.replyTitle': '{label}: {content}'
+    , 'update.availableTitle': 'Version {version} is available', 'update.description': 'You are using {current}. The new installer is available on GitHub Releases.', 'update.current': 'Current version {version}', 'update.latest': 'Latest version {version}'
+  },
+  ja: {
+    'page.selected': '{count} ページを選択', 'page.count': '{count} ページ', 'page.action': '選択した {count} ページを{action}', 'page.print': '印刷', 'page.export': 'エクスポート',
+    'print.overview': '文書 {pages} ページ・用紙 {sheets} 枚', 'print.layout': '{pages} ページを {sheets} 枚の用紙に印刷', 'print.perSheet': '1 枚に {count} ページ', 'print.onePerSheet': '1 枚に 1 ページ', 'print.summary': '{size}・{orientation}・{duplex}',
+    'annotation.selected': '{count} 件を選択', 'annotation.current': '現在の注釈', 'crop.label': 'トリミング範囲', 'crop.confirm': '範囲を確定', 'crop.confirmMessage': '現在のページを選択範囲にトリミングしますか？',
+    'theme.set': '{label}を設定', 'theme.dialog': '{label}のカラーピッカー', 'theme.close': '{label}のカラーピッカーを閉じる', 'theme.hex': '{label} の HEX 値',
+    'close.app': '未保存の変更がある文書が {count} 件あります。PDFuck を閉じますか？', 'close.document': '{name} には未保存の変更があります。この文書タブを閉じますか？',
+    'page.deleteSummary': '{remove} ページを削除し、{keep} ページを保持します。', 'page.rangeInvalid': '認識できません: {value}', 'page.selectForAction': '{action}するには少なくとも 1 ページを選択してください', 'page.preview': '{page} ページのプレビュー', 'page.managerSummary': '{count} ページを保持します。並べ替えと削除はまとめて適用されます。', 'page.managerDisplay': '表示', 'page.managerThumbnails': 'サムネイル', 'page.managerCompact': 'コンパクト一覧', 'page.managerPreviousGroup': '前のページ群', 'page.managerNextGroup': '次のページ群', 'page.managerRange': '{count} ページ中 {start}-{end} ページを表示', 'page.managerJump': '元のページへ', 'page.managerJumpPlaceholder': '元のページ番号', 'page.managerJumpAction': '移動', 'page.managerPerformanceHint': '大きな文書はコンパクト一覧で開きます。サムネイルは現在のグループだけ生成されます。', 'page.managerDragHandle': '{position} 番目のページをドラッグして並べ替え', 'page.managerOriginal': '元のページ {page}',
+    'page.managerTitle': 'ページを管理', 'page.managerDescription': 'ページをドラッグして並べ替え、複数選択して削除できます。変更は確定後にまとめて適用されます。', 'page.managerStatus': 'ページ変更の概要', 'page.managerTotal': '総数', 'page.managerRemoveCount': '削除予定', 'page.managerRemaining': '保持', 'page.managerClose': 'ページ管理を閉じる',
+    'page.managerMarkCurrent': '現在のページを削除', 'page.managerClearRemoval': '削除マークを解除', 'page.managerReset': 'すべてリセット', 'page.managerGroup': '{current}/{count} グループ', 'page.managerStoryboard': 'ページストーリーボード', 'page.managerOnDemandHint': '{count} ページずつプレビューを生成し、前のグループは解放します。', 'page.managerDragHint': 'ドラッグで並べ替え・クリックで拡大', 'page.managerPosition': '位置 {position}',
+    'page.managerRestorePage': 'このページを保持', 'page.managerRemovePage': 'このページを削除', 'page.managerGeneratingPreview': 'プレビューを生成中…', 'page.managerOriginalShort': '元 {page}', 'page.managerCurrentBadge': '現在のページ', 'page.managerMarkedForRemoval': '削除予定', 'page.managerInspector': 'ページ詳細', 'page.managerFocusedPage': '{position} 番目',
+    'page.managerFinalPosition': '最終位置', 'page.managerOriginalPage': '元のページ番号', 'page.managerMoveTo': '指定位置へ移動', 'page.managerMoveAction': '移動', 'page.managerMoveHint': '1 から {count} の位置を入力するとグループをまたいで移動できます。', 'page.managerKeyboardHint': 'ドラッグバーにフォーカスし、矢印キーで 1 ページずつ移動できます。', 'page.managerDraggingPage': '元のページ {page} を移動中',
+    'page.managerInvalid': 'すべてのページは削除できません', 'page.managerInvalidHint': '適用する前に少なくとも 1 ページ残してください。', 'page.managerSummaryChanged': '{keep} ページを保持し、{remove} ページを削除', 'page.managerSummaryClean': 'ページ変更はまだありません', 'page.managerReordered': 'ページ順を変更しました。並べ替えと削除をまとめて適用します。', 'page.managerReady': 'ページをドラッグして並べ替えるか、不要なページを選択してください。', 'page.managerCancel': 'キャンセル', 'page.managerApply': 'ページ変更を適用',
+    'search.results': '{count} 件の結果', 'search.page': '{page} ページ', 'insight.items': '{count} 件', 'insight.page': '{page} ページ・{label}', 'footer.page': '{pages} ページ・{page} ページ目',
+    'annotation.count': '{count} 件の注釈', 'annotation.pageLabel': '{page} ページの注釈', 'annotation.settings': '{page} ページの注釈を設定', 'annotation.jumpToFirst': '最初の「{status}」注釈へ移動', 'annotation.noneForStatus': '「{status}」の注釈はありません', 'annotation.delete': '注釈を削除', 'annotation.deleteMany': '{count} 件の注釈を削除', 'annotation.replyTitle': '{label}：{content}'
+    , 'update.availableTitle': '新しいバージョン {version}', 'update.description': '現在のバージョンは {current} です。新しいインストーラーは GitHub Releases からダウンロードできます。', 'update.current': '現在のバージョン {version}', 'update.latest': '最新バージョン {version}'
+  },
+  ru: {
+    'page.selected': 'Выбрано страниц: {count}', 'page.count': '{count} стр.', 'page.action': '{action} выбранные страницы ({count})', 'page.print': 'Печать', 'page.export': 'Экспорт',
+    'print.overview': 'Страниц документа: {pages} · листов: {sheets}', 'print.layout': '{pages} страниц будет напечатано на {sheets} листах', 'print.perSheet': '{count} стр./лист', 'print.onePerSheet': '1 стр./лист', 'print.summary': '{size} · {orientation} · {duplex}',
+    'annotation.selected': 'Выбрано: {count}', 'annotation.current': 'Текущая аннотация', 'crop.label': 'Область обрезки', 'crop.confirm': 'Подтвердить область', 'crop.confirmMessage': 'Обрезать текущую страницу по выбранной области?',
+    'theme.set': 'Настроить {label}', 'theme.dialog': 'Выбор цвета: {label}', 'theme.close': 'Закрыть выбор цвета: {label}', 'theme.hex': 'HEX-значение: {label}',
+    'close.app': '{count} документ(ов) содержит несохранённые изменения. Закрыть PDFuck?', 'close.document': 'В документе {name} есть несохранённые изменения. Закрыть эту вкладку?',
+    'page.deleteSummary': 'Удалить страниц: {remove}; оставить: {keep}.', 'page.rangeInvalid': 'Не распознано: {value}', 'page.selectForAction': 'Выберите хотя бы одну страницу, чтобы {action}', 'page.preview': 'Предпросмотр страницы {page}', 'page.managerSummary': 'Будет сохранено страниц: {count}; сортировка и удаление применятся вместе.', 'page.managerDisplay': 'Вид', 'page.managerThumbnails': 'Миниатюры', 'page.managerCompact': 'Компактный список', 'page.managerPreviousGroup': 'Предыдущая группа страниц', 'page.managerNextGroup': 'Следующая группа страниц', 'page.managerRange': 'Показаны страницы {start}-{end} из {count}', 'page.managerJump': 'К исходной странице', 'page.managerJumpPlaceholder': 'Исходная страница', 'page.managerJumpAction': 'Перейти', 'page.managerPerformanceHint': 'Большие документы открываются в компактном списке; миниатюры создаются только для текущей группы.', 'page.managerDragHandle': 'Перетащить страницу в позиции {position}', 'page.managerOriginal': 'Исходная страница {page}',
+    'page.managerTitle': 'Управление страницами', 'page.managerDescription': 'Перетаскивайте страницы для сортировки или выбирайте несколько для удаления. Все изменения применяются после подтверждения.', 'page.managerStatus': 'Сводка изменений страниц', 'page.managerTotal': 'Всего', 'page.managerRemoveCount': 'Удалить', 'page.managerRemaining': 'Останется', 'page.managerClose': 'Закрыть управление страницами',
+    'page.managerMarkCurrent': 'Удалить текущую страницу', 'page.managerClearRemoval': 'Снять метки удаления', 'page.managerReset': 'Сбросить все изменения', 'page.managerGroup': 'Группа {current} из {count}', 'page.managerStoryboard': 'Раскадровка страниц', 'page.managerOnDemandHint': 'Предпросмотр создаётся для {count} страниц за раз; предыдущая группа освобождается.', 'page.managerDragHint': 'Перетащите для сортировки · Нажмите для увеличения', 'page.managerPosition': 'Позиция {position}',
+    'page.managerRestorePage': 'Оставить эту страницу', 'page.managerRemovePage': 'Удалить эту страницу', 'page.managerGeneratingPreview': 'Создание предпросмотра…', 'page.managerOriginalShort': 'Исх. {page}', 'page.managerCurrentBadge': 'Текущая страница', 'page.managerMarkedForRemoval': 'Будет удалена', 'page.managerInspector': 'Сведения о странице', 'page.managerFocusedPage': 'Позиция {position}',
+    'page.managerFinalPosition': 'Итоговая позиция', 'page.managerOriginalPage': 'Исходная страница', 'page.managerMoveTo': 'Переместить в позицию', 'page.managerMoveAction': 'Переместить', 'page.managerMoveHint': 'Введите позицию от 1 до {count}, чтобы переместить между группами.', 'page.managerKeyboardHint': 'Сфокусируйте панель перетаскивания и используйте стрелки для пошагового перемещения.', 'page.managerDraggingPage': 'Перемещение исходной страницы {page}',
+    'page.managerInvalid': 'Нельзя удалить все страницы', 'page.managerInvalidHint': 'Перед применением оставьте хотя бы одну страницу.', 'page.managerSummaryChanged': 'Останется страниц: {keep}; удалить: {remove}', 'page.managerSummaryClean': 'Изменений страниц пока нет', 'page.managerReordered': 'Порядок страниц изменён; сортировка и удаление будут применены вместе.', 'page.managerReady': 'Перетаскивайте страницы или выберите ненужные страницы.', 'page.managerCancel': 'Отмена', 'page.managerApply': 'Применить изменения',
+    'search.results': 'Найдено результатов: {count}', 'search.page': 'Страница {page}', 'insight.items': 'Элементов: {count}', 'insight.page': 'Страница {page} · {label}', 'footer.page': 'Страниц: {pages} · Страница {page}',
+    'annotation.count': 'Аннотаций: {count}', 'annotation.pageLabel': 'Аннотация на странице {page}', 'annotation.settings': 'Настроить аннотацию на странице {page}', 'annotation.jumpToFirst': 'Перейти к первой аннотации «{status}»', 'annotation.noneForStatus': 'Нет аннотаций «{status}»', 'annotation.delete': 'Удалить аннотацию', 'annotation.deleteMany': 'Удалить {count} аннотаций', 'annotation.replyTitle': '{label}: {content}'
+    , 'update.availableTitle': 'Доступна версия {version}', 'update.description': 'Установлена версия {current}. Новый установщик доступен на GitHub Releases.', 'update.current': 'Текущая версия {version}', 'update.latest': 'Последняя версия {version}'
+  },
+  es: {
+    'page.selected': '{count} páginas seleccionadas', 'page.count': '{count} pág.', 'page.action': '{action} las {count} páginas seleccionadas', 'page.print': 'Imprimir', 'page.export': 'Exportar',
+    'print.overview': '{pages} páginas del documento · {sheets} hojas', 'print.layout': '{pages} páginas usarán {sheets} hojas', 'print.perSheet': '{count} pág./hoja', 'print.onePerSheet': '1 pág./hoja', 'print.summary': '{size} · {orientation} · {duplex}',
+    'annotation.selected': '{count} seleccionadas', 'annotation.current': 'Anotación actual', 'crop.label': 'Área de recorte', 'crop.confirm': 'Confirmar área', 'crop.confirmMessage': '¿Recortar la página actual al área seleccionada?',
+    'theme.set': 'Configurar {label}', 'theme.dialog': 'Selector de color: {label}', 'theme.close': 'Cerrar selector de color: {label}', 'theme.hex': 'Valor HEX de {label}',
+    'close.app': '{count} documento(s) tiene(n) cambios sin guardar. ¿Cerrar PDFuck?', 'close.document': '{name} tiene cambios sin guardar. ¿Cerrar esta pestaña de documento?',
+    'page.deleteSummary': 'Se eliminarán {remove} páginas y se conservarán {keep}.', 'page.rangeInvalid': 'No reconocido: {value}', 'page.selectForAction': 'Seleccione al menos una página para {action}', 'page.preview': 'Vista previa de la página {page}', 'page.managerSummary': 'Se conservarán {count} página(s); el orden y las eliminaciones se aplicarán juntos.', 'page.managerDisplay': 'Vista', 'page.managerThumbnails': 'Miniaturas', 'page.managerCompact': 'Lista compacta', 'page.managerPreviousGroup': 'Grupo de páginas anterior', 'page.managerNextGroup': 'Siguiente grupo de páginas', 'page.managerRange': 'Mostrando páginas {start}-{end} de {count}', 'page.managerJump': 'Ir al original', 'page.managerJumpPlaceholder': 'Página original', 'page.managerJumpAction': 'Ir', 'page.managerPerformanceHint': 'Los documentos grandes se abren en Lista compacta; las miniaturas se generan solo para el grupo actual.', 'page.managerDragHandle': 'Arrastre la página en la posición {position}', 'page.managerOriginal': 'Página original {page}',
+    'page.managerTitle': 'Gestionar páginas', 'page.managerDescription': 'Arrastre páginas para reordenarlas o seleccione varias para eliminarlas. Todos los cambios se aplican tras confirmar.', 'page.managerStatus': 'Resumen de cambios de página', 'page.managerTotal': 'Total', 'page.managerRemoveCount': 'Eliminar', 'page.managerRemaining': 'Restantes', 'page.managerClose': 'Cerrar gestión de páginas',
+    'page.managerMarkCurrent': 'Eliminar página actual', 'page.managerClearRemoval': 'Borrar marcas de eliminación', 'page.managerReset': 'Restablecer cambios', 'page.managerGroup': 'Grupo {current} de {count}', 'page.managerStoryboard': 'Guion gráfico de páginas', 'page.managerOnDemandHint': 'Las vistas previas se generan para {count} páginas cada vez y se libera el grupo anterior.', 'page.managerDragHint': 'Arrastre para ordenar · Pulse para ampliar', 'page.managerPosition': 'Posición {position}',
+    'page.managerRestorePage': 'Conservar esta página', 'page.managerRemovePage': 'Eliminar esta página', 'page.managerGeneratingPreview': 'Generando vista previa…', 'page.managerOriginalShort': 'Original {page}', 'page.managerCurrentBadge': 'Página actual', 'page.managerMarkedForRemoval': 'Se eliminará', 'page.managerInspector': 'Detalles de página', 'page.managerFocusedPage': 'Posición {position}',
+    'page.managerFinalPosition': 'Posición final', 'page.managerOriginalPage': 'Página original', 'page.managerMoveTo': 'Mover a la posición', 'page.managerMoveAction': 'Mover', 'page.managerMoveHint': 'Introduzca una posición entre 1 y {count} para mover entre grupos.', 'page.managerKeyboardHint': 'Enfoque la barra de arrastre y use las flechas para mover una página cada vez.', 'page.managerDraggingPage': 'Moviendo la página original {page}',
+    'page.managerInvalid': 'No se pueden eliminar todas las páginas', 'page.managerInvalidHint': 'Conserve al menos una página antes de aplicar los cambios.', 'page.managerSummaryChanged': 'Conservar {keep} páginas y eliminar {remove}', 'page.managerSummaryClean': 'Aún no hay cambios de página', 'page.managerReordered': 'El orden cambió; la reordenación y eliminación se aplicarán juntas.', 'page.managerReady': 'Arrastre páginas para ordenar o seleccione las que ya no necesita.', 'page.managerCancel': 'Cancelar', 'page.managerApply': 'Aplicar cambios',
+    'search.results': 'Se encontraron {count} resultados', 'search.page': 'Página {page}', 'insight.items': '{count} elementos', 'insight.page': 'Página {page} · {label}', 'footer.page': '{pages} páginas · Página {page}',
+    'annotation.count': '{count} anotaciones', 'annotation.pageLabel': 'Anotación de la página {page}', 'annotation.settings': 'Configurar anotación de la página {page}', 'annotation.jumpToFirst': 'Ir a la primera anotación «{status}»', 'annotation.noneForStatus': 'No hay anotaciones «{status}»', 'annotation.delete': 'Eliminar anotación', 'annotation.deleteMany': 'Eliminar {count} anotaciones', 'annotation.replyTitle': '{label}: {content}'
+    , 'update.availableTitle': 'Versión {version} disponible', 'update.description': 'Está usando la versión {current}. El nuevo instalador está disponible en GitHub Releases.', 'update.current': 'Versión actual {version}', 'update.latest': 'Última versión {version}'
+  }
+} as const
+export type TranslationKey = keyof typeof parameterMessages.zh
+
+export function translateMessage(language: InterfaceLanguage, key: TranslationKey, values: Record<string, string | number> = {}): string {
+  return parameterMessages[language][key].replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))
 }

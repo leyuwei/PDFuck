@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, SaveAsRequiredDialog } from './Dialogs'
+import { AnnotationDialog, ConfirmDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, SaveAsRequiredDialog } from './Dialogs'
 import { setInterfaceLanguage } from '../lib/i18n'
 
 vi.mock('../lib/pdfjs', () => ({
@@ -56,6 +56,22 @@ describe('AnnotationDialog focus', () => {
     expect(container.textContent).toContain('你的修改仍保留在当前窗口')
     await act(async () => { ([...container.querySelectorAll('button')].find((button) => button.textContent === '选择位置另存…') as HTMLButtonElement).click() })
     expect(onSaveAs).toHaveBeenCalledOnce()
+    await act(async () => root.unmount())
+  })
+
+  it('makes cancelling the safe default when closing with unsaved changes', async () => {
+    const onCancel = vi.fn()
+    const onConfirm = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<ConfirmDialog message="尚有未保存的修改" destructive onCancel={onCancel} onConfirm={onConfirm} />))
+    const cancel = [...container.querySelectorAll('button')].find((button) => button.textContent === '取消') as HTMLButtonElement
+    const confirm = [...container.querySelectorAll('button')].find((button) => button.textContent === '确认关闭') as HTMLButtonElement
+    expect(cancel.classList.contains('unsaved-close-cancel')).toBe(true)
+    expect(confirm.classList.contains('unsaved-close-confirm')).toBe(true)
+    expect(document.activeElement).toBe(cancel)
+    await act(async () => cancel.click())
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onConfirm).not.toHaveBeenCalled()
     await act(async () => root.unmount())
   })
 

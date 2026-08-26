@@ -7,7 +7,8 @@ import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
-import { nativeWindowTitle, type NativeInterfaceLanguage } from '../shared/window-session'
+import { nativeWindowTitle } from '../shared/window-session'
+import { translateCataloguePhrase, type InterfaceLanguage } from '../shared/i18n-catalogue'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
 import { requiresSaveAs } from './save-pdf'
@@ -18,7 +19,7 @@ interface MainWindowSession extends WindowDocumentState {
   detachedDocument?: DetachedPdfDocument
   initialDelivered: boolean
   closeApproved: boolean
-  interfaceLanguage: NativeInterfaceLanguage
+  interfaceLanguage: InterfaceLanguage
 }
 
 interface PendingDocumentTransfer {
@@ -29,22 +30,7 @@ interface PendingDocumentTransfer {
   expiry: ReturnType<typeof setTimeout>
 }
 
-function nativeText(language: NativeInterfaceLanguage, chinese: string, english: string): string {
-  if (language === 'zh') return chinese
-  if (language === 'en') return english
-  const translations: Record<string, Record<Exclude<NativeInterfaceLanguage, 'zh' | 'en'>, string>> = {
-    '打开 PDF': { ja: 'PDF を開く', ru: 'Открыть PDF', es: 'Abrir PDF' },
-    'PDF 文件': { ja: 'PDF ファイル', ru: 'PDF-файлы', es: 'Archivos PDF' },
-    '从文件合并 PDF': { ja: 'ファイルから PDF を結合', ru: 'Объединить PDF из файлов', es: 'Combinar PDF desde archivos' },
-    '可导入的文件': { ja: 'インポート可能なファイル', ru: 'Импортируемые файлы', es: 'Archivos importables' },
-    '选择要添加的图片': { ja: '追加する画像を選択', ru: 'Добавить изображение', es: 'Elegir imagen para añadir' },
-    '图片文件': { ja: '画像ファイル', ru: 'Файлы изображений', es: 'Archivos de imagen' },
-    '保存 PDF': { ja: 'PDF を保存', ru: 'Сохранить PDF', es: 'Guardar PDF' },
-    '导出': { ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' },
-    '打印': { ja: '印刷', ru: 'Печать', es: 'Imprimir' }
-  }
-  return translations[chinese]?.[language] || english
-}
+function nativeText(language: InterfaceLanguage, source: string): string { return translateCataloguePhrase(language, source) }
 
 let mainSession: MainWindowSession | null = null
 const windowSessions = new Map<number, MainWindowSession>()
@@ -361,7 +347,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
   await writeFile(temporary, request.data)
   const window = new BrowserWindow({
     width: 900, height: 720, show: false, skipTaskbar: true, parent, modal: true, autoHideMenuBar: true,
-    title: `${nativeText(requireWindowSession(parent.webContents).interfaceLanguage, '打印', 'Print')} - ${basename(request.name || 'document.pdf')}`,
+    title: `${nativeText(requireWindowSession(parent.webContents).interfaceLanguage, '打印')} - ${basename(request.name || 'document.pdf')}`,
     webPreferences: { plugins: true, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
   })
   printWindow = window
@@ -518,7 +504,7 @@ app.whenReady().then(() => {
   void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
-    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, '打开 PDF', 'Open PDF'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
+    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, '打开 PDF'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件'), extensions: ['pdf'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -546,18 +532,18 @@ app.whenReady().then(() => {
   ipcMain.handle('pdf:choose-imports', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, {
-      title: nativeText(session.interfaceLanguage, '从文件合并 PDF', 'Merge PDF from Files'),
+      title: nativeText(session.interfaceLanguage, '从文件合并 PDF'),
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件', 'Importable Files'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps'] }]
+      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps'] }]
     })
     return result.canceled ? null : openPdfImports(result.filePaths)
   })
   ipcMain.handle('image:choose', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, {
-      title: nativeText(session.interfaceLanguage, '选择要添加的图片', 'Choose an Image to Add'),
+      title: nativeText(session.interfaceLanguage, '选择要添加的图片'),
       properties: ['openFile'],
-      filters: [{ name: nativeText(session.interfaceLanguage, '图片文件', 'Image Files'), extensions: ['png', 'jpg', 'jpeg'] }]
+      filters: [{ name: nativeText(session.interfaceLanguage, '图片文件'), extensions: ['png', 'jpg', 'jpeg'] }]
     })
     return result.canceled ? null : openImageImport(result.filePaths[0])
   })
@@ -616,7 +602,7 @@ app.whenReady().then(() => {
     const window = session.window
     let target = request.saveAs ? undefined : request.currentPath
     if (!target) {
-      const result = await dialog.showSaveDialog(window, { title: nativeText(session.interfaceLanguage, '保存 PDF', 'Save PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件', 'PDF Files'), extensions: ['pdf'] }] })
+      const result = await dialog.showSaveDialog(window, { title: nativeText(session.interfaceLanguage, '保存 PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件'), extensions: ['pdf'] }] })
       if (result.canceled || !result.filePath) return { status: 'canceled' as const }
       target = result.filePath
     }
@@ -636,7 +622,7 @@ app.whenReady().then(() => {
     const window = session.window
     if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
     const stem = parse(request.sourceName || 'document').name
-    const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, '导出', 'Export')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
+    const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, '导出')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null
     const selected = parse(result.filePath), many = request.pages.length > 1
     const outputs: string[] = []

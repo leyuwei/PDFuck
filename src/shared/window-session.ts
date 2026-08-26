@@ -1,23 +1,15 @@
 import type { WindowDocumentState } from './contracts'
+import { translateCataloguePhrase, type InterfaceLanguage } from './i18n-catalogue'
 
 export const EMPTY_WINDOW_NAME = '新标签'
-export type NativeInterfaceLanguage = 'zh' | 'en' | 'ja' | 'ru' | 'es'
 
-const nativeLabels: Record<NativeInterfaceLanguage, { empty: string; untitled: string; encrypted: string; unsaved: string }> = {
-  zh: { empty: '新标签', untitled: '未命名.pdf', encrypted: '[加密] ', unsaved: ' • 未保存' },
-  en: { empty: 'New Tab', untitled: 'Untitled.pdf', encrypted: '[Encrypted] ', unsaved: ' • Unsaved' },
-  ja: { empty: '新しいタブ', untitled: '無題.pdf', encrypted: '[暗号化] ', unsaved: ' • 未保存' },
-  ru: { empty: 'Новая вкладка', untitled: 'Без имени.pdf', encrypted: '[Зашифровано] ', unsaved: ' • Не сохранено' },
-  es: { empty: 'Nueva pestaña', untitled: 'Sin título.pdf', encrypted: '[Cifrado] ', unsaved: ' • Sin guardar' }
-}
-
-export function cleanDocumentName(fileName: string, hasDocument: boolean, language: NativeInterfaceLanguage = 'zh'): string {
-  if (!hasDocument) return nativeLabels[language].empty
+export function cleanDocumentName(fileName: string, hasDocument: boolean, language: InterfaceLanguage = 'zh'): string {
+  if (!hasDocument) return translateCataloguePhrase(language, '新标签')
   const normalized = fileName.trim().replace(/[\\/]+/g, ' ')
-  return normalized || nativeLabels[language].untitled
+  return normalized || translateCataloguePhrase(language, '未命名.pdf')
 }
 
-export function nativeWindowTitle(state: WindowDocumentState, language: NativeInterfaceLanguage = 'zh'): string {
+export function nativeWindowTitle(state: WindowDocumentState, language: InterfaceLanguage = 'zh'): string {
   const name = cleanDocumentName(state.fileName, state.hasDocument, language)
-  return `${state.encrypted ? nativeLabels[language].encrypted : ''}${name}${state.dirty ? nativeLabels[language].unsaved : ''} — PDFuck`
+  return `${state.encrypted ? translateCataloguePhrase(language, '[加密] ') : ''}${name}${state.dirty ? ` • ${translateCataloguePhrase(language, '未保存')}` : ''} — PDFuck`
 }

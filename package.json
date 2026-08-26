@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.18.4",
+  "version": "1.19.0",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -21,12 +21,15 @@
     "test:window-tabs": "electron-vite build && node scripts/window-tabs-smoke.cjs",
     "test:i18n-catalogue": "node scripts/i18n-catalogue-audit.cjs",
     "test:i18n-ui": "electron-vite build && node scripts/i18n-ui-smoke.cjs",
+    "test:release-ui": "node scripts/release-ui-smoke.cjs",
     "test:watch": "vitest",
     "build": "npm run typecheck && npm test && npm run test:i18n-catalogue && electron-vite build",
     "dist:win": "npm run build && electron-builder --win",
     "dist:win:installer": "npm run build && electron-builder --win nsis",
     "dist:win:portable": "npm run build && electron-builder --win portable",
     "dist:mac": "npm run build && electron-builder --mac dmg",
+    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "package:macos": "bash scripts/package-macos.sh",
     "test:selection-m91474": "node scripts/selection-m91474-smoke.cjs",
     "test:selection-m91474-ui": "electron-vite build && node scripts/selection-m91474-ui-smoke.cjs"
   },

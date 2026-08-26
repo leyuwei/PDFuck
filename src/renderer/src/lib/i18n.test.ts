@@ -1,17 +1,24 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { phraseTranslations } from './i18n-locales'
+import { englishPhrases, phraseTranslations, translateCataloguePhrase } from '../../../shared/i18n-catalogue'
 import { setInterfaceLanguage, translateUiText, ui } from './i18n'
 
 afterEach(() => setInterfaceLanguage('zh'))
 
 describe('interface translations', () => {
+  it('resolves every shared catalogue key in all five supported languages', () => {
+    for (const source of Object.keys(englishPhrases)) {
+      expect(translateCataloguePhrase('zh', source)).toBe(source)
+      for (const language of ['en', 'ja', 'ru', 'es'] as const) expect(translateCataloguePhrase(language, source).trim()).not.toBe('')
+    }
+  })
+
   it('resolves every audited supplemental phrase in every supported language', () => {
     for (const language of ['en', 'ja', 'ru', 'es'] as const) {
       setInterfaceLanguage(language)
       for (const [source, translations] of Object.entries(phraseTranslations)) {
-        expect(ui(source, translations.en)).toBe(translations[language])
+        expect(ui(source)).toBe(translations[language])
       }
     }
   })
@@ -23,6 +30,8 @@ describe('interface translations', () => {
       expect(translateUiText(failure)).toBe(phraseTranslations[failure][language])
       expect(translateUiText(`操作失败：${failure}`)).not.toContain('操作失败')
       expect(translateUiText(`操作失败：${failure}`)).not.toContain('无法连接模型服务')
+      expect(translateUiText('请求失败（429）：服务未返回详细原因')).not.toContain('请求失败')
+      expect(translateUiText('请求失败（429）：服务未返回详细原因')).not.toContain('服务未返回详细原因')
     }
   })
 

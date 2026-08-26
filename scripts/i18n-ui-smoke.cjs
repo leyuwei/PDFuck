@@ -23,10 +23,11 @@ async function assertNoChineseControls(page, scope) {
 const interfaceControls = '.titlebar, .tool-panel, .nav-rail, .window-manager-bar, .modal-backdrop, .toast, .temporary-document-warning'
 
 async function main() {
-  // The performance regression was caused by a page-wide MutationObserver.
-  // Keep this source-level guard so it cannot quietly return in a future release.
-  const legacyTranslator = fs.readFileSync(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'), 'utf8')
-  assert.ok(!legacyTranslator.includes('MutationObserver'), 'i18n must not observe and rewrite the DOM')
+  // The former page-wide DOM translator caused both missed copy and a performance
+  // regression. The catalogue audit owns the source scan; this smoke test keeps a
+  // direct guard around the two retired split-catalogue files.
+  assert.equal(fs.existsSync(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx')), false, 'legacy DOM translator must stay removed')
+  assert.equal(fs.existsSync(path.join(root, 'src/renderer/src/lib/i18n-locales.ts')), false, 'split renderer locale catalogue must stay removed')
 
   fs.rmSync(userData, { recursive: true, force: true })
   const app = await launch()

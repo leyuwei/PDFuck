@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ANNOTATION_PALETTE, QUICK_REPLIES, quickReply } from '../lib/annotation-style'
 import type { AnnotationReply } from '../types'
-import { translateInterfaceText } from './InterfaceLanguageBridge'
-import { useInterfaceLanguage } from '../lib/i18n'
+import { ui, useInterfaceLanguage } from '../lib/i18n'
 
 export function AnnotationColorPicker({ color, onChange, compact = false }: { color: string; onChange(color: string): void; compact?: boolean }) {
   useInterfaceLanguage()
-  const t = translateInterfaceText
+  const t = ui
   return <div className={`annotation-color-picker${compact ? ' compact' : ''}`}><span className="annotation-control-label">{t('颜色')}</span><div className="annotation-swatches">
     {ANNOTATION_PALETTE.map((item) => <button type="button" key={item.color} className={color.toLowerCase() === item.color ? 'active' : ''} style={{ backgroundColor: item.color }} title={t(item.label)} aria-label={`${t('批注颜色：')}${t(item.label)}`} onClick={() => onChange(item.color)} />)}
     <label className="annotation-custom-color" title={t('自定义颜色')}><input type="color" aria-label={t('自定义批注颜色')} value={color} onChange={(event) => onChange(event.target.value)} /><span>＋</span></label>
@@ -15,7 +14,7 @@ export function AnnotationColorPicker({ color, onChange, compact = false }: { co
 
 export function AnnotationReplyPicker({ reply, onChange, onQuickReply, compact = false }: { reply?: AnnotationReply; onChange(reply?: AnnotationReply): void; onQuickReply?(): void; compact?: boolean }) {
   useInterfaceLanguage()
-  const t = translateInterfaceText
+  const t = ui
   const [custom, setCustom] = useState(reply?.status === 'custom' ? reply.content : '')
   useEffect(() => { if (reply?.status === 'custom') setCustom(reply.content) }, [reply])
   const submitCustom = () => { const content = custom.trim(); if (content) onChange({ status: 'custom', content }) }

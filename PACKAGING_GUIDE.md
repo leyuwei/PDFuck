@@ -28,27 +28,38 @@ Windows（建议在 Windows 上构建）：
 
 ## 3. 更新版本号
 
-假设新版本为 `X.Y.Z`：
+版本号现在只有一个来源：`package.json`。渲染界面在构建时直接读取该文件，electron-builder 与主进程也读取同一版本；不再需要手工同步 `APP_VERSION`。假设新版本为 `X.Y.Z`：
 
 ```bash
 npm version X.Y.Z --no-git-tag-version
 ```
 
-该命令会同步 `package.json` 和 `package-lock.json`。本项目界面版本目前还在 `src/renderer/src/App.tsx` 中使用 `APP_VERSION`，必须同步修改：
-
-```ts
-const APP_VERSION = 'X.Y.Z'
-```
-
-修改后检查所有版本来源：
+该命令会同步 `package.json` 和 `package-lock.json`。修改后检查两个版本来源：
 
 ```bash
-rg -n '"version"|APP_VERSION' package.json package-lock.json src/renderer/src/App.tsx
+node -p "require('./package.json').version"
+node -p "require('./package-lock.json').version"
 ```
 
-三个位置必须一致。否则 `Info.plist` 可能是新版本，但应用界面仍显示旧版本。
+两处必须一致。最终的一键脚本还会核对 `app.asar`、Windows 可执行文件属性或 macOS `Info.plist`，并实际启动打包后的应用检查界面版本。
 
-## 4. 构建前检查
+## 4. 一键打包（推荐）
+
+Windows PowerShell：
+
+```powershell
+.\scripts\package-windows.ps1 1.19.0
+```
+
+macOS：
+
+```bash
+bash scripts/package-macos.sh 1.19.0
+```
+
+版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
+
+## 5. 构建前检查
 
 按顺序执行：
 
@@ -82,9 +93,9 @@ npm run test:selection-scheduling-ui
 - 滚动到后页时搜索浮窗仍固定在应用窗口内。
 - 保存、打印、关闭未保存文档等本次修改涉及的主流程可用。
 
-## 5. macOS 打包
+## 6. macOS 打包
 
-### 5.1 标准构建
+### 6.1 标准构建
 
 ```bash
 npm run dist:mac
@@ -96,7 +107,7 @@ npm run dist:mac
 release/mac-arm64/PDFuck.app
 ```
 
-### 5.2 签名策略
+### 6.2 签名策略
 
 正式分发应配置 Apple Developer ID，并完成公证。electron-builder 可通过签名证书和 Apple 公证相关环境变量工作，证书和密码不得写入仓库。
 
@@ -109,7 +120,7 @@ codesign --verify --deep --strict release/mac-arm64/PDFuck.app
 
 ad-hoc 签名不等于 Apple 公证。其他机器首次运行时仍可能需要在 Finder 中右键应用并选择“打开”。
 
-### 5.3 签名后重新生成 DMG
+### 6.3 签名后重新生成 DMG
 
 签名会修改 `.app`，因此必须用签名后的应用重新生成 DMG：
 
@@ -133,14 +144,14 @@ DMG 配置必须位于 `package.json` 的 `build.dmg`，不能放进 `build.mac`
 - Finder 窗口尺寸和背景色。
 - `PDFuck.app` 与 `/Applications` 快捷方式的固定位置。
 
-### 5.4 生成 `.app` ZIP
+### 6.4 生成 `.app` ZIP
 
 ```bash
 VERSION=$(node -p "require('./package.json').version")
 ditto -c -k --keepParent release/mac-arm64/PDFuck.app "release/PDFuck-${VERSION}-macOS.zip"
 ```
 
-### 5.5 macOS 验证
+### 6.5 macOS 验证
 
 ```bash
 VERSION=$(node -p "require('./package.json').version")
@@ -169,9 +180,9 @@ npx asar list release/mac-arm64/PDFuck.app/Contents/Resources/app.asar
 
 可将 `app.asar` 解包到 `mktemp -d` 创建的临时目录，再用 `rg` 检查新版本号和关键修复是否已经进入生产资源。
 
-## 6. Windows 打包
+## 7. Windows 打包
 
-### 6.1 标准构建
+### 7.1 标准构建
 
 在 Windows PowerShell 中执行：
 
@@ -187,15 +198,15 @@ npm run dist:win:installer
 npm run dist:win:portable
 ```
 
-`dist:win` 会同时生成 NSIS 安装版和便携版。构建前仍必须完成第 3、4 节的版本同步、类型检查和测试。
+`dist:win` 会同时生成 NSIS 安装版和便携版。构建前仍必须完成第 3、5 节的版本同步、类型检查和测试。
 
-### 6.2 Windows 签名
+### 7.2 Windows 签名
 
 正式分发应使用可信代码签名证书。可按 electron-builder 的 Windows 签名方式配置 `CSC_LINK`、`CSC_KEY_PASSWORD` 或证书存储；敏感信息不得提交到仓库。
 
 没有证书时可以生成内部测试包，但 Windows SmartScreen 可能显示未知发布者警告。应在交付说明中明确这一点。
 
-### 6.3 Windows 验证
+### 7.3 Windows 验证
 
 在 PowerShell 中检查产物：
 
@@ -215,9 +226,9 @@ Get-AuthenticodeSignature release\*.exe
 - “打开文件夹”、保存、打印和关闭未保存文档行为正常。
 - 应用界面、文件属性和安装包名称显示同一个版本号。
 
-## 7. 最终发布清单
+## 8. 最终发布清单
 
-- `package.json`、`package-lock.json`、`APP_VERSION` 完全一致。
+- `package.json`、`package-lock.json`、包内 `app.asar` 和目标平台文件属性版本完全一致。
 - `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:window-tabs`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
@@ -226,11 +237,11 @@ Get-AuthenticodeSignature release\*.exe
 - 实际启动最终产物，而不是开发服务器或旧安装版本。
 - 对每个交付文件生成 SHA-256，并在交付信息中给出绝对路径和校验值。
 
-## 8. 常见故障
+## 9. 常见故障
 
 ### 界面仍显示旧版本
 
-检查 `src/renderer/src/App.tsx` 的 `APP_VERSION`，重新执行 `npm run build`，再重新打包。还要确认启动的是 `release` 中的新 `.app/.exe`，不是 `/Applications` 或 Program Files 中的旧安装。
+检查 `package.json` 与 `package-lock.json` 是否一致，重新执行一键打包脚本。脚本会验证包内版本和启动界面；还要确认手工启动的是 `release` 中的新 `.app/.exe`，不是 `/Applications` 或 Program Files 中的旧安装。
 
 ### 源码修了但安装包行为没变化
 

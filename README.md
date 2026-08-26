@@ -40,15 +40,15 @@ Copyright © 2026 github@leyuwei
 
 The [Releases page](https://github.com/leyuwei/PDFuck/releases) provides two builds:
 
-- **Installer (recommended)**: `PDFuck-1.18.4-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
-- **Portable**: `PDFuck-1.18.4-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
+- **Installer (recommended)**: `PDFuck-<version>-Windows-Setup.exe` supports a custom install directory, desktop and Start Menu shortcuts, PDF file association, normal uninstall, and launch after installation.
+- **Portable**: `PDFuck-<version>-Windows.exe` runs directly without writing to a fixed install directory. Neither build requires Node.js.
 
 If Windows SmartScreen warns about an unsigned community build, verify that the file came from this repository's Releases page and check the published checksum before continuing.
 
 ### macOS
 
-- **DMG (recommended)**: Open `PDFuck-1.18.4-macOS.dmg` and drag `PDFuck.app` to `Applications`.
-- **ZIP**: Extract `PDFuck-1.18.4-macOS.zip` and run `PDFuck.app` directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
+- **DMG (recommended)**: Open `PDFuck-<version>-macOS.dmg` and drag `PDFuck.app` to `Applications`.
+- **ZIP**: Extract `PDFuck-<version>-macOS.zip` and run `PDFuck.app` directly or move it to `Applications`. Choose the Apple Silicon or Intel build shown on the Releases page; do not mix architectures.
 
 Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
 
@@ -121,6 +121,18 @@ npm run build
 
 The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture.
 
+One-click verified releases (the optional argument updates the version first):
+
+```powershell
+.\scripts\package-windows.ps1 1.19.0
+```
+
+```sh
+bash scripts/package-macos.sh 1.19.0
+```
+
+Both scripts read artifact names from `package.json`, run the release regressions, launch the packaged app, verify embedded versions, and write a SHA-256 release manifest. The lower-level build commands remain available:
+
 Windows release builds:
 
 ```powershell
@@ -140,7 +152,7 @@ macOS release build (run on macOS):
 npm run dist:mac
 ```
 
-This runs checks, creates a production build, and generates `release/PDFuck-1.18.4-macOS.dmg`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+This runs checks, creates a production build, and generates `release/PDFuck-<version>-macOS.dmg`, where the version is read from `package.json`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
 
 ## Technical Structure
 
@@ -202,7 +214,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 安装版（推荐）
 
-下载 `PDFuck-1.18.4-Windows-Setup.exe`，按安装向导操作即可。安装版支持：
+下载 `PDFuck-<version>-Windows-Setup.exe`（`<version>` 为 Releases 页面上的当前版本），按安装向导操作即可。安装版支持：
 
 - 自定义安装目录；
 - 创建桌面快捷方式；
@@ -213,7 +225,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 便携版
 
-下载 `PDFuck-1.18.4-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
+下载 `PDFuck-<version>-Windows.exe` 后直接运行，不写入固定安装目录，适合放在移动硬盘或临时电脑上使用。
 
 两种版本都不需要另行安装 Node.js。
 
@@ -225,11 +237,11 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### DMG 安装镜像（推荐）
 
-下载 `PDFuck-1.18.4-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
+下载 `PDFuck-<version>-macOS.dmg`，双击打开后将 `PDFuck.app` 拖入 `Applications` 文件夹。之后可以从 Launchpad、Finder 或 Spotlight 启动 PDFuck。DMG 保留了应用图标和 `Applications` 快捷入口，不需要安装 Node.js。
 
 ### ZIP 便携包
 
-下载 `PDFuck-1.18.4-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
+下载 `PDFuck-<version>-macOS.zip`，解压得到 `PDFuck.app`，可直接运行，也可以手动拖到 `Applications`。Apple Silicon 与 Intel 架构请按 Releases 页面标注选择对应构建；不要把 Intel 版本和 Apple Silicon 版本混用。
 
 ### 首次打开与更新
 
@@ -355,6 +367,18 @@ npm run build
 
 针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling` 和 `npm run test:selection-scheduling-ui`。两项检查都使用 `tmp/Scheduling0821m.pdf`：前者验证 PDF 内部文字流把下一行项目符号插入当前行中间时，选区仍只包含当前行；后者在真实 Electron 界面中拖选该位置，并确认原生界面控件不会出现浏览器式文字选中。
 
+推荐使用一键发布脚本；版本参数可省略，省略时自动使用 `package.json` 中的版本：
+
+```powershell
+.\scripts\package-windows.ps1 1.19.0
+```
+
+```sh
+bash scripts/package-macos.sh 1.19.0
+```
+
+脚本会执行发布回归、启动最终打包应用、核对包内版本并生成 SHA-256 发布清单。以下底层命令仍可用于只生成指定产物：
+
 Windows 发布命令：
 
 ```powershell
@@ -374,7 +398,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并生成 `release/PDFuck-1.18.4-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
+该命令会执行检查、生产构建并按 `package.json` 版本生成 `release/PDFuck-<version>-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
 
 ```sh
 VERSION=$(node -p "require('./package.json').version")

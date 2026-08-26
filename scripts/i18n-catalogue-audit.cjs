@@ -3,210 +3,243 @@ const path = require('node:path')
 const ts = require('typescript')
 
 const root = path.resolve(__dirname, '..')
-const localesPath = path.join(root, 'src/renderer/src/lib/i18n-locales.ts')
-const languages = ['ja', 'ru', 'es']
+const cataloguePath = path.join(root, 'src/shared/i18n-catalogue.ts')
+const rendererRoot = path.join(root, 'src/renderer/src')
+const languages = ['zh', 'en', 'ja', 'ru', 'es']
+const translatedLanguages = ['en', 'ja', 'ru', 'es']
+const failures = []
 
-function sourceFile(file) {
-  return ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
-}
-
+function fail(message) { failures.push(message) }
+function sourceFile(file) { return ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS) }
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
     ? walk(path.join(directory, entry.name))
     : /\.(?:ts|tsx)$/u.test(entry.name) ? [path.join(directory, entry.name)] : [])
 }
-
 function propertyName(property) {
   if (!property.name) return null
-  return ts.isStringLiteralLike(property.name) || ts.isIdentifier(property.name) ? property.name.text : null
+  return ts.isStringLiteralLike(property.name) || ts.isIdentifier(property.name) || ts.isNumericLiteral(property.name) ? property.name.text : null
 }
-
-function objectDeclaration(file, name) {
+function location(file, source, node) {
+  const position = source.getLineAndCharacterOfPosition(node.getStart(source))
+  return `${path.relative(root, file)}:${position.line + 1}`
+}
+function findObject(source, name) {
   let object
   function visit(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && ts.isObjectLiteralExpression(node.initializer)) object = node.initializer
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+      let initializer = node.initializer
+      while (initializer && (ts.isAsExpression(initializer) || ts.isSatisfiesExpression(initializer) || ts.isParenthesizedExpression(initializer))) initializer = initializer.expression
+      if (initializer && ts.isObjectLiteralExpression(initializer)) object = initializer
+    }
     ts.forEachChild(node, visit)
   }
-  visit(file)
+  visit(source)
   if (!object) throw new Error(`Missing object declaration: ${name}`)
   return object
 }
-
-function arrayDeclaration(file, name) {
-  let array
-  function visit(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && ts.isArrayLiteralExpression(node.initializer)) array = node.initializer
-    ts.forEachChild(node, visit)
-  }
-  visit(file)
-  if (!array) throw new Error(`Missing array declaration: ${name}`)
-  return array
-}
-
-function collectLocaleKeys() {
-  const source = sourceFile(localesPath)
-  const base = objectDeclaration(source, 'localePhrases')
-  const additions = objectDeclaration(source, 'phraseTranslations')
-  const keys = Object.fromEntries(languages.map((language) => [language, new Set()]))
-  for (const languageEntry of base.properties) {
-    const language = propertyName(languageEntry)
-    if (!languages.includes(language) || !ts.isPropertyAssignment(languageEntry) || !ts.isObjectLiteralExpression(languageEntry.initializer)) continue
-    for (const phrase of languageEntry.initializer.properties) {
-      const key = propertyName(phrase)
-      if (!key) continue
-      if (!ts.isPropertyAssignment(phrase) || !ts.isStringLiteralLike(phrase.initializer) || !phrase.initializer.text.trim()) throw new Error(`Invalid ${language} translation for: ${key}`)
-      keys[language].add(key)
+function literalRecord(object, context) {
+  const result = new Map()
+  for (const property of object.properties) {
+    const key = propertyName(property)
+    if (!key || !ts.isPropertyAssignment(property) || !ts.isStringLiteralLike(property.initializer)) {
+      fail(`Invalid string entry in ${context}`)
+      continue
     }
+    if (!property.initializer.text.trim()) fail(`Empty translation in ${context}.${key}`)
+    if (result.has(key)) fail(`Duplicate key in ${context}: ${key}`)
+    result.set(key, property.initializer.text)
   }
-  for (const phrase of additions.properties) {
-    const key = propertyName(phrase)
-    if (!key || !ts.isPropertyAssignment(phrase) || !ts.isObjectLiteralExpression(phrase.initializer)) continue
-    const variants = new Set()
-    for (const variant of phrase.initializer.properties) {
-      const language = propertyName(variant)
-      if (!language) continue
-      if (!ts.isPropertyAssignment(variant) || !ts.isStringLiteralLike(variant.initializer) || !variant.initializer.text.trim()) throw new Error(`Invalid translation for ${key}.${language}`)
-      variants.add(language)
+  return result
+}
+function nestedRecord(object, context) {
+  const result = new Map()
+  for (const property of object.properties) {
+    const key = propertyName(property)
+    if (!key || !ts.isPropertyAssignment(property) || !ts.isObjectLiteralExpression(property.initializer)) {
+      fail(`Invalid locale object in ${context}`)
+      continue
     }
-    for (const language of languages) {
-      if (!variants.has(language)) throw new Error(`Missing ${language} translation for: ${key}`)
-      keys[language].add(key)
-    }
+    result.set(key, literalRecord(property.initializer, `${context}.${key}`))
   }
-  return keys
+  return result
+}
+function placeholders(value) { return [...value.matchAll(/\{([A-Za-z0-9_]+)\}/gu)].map((match) => match[1]).sort().join(',') }
+
+const catalogueSource = sourceFile(cataloguePath)
+const english = literalRecord(findObject(catalogueSource, 'englishPhrases'), 'englishPhrases')
+const localeBase = nestedRecord(findObject(catalogueSource, 'localePhrases'), 'localePhrases')
+const additions = nestedRecord(findObject(catalogueSource, 'phraseTranslations'), 'phraseTranslations')
+const parameterMessages = nestedRecord(findObject(catalogueSource, 'parameterMessages'), 'parameterMessages')
+const catalogue = { en: new Map(english), ja: new Map(localeBase.get('ja')), ru: new Map(localeBase.get('ru')), es: new Map(localeBase.get('es')) }
+
+for (const [source, variants] of additions) {
+  for (const language of translatedLanguages) {
+    const value = variants.get(language)
+    if (!value?.trim()) fail(`Missing ${language} translation in phraseTranslations: ${source}`)
+    else catalogue[language].set(source, value)
+  }
+  for (const language of variants.keys()) if (!translatedLanguages.includes(language)) fail(`Unknown phraseTranslations locale ${language}: ${source}`)
 }
 
-function collectStaticEnglishKeys() {
-  const bridge = sourceFile(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'))
-  const english = objectDeclaration(bridge, 'english')
-  const keys = new Set()
-  for (const phrase of english.properties) {
-    const key = propertyName(phrase)
-    if (key) keys.add(key)
+const allCatalogueKeys = new Set(translatedLanguages.flatMap((language) => [...catalogue[language].keys()]))
+for (const source of allCatalogueKeys) {
+  for (const language of translatedLanguages) if (!catalogue[language].get(source)?.trim()) fail(`Catalogue key lacks ${language}: ${source}`)
+}
+for (const language of localeBase.keys()) if (!['ja', 'ru', 'es'].includes(language)) fail(`Unexpected localePhrases language: ${language}`)
+
+const expectedParameterKeys = new Set(parameterMessages.get('zh')?.keys() || [])
+for (const language of languages) {
+  const messages = parameterMessages.get(language)
+  if (!messages) { fail(`Missing parameterMessages locale: ${language}`); continue }
+  for (const key of expectedParameterKeys) {
+    const sourceValue = parameterMessages.get('zh').get(key)
+    const translated = messages.get(key)
+    if (!translated?.trim()) fail(`Missing parameter message ${language}.${key}`)
+    else if (placeholders(sourceValue) !== placeholders(translated)) fail(`Placeholder mismatch in ${language}.${key}: expected {${placeholders(sourceValue)}}; received {${placeholders(translated)}}`)
   }
-  const localeSource = sourceFile(localesPath)
-  const additions = objectDeclaration(localeSource, 'phraseTranslations')
-  for (const phrase of additions.properties) {
-    const key = propertyName(phrase)
-    if (key) keys.add(key)
-  }
-  return keys
+  for (const key of messages.keys()) if (!expectedParameterKeys.has(key)) fail(`Extra parameter message ${language}.${key}`)
+}
+for (const language of parameterMessages.keys()) if (!languages.includes(language)) fail(`Unexpected parameterMessages language: ${language}`)
+
+function requireCatalogue(value, where) {
+  if (!allCatalogueKeys.has(value)) fail(`Text is not in the shared catalogue: ${JSON.stringify(value)} (${where})`)
+}
+function requireMessageKey(value, where) {
+  if (!expectedParameterKeys.has(value) && !allCatalogueKeys.has(value)) fail(`Unknown i18n key: ${JSON.stringify(value)} (${where})`)
 }
 
-function collectInterfaceBridgeKeys() {
-  const bridge = sourceFile(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'))
-  const english = objectDeclaration(bridge, 'english')
-  const phrases = new Map()
-  for (const phrase of english.properties) {
-    const key = propertyName(phrase)
-    if (key) phrases.set(key, [sourceLocation(path.join(root, 'src/renderer/src/components/InterfaceLanguageBridge.tsx'), phrase)])
+const invariantVisibleCopy = new Set([
+  'PDF', 'PDFuck', 'uck', 'v', '© 2026 github@leyuwei',
+  'BigModel Plan', 'Doubao', 'DeepSeek', 'KIMI',
+  'A−', 'A＋', 'Aa', 'B', 'I',
+  'A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid',
+  '简体中文', 'English', '日本語', 'Русский', 'Español',
+  'Ctrl+F', 'Ctrl+C', 'PNG', 'JPG', 'EPS', 'DPI'
+])
+function normalizedVisible(value) { return value.replace(/\s+/gu, ' ').trim() }
+function checkRawVisible(value, where) {
+  const normalized = normalizedVisible(value)
+  if (!normalized || !/[\p{L}\p{N}]/u.test(normalized)) return
+  if (!invariantVisibleCopy.has(normalized)) fail(`Raw visible copy must use i18n (or be an audited invariant): ${JSON.stringify(normalized)} (${where})`)
+}
+function unwrap(expression) {
+  while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression
+  return expression
+}
+function checkRenderableExpression(expression, file, source) {
+  if (!expression) return
+  expression = unwrap(expression)
+  if (ts.isStringLiteralLike(expression)) checkRawVisible(expression.text, location(file, source, expression))
+  else if (ts.isTemplateExpression(expression)) {
+    checkRawVisible(expression.head.text, location(file, source, expression.head))
+    for (const span of expression.templateSpans) checkRawVisible(span.literal.text, location(file, source, span.literal))
+  } else if (ts.isConditionalExpression(expression)) {
+    checkRenderableExpression(expression.whenTrue, file, source)
+    checkRenderableExpression(expression.whenFalse, file, source)
+  } else if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    checkRenderableExpression(expression.left, file, source)
+    checkRenderableExpression(expression.right, file, source)
   }
-  return phrases
 }
 
-function sourceLocation(file, node) {
-  const position = sourceFile(file).getLineAndCharacterOfPosition(node.getStart())
-  return `${path.relative(root, file)}:${position.line + 1}`
-}
+const rendererFiles = walk(rendererRoot).filter((file) => !file.includes('.test.') && !file.endsWith('i18n.ts'))
+const mainFiles = walk(path.join(root, 'src/main')).filter((file) => !file.includes('.test.'))
+const auditedFiles = [...rendererFiles, ...mainFiles]
+let uiCalls = 0
+let parameterCalls = 0
+let dynamicUiCalls = 0
+let rawDataPhrases = 0
+let userFacingErrors = 0
+const allowedDynamicErrorShapes = new Set(['请求失败（${}）：${}'])
 
-function collectUiPhrases(files) {
-  const phrases = new Map()
-  for (const file of files) {
-    const source = sourceFile(file)
-    function visit(node) {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'ui' && ts.isStringLiteralLike(node.arguments[0])) {
-        const locations = phrases.get(node.arguments[0].text) || []
-        locations.push(sourceLocation(file, node.arguments[0]))
-        phrases.set(node.arguments[0].text, locations)
-      }
-      ts.forEachChild(node, visit)
-    }
-    visit(source)
-  }
-  return phrases
-}
-
-function collectAiPresetLabels() {
-  const file = path.join(root, 'src/renderer/src/lib/ai-polish.ts')
+for (const file of auditedFiles) {
   const source = sourceFile(file)
-  const presets = arrayDeclaration(source, 'AI_PRESETS')
-  const phrases = new Map()
-  for (const preset of presets.elements) {
-    if (!ts.isObjectLiteralExpression(preset)) continue
-    const label = preset.properties.find((property) => propertyName(property) === 'label')
-    if (!label || !ts.isPropertyAssignment(label) || !ts.isStringLiteralLike(label.initializer)) throw new Error(`Invalid AI preset label in ${sourceLocation(file, preset)}`)
-    phrases.set(label.initializer.text, [sourceLocation(file, label.initializer)])
-  }
-  return phrases
-}
-
-function collectComponentLiterals(files) {
-  const phrases = new Map()
-  for (const file of files) {
-    const source = sourceFile(file)
-    function visit(node) {
-      if ((ts.isStringLiteralLike(node) || ts.isNoSubstitutionTemplateLiteral(node)) && /[\u3400-\u9fff]/u.test(node.text)) {
-        const locations = phrases.get(node.text) || []
-        locations.push(sourceLocation(file, node))
-        phrases.set(node.text, locations)
+  function visit(node, insideFunction = false) {
+    const nextInsideFunction = insideFunction || ts.isFunctionLike(node)
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const name = node.expression.text
+      let argument
+      if (name === 'ui' || name === 'translatePhrase') argument = node.arguments[0]
+      else if (name === 'nativeText' || name === 'translateCataloguePhrase') argument = node.arguments[1]
+      if (argument) {
+        uiCalls += 1
+        if (ts.isStringLiteralLike(argument)) requireCatalogue(argument.text, location(file, source, argument))
+        else dynamicUiCalls += 1
+        if (name === 'ui' && node.arguments.length !== 1) fail(`ui() accepts exactly one shared-catalogue key (${location(file, source, node)})`)
+        if ((name === 'ui' || name === 'translatePhrase') && !insideFunction) fail(`Locale-sensitive translation runs at module scope (${location(file, source, node)})`)
       }
-      ts.forEachChild(node, visit)
+      if ((name === 't' || name === 'translateMessage') && ts.isStringLiteralLike(node.arguments[name === 't' ? 0 : 1])) {
+        const key = node.arguments[name === 't' ? 0 : 1]
+        parameterCalls += 1
+        requireMessageKey(key.text, location(file, source, key))
+      }
     }
-    visit(source)
-  }
-  return phrases
-}
-
-function collectThrownErrors(files) {
-  const phrases = new Map()
-  for (const file of files) {
-    const source = sourceFile(file)
-    function visit(node) {
-      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Error') {
-        const message = node.arguments?.[0]
-        if (message && (ts.isStringLiteralLike(message) || ts.isNoSubstitutionTemplateLiteral(message)) && /[\u3400-\u9fff]/u.test(message.text)) {
-          const locations = phrases.get(message.text) || []
-          locations.push(sourceLocation(file, message))
-          phrases.set(message.text, locations)
+    if (ts.isPropertyAssignment(node) && ['label', 'name'].includes(propertyName(node)) && ts.isStringLiteralLike(node.initializer) && /[\u3400-\u9fff]/u.test(node.initializer.text)) {
+      rawDataPhrases += 1
+      requireCatalogue(node.initializer.text, location(file, source, node.initializer))
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'THEME_COLORS' && ts.isArrayLiteralExpression(node.initializer)) {
+      for (const entry of node.initializer.elements) {
+        const label = ts.isArrayLiteralExpression(entry) ? entry.elements[0] : undefined
+        if (label && ts.isStringLiteralLike(label)) { rawDataPhrases += 1; requireCatalogue(label.text, location(file, source, label)) }
+      }
+    }
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Error' && node.arguments?.[0]) {
+      const message = node.arguments[0]
+      if (ts.isStringLiteralLike(message) && /[\u3400-\u9fff]/u.test(message.text)) {
+        userFacingErrors += 1
+        requireCatalogue(message.text, location(file, source, message))
+      } else if (ts.isTemplateExpression(message) && /[\u3400-\u9fff]/u.test(message.getText(source))) {
+        userFacingErrors += 1
+        const shape = message.head.text + message.templateSpans.map((span) => '${}' + span.literal.text).join('')
+        if (!allowedDynamicErrorShapes.has(shape)) fail(`Unaudited dynamic user-facing error ${JSON.stringify(shape)} (${location(file, source, message)})`)
+        for (const span of message.templateSpans) {
+          function checkExpressionText(child) {
+            if (ts.isStringLiteralLike(child) && /[\u3400-\u9fff]/u.test(child.text)) requireCatalogue(child.text, location(file, source, child))
+            ts.forEachChild(child, checkExpressionText)
+          }
+          checkExpressionText(span.expression)
         }
       }
-      ts.forEachChild(node, visit)
     }
-    visit(source)
+    if (file.endsWith(`${path.sep}App.tsx`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireCatalogue(node.text, location(file, source, node))
+    if (file.includes(`${path.sep}src${path.sep}main${path.sep}`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireCatalogue(node.text, location(file, source, node))
+    if (ts.isJsxText(node)) checkRawVisible(node.text, location(file, source, node))
+    if (ts.isJsxAttribute(node) && ['title', 'placeholder', 'alt', 'aria-label', 'aria-description'].includes(node.name.text)) {
+      if (node.initializer && ts.isStringLiteral(node.initializer)) checkRawVisible(node.initializer.text, location(file, source, node.initializer))
+      else if (node.initializer && ts.isJsxExpression(node.initializer)) checkRenderableExpression(node.initializer.expression, file, source)
+    }
+    if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) checkRenderableExpression(node.expression, file, source)
+    ts.forEachChild(node, (child) => visit(child, nextInsideFunction))
   }
-  return phrases
+  visit(source)
 }
 
-function assertCovered(label, phrases, keys) {
-  const gaps = []
-  for (const [phrase, locations] of phrases) {
-    const missing = languages.filter((language) => !keys[language].has(phrase))
-    if (missing.length) gaps.push(`${phrase} (${missing.join(', ')}): ${[...new Set(locations)].join(', ')}`)
-  }
-  if (gaps.length) throw new Error(`${label} is missing translations:\n${gaps.join('\n')}`)
+for (const relative of ['src/renderer/src/components/InterfaceLanguageBridge.tsx', 'src/renderer/src/lib/i18n-locales.ts']) {
+  if (fs.existsSync(path.join(root, relative))) fail(`Legacy i18n source still exists: ${relative}`)
+}
+for (const file of rendererFiles) {
+  const contents = fs.readFileSync(file, 'utf8')
+  if (/LocalizedInterfaceCopy|InterfaceLanguageBridge|MutationObserver/u.test(contents)) fail(`Legacy DOM translation mechanism remains in ${path.relative(root, file)}`)
 }
 
-function assertStaticEnglishCovered(phrases, keys) {
-  const missing = [...phrases].filter(([phrase]) => !keys.has(phrase))
-  if (missing.length) throw new Error(`Static interface copy is missing an English source translation:\n${missing.map(([phrase, locations]) => `${phrase}: ${[...new Set(locations)].join(', ')}`).join('\n')}`)
+if (failures.length) {
+  console.error(`i18n catalogue audit failed with ${failures.length} issue(s):\n${failures.map((failure) => `- ${failure}`).join('\n')}`)
+  process.exit(1)
 }
 
-const rendererRoot = path.join(root, 'src/renderer/src')
-const components = [path.join(rendererRoot, 'App.tsx'), ...walk(path.join(rendererRoot, 'components')).filter((file) => !file.includes('.test.') && !file.endsWith('InterfaceLanguageBridge.tsx'))]
-const rendererFiles = walk(rendererRoot).filter((file) => !file.includes('.test.') && !file.endsWith('i18n-locales.ts') && !file.endsWith('i18n.ts'))
-const errorFiles = [...walk(path.join(root, 'src/main')), ...walk(path.join(rendererRoot, 'lib'))].filter((file) => !file.includes('.test.'))
-const keys = collectLocaleKeys()
-const componentPhrases = collectComponentLiterals(components)
-const uiPhrases = collectUiPhrases(rendererFiles)
-const staticComponentPhrases = new Map([...componentPhrases].filter(([phrase]) => !uiPhrases.has(phrase)))
-const interfaceBridgePhrases = collectInterfaceBridgeKeys()
-const aiPresetLabels = collectAiPresetLabels()
-
-assertCovered('JSX interface copy', componentPhrases, keys)
-assertCovered('interface bridge copy', interfaceBridgePhrases, keys)
-assertStaticEnglishCovered(staticComponentPhrases, collectStaticEnglishKeys())
-assertCovered('ui() interface copy', uiPhrases, keys)
-assertCovered('AI preset labels', aiPresetLabels, keys)
-assertStaticEnglishCovered(aiPresetLabels, collectStaticEnglishKeys())
-assertCovered('user-facing errors', collectThrownErrors(errorFiles), keys)
-console.log(JSON.stringify({ localeAudit: 'passed', languages, componentFiles: components.length, rendererFiles: rendererFiles.length, errorFiles: errorFiles.length, aiPresetLabels: aiPresetLabels.size }, null, 2))
+console.log(JSON.stringify({
+  localeAudit: 'passed',
+  languages,
+  sharedCatalogueKeys: allCatalogueKeys.size,
+  parameterMessageKeys: expectedParameterKeys.size,
+  rendererFiles: rendererFiles.length,
+  mainFiles: mainFiles.length,
+  uiCalls,
+  parameterCalls,
+  dynamicUiCalls,
+  rawDataPhrases,
+  userFacingErrors,
+  invariantVisibleCopy: [...invariantVisibleCopy]
+}, null, 2))

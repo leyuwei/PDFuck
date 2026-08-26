@@ -3,8 +3,7 @@ import type { AnnotationRecord, AnnotationReply, AnnotationReplyStatus } from '.
 import { AnnotationIcon } from './AnnotationIcon'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { annotationSummary, annotationSummaryStatus, type AnnotationSummaryStatus } from '../lib/annotation-summary'
-import { translateInterfaceText } from './InterfaceLanguageBridge'
-import { t as message, useInterfaceLanguage } from '../lib/i18n'
+import { t as message, ui, useInterfaceLanguage } from '../lib/i18n'
 
 interface Props {
   annotations: AnnotationRecord[]
@@ -36,7 +35,7 @@ function annotationContent(annotation: AnnotationRecord, t: (value: string) => s
 }
 
 function AnnotationRow({ annotation, selected, onSelect, onEdit, onColor, onReply }: { annotation: AnnotationRecord; selected: boolean; onSelect(options?: { additive?: boolean; range?: boolean }): void; onEdit(content: string): Promise<void>; onColor(color: string): Promise<void>; onReply(reply?: AnnotationReply): Promise<void> }) {
-  const t = translateInterfaceText
+  const t = ui
   const rowRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
   const [settings, setSettings] = useState(false)
@@ -66,7 +65,7 @@ function AnnotationRow({ annotation, selected, onSelect, onEdit, onColor, onRepl
 
 export function AnnotationPanel({ annotations, selectedId, selectedIds = [], collapsed, onToggle, onSelect, onEdit, onColor, onReply, onDelete }: Props) {
   useInterfaceLanguage()
-  const t = translateInterfaceText
+  const t = ui
   const [singleLine, setSingleLine] = useState(false)
   const [fontSize, setFontSize] = useState(11)
   const [summaryCollapsed, setSummaryCollapsed] = useState(false)

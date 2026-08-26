@@ -11,7 +11,6 @@ import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
-import { LocalizedInterfaceCopy } from './InterfaceLanguageBridge'
 import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
 import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
@@ -158,12 +157,12 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const tools: Array<{ tool: Tool; label: string; kind: 'highlight' | 'replace' | 'delete_text' | 'underline' | 'note' | 'insert' }> = [
-    { tool: 'highlight', label: ui('文本高亮', 'Highlight Text'), kind: 'highlight' }, { tool: 'replace', label: ui('文本替换', 'Replace Text'), kind: 'replace' }, { tool: 'delete_text', label: ui('文本删除', 'Delete Text'), kind: 'delete_text' }, { tool: 'underline', label: ui('加下划线', 'Underline Text'), kind: 'underline' }, { tool: 'note', label: ui('自由批注', 'Note'), kind: 'note' }, { tool: 'insert', label: ui('插入文字', 'Insert Text'), kind: 'insert' }
+    { tool: 'highlight', label: ui('文本高亮'), kind: 'highlight' }, { tool: 'replace', label: ui('文本替换'), kind: 'replace' }, { tool: 'delete_text', label: ui('文本删除'), kind: 'delete_text' }, { tool: 'underline', label: ui('加下划线'), kind: 'underline' }, { tool: 'note', label: ui('自由批注'), kind: 'note' }, { tool: 'insert', label: ui('插入文字'), kind: 'insert' }
   ]
   return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
-    <button type="button" className="selection-toolbar-grip" aria-label={ui('拖动批注快捷浮窗', 'Drag annotation toolbar')} title={ui('拖动浮窗', 'Drag toolbar')} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
+    <button type="button" className="selection-toolbar-grip" aria-label={ui('拖动批注快捷浮窗')} title={ui('拖动浮窗')} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
-    <button type="button" className="selection-toolbar-button" aria-label={ui('智能润色', 'AI Polish')} title={ui('智能润色 (Ctrl/⌘I)', 'AI Polish (Ctrl/⌘I)')} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
+    <button type="button" className="selection-toolbar-button" aria-label={ui('智能润色')} title={ui('智能润色 (Ctrl/⌘I)')} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
   </div>
 }
 
@@ -276,17 +275,17 @@ function SearchPanel({ document, onClose, onJump, onFocusTarget }: { document: P
         }
       }
       setResults(next.slice(0, 200))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '搜索表达式无效') }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : ui("搜索表达式无效")) }
     finally { setBusy(false) }
   }
-  return <LocalizedInterfaceCopy><div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
-    <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>搜索文档</b><button type="button" onClick={onClose} aria-label="关闭搜索" title="关闭搜索">×</button></div>
-    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder="输入文字或正则表达式" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : '搜索'}</button></div>
-    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />匹配大小写</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />模糊匹配</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />正则表达式</label></div>
-    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">常用正则表达式</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{preset.label}</option>)}</select>}
+  return <div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
+    <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>{ui("搜索文档")}</b><button type="button" onClick={onClose} aria-label={ui("关闭搜索")} title={ui("关闭搜索")}>×</button></div>
+    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder={ui("输入文字或正则表达式")} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : ui("搜索")}</button></div>
+    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />{ui("匹配大小写")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />{ui("模糊匹配")}</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />{ui("正则表达式")}</label></div>
+    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">{ui("常用正则表达式")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
     {error && <p className="pdf-search-error">{error}</p>}
     {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => { onJump(result.pageIndex); onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace }) }}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
-  </div></LocalizedInterfaceCopy>
+  </div>
 }
 
 function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
@@ -331,7 +330,7 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit }: { tex
     left: rect.x * zoom + offset.x, top: rect.y * zoom + offset.y, width: rect.width * zoom, height: rect.height * zoom,
     color: style.color, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align,
     lineHeight: style.lineHeight || 1.25, paddingTop: (style.paragraphBefore || 0) * zoom, paddingBottom: (style.paragraphAfter || 0) * zoom
-  }} title={editable ? '拖动调整位置，双击编辑文字和格式' : textObject.text}
+  }} title={editable ? ui("拖动调整位置，双击编辑文字和格式") : textObject.text}
     onPointerDown={(event) => {
       if (!editable || event.button !== 0) return
       event.stopPropagation(); setSelected(true); drag.current = { x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId)
@@ -359,7 +358,7 @@ function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObje
     setSource(url)
     return () => URL.revokeObjectURL(url)
   }, [image.data, image.format, image.id])
-  return <div className={`saved-image${editable ? ' editable' : ''}`} style={{ left: image.rect.x * zoom, top: image.rect.y * zoom, width: image.rect.width * zoom, height: image.rect.height * zoom, transform: `rotate(${image.rotation}deg)` }} title={editable ? ui('点击已添加图片重新编辑', 'Click an added image to edit it again') : image.name}
+  return <div className={`saved-image${editable ? ' editable' : ''}`} style={{ left: image.rect.x * zoom, top: image.rect.y * zoom, width: image.rect.width * zoom, height: image.rect.height * zoom, transform: `rotate(${image.rotation}deg)` }} title={editable ? ui('点击已添加图片重新编辑') : image.name}
     onPointerDown={(event) => { if (editable) event.stopPropagation() }} onClick={(event) => { if (!editable) return; event.stopPropagation(); onEdit(image) }}>
     {source && <img src={source} alt={image.name} draggable={false} />}
   </div>
@@ -399,23 +398,23 @@ function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel,
   const actionBelow = displayed.y + displayed.height + 44 / zoom <= bounds.height
   const actionTop = actionBelow ? (displayed.y + displayed.height) * zoom + 8 : Math.max(4, displayed.y * zoom - 42)
   const handles: ImageResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
-  return <LocalizedInterfaceCopy><>
-    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui('拖动图片调整位置', 'Drag image to reposition')}
+  return <>
+    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui('拖动图片调整位置')}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <img src={draft.source} alt={draft.name} draggable={false} />
-      <span className="image-draft-label">{draft.id ? ui('正在编辑已添加图片', 'Editing Added Image') : ui('待添加图片', 'Image Preview')}</span>
+      <span className="image-draft-label">{draft.id ? ui('正在编辑已添加图片') : ui('待添加图片')}</span>
       <span className="image-rotate-stem" aria-hidden />
-      <span className="image-rotate-handle" aria-label={ui('拖动旋转控制点调整图片角度', 'Drag rotation handle to rotate image')} title={ui('拖动旋转控制点调整图片角度', 'Drag rotation handle to rotate image')} onPointerDown={(event) => begin('rotate', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
-      {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui('拖动控制点调整图片大小', 'Drag handle to resize image')} title={ui('拖动控制点调整图片大小', 'Drag handle to resize image')} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
+      <span className="image-rotate-handle" aria-label={ui('拖动旋转控制点调整图片角度')} title={ui('拖动旋转控制点调整图片角度')} onPointerDown={(event) => begin('rotate', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
+      {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui('拖动控制点调整图片大小')} title={ui('拖动控制点调整图片大小')} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className={`image-draft-actions${draft.id ? ' has-delete' : ''}`} style={{ left: actionLeft, top: actionTop, minWidth: actionWidth }} onPointerDown={(event) => event.stopPropagation()}>
-      <span>{ui('拖动、缩放、旋转或切换比例锁后确认', 'Move, resize, rotate, or change the aspect lock, then confirm')}</span>
-      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui('已锁定原始比例', 'Original aspect ratio locked') : ui('未锁定原始比例', 'Original aspect ratio unlocked')} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui('比例已锁定', 'Ratio Locked') : ui('比例未锁定', 'Ratio Unlocked')}</button>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui('取消', 'Cancel')}</button>
-      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui('删除图片', 'Delete Image')}</button>}
-      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui('确认更新图片', 'Confirm Image Changes') : ui('确认添加图片', 'Confirm Add Image')}</button>
+      <span>{ui('拖动、缩放、旋转或切换比例锁后确认')}</span>
+      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui('已锁定原始比例') : ui('未锁定原始比例')} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui('比例已锁定') : ui('比例未锁定')}</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui('取消')}</button>
+      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui('删除图片')}</button>}
+      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui('确认更新图片') : ui('确认添加图片')}</button>
     </div>
-  </></LocalizedInterfaceCopy>
+  </>
 }
 
 function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor, onCancel, onSave }: { region: EditableTextRegion; zoom: number; pageSize: { width: number; height: number }; initialColor: string; backgroundColor: string; onCancel(): void; onSave(text: string, style: TextStyle): void }) {
@@ -434,28 +433,28 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   const toolbarHeight = 78
   const toolbarTop = region.rect.y * zoom >= toolbarHeight + 8 ? region.rect.y * zoom - toolbarHeight - 6 : Math.min(pageSize.height * zoom - toolbarHeight, region.rect.y * zoom + editorHeight + 7)
   const submit = () => onSave(text, style)
-  return <LocalizedInterfaceCopy><>
-    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label="编辑页面文字内容" style={{ left: region.rect.x * zoom, top: region.rect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: 3 + paragraphBefore * zoom, paddingBottom: 3 + paragraphAfter * zoom, color: style.color, backgroundColor, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); submit() } }} />
+  return <>
+    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("编辑页面文字内容")} style={{ left: region.rect.x * zoom, top: region.rect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: 3 + paragraphBefore * zoom, paddingBottom: 3 + paragraphAfter * zoom, color: style.color, backgroundColor, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); submit() } }} />
     <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
-        <label title="字体"><select aria-label="字体" value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label className="format-size" title="字号"><input aria-label="字号" type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
-        <button type="button" className={style.bold ? 'active' : ''} aria-label="粗体" title="粗体" onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b></button>
-        <button type="button" className={style.italic ? 'active' : ''} aria-label="斜体" title="斜体" onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i></button>
-        <label className="format-color" title="文字颜色"><input aria-label="文字颜色" type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
-        <span className="toolbar-spacer" /><button type="button" className="toolbar-cancel" onClick={onCancel}>取消</button><button type="button" className="primary toolbar-apply" onClick={submit}>应用</button>
+        <label title={ui("字体")}><select aria-label={ui("字体")} value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label className="format-size" title={ui("字号")}><input aria-label={ui("字号")} type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
+        <button type="button" className={style.bold ? 'active' : ''} aria-label={ui("粗体")} title={ui("粗体")} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b></button>
+        <button type="button" className={style.italic ? 'active' : ''} aria-label={ui("斜体")} title={ui("斜体")} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i></button>
+        <label className="format-color" title={ui("文字颜色")}><input aria-label={ui("文字颜色")} type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
+        <span className="toolbar-spacer" /><button type="button" className="toolbar-cancel" onClick={onCancel}>{ui("取消")}</button><button type="button" className="primary toolbar-apply" onClick={submit}>{ui("应用")}</button>
       </div>
-      <div className="format-toolbar-row secondary"><span className="format-group-label">段落</span>
-        {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={`${align === 'left' ? '左' : align === 'center' ? '居中' : '右'}对齐`} title={`${align === 'left' ? '左' : align === 'center' ? '居中' : '右'}对齐`} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
-        <label className="format-line-height" title="段落行距"><select aria-label="段落行距" value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">紧凑</option><option value="1.25">正文</option><option value="1.5">宽松</option><option value="2">双倍</option></select></label>
-        <label className="format-number" title="段前距"><span>段前</span><input aria-label="段前距" type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
-        <label className="format-number" title="段后距"><span>段后</span><input aria-label="段后距" type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
-        <span className="toolbar-divider" /><span className="format-group-label">字符</span>
-        <label className="format-number" title="字符间距"><span>间距</span><input aria-label="字符间距" type="number" min="-5" max="20" step=".1" value={style.letterSpacing || 0} onChange={(event) => setStyle({ ...style, letterSpacing: Math.max(-5, Math.min(20, Number(event.target.value) || 0)) })} /></label>
-        <label className="format-number format-width" title="文字宽度比例"><span>宽度</span><input aria-label="文字宽度" type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
+      <div className="format-toolbar-row secondary"><span className="format-group-label">{ui("段落")}</span>
+        {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={align === 'left' ? ui("左对齐") : align === 'center' ? ui("居中") : ui("右对齐")} title={align === 'left' ? ui("左对齐") : align === 'center' ? ui("居中") : ui("右对齐")} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
+        <label className="format-line-height" title={ui("段落行距")}><select aria-label={ui("段落行距")} value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("紧凑")}</option><option value="1.25">{ui("正文")}</option><option value="1.5">{ui("宽松")}</option><option value="2">{ui("双倍")}</option></select></label>
+        <label className="format-number" title={ui("段前距")}><span>{ui("段前")}</span><input aria-label={ui("段前距")} type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number" title={ui("段后距")}><span>{ui("段后")}</span><input aria-label={ui("段后距")} type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <span className="toolbar-divider" /><span className="format-group-label">{ui("字符")}</span>
+        <label className="format-number" title={ui("字符间距")}><span>{ui("间距")}</span><input aria-label={ui("字符间距")} type="number" min="-5" max="20" step=".1" value={style.letterSpacing || 0} onChange={(event) => setStyle({ ...style, letterSpacing: Math.max(-5, Math.min(20, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number format-width" title={ui("文字宽度比例")}><span>{ui("宽度")}</span><input aria-label={ui("文字宽度")} type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
       </div>
     </div>
-  </></LocalizedInterfaceCopy>
+  </>
 }
 
 function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void }) {
@@ -481,17 +480,17 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
   const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 154, rect.x * zoom))
   const actionTop = actionBelow ? (rect.y + rect.height) * zoom + 7 : Math.max(4, rect.y * zoom - 37)
   const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
-  return <LocalizedInterfaceCopy><>
+  return <>
     <div className="crop-draft" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <span className="crop-draft-label">{t('crop.label')}</span>
       {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>取消</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("取消")}</button>
       <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
     </div>
-  </></LocalizedInterfaceCopy>
+  </>
 }
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
@@ -787,23 +786,23 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <LocalizedInterfaceCopy><div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
+  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
-    {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`查看引文 ${labels}`} title={`查看参考文献 ${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
-    {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title="语法或拼写检查结果" />)}
-    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`编辑文字：${region.text.slice(0, 40)}`} title="点击直接编辑这段文字" style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
+    {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`${ui("查看引文：")}${labels}`} title={`${ui("查看参考文献：")}${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
+    {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title={ui("语法或拼写检查结果")} />)}
+    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`${ui("编辑文字：")}${region.text.slice(0, 40)}`} title={ui("点击直接编辑这段文字")} style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region) }} />)}
     {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} onCancel={() => setPageTextEditor(undefined)} onSave={(text, style) => { onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
     {activeSelection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textFocus?.text && textFocus.token > 0 && textFocus.text && preciseFocus?.rects.map((rect, index) => <div ref={index === 0 ? preciseFocusRef : undefined} key={`precise-focus-${textFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus?.rects?.map((rect, index) => <div ref={index === 0 ? visualFocusRef : undefined} key={`visual-focus-${visualFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus && !visualFocus.rects?.length && <div ref={visualFocusRef} key={`visual-page-focus-${visualFocus.token}`} className="annotation-focus-ring insight-focus-ring insight-page-focus-ring" style={{ left: 10, top: 10, width: Math.max(6, size.width * zoom - 20), height: Math.max(6, size.height * zoom - 20) }} />}
     {citationPopup && <aside className="citation-popover" style={{ left: Math.max(8, Math.min(size.width * zoom - 306, (citationPopup.rect.x + citationPopup.rect.width) * zoom + 9)), top: Math.max(8, Math.min(size.height * zoom - 170, citationPopup.rect.y * zoom - 8)) }} onPointerDown={(event) => event.stopPropagation()}>
-      <header><div><small>关联引文</small><b>{[...new Set(citationPopup.hits.map((hit) => hit.citation))].map((value) => `[${value}]`).join(' ')}</b></div><button type="button" aria-label="关闭引文信息" title="关闭" onClick={() => setCitationPopup(undefined)}>×</button></header>
+      <header><div><small>{ui("关联引文")}</small><b>{[...new Set(citationPopup.hits.map((hit) => hit.citation))].map((value) => `[${value}]`).join(' ')}</b></div><button type="button" aria-label={ui("关闭引文信息")} title={ui("关闭")} onClick={() => setCitationPopup(undefined)}>×</button></header>
       <div className="citation-reference-list">{citationPopup.hits.map((hit, index) => <p key={`${hit.citation}-${index}`}>{hit.reference}</p>)}</div>
-      <button type="button" className="citation-copy" onClick={() => { onCopyText(citationPopup.hits.map((hit) => hit.reference).join('\n')); setCopiedCitation(true) }}><span aria-hidden="true">▣</span>{copiedCitation ? '已复制参考文献' : `复制${citationPopup.hits.length > 1 ? '全部' : ''}参考文献`}</button>
+      <button type="button" className="citation-copy" onClick={() => { onCopyText(citationPopup.hits.map((hit) => hit.reference).join('\n')); setCopiedCitation(true) }}><span aria-hidden="true">▣</span>{copiedCitation ? ui("已复制参考文献") : citationPopup.hits.length > 1 ? ui("复制全部参考文献") : ui("复制参考文献")}</button>
     </aside>}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
@@ -816,17 +815,17 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       {menu.annotation ? <>
-        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui('编辑批注内容…', 'Edit Annotation…')}</span></button>
+        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui('编辑批注内容…')}</span></button>
         <div className="annotation-context-controls"><AnnotationColorPicker compact color={menu.annotation.color} onChange={colorMenuAnnotation} /><AnnotationReplyPicker compact reply={menu.annotation.reply} onChange={replyMenuAnnotation} onQuickReply={() => setMenu(undefined)} /></div>
-        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>{ui('删除这条批注', 'Delete This Annotation')}</span></button>
+        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>{ui('删除这条批注')}</span></button>
       </> : <>
-        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui('复制', 'Copy')}</span><kbd>Ctrl+C</kbd></button>}
-        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui('文本高亮', 'Highlight Text')}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui('文本替换', 'Replace Text')}</span></button>
-          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui('文本删除', 'Delete Text')}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui('加下划线', 'Underline Text')}</span></button></>}
-          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui('自由批注', 'Note')}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui('插入文字', 'Insert Text')}</span></button></>}
+        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui('复制')}</span><kbd>Ctrl+C</kbd></button>}
+        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui('文本高亮')}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui('文本替换')}</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui('文本删除')}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui('加下划线')}</span></button></>}
+          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui('自由批注')}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui('插入文字')}</span></button></>}
       </>}
     </div>}
-  </div></LocalizedInterfaceCopy>
+  </div>
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
