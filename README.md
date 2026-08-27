@@ -123,7 +123,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, and `npm run test:selection-scheduling-0826-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
 
 ### Package a Release with One Command
 
@@ -141,17 +141,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.5` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.6` before packaging:
 
 ```powershell
-npm run package:windows -- 1.20.5
+npm run package:windows -- 1.20.6
 ```
 
 ```sh
-npm run package:macos -- 1.20.5
+npm run package:macos -- 1.20.6
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.5` and `bash scripts/package-macos.sh 1.20.5`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.6` and `bash scripts/package-macos.sh 1.20.6`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -421,7 +421,7 @@ npm test
 npm run build
 ```
 
-针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826` 和 `npm run test:selection-scheduling-0826-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页，覆盖公式碎片保留、图表文字隔离、单双栏流域裁剪、反向拖拽、真实 Electron 选区矩形与剪贴板文字。
+针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese` 和 `npm run test:selection-chinese-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；中间两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页，覆盖公式碎片保留、图表文字隔离、单双栏流域裁剪、反向拖拽、真实 Electron 选区矩形与剪贴板文字；最后两项使用 `tmp/7.申报书原件.pdf` 第 3 页，验证异常子集字体度量归一化，并在真实 Electron 中逐像素对比中文标题、正文与选区带的纵向中心。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
@@ -441,17 +441,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.5`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.6`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.20.5
+npm run package:windows -- 1.20.6
 ```
 
 ```sh
-npm run package:macos -- 1.20.5
+npm run package:macos -- 1.20.6
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.5` 和 `bash scripts/package-macos.sh 1.20.5`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.6` 和 `bash scripts/package-macos.sh 1.20.6`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

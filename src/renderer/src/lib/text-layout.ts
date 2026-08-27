@@ -280,8 +280,39 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
   return textSelectionBetween(words, first.start, last.end)
 }
 
+const fontAscentRatioCache = new Map<string, number>()
+
+function measuredFontAscentRatio(fontFamily?: string): number | undefined {
+  if (typeof document === 'undefined') return undefined
+  const family = fontFamily?.trim() || 'sans-serif'
+  const cached = fontAscentRatioCache.get(family)
+  if (cached !== undefined) return cached
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return undefined
+  context.font = `1000px ${family}`
+  const metrics = context.measureText('')
+  const ascent = metrics.fontBoundingBoxAscent
+  const descent = Math.abs(metrics.fontBoundingBoxDescent)
+  const ratio = ascent > 0 && ascent + descent > 0 ? ascent / (ascent + descent) : undefined
+  if (ratio !== undefined && Number.isFinite(ratio) && ratio > 0 && ratio <= 1) {
+    fontAscentRatioCache.set(family, ratio)
+    return ratio
+  }
+  return undefined
+}
+
 function ascentRatio(style?: PdfJsTextStyle): number {
-  if (style?.ascent) return style.ascent
+  // Match PDF.js' text-layer placement whenever the browser exposes font-box
+  // metrics. Some embedded subset fonts report ascent/descent in a scaled
+  // coordinate system (for example 0.107/-0.018 instead of roughly
+  // 0.8/-0.2), which previously moved every selection box below the glyphs.
+  const measured = measuredFontAscentRatio(style?.fontFamily)
+  if (measured !== undefined) return measured
+  const ascent = style?.ascent
+  const descent = style?.descent ? Math.abs(style.descent) : 0
+  const extent = ascent && ascent > 0 ? ascent + descent : 0
+  if (ascent && ascent > 0 && descent > 0 && (extent < 0.5 || extent > 1.5)) return ascent / extent
+  if (ascent && ascent > 0) return ascent
   if (style?.descent) return 1 + style.descent
   return 0.8
 }

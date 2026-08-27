@@ -12,6 +12,15 @@ describe('PDF text layout', () => {
     expect(words[0].rect.y + words[0].rect.height).toBeCloseTo(95)
   })
 
+  it('normalizes subset-font metrics that use a scaled coordinate system', () => {
+    const item = { str: '项目支撑国家数据基础设施建设工程', width: 180, height: 10.8, transform: [10.8, 0, 0, 10.8, 81, 308], fontName: 'subset' } as TextItem
+    const styles = { subset: { ascent: 0.107421875, descent: -0.017578125, vertical: false, fontFamily: 'sans-serif' } as TextStyle }
+    const words = textItemsToWordBoxes([item], styles, [1, 0, 0, -1, 0, 842])
+    const baseline = 534
+    expect(baseline - words[0].rect.y).toBeGreaterThan(10.8 * 0.8)
+    expect(words[0].rect.y + words[0].rect.height - baseline).toBeLessThan(10.8 * 0.2)
+  })
+
   it('creates editable text regions with inherited size, font family and emphasis', () => {
     const item = { str: 'Editable title', width: 126, height: 18, transform: [18, 0, 0, 18, 40, 700], fontName: 'fTitle', hasEOL: true } as TextItem
     const styles = { fTitle: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }
