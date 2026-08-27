@@ -63,6 +63,35 @@ function numberValue(document: PDFDocument, object: PDFObject | undefined, fallb
   return resolved instanceof PDFNumber ? resolved.asNumber() : fallback
 }
 
+function pageTextSourceKey(pageIndex: number, rects: PdfRect[]): string {
+  const normalized = rects
+    .map((rect) => [rect.x, rect.y, rect.width, rect.height].map((value) => Math.round(value * 100) / 100))
+    .sort((left, right) => left[1] - right[1] || left[0] - right[0] || left[2] - right[2] || left[3] - right[3])
+  return `${pageIndex}:${JSON.stringify(normalized)}`
+}
+
+function decodePageTextRects(document: PDFDocument, object?: PDFObject): PdfRect[] {
+  try {
+    const value = JSON.parse(decodeObject(document, object))
+    if (!Array.isArray(value)) return []
+    return value.flatMap((entry) => {
+      if (!Array.isArray(entry) || entry.length !== 4 || entry.some((number) => !Number.isFinite(number))) return []
+      const [x, y, width, height] = entry as number[]
+      return width > 0 && height > 0 ? [{ x, y, width, height }] : []
+    })
+  } catch { return [] }
+}
+
+function encodePageTextRects(rects: PdfRect[]): string {
+  return JSON.stringify(rects.map(({ x, y, width, height }) => [x, y, width, height]))
+}
+
+function embeddedBytes(document: PDFDocument, object?: PDFObject): Uint8Array | undefined {
+  if (!object) return undefined
+  const stream = object instanceof PDFRef ? document.context.lookup(object) : object
+  return stream instanceof PDFRawStream ? Uint8Array.from(stream.getContents()) : undefined
+}
+
 function pageGeometry(page: PDFPage): PageGeometry {
   const crop = page.getCropBox()
   return { ...crop, rotation: page.getRotation().angle }
@@ -98,6 +127,7 @@ export class PdfDocumentModel {
   private undoStack: Uint8Array<ArrayBufferLike>[] = []
   private redoStack: Uint8Array<ArrayBufferLike>[] = []
   private externallyDirty = false
+  private pageTextEditQueues = new Map<string, Promise<void>>()
   filePath?: string
   fileName = '未命名.pdf'
   dirty = false
@@ -401,15 +431,27 @@ export class PdfDocumentModel {
     return this.document.embedFont(font)
   }
 
-  private async textAppearance(rect: PdfRect, text: string, style: TextStyle, rasterPng?: Uint8Array): Promise<PDFRef> {
+  private async textAppearance(rect: PdfRect, text: string, style: TextStyle, rasterPng?: Uint8Array, mask?: { rects: PdfRect[]; color: string }): Promise<PDFRef> {
     const width = Math.max(1, rect.width), height = Math.max(1, rect.height)
     const [red, green, blue] = hexColor(style.color)
     let contents = ''
     let resources = this.document.context.obj({})
+    if (mask?.rects.length) {
+      const [maskRed, maskGreen, maskBlue] = hexColor(mask.color)
+      const rectangles = mask.rects.flatMap((source) => {
+        const left = Math.max(0, source.x - rect.x - .35)
+        const right = Math.min(width, source.x + source.width - rect.x + .35)
+        const top = Math.max(0, source.y - rect.y - .5)
+        const bottom = Math.min(height, source.y + source.height - rect.y + .5)
+        if (right <= left || bottom <= top) return []
+        return [`${left} ${height - bottom} ${right - left} ${bottom - top} re f`]
+      })
+      if (rectangles.length) contents = `q ${maskRed} ${maskGreen} ${maskBlue} rg ${rectangles.join('\n')} Q\n`
+    }
     if (rasterPng) {
       const image = await this.document.embedPng(rasterPng)
       resources = this.document.context.obj({ XObject: { Im0: image.ref } })
-      contents = `q ${width} 0 0 ${height} 0 0 cm /Im0 Do Q`
+      contents += `q ${width} 0 0 ${height} 0 0 cm /Im0 Do Q`
     } else {
       const font = await this.standardFont(style)
       resources = this.document.context.obj({ Font: { F0: font.ref } })
@@ -438,16 +480,16 @@ export class PdfDocumentModel {
         const y = Math.max(0, height - style.size - lineTop)
         return `BT /F0 ${style.size} Tf ${red} ${green} ${blue} rg ${letterSpacing} Tc ${horizontalScale} Tz 1 0 0 1 ${Math.max(0, offset)} ${y} Tm ${font.encodeText(value)} Tj ET`
       })
-      contents = `q ${operators.join('\n')} Q`
+      contents += `q ${operators.join('\n')} Q`
     }
     const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, width, height], Resources: resources })
     return this.document.context.register(stream)
   }
 
-  async addText(pageIndex: number, rect: PdfRect, text: string, style: TextStyle, rasterPng?: Uint8Array): Promise<string> {
+  async addText(pageIndex: number, rect: PdfRect, text: string, style: TextStyle, rasterPng?: Uint8Array, replacement?: { sourceKey: string; sourceRects: PdfRect[]; backgroundColor: string }): Promise<string> {
     const page = this.document.getPage(pageIndex)
     const id = `pdfuck-text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const appearance = await this.textAppearance(rect, text, style, rasterPng)
+    const appearance = await this.textAppearance(rect, text, style, rasterPng, replacement ? { rects: replacement.sourceRects, color: replacement.backgroundColor } : undefined)
     const [red, green, blue] = hexColor(style.color)
     const dictionary = this.document.context.obj({})
     dictionary.set(PDFName.of('Type'), PDFName.of('Annot'))
@@ -474,6 +516,12 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('PDFuckParagraphAfter'), PDFNumber.of(style.paragraphAfter || 0))
     dictionary.set(PDFName.of('PDFuckLetterSpacing'), PDFNumber.of(style.letterSpacing || 0))
     dictionary.set(PDFName.of('PDFuckHorizontalScale'), PDFNumber.of(style.horizontalScale || 100))
+    if (rasterPng) dictionary.set(PDFName.of('PDFuckTextRasterData'), this.document.context.register(this.document.context.stream(Uint8Array.from(rasterPng), { Type: 'EmbeddedFile' })))
+    if (replacement) {
+      dictionary.set(PDFName.of('PDFuckPageTextSource'), pdfString(replacement.sourceKey))
+      dictionary.set(PDFName.of('PDFuckPageTextRects'), pdfString(encodePageTextRects(replacement.sourceRects)))
+      dictionary.set(PDFName.of('PDFuckPageTextBackground'), PDFString.of(replacement.backgroundColor))
+    }
     page.node.addAnnot(this.document.context.register(dictionary))
     await this.commit()
     return id
@@ -583,21 +631,46 @@ export class PdfDocumentModel {
 
   async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect, backgroundColor = '#ffffff'): Promise<string> {
     if (!rects.length) throw new Error('找不到要编辑的页面文字区域。')
-    const page = this.document.getPage(pageIndex)
-    const geometry = pageGeometry(page)
-    const [backgroundRed, backgroundGreen, backgroundBlue] = hexColor(backgroundColor)
-    for (const rect of rects) {
-      const padded = { x: Math.max(0, rect.x - .35), y: Math.max(0, rect.y - .5), width: rect.width + .7, height: rect.height + 1 }
-      const [left, bottom, right, top] = displayRectToPdfBounds(padded, geometry)
-      page.drawRectangle({ x: left, y: bottom, width: Math.max(1, right - left), height: Math.max(1, top - bottom), color: rgb(backgroundRed, backgroundGreen, backgroundBlue), borderWidth: 0 })
-    }
-    // Empty replacement is a real delete operation: mask the source glyphs
-    // but do not create an empty FreeText annotation.
-    if (!text.trim()) {
+    if (pageIndex < 0 || pageIndex >= this.pageCount) throw new Error('要编辑的页面不存在。')
+    const sourceKey = pageTextSourceKey(pageIndex, rects)
+    const previous = this.pageTextEditQueues.get(sourceKey) || Promise.resolve()
+    const operation = previous.catch(() => undefined).then(async () => {
+      const page = this.document.getPage(pageIndex)
+      const rect = replacementRect || rectUnion(rects)
+      const matches = this.annotationEntries().filter((entry) => entry.pageIndex === pageIndex && decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckPageTextSource'))) === sourceKey)
+      if (!matches.length) return this.addText(pageIndex, rect, text, style, rasterPng, { sourceKey, sourceRects: rects, backgroundColor })
+
+      const retained = matches[0]
+      matches.slice(1).sort((left, right) => right.index - left.index).forEach((entry) => entry.page.node.Annots()?.remove(entry.index))
+      const appearance = await this.textAppearance(rect, text, style, rasterPng, { rects, color: backgroundColor })
+      const [red, green, blue] = hexColor(style.color)
+      retained.dict.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(rect, pageGeometry(page))))
+      retained.dict.set(PDFName.of('Contents'), pdfString(text))
+      retained.dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+      retained.dict.set(PDFName.of('AP'), this.document.context.obj({ N: appearance }))
+      retained.dict.set(PDFName.of('DA'), PDFString.of(`/Helv ${style.size} Tf ${red} ${green} ${blue} rg`))
+      retained.dict.set(PDFName.of('Q'), PDFNumber.of(style.align === 'center' ? 1 : style.align === 'right' ? 2 : 0))
+      retained.dict.set(PDFName.of('PDFuckFont'), pdfString(normalizeFontFamily(style.font)))
+      retained.dict.set(PDFName.of('PDFuckSize'), PDFNumber.of(style.size))
+      retained.dict.set(PDFName.of('PDFuckColor'), PDFString.of(style.color))
+      retained.dict.set(PDFName.of('PDFuckBold'), PDFName.of(style.bold ? 'true' : 'false'))
+      retained.dict.set(PDFName.of('PDFuckItalic'), PDFName.of(style.italic ? 'true' : 'false'))
+      retained.dict.set(PDFName.of('PDFuckAlign'), PDFName.of(style.align))
+      retained.dict.set(PDFName.of('PDFuckLineHeight'), PDFNumber.of(style.lineHeight || 1.25))
+      retained.dict.set(PDFName.of('PDFuckParagraphBefore'), PDFNumber.of(style.paragraphBefore || 0))
+      retained.dict.set(PDFName.of('PDFuckParagraphAfter'), PDFNumber.of(style.paragraphAfter || 0))
+      retained.dict.set(PDFName.of('PDFuckLetterSpacing'), PDFNumber.of(style.letterSpacing || 0))
+      retained.dict.set(PDFName.of('PDFuckHorizontalScale'), PDFNumber.of(style.horizontalScale || 100))
+      if (rasterPng) retained.dict.set(PDFName.of('PDFuckTextRasterData'), this.document.context.register(this.document.context.stream(Uint8Array.from(rasterPng), { Type: 'EmbeddedFile' })))
+      else retained.dict.delete(PDFName.of('PDFuckTextRasterData'))
+      retained.dict.set(PDFName.of('PDFuckPageTextRects'), pdfString(encodePageTextRects(rects)))
+      retained.dict.set(PDFName.of('PDFuckPageTextBackground'), PDFString.of(backgroundColor))
       await this.commit()
-      return ''
-    }
-    return this.addText(pageIndex, replacementRect || rectUnion(rects), text, style, rasterPng)
+      return decodeObject(this.document, retained.dict.get(PDFName.of('NM')))
+    })
+    const settled = operation.then(() => undefined, () => undefined)
+    this.pageTextEditQueues.set(sourceKey, settled)
+    try { return await operation } finally { if (this.pageTextEditQueues.get(sourceKey) === settled) this.pageTextEditQueues.delete(sourceKey) }
   }
 
   private annotationEntries(): AnnotationEntry[] {
@@ -645,11 +718,16 @@ export class PdfDocumentModel {
       const id = decodeObject(this.document, entry.dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`
       const font = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckFont')))
       const align = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckAlign')))
+      const sourceRects = decodePageTextRects(this.document, entry.dict.get(PDFName.of('PDFuckPageTextRects')))
       return [{
         id,
         pageIndex: entry.pageIndex,
         rect: pdfBoundsToDisplayRect(numberArray(this.document, entry.dict.get(PDFName.of('Rect'))), pageGeometry(entry.page)),
         text: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
+        appearanceData: embeddedBytes(this.document, entry.dict.get(PDFName.of('PDFuckTextRasterData'))),
+        sourceRects: sourceRects.length ? sourceRects : undefined,
+        backgroundColor: sourceRects.length ? decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckPageTextBackground'))) || '#ffffff' : undefined,
+        fixedToSource: sourceRects.length ? true : undefined,
         style: {
           font: normalizeFontFamily(font),
           size: numberValue(this.document, entry.dict.get(PDFName.of('PDFuckSize')), 16),
@@ -668,7 +746,7 @@ export class PdfDocumentModel {
   }
 
   private findTextObject(id: string): AnnotationEntry {
-    const entry = this.annotationEntries().find((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('Subtype'))) === 'FreeText' && decodeObject(this.document, candidate.dict.get(PDFName.of('NM'))) === id)
+    const entry = this.annotationEntries().find((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('Subtype'))) === 'FreeText' && decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckText'))) === 'true' && decodeObject(this.document, candidate.dict.get(PDFName.of('NM'))) === id)
     if (!entry) throw new Error('找不到这段文字，它可能已经被删除。')
     return entry
   }
@@ -676,7 +754,9 @@ export class PdfDocumentModel {
   async updateTextObject(id: string, text: string, style: TextStyle, rasterPng?: Uint8Array): Promise<void> {
     const { dict, page } = this.findTextObject(id)
     const rect = pdfBoundsToDisplayRect(numberArray(this.document, dict.get(PDFName.of('Rect'))), pageGeometry(page))
-    const appearance = await this.textAppearance(rect, text, style, rasterPng)
+    const sourceRects = decodePageTextRects(this.document, dict.get(PDFName.of('PDFuckPageTextRects')))
+    const backgroundColor = decodeObject(this.document, dict.get(PDFName.of('PDFuckPageTextBackground'))) || '#ffffff'
+    const appearance = await this.textAppearance(rect, text, style, rasterPng, sourceRects.length ? { rects: sourceRects, color: backgroundColor } : undefined)
     const [red, green, blue] = hexColor(style.color)
     dict.set(PDFName.of('Contents'), pdfString(text))
     dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
@@ -694,15 +774,24 @@ export class PdfDocumentModel {
     dict.set(PDFName.of('PDFuckParagraphAfter'), PDFNumber.of(style.paragraphAfter || 0))
     dict.set(PDFName.of('PDFuckLetterSpacing'), PDFNumber.of(style.letterSpacing || 0))
     dict.set(PDFName.of('PDFuckHorizontalScale'), PDFNumber.of(style.horizontalScale || 100))
+    if (rasterPng) dict.set(PDFName.of('PDFuckTextRasterData'), this.document.context.register(this.document.context.stream(Uint8Array.from(rasterPng), { Type: 'EmbeddedFile' })))
+    else dict.delete(PDFName.of('PDFuckTextRasterData'))
     await this.commit()
   }
 
   async moveTextObject(id: string, deltaX: number, deltaY: number): Promise<void> {
     const { dict, page } = this.findTextObject(id)
+    if (decodePageTextRects(this.document, dict.get(PDFName.of('PDFuckPageTextRects'))).length) return
     const geometry = pageGeometry(page)
     const rect = pdfBoundsToDisplayRect(numberArray(this.document, dict.get(PDFName.of('Rect'))), geometry)
     dict.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds({ ...rect, x: rect.x + deltaX, y: rect.y + deltaY }, geometry)))
     dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    await this.commit()
+  }
+
+  async deleteTextObject(id: string): Promise<void> {
+    const entry = this.findTextObject(id)
+    entry.page.node.Annots()?.remove(entry.index)
     await this.commit()
   }
 

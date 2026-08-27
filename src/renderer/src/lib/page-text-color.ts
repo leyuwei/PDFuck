@@ -10,13 +10,13 @@ export function inferRegionColors(data: Uint8ClampedArray): ColorSample {
   const colors = new Map<string, { red: number; green: number; blue: number; count: number }>()
   for (let index = 0; index + 3 < data.length; index += 4) {
     if (data[index + 3] < 128) continue
-    const red = Math.round(data[index] / 16) * 16, green = Math.round(data[index + 1] / 16) * 16, blue = Math.round(data[index + 2] / 16) * 16
-    const key = `${red},${green},${blue}`
+    const red = data[index], green = data[index + 1], blue = data[index + 2]
+    const key = `${Math.round(red / 16)},${Math.round(green / 16)},${Math.round(blue / 16)}`
     const current = colors.get(key)
-    if (current) current.count += 1
+    if (current) { current.red += red; current.green += green; current.blue += blue; current.count += 1 }
     else colors.set(key, { red, green, blue, count: 1 })
   }
-  const ranked = [...colors.values()].sort((left, right) => right.count - left.count)
+  const ranked = [...colors.values()].map((value) => ({ red: value.red / value.count, green: value.green / value.count, blue: value.blue / value.count, count: value.count })).sort((left, right) => right.count - left.count)
   const background = ranked[0] || { red: 255, green: 255, blue: 255, count: 1 }
   let foreground: typeof background | undefined
   let bestScore = 0

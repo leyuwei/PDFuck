@@ -15,8 +15,8 @@ describe('PDF text layout', () => {
   it('creates editable text regions with inherited size, font family and emphasis', () => {
     const item = { str: 'Editable title', width: 126, height: 18, transform: [18, 0, 0, 18, 40, 700], fontName: 'fTitle', hasEOL: true } as TextItem
     const styles = { fTitle: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }
-    const regions = textItemsToEditableRegions([item], styles, [1, 0, 0, -1, 0, 792], { fTitle: { name: 'Times-BoldItalic', bold: true, italic: true } })
-    expect(regions).toEqual([expect.objectContaining({ text: 'Editable title', rect: expect.objectContaining({ x: 40, y: 77.6, width: 126, height: 18 }), style: expect.objectContaining({ font: 'Times New Roman', size: 18, bold: true, italic: true, lineHeight: 1.25 }) })])
+    const regions = textItemsToEditableRegions([item], styles, [1, 0, 0, -1, 0, 792], { fTitle: { name: 'Times-BoldItalic', loadedName: 'g_d0_f1', bold: true, italic: true } })
+    expect(regions).toEqual([expect.objectContaining({ text: 'Editable title', lines: [{ text: 'Editable title', rect: expect.objectContaining({ x: 40, y: 77.6, width: 126, height: 18 }) }], rect: expect.objectContaining({ x: 40, y: 77.6, width: 126, height: 18 }), style: expect.objectContaining({ font: 'Times New Roman', sourceFont: 'g_d0_f1', size: 18, bold: true, italic: true, lineHeight: 1 }) })])
   })
 
   it('merges nearby line fragments into paragraph-sized regions without joining columns', () => {

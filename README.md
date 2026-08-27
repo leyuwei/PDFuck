@@ -72,7 +72,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
 - Add PNG (including transparent PNG) or JPG images to the current page. Position, resize, rotate, and lock the aspect ratio in a live preview before confirming it into the PDF; reopen the PDF later to edit or remove the image again.
 - Add polished page numbers across the document with `{page}` / `{total}` templates, custom separators, font styling, horizontal and vertical alignment, and edge-relative percentage margins that adapt independently to mixed page sizes and orientations. PDFuck-created page numbers can be detected, replaced as a set, or removed after reopening the file.
-- Edit PDF.js-recognized text blocks in place. Multi-column pages are split into editable blocks; clearing a block and applying the change removes the original text.
+- Edit PDF.js-recognized text blocks directly at their original coordinates. The zero-padding inline editor keeps the source font face, size, color, baseline, and click-relative caret; repeated saves update one source-bound object instead of stacking duplicates. Multi-column pages remain split into editable blocks, and deleting a saved replacement restores the untouched original text.
 - Undo and redo page crops, page deletion, text changes, and annotation changes independently per document tab.
 
 ### Annotate
@@ -123,7 +123,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture.
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
 
 ### Package a Release with One Command
 
@@ -141,17 +141,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.3` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.4` before packaging:
 
 ```powershell
-npm run package:windows -- 1.20.3
+npm run package:windows -- 1.20.4
 ```
 
 ```sh
-npm run package:macos -- 1.20.3
+npm run package:macos -- 1.20.4
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.3` and `bash scripts/package-macos.sh 1.20.3`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.4` and `bash scripts/package-macos.sh 1.20.4`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -220,7 +220,7 @@ When adding new visible copy later, put it in this same catalogue in all support
 
 Text added by PDFuck is stored as PDF FreeText objects with appearance streams. Latin text uses vector text appearances; characters that standard PDF fonts cannot encode, such as Chinese, use a high-resolution transparent appearance. PDFuck-created text remains movable and editable after reopening the file.
 
-“Edit Page Text” uses visual replacement: PDF.js identifies the text block, PDFuck samples the background color to cover the original display area, and a new editable FreeText object is written on top. This avoids unsafe rewrites of subset-encoded embedded fonts while keeping the replacement editable after saving and reopening.
+“Edit Page Text” uses a reversible visual replacement. PDF.js identifies the source glyph boxes and live embedded font face; the inline editor remains at the same coordinates with no box padding and places the caret near the clicked character. The sampled background masks and exact high-resolution text appearance are stored together in one source-bound FreeText object, while the original page content stream stays untouched. Repeated or concurrent saves update that same object, so replacements do not stack; deleting it reveals the original text again.
 
 ## License
 
@@ -331,7 +331,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 可在当前页面添加 PNG（包括透明 PNG）或 JPG 图片；导入后先在页面上拖动调整位置、大小、旋转角度和原始比例锁，确认后才正式写入 PDF；已添加图片会保留可编辑源数据，重开 PDF 后仍可在编辑模块选中、调整或删除；
 - 可为全部页面批量增加美观页码：支持 `{page}` / `{total}` 模板、任意分隔符、字体/字号/颜色/粗斜体、左中右与页顶/页底对齐，并按每页宽高使用百分比边距独立定位，可正确适配横向、纵向及混合尺寸页面；重开 PDF 后仍可整组更新或删除由 PDFuck 添加的页码；
 - 新增文字可直接选择、拖动，双击后继续编辑；
-- 激活“编辑页面文字”后，当前页所有 PDF.js 可识别文本块会自动显示边框，点击任意文本块即可原位编辑；
+- 激活“编辑页面文字”后，当前页所有 PDF.js 可识别文本块会自动显示边框；点击后编辑器保持原坐标、零内边距和源字体样式，并把光标放到点击字符附近，不再跳成独立文本框；同一区域反复保存只更新一个对象，删除替换对象即可恢复未被破坏的原文；
 - 多栏页面按栏和段落拆分为可编辑文本块；清空编辑内容并应用即可删除原页面文字，保存后可正常重开；
 - 默认继承文本块的具体字体名称、字号、粗体、斜体，并通过像素取样匹配原文字色和页面背景色；
 - 页内浮动工具栏提供 Arial、Helvetica、Calibri、Segoe UI、Times New Roman、微软雅黑、宋体、黑体等常用字体，并支持字号、颜色、粗斜体、对齐、行距、段前距、段后距、字符间距和 50%–200% 文字宽度；
@@ -423,6 +423,8 @@ npm run build
 
 针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling` 和 `npm run test:selection-scheduling-ui`。两项检查都使用 `tmp/Scheduling0821m.pdf`：前者验证 PDF 内部文字流把下一行项目符号插入当前行中间时，选区仍只包含当前行；后者在真实 Electron 界面中拖选该位置，并确认原生界面控件不会出现浏览器式文字选中。
 
+页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
+
 ### 一键打包发布
 
 请在仓库根目录、对应的目标系统上执行脚本。两个脚本都要求 Node.js 22 或更高版本，并会通过 `npm ci` 安装锁定依赖，执行全部发布回归，打包应用，启动最终可执行程序完成冒烟测试，核对包内版本，最后生成 SHA-256 发布清单。
@@ -439,17 +441,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.3`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.4`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.20.3
+npm run package:windows -- 1.20.4
 ```
 
 ```sh
-npm run package:macos -- 1.20.3
+npm run package:macos -- 1.20.4
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.3` 和 `bash scripts/package-macos.sh 1.20.3`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.4` 和 `bash scripts/package-macos.sh 1.20.4`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 
@@ -520,7 +522,7 @@ npm run dist:mac
 
 PDFuck 添加的文字会保存为带外观流的 PDF FreeText 对象。拉丁文字使用矢量文字外观；中文等无法由标准 PDF 字体直接编码的文字使用高分辨率透明外观。保存后重新打开，PDFuck 创建的文字对象仍可继续移动和编辑。
 
-“编辑页面文字”采用稳健的视觉替换方式：PDF.js 先识别当前页文本块，用户直接点击目标文本块；PDFuck 再以取样得到的背景色覆盖原始显示区域，并写入可编辑的 FreeText 对象。这样可以避开许多 PDF 内嵌字体经过子集编码、原始字符流无法安全改写的问题，同时让替换内容在保存、重开后仍可移动和继续编辑。
+“编辑页面文字”采用可逆的视觉替换方式：PDF.js 识别源字形区域和当前已加载的内嵌字体，零内边距编辑器保持原坐标，并把光标定位到点击字符附近。取样背景遮罩和高分辨率精确文字外观会一起写入一个与来源区域绑定的 FreeText 对象，原始页面内容流不再被永久覆盖。同一区域的重复或并发保存只更新该对象，不会叠出重复文字；删除对象即可重新显示原文。
 
 ## 开源许可
 

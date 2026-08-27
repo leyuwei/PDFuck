@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib'
+import { PDFArray, PDFDocument, PDFName, PDFRef, StandardFonts, degrees, rgb } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import { PdfDocumentModel } from './pdf-document'
 import type { AnnotationKind } from '../types'
@@ -12,6 +12,13 @@ async function samplePdf(): Promise<Uint8Array> {
     page.drawText('Select these words for annotations.', { x: 72, y: 660, size: 12, font })
   }
   return document.save()
+}
+
+async function firstPageContentStreamCount(bytes: Uint8Array): Promise<number> {
+  const document = await PDFDocument.load(bytes, { updateMetadata: false })
+  const object = document.getPage(0).node.get(PDFName.of('Contents'))
+  const resolved = object instanceof PDFRef ? document.context.lookup(object) : object
+  return resolved instanceof PDFArray ? resolved.size() : resolved ? 1 : 0
 }
 
 const transparentPng = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4H8DlAAAFRQGaEXGl/wAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0))
@@ -227,23 +234,54 @@ describe('PdfDocumentModel', () => {
   })
 
   it('visually replaces selected page text and keeps the replacement editable after reopening', async () => {
-    const model = await PdfDocumentModel.load(await samplePdf())
-    const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], 'Revised wording', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })
+    const source = await samplePdf()
+    const originalContentStreams = await firstPageContentStreamCount(source)
+    const sourceRects = [{ x: 72, y: 118, width: 190, height: 15 }]
+    const model = await PdfDocumentModel.load(source)
+    const id = await model.replacePageText(0, sourceRects, 'Revised wording', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' }, transparentPng, undefined, '#f4f5f6')
     const replacement = model.textObjects().find((item) => item.id === id)
-    expect(replacement).toEqual(expect.objectContaining({ pageIndex: 0, text: 'Revised wording', rect: expect.objectContaining({ x: 72, y: 118, width: 190, height: 15 }) }))
+    expect(replacement).toEqual(expect.objectContaining({ pageIndex: 0, text: 'Revised wording', rect: expect.objectContaining({ x: 72, y: 118, width: 190, height: 15 }), sourceRects, backgroundColor: '#f4f5f6', fixedToSource: true, appearanceData: transparentPng }))
+    // pdf-lib wraps an existing content stream in q/Q while normalizing a page
+    // for its first annotation. A fourth stream would mean replacement paint
+    // was permanently appended to the page content as in the former design.
+    expect(await firstPageContentStreamCount(model.bytes)).toBe(originalContentStreams + 2)
     const reopened = await PdfDocumentModel.load(model.bytes)
-    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id, text: 'Revised wording' })])
+    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id, text: 'Revised wording', sourceRects, appearanceData: transparentPng })])
     await reopened.updateTextObject(id, 'Edited again', { font: 'serif', size: 13, color: '#3157d5', bold: true, italic: false, align: 'left', lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 })
-    expect(reopened.textObjects()[0]).toEqual(expect.objectContaining({ text: 'Edited again', style: expect.objectContaining({ lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 }) }))
+    expect(reopened.textObjects()[0]).toEqual(expect.objectContaining({ text: 'Edited again', sourceRects, style: expect.objectContaining({ lineHeight: 1.5, paragraphBefore: 3, paragraphAfter: 5, letterSpacing: 1.2, horizontalScale: 92 }) }))
   })
 
-  it('allows deleting page text without creating an empty annotation', async () => {
+  it('keeps an empty in-place replacement removable so the original text can be restored', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], '', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })
-    expect(id).toBe('')
+    expect(id).toMatch(/^pdfuck-text-/)
+    expect(model.textObjects()).toEqual([expect.objectContaining({ id, text: '', fixedToSource: true })])
+    await model.deleteTextObject(id)
     expect(model.textObjects()).toHaveLength(0)
     const reopened = await PdfDocumentModel.load(model.bytes)
     expect(reopened.textObjects()).toHaveLength(0)
+  })
+
+  it('serializes repeated saves for one source region and never creates duplicate text', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const sourceRects = [{ x: 72, y: 118, width: 190, height: 15 }]
+    const style = { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' as const }
+    const [firstId, secondId] = await Promise.all([
+      model.replacePageText(0, sourceRects, 'First save', style),
+      model.replacePageText(0, sourceRects, 'Latest save', style)
+    ])
+    expect(secondId).toBe(firstId)
+    expect(model.textObjects()).toEqual([expect.objectContaining({ id: firstId, text: 'Latest save', sourceRects })])
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.textObjects()).toEqual([expect.objectContaining({ id: firstId, text: 'Latest save' })])
+  })
+
+  it('deletes a saved replacement annotation without leaving a hidden duplicate', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const id = await model.replacePageText(0, [{ x: 72, y: 118, width: 190, height: 15 }], 'Delete me', { font: 'sans', size: 12, color: '#182033', bold: false, italic: false, align: 'left' })
+    await model.deleteTextObject(id)
+    expect(model.textObjects()).toHaveLength(0)
+    expect((await PdfDocumentModel.load(model.bytes)).textObjects()).toHaveLength(0)
   })
 
   it('does not delete the last page', async () => {

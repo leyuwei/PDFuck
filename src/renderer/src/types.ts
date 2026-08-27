@@ -35,6 +35,8 @@ export interface AnnotationReply {
 
 export interface TextStyle {
   font: string
+  /** PDF.js' live font-face name. It is used only while editing source text. */
+  sourceFont?: string
   size: number
   color: string
   bold: boolean
@@ -52,6 +54,7 @@ export interface EditableTextRegion {
   text: string
   rect: PdfRect
   sourceRects: PdfRect[]
+  lines: Array<{ text: string; rect: PdfRect }>
   style: TextStyle
 }
 
@@ -68,6 +71,14 @@ export interface TextObjectRecord {
   rect: PdfRect
   text: string
   style: TextStyle
+  /** Transparent high-resolution text appearance used by the saved PDF. */
+  appearanceData?: Uint8Array
+  /** Source glyph boxes covered by an in-place page-text replacement. */
+  sourceRects?: PdfRect[]
+  /** Sampled page color painted behind an in-place replacement. */
+  backgroundColor?: string
+  /** In-place replacements stay anchored to their source text. */
+  fixedToSource?: boolean
   /** Render the object in the viewer without exposing drag/edit affordances. */
   locked?: boolean
 }

@@ -6,7 +6,7 @@ import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
-export interface PdfFontDetails { name?: string; bold?: boolean; italic?: boolean }
+export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
 export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
 
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
@@ -252,7 +252,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
     const x = Math.min(left.x, right.x), y = Math.min(left.y, right.y)
     return { x, y, width: Math.max(left.x + left.width, right.x + right.width) - x, height: Math.max(left.y + left.height, right.y + right.height) - y }
   }
-  const compatible = (left: TextStyle, right: TextStyle): boolean => left.font === right.font && left.bold === right.bold && left.italic === right.italic && Math.abs(left.size - right.size) <= Math.max(0.75, Math.max(left.size, right.size) * 0.08)
+  const compatible = (left: TextStyle, right: TextStyle): boolean => left.font === right.font && (!left.sourceFont || !right.sourceFont || left.sourceFont === right.sourceFont) && left.bold === right.bold && left.italic === right.italic && Math.abs(left.size - right.size) <= Math.max(0.75, Math.max(left.size, right.size) * 0.08)
 
   const fragments: Fragment[] = items.flatMap((item, index) => {
     if (!item.str.trim()) return []
@@ -269,6 +269,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
       lineBreakAfter: Boolean(item.hasEOL),
       style: {
         font: normalizeFontFamily(details?.name, pdfStyle?.fontFamily),
+        sourceFont: details?.loadedName || details?.name || pdfStyle?.fontFamily,
         size: Math.max(6, Math.min(144, Math.round(fontHeight * 100) / 100)),
         color: '#182033',
         bold: details?.bold ?? /bold|black|heavy|semibold|demi|medi/i.test(fontDescription),
@@ -364,9 +365,10 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
         const spread = (values: number[]) => Math.max(...values) - Math.min(...values)
         if (spread(centers) < block.style.size * 0.4 && spread(lefts) > block.style.size * 0.7) block.style.align = 'center'
         else if (spread(rights) < block.style.size * 0.4 && spread(lefts) > block.style.size * 0.7) block.style.align = 'right'
-      }
+      } else block.style.lineHeight = 1
       const sourceRects = block.lines.flatMap((line) => line.fragments.map((fragment) => fragment.rect))
-      return { id: `page-text-${blockIndex}-${block.lines[0].fragments[0].index}`, text: lineText.join('\n'), rect: block.rect, sourceRects, style: block.style }
+      const editableLines = block.lines.map((line, index) => ({ text: lineText[index], rect: { ...line.rect } }))
+      return { id: `page-text-${blockIndex}-${block.lines[0].fragments[0].index}`, text: lineText.join('\n'), rect: block.rect, sourceRects, lines: editableLines, style: block.style }
     })
 }
 

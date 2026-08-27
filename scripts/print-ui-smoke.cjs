@@ -89,7 +89,7 @@ async function main() {
     assert.ok(previewQuality.naturalHeight >= previewQuality.clientHeight * 2, `preview height is not retina sharp: ${JSON.stringify(previewQuality)}`)
     assert.equal(previewQuality.naturalWidth, previewQuality.sourceWidth)
     assert.equal(previewQuality.naturalHeight, previewQuality.sourceHeight)
-    const screenshot = path.join(screenshotDir, 'print-dialog-1.20.3.png')
+    const screenshot = path.join(screenshotDir, `print-dialog-${require('../package.json').version}.png`)
     await page.screenshot({ path: screenshot })
     console.log(JSON.stringify({ printUiSmoke: 'passed', viewport: '900x760', systemPrinterCount: systemPrinters.length, printers: printerResults, orientation: results, previewQuality, screenshot }, null, 2))
   } finally {

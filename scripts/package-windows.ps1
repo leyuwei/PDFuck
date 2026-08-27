@@ -53,6 +53,7 @@ try {
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-native')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:window-tabs')
+  Invoke-Native -Command 'npm' -Arguments @('run', 'test:page-text-edit-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-ui')
   Invoke-Native -Command 'git' -Arguments @('diff', '--check')
@@ -113,7 +114,7 @@ try {
     executableProductVersion = $fileVersion
     artifacts = @($hashes | ForEach-Object { [ordered]@{ file = $_.Path; bytes = (Get-Item -LiteralPath $_.Path).Length; sha256 = $_.Hash } })
     signatures = $signatures
-    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'selection-scheduling', 'selection-scheduling-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui')
+    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'page-text-edit-ui', 'selection-scheduling', 'selection-scheduling-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui')
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
   Write-Host "Windows release passed build, regression, packaged-app, version and hash checks." -ForegroundColor Green
