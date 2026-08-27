@@ -232,6 +232,34 @@ describe('PDF text layout', () => {
     })
   })
 
+  it('keeps a paragraph selection inside its source text flow when graph labels interrupt the PDF order', () => {
+    const rightRun = { x: 312, y: 20, width: 251, height: 10 }
+    const words = [
+      { text: 'PFS', order: 0, column: 0, textRun: 0, textRunRect: rightRun, rect: { x: 330, y: 20, width: 18, height: 10 } },
+      { text: '1.8', order: 1, column: 0, textRun: 1, textRunRect: { x: 68, y: 31, width: 12, height: 8 }, rect: { x: 68, y: 31, width: 12, height: 8 } },
+      { text: 'continues', order: 2, column: 0, textRun: 2, textRunRect: { x: 312, y: 40, width: 251, height: 10 }, rect: { x: 312, y: 40, width: 42, height: 10 } },
+      { text: 'legend', order: 3, column: 0, textRun: 3, textRunRect: { x: 180, y: 51, width: 30, height: 8 }, rect: { x: 180, y: 51, width: 30, height: 8 } },
+      { text: 'framework.', order: 4, column: 0, textRun: 4, textRunRect: { x: 312, y: 60, width: 46, height: 10 }, rect: { x: 312, y: 60, width: 46, height: 10 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 4, offset: 10 })
+    expect(selection?.text).toBe('PFS continues framework.')
+    expect(selection?.text).not.toMatch(/1\.8|legend/u)
+    expect(selection?.rects.every((rect) => rect.x >= 312)).toBe(true)
+  })
+
+  it('retains formula fragments inside a text flow while excluding a neighboring chart column', () => {
+    const words = [
+      { text: 'conditions', order: 0, column: 0, textRun: 0, textRunRect: { x: 49, y: 20, width: 251, height: 10 }, rect: { x: 49, y: 20, width: 44, height: 10 } },
+      { text: '120', order: 1, column: 1, textRun: 1, textRunRect: { x: 340, y: 30, width: 12, height: 8 }, rect: { x: 340, y: 30, width: 12, height: 8 } },
+      { text: 'ξ', order: 2, column: 1, textRun: 2, textRunRect: { x: 214, y: 34, width: 5, height: 7 }, rect: { x: 214, y: 34, width: 5, height: 7 } },
+      { text: 'network.', order: 3, column: 0, textRun: 3, textRunRect: { x: 49, y: 48, width: 167, height: 10 }, rect: { x: 182, y: 48, width: 34, height: 10 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 3, offset: 8 })
+    expect(selection?.text).toBe('conditions ξ network.')
+    expect(selection?.text).not.toContain('120')
+    expect(selection?.rects.every((rect) => rect.x + rect.width <= 300)).toBe(true)
+  })
+
   it('keeps a completed line free of a list marker emitted out of PDF stream order', () => {
     const words = [
       { text: 'as', order: 0, column: 0, rect: { x: 10, y: 20, width: 12, height: 10 } },

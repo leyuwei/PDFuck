@@ -56,6 +56,8 @@ try {
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:page-text-edit-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-ui')
+  Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-0826')
+  Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-0826-ui')
   Invoke-Native -Command 'git' -Arguments @('diff', '--check')
   # npm ci has already installed this exact Electron version. Reuse its local
   # distribution so packaging does not perform a second GitHub download.
@@ -93,6 +95,7 @@ try {
   Invoke-Native -Command 'node' -Arguments @('scripts/release-ui-smoke.cjs')
   $env:PDFUCK_SMOKE_EXECUTABLE = $unpackedExecutable
   Invoke-Native -Command 'node' -Arguments @('scripts/print-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/selection-scheduling-0826-ui-smoke.cjs')
 
   $artifacts = @($installer, $portable)
   # Use the framework implementation so release hashing also works in minimal
@@ -114,7 +117,7 @@ try {
     executableProductVersion = $fileVersion
     artifacts = @($hashes | ForEach-Object { [ordered]@{ file = $_.Path; bytes = (Get-Item -LiteralPath $_.Path).Length; sha256 = $_.Hash } })
     signatures = $signatures
-    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'page-text-edit-ui', 'selection-scheduling', 'selection-scheduling-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui')
+    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'page-text-edit-ui', 'selection-scheduling', 'selection-scheduling-ui', 'selection-scheduling-0826', 'selection-scheduling-0826-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui', 'packaged-selection-scheduling-0826-ui')
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
   Write-Host "Windows release passed build, regression, packaged-app, version and hash checks." -ForegroundColor Green

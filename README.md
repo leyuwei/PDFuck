@@ -28,7 +28,7 @@ Copyright © 2026 github@leyuwei
 - **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
-- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
+- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. Source-run flow corridors keep drag selections inside their paragraph or column while retaining inline formula fragments, so interleaved chart labels and neighboring columns do not overflow into the selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster exports support 72-600 DPI.
@@ -123,7 +123,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, and `npm run test:selection-scheduling-0826-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
 
 ### Package a Release with One Command
 
@@ -141,17 +141,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.4` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.5` before packaging:
 
 ```powershell
-npm run package:windows -- 1.20.4
+npm run package:windows -- 1.20.5
 ```
 
 ```sh
-npm run package:macos -- 1.20.4
+npm run package:macos -- 1.20.5
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.4` and `bash scripts/package-macos.sh 1.20.4`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.5` and `bash scripts/package-macos.sh 1.20.5`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -254,7 +254,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **从列表回到原文只需一次点击**：批注列表支持 `Ctrl/⌘` 多选、`Shift` 连续选择、批量删除、行内双击编辑、右键设置颜色与回复，以及单行/多行显示和 280–560 px 宽度调整。定位时自动滚动到页面中央，用紧贴每行文字的短暂轮廓提示目标。
 - **批注不会挡住阅读，也不会失去上下文**：侧栏可以收起为窄栏，保留数量提示；选中批注后页面只显示约 1 秒的“当前批注”聚焦框，既能确认位置，又不会留下永久遮罩。
 - **搜索结果是真正可用的定位结果**：支持大小写、模糊匹配和正则表达式，命中结果按页显示上下文，跳转后只高亮匹配文字而不是整页。
-- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；`Shift` 加左右方向键可逐字符扩展选区，复制时自动清掉 PDF 硬回行并修复常见英文断词。
+- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区，复制时自动清掉 PDF 硬回行并修复常见英文断词。
 - **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS。
@@ -421,7 +421,7 @@ npm test
 npm run build
 ```
 
-针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling` 和 `npm run test:selection-scheduling-ui`。两项检查都使用 `tmp/Scheduling0821m.pdf`：前者验证 PDF 内部文字流把下一行项目符号插入当前行中间时，选区仍只包含当前行；后者在真实 Electron 界面中拖选该位置，并确认原生界面控件不会出现浏览器式文字选中。
+针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826` 和 `npm run test:selection-scheduling-0826-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页，覆盖公式碎片保留、图表文字隔离、单双栏流域裁剪、反向拖拽、真实 Electron 选区矩形与剪贴板文字。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
@@ -441,17 +441,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.4`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.5`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.20.4
+npm run package:windows -- 1.20.5
 ```
 
 ```sh
-npm run package:macos -- 1.20.4
+npm run package:macos -- 1.20.5
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.4` 和 `bash scripts/package-macos.sh 1.20.4`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.5` 和 `bash scripts/package-macos.sh 1.20.5`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

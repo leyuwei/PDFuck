@@ -3,7 +3,7 @@ import type { EditableTextRegion, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 
-export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number }
+export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
@@ -69,6 +69,69 @@ function comparePosition(a: TextPosition, b: TextPosition): number {
   return a.wordIndex === b.wordIndex ? a.offset - b.offset : a.wordIndex - b.wordIndex
 }
 
+interface TextFlowBounds { left: number; right: number; padding: number }
+
+function textFlowBounds(words: WordBox[], startWord: WordBox, endWord: WordBox): TextFlowBounds | undefined {
+  const startRect = startWord.textRunRect
+  const endRect = endWord.textRunRect
+  if (!startRect || !endRect) return undefined
+  if (startWord.column !== endWord.column && !startWord.columnAmbiguous && !endWord.columnAmbiguous) return undefined
+  const startRight = startRect.x + startRect.width
+  const endRight = endRect.x + endRect.width
+  const overlap = Math.max(0, Math.min(startRight, endRight) - Math.max(startRect.x, endRect.x))
+  const minimumWidth = Math.max(1, Math.min(startRect.width, endRect.width))
+  const height = Math.max(startRect.height, endRect.height, startWord.rect.height, endWord.rect.height)
+  const sharesEdge = Math.abs(startRect.x - endRect.x) <= height * 1.5 || Math.abs(startRight - endRight) <= height * 1.5
+  // Endpoints from different newspaper columns have disjoint source runs.
+  // A short final line still belongs to the paragraph above because it either
+  // overlaps the first line or keeps the same left/right edge.
+  if (overlap < minimumWidth * 0.35 && !sharesEdge) return undefined
+  let left = Math.min(startRect.x, endRect.x)
+  let right = Math.max(startRight, endRight)
+  const initialWidth = Math.max(1, right - left)
+  const bandTop = Math.min(startRect.y, endRect.y) - height
+  const bandBottom = Math.max(startRect.y + startRect.height, endRect.y + endRect.height) + height
+  const runs = new Map<number, PdfRect>()
+  for (const word of words) {
+    if (word.textRun === undefined || !word.textRunRect || runs.has(word.textRun)) continue
+    const rect = word.textRunRect
+    if (rect.y + rect.height < bandTop || rect.y > bandBottom || rect.height < height * 0.78 || rect.height > height * 1.3) continue
+    runs.set(word.textRun, rect)
+  }
+  // Grow a short first/last line to the normal paragraph width using aligned
+  // source runs. Cap each growth below two times the seed width so a full-page
+  // caption cannot bridge two newspaper columns into one selection flow.
+  for (let pass = 0; pass < 3; pass += 1) {
+    let changed = false
+    for (const rect of runs.values()) {
+      const rectRight = rect.x + rect.width
+      const workingWidth = Math.max(1, right - left)
+      const runOverlap = Math.max(0, Math.min(right, rectRight) - Math.max(left, rect.x))
+      const aligned = Math.abs(rect.x - left) <= height * 1.5 || Math.abs(rectRight - right) <= height * 1.5
+      const connected = runOverlap >= Math.min(workingWidth, rect.width) * 0.55
+      if ((!aligned && !connected) || rect.width > Math.max(initialWidth, workingWidth) * 1.9) continue
+      const nextLeft = Math.min(left, rect.x)
+      const nextRight = Math.max(right, rectRight)
+      if (nextLeft !== left || nextRight !== right) { left = nextLeft; right = nextRight; changed = true }
+    }
+    if (!changed) break
+  }
+  return { left, right, padding: Math.max(0.75, height * 0.2) }
+}
+
+function wordBelongsToFlow(word: WordBox, flow: TextFlowBounds): boolean {
+  const rect = word.textRunRect || word.rect
+  const left = flow.left - flow.padding
+  const right = flow.right + flow.padding
+  const overlap = Math.max(0, Math.min(right, rect.x + rect.width) - Math.max(left, rect.x))
+  if (overlap <= 0) return false
+  const flowWidth = Math.max(1, right - left)
+  const runWidth = Math.max(1, rect.width)
+  // Narrow formula fragments inside the flow are retained. A full-width
+  // caption or a graph label run that merely touches one column is rejected.
+  return overlap / runWidth >= 0.55 || (runWidth <= flowWidth * 1.12 && overlap / flowWidth >= 0.08)
+}
+
 export function textSelectionBetween(words: WordBox[], anchor: TextPosition, focus: TextPosition): { text: string; rects: PdfRect[] } | undefined {
   if (!words.length || comparePosition(anchor, focus) === 0) return undefined
   const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
@@ -102,6 +165,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   })
   const fallbackVisualBlock = blockId === undefined && startWord.columnAmbiguous && endWord.columnAmbiguous && [...fallbackRows.values()].every((row) => row.some((word) => word.columnAmbiguous))
   const useVisualBlock = blockId !== undefined || fallbackVisualBlock
+  const flowBounds = useVisualBlock ? undefined : textFlowBounds(words, startWord, endWord)
   const selectionBandTop = Math.min(startWord.rect.y, endWord.rect.y) - 0.5
   const selectionBandBottom = Math.max(startWord.rect.y + startWord.rect.height, endWord.rect.y + endWord.rect.height) + 0.5
   const hasOutOfBandIntermediate = sameColumnBand && words.slice(start.wordIndex + 1, end.wordIndex).some((word) => word.column === anchorColumn && (word.rect.y + word.rect.height < selectionBandTop || word.rect.y > selectionBandBottom))
@@ -122,13 +186,13 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
       ? words.map((word, index) => ({ word, index })).filter(({ word }) => {
         const y = word.rect.y
-        const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY)
+        const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY && (!flowBounds || wordBelongsToFlow(candidate, flowBounds)))
         const left = bandWords.length ? Math.min(...bandWords.map((candidate) => candidate.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
         const right = bandWords.length ? Math.max(...bandWords.map((candidate) => candidate.rect.x + candidate.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
-        return y >= minY && y <= maxY && word.rect.x + word.rect.width >= left && word.rect.x <= right
+        return y >= minY && y <= maxY && (flowBounds ? wordBelongsToFlow(word, flowBounds) : word.rect.x + word.rect.width >= left && word.rect.x <= right)
       }).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
     : hasOutOfBandIntermediate
-      ? words.map((word, index) => ({ word, index })).filter(({ word }) => word.column === anchorColumn).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
+      ? words.map((word, index) => ({ word, index })).filter(({ word }) => word.column === anchorColumn && (!flowBounds || wordBelongsToFlow(word, flowBounds))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
       : undefined
   const selectionEntries = visualBandIndices?.length
     ? (() => {
@@ -147,7 +211,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const wordIndex = entry.wordIndex
     const word = words[wordIndex]
     const useVisualBand = Boolean(visualBandIndices?.length)
-    if (!word || (!useVisualBand && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
+    if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
     const chars = Array.from(word.text), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
     const to = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.to)) : count
@@ -396,11 +460,11 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
 export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}): WordBox[] {
   const words: WordBox[] = []
   let order = 0
-  for (const item of items) {
+  for (const [textRun, item] of items.entries()) {
     if (!item.str) continue
     const transform = multiplyMatrix(viewportTransform, item.transform as Matrix)
     const angle = Math.atan2(transform[1], transform[0])
-    const { fontHeight, origin } = itemRect(item, styles[item.fontName], viewportTransform)
+    const { rect: textRunRect, fontHeight, origin } = itemRect(item, styles[item.fontName], viewportTransform)
     const left = origin.x
     const top = origin.y
     const horizontalScale = Math.max(0.0001, Math.hypot(viewportTransform[0], viewportTransform[1]))
@@ -437,7 +501,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       const xs = corners.map((point) => point.x), ys = corners.map((point) => point.y)
       const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
       const boundaries = wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || offset) - offset)
-      words.push({ text: match[0], order: order++, rect, boundaries: [0, ...boundaries], baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1) })
+      words.push({ text: match[0], order: order++, rect, boundaries: [0, ...boundaries], baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
     }
   }
   // PDF.js generally follows content-stream order, but mathematical
