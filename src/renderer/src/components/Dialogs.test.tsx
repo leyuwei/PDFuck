@@ -3,7 +3,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog, ConfirmDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, SaveAsRequiredDialog } from './Dialogs'
+import { AnnotationDialog, ConfirmDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog } from './Dialogs'
 import { setInterfaceLanguage } from '../lib/i18n'
 
 vi.mock('../lib/pdfjs', () => ({
@@ -114,6 +114,58 @@ describe('AnnotationDialog focus', () => {
     expect(onOpen).toHaveBeenCalledWith('C:\\docs\\recent.pdf')
     await act(async () => { ([...container.querySelectorAll('button')].find((button) => button.textContent === '浏览 PDF 文件…') as HTMLButtonElement).click() })
     expect(onBrowse).toHaveBeenCalledOnce()
+    await act(async () => root.unmount())
+  })
+
+  it('customizes, previews, submits, and deletes an existing page-number set', async () => {
+    const onSubmit = vi.fn(), onDelete = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<PageNumberDialog existingCount={12} pageCount={12} onCancel={() => undefined} onSubmit={onSubmit} onDelete={onDelete} />))
+    expect(container.querySelector('.page-number-existing')?.textContent).toContain('12 个')
+    expect(container.querySelector('.page-number-preview')?.textContent).toContain('3 / 12')
+    const template = container.querySelector('.page-number-template input') as HTMLInputElement
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(template, 'Page {total}'); template.dispatchEvent(new Event('input', { bubbles: true })) })
+    const update = [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '更新页码')!
+    expect(update.disabled).toBe(true)
+    expect(container.querySelector('.page-number-template small')?.textContent).toContain('{page}')
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(template, 'Page {page} of {total}'); template.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(update.disabled).toBe(false)
+    await act(async () => update.click())
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ template: 'Page {page} of {total}', horizontal: 'center', vertical: 'bottom', edgeOffsetPercent: 3 }))
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '删除已添加的页码') as HTMLButtonElement).click() })
+    expect(onDelete).toHaveBeenCalledOnce()
+    await act(async () => root.unmount())
+  })
+
+  it('combines page selection and print preview while submitting effective printer settings', async () => {
+    const onSubmit = vi.fn()
+    const root = createRoot(container)
+    const printers = [{ name: 'office-device', displayName: 'Office Printer', description: 'Floor 2', isDefault: true, supportsDuplex: true }]
+    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={5} currentPage={2} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onCancel={() => undefined} onSubmit={onSubmit} />))
+    expect(container.querySelector('.print-options-dialog')).not.toBeNull()
+    expect(container.querySelector('.page-selection-dialog')).toBeNull()
+    expect(container.textContent).toContain('打印设置与预览')
+    expect((container.querySelector('.print-printer-select') as HTMLSelectElement).value).toBe('office-device')
+    expect(container.querySelectorAll('.print-page-strip button')).toHaveLength(5)
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('.print-page-shortcuts button')].find((button) => button.textContent === '当前页')!).click() })
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('.print-orientation button')].find((button) => button.textContent === '横向')!).click() })
+    const duplex = container.querySelector<HTMLSelectElement>('.print-duplex-select')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(duplex, 'shortEdge'); duplex.dispatchEvent(new Event('change', { bubbles: true })) })
+    const scale = container.querySelector<HTMLInputElement>('.print-scale-number')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(scale, '125'); scale.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '发送到打印机')!).click() })
+    expect(onSubmit).toHaveBeenCalledWith([2], expect.objectContaining({ orientation: 'landscape', duplex: 'shortEdge', pageSize: 'A4', scale: 125 }), 'office-device')
+    await act(async () => root.unmount())
+  })
+
+  it('keeps duplex unavailable when the selected driver reports simplex-only capability', async () => {
+    const root = createRoot(container)
+    const printers = [{ name: 'simplex-device', displayName: 'Simplex Printer', description: '', isDefault: true, supportsDuplex: false }]
+    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={1} currentPage={0} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onCancel={() => undefined} onSubmit={() => undefined} />))
+    const duplexOptions = container.querySelectorAll<HTMLOptionElement>('.print-duplex-select option')
+    expect(duplexOptions[1].disabled).toBe(true)
+    expect(duplexOptions[2].disabled).toBe(true)
+    expect(container.textContent).toContain('此打印机未报告双面打印能力')
     await act(async () => root.unmount())
   })
 

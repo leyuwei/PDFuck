@@ -6,7 +6,7 @@ import { normalizeRect, pointInRect, rectUnion } from '../lib/geometry'
 import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
-import { canvasOutputScale, wheelZoom } from '../lib/rendering'
+import { canvasOutputScale, singlePageWheelDirection, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
@@ -16,9 +16,9 @@ import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/readin
 import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
 import type { ReadingPosition } from '../../../shared/contracts'
 import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
-import { t, ui, useInterfaceLanguage } from '../lib/i18n'
+import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 
-export interface ViewerHandle { fitWidth(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 interface ViewerProps {
   data?: Uint8Array
@@ -35,6 +35,7 @@ interface ViewerProps {
   annotationMode: boolean
   zoom: number
   fitWidthRequest: number
+  fitPageRequest: number
   currentPage: number
   initialReadingPosition?: ReadingPosition
   onZoomChange(zoom: number): void
@@ -437,7 +438,7 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
     <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("编辑页面文字内容")} style={{ left: region.rect.x * zoom, top: region.rect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: 3 + paragraphBefore * zoom, paddingBottom: 3 + paragraphAfter * zoom, color: style.color, backgroundColor, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); submit() } }} />
     <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
-        <label title={ui("字体")}><select aria-label={ui("字体")} value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label title={ui("字体")}><select aria-label={ui("字体")} value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label.endsWith('（原文字体）') ? `${option.label.slice(0, -6)} (${ui('原文字体')})` : translateUiText(option.label)}</option>)}</select></label>
         <label className="format-size" title={ui("字号")}><input aria-label={ui("字号")} type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
         <button type="button" className={style.bold ? 'active' : ''} aria-label={ui("粗体")} title={ui("粗体")} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b></button>
         <button type="button" className={style.italic ? 'active' : ''} aria-label={ui("斜体")} title={ui("斜体")} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i></button>
@@ -812,7 +813,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
-    {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
+    {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       {menu.annotation ? <>
         <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui('编辑批注内容…')}</span></button>
@@ -829,7 +830,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, annotationMode, zoom, fitWidthRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -853,7 +854,11 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const restoringPositionRef = useRef(true)
   const wheelZoomRef = useRef(zoom)
   const handledFitWidthRequestRef = useRef(0)
+  const handledFitPageRequestRef = useRef(0)
   const wheelFrameRef = useRef<number | undefined>(undefined)
+  const singlePageWheelResetRef = useRef<number | undefined>(undefined)
+  const singlePageWheelLatchedRef = useRef(false)
+  const singlePageWheelDeltaRef = useRef(0)
   const wheelAnchorRef = useRef<{ pageIndex?: number; x?: number; y?: number; clientX: number; clientY: number; baseZoom: number; viewportX: number; viewportY: number; scrollLeft: number; scrollTop: number } | undefined>(undefined)
   const handleSize = useCallback((index: number, size: { width: number; height: number }) => {
     setSizes((current) => {
@@ -940,6 +945,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
 
   useEffect(() => () => {
     if (wheelFrameRef.current !== undefined) cancelAnimationFrame(wheelFrameRef.current)
+    if (singlePageWheelResetRef.current !== undefined) window.clearTimeout(singlePageWheelResetRef.current)
     if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
   }, [])
 
@@ -999,11 +1005,25 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const viewport = viewportRef.current
     if (size && viewport) onZoomChange(Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width)))
   }, [currentPage, onZoomChange, sizes])
+  const fitPage = useCallback(() => {
+    const size = sizes[currentPage] || sizes[0]
+    const viewport = viewportRef.current
+    if (size && viewport) {
+      const widthScale = (viewport.clientWidth - 56) / size.width
+      const heightScale = (viewport.clientHeight - 72) / size.height
+      onZoomChange(Math.max(0.25, Math.min(4, widthScale, heightScale)))
+    }
+  }, [currentPage, onZoomChange, sizes])
   useEffect(() => {
     if (!fitWidthRequest || handledFitWidthRequestRef.current === fitWidthRequest || !document || !(sizes[currentPage] || sizes[0]) || !viewportRef.current) return
     handledFitWidthRequestRef.current = fitWidthRequest
     fitWidth()
   }, [currentPage, document, fitWidth, fitWidthRequest, sizes])
+  useEffect(() => {
+    if (!fitPageRequest || handledFitPageRequestRef.current === fitPageRequest || !document || !(sizes[currentPage] || sizes[0]) || !viewportRef.current) return
+    handledFitPageRequestRef.current = fitPageRequest
+    fitPage()
+  }, [currentPage, document, fitPage, fitPageRequest, sizes])
   const goToPage = (pageIndex: number) => {
     const viewport = viewportRef.current
     const target = viewport?.querySelector(`[data-page="${pageIndex}"]`)
@@ -1071,7 +1091,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const checkGrammar = async () => {
     const hits = grammarIssues(await pageSnapshots()); setGrammarTerms([]); onInsight('grammar', hits)
   }
-  useImperativeHandle(ref, () => ({ fitWidth, goToPage, focusAnnotation, focusText, focusVisual, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
+  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -1110,6 +1130,20 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     return Array.from({ length: Math.max(0, end - start) }, (_, index) => start + index)
   }, [currentPage, document, pages, virtualized])
   const handleWheel = (event: React.WheelEvent) => {
+    if (mode === 'single' && !event.ctrlKey) {
+      event.preventDefault()
+      if (singlePageWheelResetRef.current !== undefined) window.clearTimeout(singlePageWheelResetRef.current)
+      singlePageWheelResetRef.current = window.setTimeout(() => { singlePageWheelLatchedRef.current = false; singlePageWheelDeltaRef.current = 0; singlePageWheelResetRef.current = undefined }, 180)
+      if (singlePageWheelLatchedRef.current || !document) return
+      singlePageWheelDeltaRef.current += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 600 : 1)
+      const direction = singlePageWheelDirection(singlePageWheelDeltaRef.current, 0)
+      if (!direction) return
+      singlePageWheelLatchedRef.current = true
+      singlePageWheelDeltaRef.current = 0
+      const nextPage = Math.max(0, Math.min(document.numPages - 1, currentPage + direction))
+      if (nextPage !== currentPage) onPageChange(nextPage)
+      return
+    }
     if (!event.ctrlKey) return
     event.preventDefault()
     const viewport = viewportRef.current

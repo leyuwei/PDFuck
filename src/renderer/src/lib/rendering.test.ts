@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canvasOutputScale, wheelZoom } from './rendering'
+import { canvasOutputScale, singlePageWheelDirection, wheelZoom } from './rendering'
 
 describe('PDF rendering scheduler helpers', () => {
   it('caps very large high-DPI page canvases to the memory budget', () => {
@@ -15,5 +15,12 @@ describe('PDF rendering scheduler helpers', () => {
     expect(wheelZoom(1, -100)).toBeGreaterThan(1)
     expect(wheelZoom(4, -1000)).toBe(4)
     expect(wheelZoom(0.25, 1000)).toBe(0.25)
+  })
+
+  it('normalizes wheel input into whole-page navigation directions', () => {
+    expect(singlePageWheelDirection(80, 0)).toBe(1)
+    expect(singlePageWheelDirection(-1, 1)).toBe(-1)
+    expect(singlePageWheelDirection(1, 2)).toBe(1)
+    expect(singlePageWheelDirection(4, 0)).toBe(0)
   })
 })

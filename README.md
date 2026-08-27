@@ -52,13 +52,13 @@ If Windows SmartScreen warns about an unsigned community build, verify that the 
 
 Community builds may not have Apple Developer ID signing or notarization. If macOS blocks the first launch, right-click `PDFuck.app` in Finder and choose **Open**. Quit the old version before replacing it during an update. PDFs stay on your computer and are not uploaded.
 
-On macOS, dragging, double-clicking, or opening a PDF through file association reuses the same window and adds a tab. `Command` maps to Windows `Ctrl`; `Option + Left/Right` changes pages, and `Command` + mouse wheel zooms. Printing, Save As, and export use native system dialogs.
+On macOS, dragging, double-clicking, or opening a PDF through file association reuses the same window and adds a tab. `Command` maps to Windows `Ctrl`; `Option + Left/Right` changes pages, and `Command` + mouse wheel zooms. Printer selection stays in PDFuck's unified print panel; Save As and export use native file dialogs.
 
 ## Feature Overview
 
 ### View
 
-- Continuous or single-page reading, page navigation, zoom, fit-to-width, and high-DPI rendering. Choosing Fit Width once makes it the default for subsequently opened PDFs.
+- Continuous or single-page reading, page navigation, zoom, fit-to-width, fit-page, and high-DPI rendering. In single-page mode, each mouse-wheel gesture turns exactly one page and only one page is shown. Fit Width and Fit Page use compact toolbar icons; the last fitting choice becomes the default for subsequently opened PDFs.
 - Light and dark themes, a customizable app accent, and a per-document PDF paper background. Both colors have a full picker with HEX input, presets, and reset controls.
 - Drag-and-drop opening, recent files, single-window document tabs, and independent state per tab.
 - Reading tools for PDF search, figure/table discovery, citation links, and grammar checks.
@@ -71,6 +71,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Merge pages from existing PDF, PNG, JPG/JPEG, or EPS files, even before a PDF is opened. After import, batch-select page ranges and move them to the beginning, end, or a specified position before confirming the order. EPS is rasterized locally through Ghostscript when it is installed.
 - Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
 - Add PNG (including transparent PNG) or JPG images to the current page. Position, resize, rotate, and lock the aspect ratio in a live preview before confirming it into the PDF; reopen the PDF later to edit or remove the image again.
+- Add polished page numbers across the document with `{page}` / `{total}` templates, custom separators, font styling, horizontal and vertical alignment, and edge-relative percentage margins that adapt independently to mixed page sizes and orientations. PDFuck-created page numbers can be detected, replaced as a set, or removed after reopening the file.
 - Edit PDF.js-recognized text blocks in place. Multi-column pages are split into editable blocks; clearing a block and applying the change removes the original text.
 - Undo and redo page crops, page deletion, text changes, and annotation changes independently per document tab.
 
@@ -85,7 +86,10 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 ### Save, Print, and Export
 
 - Save or Save As PDF, including unsaved in-memory changes.
-- Print all, current, odd, even, or arbitrary non-contiguous pages. The print preview supports paper size, portrait/landscape orientation, simplex or duplex printing, multi-page layouts, scaling, and optional page frames.
+- PDFuck discovers the printers installed in the operating system and selects one directly inside the unified page-selection, settings, and preview window. On Windows, jobs use the native GDI/DEVMODE path and query each driver's duplex capability; simplex, long-edge duplex, and short-edge duplex are written into that individual job instead of inheriting the printer default.
+- Select all, current, odd, even, or arbitrary non-contiguous pages. Printing supports paper size, multi-page layouts, optional page frames, and an independent 25%-200% scale for both one-page and multi-page printing. Values above 100% deliberately allow edge cropping.
+- The preview is rendered at high pixel density from the same imposed PDF that is dispatched to the printer, including scale, orientation, margins, multi-page placement, and frames. Windows output uses a 600-DPI PDFium raster passed to the selected driver for clearer physical output.
+- Print orientation can be forced to portrait or landscape, or left on the default per-sheet Auto mode. Auto evaluates the actual pages placed on each sheet, so mixed portrait/landscape documents keep the matching orientation in both the application preview and the imposed PDF dispatched to the printer.
 - Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS support 72-600 DPI and preserve original page-number suffixes such as `_001` and `_003`.
 
 ## Keyboard Shortcuts
@@ -95,7 +99,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 | `Ctrl+S` | Save the current PDF |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
-| `Ctrl+P` | Choose pages and open the system print dialog |
+| `Ctrl+P` | Open the unified page-selection, print-settings, and preview window |
 | `Ctrl+C` / `Cmd+C` | Copy the selected PDF text and remove hard line breaks |
 | `Ctrl` + mouse wheel | Zoom |
 | `Alt+Left/Right` (`Option` on macOS) | Previous/next page |
@@ -121,17 +125,39 @@ npm run build
 
 The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling` and `npm run test:selection-scheduling-ui`; both use `tmp/Scheduling0821m.pdf`. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup with the same fixture.
 
-One-click verified releases (the optional argument updates the version first):
+### Package a Release with One Command
+
+Run the script for the target system from the repository root. Both scripts require Node.js 22 or newer, install the locked dependencies with `npm ci`, run all release regressions, package the app, launch the packaged executable for a smoke test, verify the embedded version, and write a SHA-256 release manifest.
+
+Omit the argument to use the version already stored in `package.json`:
 
 ```powershell
-.\scripts\package-windows.ps1 1.19.0
+# Windows PowerShell; run on Windows
+npm run package:windows
 ```
 
 ```sh
-bash scripts/package-macos.sh 1.19.0
+# macOS Terminal; run on macOS
+npm run package:macos
 ```
 
-Both scripts read artifact names from `package.json`, run the release regressions, launch the packaged app, verify embedded versions, and write a SHA-256 release manifest. The lower-level build commands remain available:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.3` before packaging:
+
+```powershell
+npm run package:windows -- 1.20.3
+```
+
+```sh
+npm run package:macos -- 1.20.3
+```
+
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.3` and `bash scripts/package-macos.sh 1.20.3`. Review and commit the two version-file changes after a successful versioned run.
+
+Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
+
+Windows artifacts must be built on Windows and macOS artifacts on macOS. A Windows package without a configured signing certificate and a macOS package with only an ad-hoc signature are suitable for internal testing, not a public release. On a release-signing Mac, use `REQUIRE_NOTARIZATION=1 npm run package:macos` to fail the run unless Gatekeeper accepts the app. See [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md) for certificate configuration, notarization, artifact inspection, and the delivery checklist.
+
+The lower-level build commands remain available when you deliberately need only part of the packaging flow:
 
 Windows release builds:
 
@@ -152,7 +178,7 @@ macOS release build (run on macOS):
 npm run dist:mac
 ```
 
-This runs checks, creates a production build, and generates `release/PDFuck-<version>-macOS.dmg`, where the version is read from `package.json`. Configure Apple Developer ID signing and notarization before public distribution. The full cross-platform packaging, signing, DMG layout, and artifact verification process is documented in [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md).
+This creates the platform artifact but does not replace the full validation performed by the one-command release script.
 
 ## Technical Structure
 
@@ -163,6 +189,32 @@ This runs checks, creates a production build, and generates `release/PDFuck-<ver
 - `src/renderer/src/lib/page-selection.ts`: Non-contiguous page parsing and validation.
 - `src/renderer/src/lib/export.ts`: PNG, JPG, and EPS page export.
 - `src/shared/version.ts`: Version comparison and startup update-check foundations.
+
+### Add a New Interface Language
+
+All application copy is centralized in [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts). Chinese source phrases are stable catalogue keys; components must request them through `ui('源文案')`. Parameterized messages use `t('message.key', { value })`, and stored or dynamically assembled status text uses `translateUiText(...)`. Never translate PDF contents, file names, paths, user input, or model responses.
+
+The following example uses French (`fr`). A language is complete only after every step passes; do not ship a selector option that relies on Chinese or English fallback text.
+
+1. In `src/shared/i18n-catalogue.ts`, add `fr` to `InterfaceLanguage`, `INTERFACE_LANGUAGES`, and `AdditionalInterfaceLanguage`. Add a complete `localePhrases.fr` map for every key in `englishPhrases`, add an `fr` value to every entry in `phraseTranslations`, and include French in the code that merges `phraseTranslations` into `localePhrases`. Also add all French entries to `statusTemplates.fr` and `parameterMessages.fr`. Preserve placeholders exactly: a source containing `{count}`, `{name}`, or `$1` must use the same placeholders in its translation.
+2. Wire the language through the application: extend the desktop API union in [`src/shared/contracts.ts`](src/shared/contracts.ts), accept `fr` in the main-process language validation in [`src/main/index.ts`](src/main/index.ts), add `<option value="fr">Français</option>` to [`src/renderer/src/components/ToolPanel.tsx`](src/renderer/src/components/ToolPanel.tsx), and add the correct BCP 47 date locale (for example, `fr-FR`) to the recent-file date map in [`src/renderer/src/components/Dialogs.tsx`](src/renderer/src/components/Dialogs.tsx).
+3. Extend the safeguards: add the locale to the language and catalogue maps in [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs), add a representative French UI case and persistence expectation to [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs), and update complete-language fixtures in [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) and any component test that enumerates every language. This search helps find fixed five-language lists that need review:
+
+   ```sh
+   rg -n "zh.*en.*ja.*ru.*es|en.*ja.*ru.*es" src scripts
+   ```
+
+4. Run the complete checks, then launch the app and manually inspect the language selector, window title, native open/save dialogs, unsaved-change dialog, recent-file dates, print/export flows, and language persistence after restart:
+
+   ```sh
+   npm run typecheck
+   npm test
+   npm run test:i18n-catalogue
+   npm run test:i18n-ui
+   npm run build
+   ```
+
+When adding new visible copy later, put it in this same catalogue in all supported languages and render it with `ui`, `t`, or `translateUiText`; do not add a component-local translation object or raw visible string. Installer localization is separate from application localization: add an installer language in the `build.nsis.installerLanguages` section of `package.json` only when electron-builder/NSIS supports the target locale, and verify that installer independently.
 
 ## Text Objects
 
@@ -252,14 +304,14 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 将 PDF 拖入窗口，或使用“打开 PDF”；双击、拖入和文件关联打开的文档会复用同一个窗口并新增标签。
 - 在 Finder 中右键 PDF，选择“打开方式” → `PDFuck`，即可把它设为默认阅读器。
 - `Command` 对应 Windows 的 `Ctrl`；`Option + ←/→` 可快速翻页，`Command + 滚轮` 可缩放。
-- 打印使用 macOS 系统打印对话框；保存、另存为和导出会弹出原生文件选择器。
+- 打印机选择与全部打印设置都在 PDFuck 的统一打印浮窗内完成；保存、另存为和导出会弹出原生文件选择器。
 
 ## 功能一览
 
 ### 查看
 
-- 连续滚动与单页查看；
-- 页码跳转、缩放、适合宽度；用户使用一次“适合宽度”后，之后打开的 PDF 会默认采用该查看方式；
+- 连续滚动与单页查看；单页模式下每次滚轮手势只翻动一整页，且始终只呈现一页；
+- 页码跳转、缩放，以及图标化的“适合宽度”和“适合屏幕”；后者会同时按可显示宽高完整呈现当前页，最近一次适配选择会成为之后打开 PDF 的默认查看方式；
 - 高 DPI 清晰渲染；
 - 支持完整的浅色与夜间暗色主题，也可自定义软件主题色，主题色会贯穿导航、标签、激活工具、选区、编辑框、焦点和主操作；亮色主题色会自动采用深色选中文字与图标，避免高亮区域失去可读性。软件主题色与每份 PDF 的纸张底色（包括原始白纸区域）均可在颜色选择器旁一键恢复默认；
 - 从资源管理器直接拖入 PDF 打开；
@@ -277,6 +329,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG 或 EPS 合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会在本机 Ghostscript 可用时离线栅格化导入；
 - 添加自定义字体类别、字号、颜色、粗体、斜体和对齐方式的文字；
 - 可在当前页面添加 PNG（包括透明 PNG）或 JPG 图片；导入后先在页面上拖动调整位置、大小、旋转角度和原始比例锁，确认后才正式写入 PDF；已添加图片会保留可编辑源数据，重开 PDF 后仍可在编辑模块选中、调整或删除；
+- 可为全部页面批量增加美观页码：支持 `{page}` / `{total}` 模板、任意分隔符、字体/字号/颜色/粗斜体、左中右与页顶/页底对齐，并按每页宽高使用百分比边距独立定位，可正确适配横向、纵向及混合尺寸页面；重开 PDF 后仍可整组更新或删除由 PDFuck 添加的页码；
 - 新增文字可直接选择、拖动，双击后继续编辑；
 - 激活“编辑页面文字”后，当前页所有 PDF.js 可识别文本块会自动显示边框，点击任意文本块即可原位编辑；
 - 多栏页面按栏和段落拆分为可编辑文本块；清空编辑内容并应用即可删除原页面文字，保存后可正常重开；
@@ -329,7 +382,10 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ### 保存、打印与导出
 
 - 保存或另存为 PDF；
-- 打印前选择全部、当前、奇数、偶数或任意不连续页面，并在预览中设置纸张、方向、单双面、每张纸多页拼版、缩放和页面边框；默认不添加页面边框，只有主动勾选时才会写入分隔线；
+- 软件会直接识别操作系统中已安装的打印机，并在统一打印浮窗内完成设备选择、页码选择、设置和预览；Windows 会走原生 GDI/DEVMODE 通道，读取每台驱动的双面能力，并把单面、长边双面或短边双面写入当前作业，不再继承打印机默认值；
+- 可选择全部、当前、奇数、偶数或任意不连续页面，并设置纸张、每张纸多页拼版、25%–200% 独立缩放和页面边框；单页与多页拼版都支持缩放，超过 100% 时允许按预览裁切边缘；默认不添加页面边框，只有主动勾选时才会写入分隔线；
+- 预览不再使用近似缩略图，而是以高像素密度直接渲染即将派发的最终拼版 PDF，缩放、方向、页边距、多页位置和边框与作业保持同源；Windows 物理输出使用 600 DPI PDFium 栅格交给所选驱动；
+- 打印方向支持自动、纵向和横向；默认自动模式会针对每一张输出纸上的实际页面独立选择方向，横纵页面混排文档的应用预览和最终提交给系统的打印 PDF 保持一致；
 - 输入 `1-3, 5, 8-10` 即可快速指定页码，错误范围会即时提示；
 - 把指定页面导出为新 PDF，或导出 PNG、JPG、EPS；
 - 图片与 EPS 支持 72–600 DPI，并保留原文档页码后缀，例如 `_001`、`_003`。
@@ -341,7 +397,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 | `Ctrl+S` | 保存当前 PDF |
 | `Ctrl+Z` | 撤销当前 PDF 的上一步修改 |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | 重做当前 PDF 的下一步修改 |
-| `Ctrl+P` | 打开页码选择器，确认后进入系统打印对话框 |
+| `Ctrl+P` | 打开合并后的页码选择、打印设置与预览窗口 |
 | `Ctrl+C` / `Cmd+C` | 复制当前 PDF 文字选区，并自动去除回行 |
 | `Ctrl+鼠标滚轮` | 快速缩放页面 |
 | `Alt+←/→`（macOS 为 `Option+←/→`） | 快速翻到上一页或下一页 |
@@ -367,17 +423,39 @@ npm run build
 
 针对框选溢出的回归，可在构建后运行 `npm run test:selection-scheduling` 和 `npm run test:selection-scheduling-ui`。两项检查都使用 `tmp/Scheduling0821m.pdf`：前者验证 PDF 内部文字流把下一行项目符号插入当前行中间时，选区仍只包含当前行；后者在真实 Electron 界面中拖选该位置，并确认原生界面控件不会出现浏览器式文字选中。
 
-推荐使用一键发布脚本；版本参数可省略，省略时自动使用 `package.json` 中的版本：
+### 一键打包发布
+
+请在仓库根目录、对应的目标系统上执行脚本。两个脚本都要求 Node.js 22 或更高版本，并会通过 `npm ci` 安装锁定依赖，执行全部发布回归，打包应用，启动最终可执行程序完成冒烟测试，核对包内版本，最后生成 SHA-256 发布清单。
+
+不传参数时，脚本会自动使用 `package.json` 中已有的版本号：
 
 ```powershell
-.\scripts\package-windows.ps1 1.19.0
+# Windows PowerShell；必须在 Windows 上运行
+npm run package:windows
 ```
 
 ```sh
-bash scripts/package-macos.sh 1.19.0
+# macOS Terminal；必须在 macOS 上运行
+npm run package:macos
 ```
 
-脚本会执行发布回归、启动最终打包应用、核对包内版本并生成 SHA-256 发布清单。以下底层命令仍可用于只生成指定产物：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.3`，再开始打包：
+
+```powershell
+npm run package:windows -- 1.20.3
+```
+
+```sh
+npm run package:macos -- 1.20.3
+```
+
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.3` 和 `bash scripts/package-macos.sh 1.20.3`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+
+Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
+
+Windows 产物必须在 Windows 上构建，macOS 产物必须在 macOS 上构建。未配置签名证书的 Windows 包以及仅使用 ad-hoc 签名的 macOS 包只适合内部测试，不应公开发布。在已配置正式签名的 Mac 上，可使用 `REQUIRE_NOTARIZATION=1 npm run package:macos`，让脚本在 Gatekeeper 未接受应用时直接失败。证书配置、公证、产物检查和交付清单详见 [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md)。
+
+只有在明确需要跳过完整发布验证、单独生成某类产物时，才建议使用以下底层命令：
 
 Windows 发布命令：
 
@@ -398,16 +476,7 @@ macOS 发布（必须在 macOS 上执行）：
 npm run dist:mac
 ```
 
-该命令会执行检查、生产构建并按 `package.json` 版本生成 `release/PDFuck-<version>-macOS.dmg`。正式分发前还需要配置 Apple Developer ID 签名与公证；没有证书时只能作为内部测试包使用。需要 `.app` 压缩包时，可在 macOS 上执行：
-
-```sh
-VERSION=$(node -p "require('./package.json').version")
-ditto -c -k --keepParent "release/mac-arm64/PDFuck.app" "release/PDFuck-${VERSION}-macOS.zip"
-```
-
-Intel 构建通常位于 `release/mac/PDFuck.app`，请根据实际构建架构调整路径。
-
-版本更新后的完整 macOS/Windows 发布流程、签名、DMG 布局和产物验证要求见 [PACKAGING_GUIDE.md](PACKAGING_GUIDE.md)。
+该命令只生成平台产物，不能替代一键发布脚本执行的完整验证。
 
 ## 技术结构
 
@@ -418,6 +487,32 @@ Intel 构建通常位于 `release/mac/PDFuck.app`，请根据实际构建架构�
 - `src/renderer/src/lib/page-selection.ts`：不连续页码解析、校验与紧凑显示；
 - `src/renderer/src/lib/export.ts`：指定页 PNG、JPG 与 EPS 导出；
 - `src/shared/version.ts`：版本比较与启动更新检测基础逻辑。
+
+### 加入新的界面语言
+
+所有应用外显文案统一集中在 [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts)。中文源文案是稳定的词典键，组件必须通过 `ui('源文案')` 取值；带参数的消息使用 `t('message.key', { value })`，已存储或动态拼接的状态文字使用 `translateUiText(...)`。PDF 正文、文件名、路径、用户输入和模型回复都不属于界面文案，切勿翻译。
+
+下面以法语（`fr`）为例。只有全部步骤和测试都通过，才算真正支持一种语言；不要只增加下拉选项后依赖中文或英文回退。
+
+1. 在 `src/shared/i18n-catalogue.ts` 中，把 `fr` 加入 `InterfaceLanguage`、`INTERFACE_LANGUAGES` 和 `AdditionalInterfaceLanguage`；新增完整的 `localePhrases.fr`，覆盖 `englishPhrases` 的每个键；为 `phraseTranslations` 的每一项加入 `fr`，并在把 `phraseTranslations` 合并到 `localePhrases` 的代码中纳入法语；同时补齐 `statusTemplates.fr` 与 `parameterMessages.fr`。占位符必须原样保留：源文案中的 `{count}`、`{name}` 或 `$1` 等占位符，在译文中必须保持一致。
+2. 打通应用链路：在 [`src/shared/contracts.ts`](src/shared/contracts.ts) 中扩展桌面 API 的语言联合类型；在 [`src/main/index.ts`](src/main/index.ts) 的主进程语言校验中允许 `fr`；在 [`src/renderer/src/components/ToolPanel.tsx`](src/renderer/src/components/ToolPanel.tsx) 中加入 `<option value="fr">Français</option>`；在 [`src/renderer/src/components/Dialogs.tsx`](src/renderer/src/components/Dialogs.tsx) 的最近文件日期映射中加入正确的 BCP 47 区域代码，例如 `fr-FR`。
+3. 扩展防遗漏检查：在 [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs) 中更新语言列表和词典映射；在 [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs) 中加入有代表性的法语界面断言和持久化预期；在 [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) 以及所有枚举完整语言集合的组件测试中加入新语言。可用下面的搜索命令查找仍固定为五种语言的列表：
+
+   ```sh
+   rg -n "zh.*en.*ja.*ru.*es|en.*ja.*ru.*es" src scripts
+   ```
+
+4. 运行完整检查，然后启动应用，人工检查语言选择器、窗口标题、系统打开/保存对话框、未保存更改弹窗、最近文件日期、打印/导出流程，以及重启后的语言记忆：
+
+   ```sh
+   npm run typecheck
+   npm test
+   npm run test:i18n-catalogue
+   npm run test:i18n-ui
+   npm run build
+   ```
+
+以后增加新的外显文案时，也必须在同一个词典中一次性补齐所有语言，并通过 `ui`、`t` 或 `translateUiText` 渲染；不要再新增组件内翻译对象或直接显示的裸字符串。安装器语言与应用界面语言是两套独立机制：只有在 electron-builder/NSIS 支持目标地区时，才在 `package.json` 的 `build.nsis.installerLanguages` 中加入对应安装器语言，并单独验证安装界面。
 
 开发计划与过程记录只保存在开发任务中，`PLAN.md`、`PROGRESS.md` 已加入 `.gitignore`，不会再进入仓库。
 

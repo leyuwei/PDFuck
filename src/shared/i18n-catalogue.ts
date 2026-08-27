@@ -911,6 +911,73 @@ export const phraseTranslations: Record<string, Record<'en' | AdditionalInterfac
   , '选择要添加的图片': { en: 'Choose an Image to Add', ja: '追加する画像を選択', ru: 'Добавить изображение', es: 'Elegir imagen para añadir' }
   , '图片文件': { en: 'Image Files', ja: '画像ファイル', ru: 'Файлы изображений', es: 'Archivos de imagen' }
   , '导出': { en: 'Export', ja: 'エクスポート', ru: 'Экспорт', es: 'Exportar' }
+  , '适合屏幕': { en: 'Fit Page', ja: 'ページ全体を表示', ru: 'Вписать страницу', es: 'Ajustar página' }
+  , '在页面上增加页码': { en: 'Add Page Numbers', ja: 'ページ番号を追加', ru: 'Добавить номера страниц', es: 'Añadir números de página' }
+  , '使用相对页边距，自动适配横向、纵向和不同尺寸的页面。': { en: 'Relative margins adapt automatically to portrait, landscape, and mixed page sizes.', ja: '相対余白により、縦向き・横向き・異なるページサイズに自動対応します。', ru: 'Относительные поля автоматически подстраиваются под книжные, альбомные страницы и разные размеры.', es: 'Los márgenes relativos se adaptan automáticamente a páginas verticales, horizontales y de distintos tamaños.' }
+  , '已检测到页码': { en: 'Existing Page Numbers Found', ja: '既存のページ番号があります', ru: 'Обнаружены номера страниц', es: 'Se detectaron números de página' }
+  , '页码内容': { en: 'Page Number Content', ja: 'ページ番号の内容', ru: 'Содержимое номера', es: 'Contenido del número' }
+  , '仅页码': { en: 'Page Only', ja: 'ページ番号のみ', ru: 'Только номер', es: 'Solo página' }
+  , '页码 + 总页数': { en: 'Page + Total', ja: 'ページ + 総ページ数', ru: 'Страница + всего', es: 'Página + total' }
+  , '自定义模板': { en: 'Custom Template', ja: 'カスタムテンプレート', ru: 'Свой шаблон', es: 'Plantilla personalizada' }
+  , '第 {page} 页，共 {total} 页': { en: 'Page {page} of {total}', ja: '{page} / {total} ページ', ru: 'Страница {page} из {total}', es: 'Página {page} de {total}' }
+  , '页码与总页数分隔符': { en: 'Page/total separator', ja: 'ページと総数の区切り', ru: 'Разделитель страницы и итога', es: 'Separador de página y total' }
+  , '模板': { en: 'Template', ja: 'テンプレート', ru: 'Шаблон', es: 'Plantilla' }
+  , '可用占位符：{page} 当前页，{total} 总页数': { en: 'Tokens: {page} current page, {total} total pages', ja: '使用可能: {page} 現在のページ、{total} 総ページ数', ru: 'Метки: {page} текущая страница, {total} всего страниц', es: 'Campos: {page} página actual, {total} total de páginas' }
+  , '页码模板不能为空。': { en: 'The page-number template cannot be empty.', ja: 'ページ番号テンプレートは空にできません。', ru: 'Шаблон номера страницы не может быть пустым.', es: 'La plantilla del número de página no puede estar vacía.' }
+  , '页码模板必须包含 {page}。': { en: 'The template must contain {page}.', ja: 'テンプレートには {page} が必要です。', ru: 'Шаблон должен содержать {page}.', es: 'La plantilla debe contener {page}.' }
+  , '页码模板不能超过 120 个字符。': { en: 'The template cannot exceed 120 characters.', ja: 'テンプレートは 120 文字以内にしてください。', ru: 'Шаблон не может быть длиннее 120 символов.', es: 'La plantilla no puede superar 120 caracteres.' }
+  , '页码模板只能使用单行文字。': { en: 'The template must be a single line.', ja: 'テンプレートは 1 行にしてください。', ru: 'Шаблон должен состоять из одной строки.', es: 'La plantilla debe tener una sola línea.' }
+  , '仅支持 {page} 和 {total} 两个占位符。': { en: 'Only the {page} and {total} tokens are supported.', ja: '{page} と {total} のみ使用できます。', ru: 'Поддерживаются только метки {page} и {total}.', es: 'Solo se admiten los campos {page} y {total}.' }
+  , '字体与样式': { en: 'Font & Style', ja: 'フォントとスタイル', ru: 'Шрифт и стиль', es: 'Fuente y estilo' }
+  , '原文字体': { en: 'Original font', ja: '元のフォント', ru: 'Исходный шрифт', es: 'Fuente original' }
+  , '位置': { en: 'Position', ja: '位置', ru: 'Положение', es: 'Posición' }
+  , '水平对齐': { en: 'Horizontal Alignment', ja: '横位置', ru: 'Горизонтальное выравнивание', es: 'Alineación horizontal' }
+  , '居左': { en: 'Left', ja: '左', ru: 'Слева', es: 'Izquierda' }
+  , '居右': { en: 'Right', ja: '右', ru: 'Справа', es: 'Derecha' }
+  , '垂直位置': { en: 'Vertical Position', ja: '縦位置', ru: 'Вертикальное положение', es: 'Posición vertical' }
+  , '页面顶部': { en: 'Page Top', ja: 'ページ上部', ru: 'Вверху страницы', es: 'Parte superior' }
+  , '页面底部': { en: 'Page Bottom', ja: 'ページ下部', ru: 'Внизу страницы', es: 'Parte inferior' }
+  , '距页面边缘': { en: 'Distance from Edge', ja: '端からの距離', ru: 'Отступ от края', es: 'Distancia al borde' }
+  , '左右安全边距': { en: 'Side Safe Margin', ja: '左右の安全余白', ru: 'Боковые безопасные поля', es: 'Margen lateral seguro' }
+  , '实时预览': { en: 'Live Preview', ja: 'ライブプレビュー', ru: 'Предпросмотр', es: 'Vista previa' }
+  , '删除已添加的页码': { en: 'Remove Existing Page Numbers', ja: '追加済みページ番号を削除', ru: 'Удалить добавленные номера', es: 'Eliminar números añadidos' }
+  , '更新页码': { en: 'Update Page Numbers', ja: 'ページ番号を更新', ru: 'Обновить номера', es: 'Actualizar números' }
+  , '添加页码': { en: 'Add Page Numbers', ja: 'ページ番号を追加', ru: 'Добавить номера', es: 'Añadir números' }
+  , '在全部页面添加可自定义、可删除的页码。': { en: 'Add customizable, removable page numbers to every page.', ja: '全ページにカスタマイズ可能で削除できるページ番号を追加します。', ru: 'Добавить на все страницы настраиваемые номера, которые можно удалить.', es: 'Añade a todas las páginas números personalizables que se pueden eliminar.' }
+  , '文档没有可添加页码的页面。': { en: 'The document has no pages to number.', ja: '番号を付けるページがありません。', ru: 'В документе нет страниц для нумерации.', es: 'El documento no tiene páginas que numerar.' }
+  , '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销': { en: 'Page numbers added to every page. Press Ctrl/⌘Z to undo.', ja: '全ページに番号を追加しました。Ctrl/⌘Z で元に戻せます。', ru: 'Номера добавлены на все страницы. Ctrl/⌘Z — отменить.', es: 'Se añadieron números a todas las páginas. Ctrl/⌘Z para deshacer.' }
+  , '已删除添加的页码，可按 Ctrl/⌘Z 撤销': { en: 'Added page numbers removed. Press Ctrl/⌘Z to undo.', ja: '追加したページ番号を削除しました。Ctrl/⌘Z で元に戻せます。', ru: 'Добавленные номера удалены. Ctrl/⌘Z — отменить.', es: 'Se eliminaron los números añadidos. Ctrl/⌘Z para deshacer.' }
+  , '打印设置与预览': { en: 'Print Settings & Preview', ja: '印刷設定とプレビュー', ru: 'Настройки и предпросмотр печати', es: 'Configuración y vista previa de impresión' }
+  , '自动': { en: 'Auto', ja: '自動', ru: 'Авто', es: 'Automático' }
+  , '自动适应': { en: 'Auto Fit', ja: '自動調整', ru: 'Автовыбор', es: 'Adaptación automática' }
+  , '每张纸会根据其中的页面自动选择方向': { en: 'Each sheet chooses its orientation from the pages it contains.', ja: '各用紙の内容に合わせて方向を自動選択します。', ru: 'Ориентация каждого листа выбирается по размещённым на нём страницам.', es: 'Cada hoja elige la orientación según las páginas que contiene.' }
+  , '方向已按当前纸张内容自动适配': { en: 'Orientation is adapted to the current sheet contents.', ja: '現在の用紙内容に合わせて方向を自動調整しました。', ru: 'Ориентация адаптирована к содержимому текущего листа.', es: 'La orientación se adapta al contenido de la hoja actual.' }
+  , '预览生成失败': { en: 'Preview unavailable', ja: 'プレビューを生成できません', ru: 'Предпросмотр недоступен', es: 'Vista previa no disponible' }
+  , '系统未找到可用打印机。': { en: 'No available printer was found.', ja: '利用可能なプリンターが見つかりません。', ru: 'Доступные принтеры не найдены.', es: 'No se encontró ninguna impresora disponible.' }
+  , '打印机': { en: 'Printer', ja: 'プリンター', ru: 'Принтер', es: 'Impresora' }
+  , '刷新打印机': { en: 'Refresh printers', ja: 'プリンターを更新', ru: 'Обновить список принтеров', es: 'Actualizar impresoras' }
+  , '正在查找打印机…': { en: 'Finding printers…', ja: 'プリンターを検索しています…', ru: 'Поиск принтеров…', es: 'Buscando impresoras…' }
+  , '未找到可用打印机': { en: 'No available printers found', ja: '利用可能なプリンターがありません', ru: 'Доступные принтеры не найдены', es: 'No se encontraron impresoras disponibles' }
+  , '默认打印机': { en: 'Default', ja: '既定', ru: 'По умолчанию', es: 'Predeterminada' }
+  , 'PDFuck 将把当前设置直接发送到所选打印机': { en: 'PDFuck sends these settings directly to the selected printer.', ja: 'PDFuck はこの設定を選択したプリンターへ直接送信します。', ru: 'PDFuck отправит эти настройки непосредственно на выбранный принтер.', es: 'PDFuck envía estos ajustes directamente a la impresora seleccionada.' }
+  , '长边翻页适合书本装订，短边翻页适合日历装订': { en: 'Long edge is for book binding; short edge is for calendar binding.', ja: '長辺とじは本、短辺とじはカレンダー向けです。', ru: 'Переворот по длинному краю — для книг, по короткому — для календарей.', es: 'El borde largo es para libros; el corto, para calendarios.' }
+  , '发送到打印机': { en: 'Send to Printer', ja: 'プリンターへ送信', ru: 'Отправить на принтер', es: 'Enviar a la impresora' }
+  , '打印机列表加载失败，请重试。': { en: 'Could not load the printer list. Please try again.', ja: 'プリンター一覧を読み込めませんでした。もう一度お試しください。', ru: 'Не удалось загрузить список принтеров. Повторите попытку.', es: 'No se pudo cargar la lista de impresoras. Inténtalo de nuevo.' }
+  , '打印设置无效。': { en: 'The print settings are invalid.', ja: '印刷設定が無効です。', ru: 'Недопустимые настройки печати.', es: 'Los ajustes de impresión no son válidos.' }
+  , '请选择可用的打印机。': { en: 'Select an available printer.', ja: '利用可能なプリンターを選択してください。', ru: 'Выберите доступный принтер.', es: 'Selecciona una impresora disponible.' }
+  , '已有打印任务正在派发，请稍候。': { en: 'A print job is already being dispatched. Please wait.', ja: '印刷ジョブを送信中です。しばらくお待ちください。', ru: 'Задание печати уже отправляется. Подождите.', es: 'Ya se está enviando un trabajo de impresión. Espera.' }
+  , '所选打印机不可用，请刷新后重试。': { en: 'The selected printer is unavailable. Refresh the list and try again.', ja: '選択したプリンターは利用できません。一覧を更新して再試行してください。', ru: 'Выбранный принтер недоступен. Обновите список и повторите попытку.', es: 'La impresora seleccionada no está disponible. Actualiza la lista e inténtalo de nuevo.' }
+  , '打印内容加载失败，请重试。': { en: 'The print content could not be loaded. Please try again.', ja: '印刷内容を読み込めませんでした。もう一度お試しください。', ru: 'Не удалось загрузить содержимое для печати. Повторите попытку.', es: 'No se pudo cargar el contenido de impresión. Inténtalo de nuevo.' }
+  , '打印机未能接收任务，请检查连接和纸张设置。': { en: 'The printer could not receive the job. Check its connection and paper settings.', ja: 'プリンターがジョブを受信できませんでした。接続と用紙設定を確認してください。', ru: 'Принтер не смог принять задание. Проверьте подключение и настройки бумаги.', es: 'La impresora no pudo recibir el trabajo. Comprueba la conexión y los ajustes de papel.' }
+  , '所选打印机不支持双面打印。': { en: 'The selected printer does not support duplex printing.', ja: '選択したプリンターは両面印刷に対応していません。', ru: 'Выбранный принтер не поддерживает двустороннюю печать.', es: 'La impresora seleccionada no admite impresión a doble cara.' }
+  , '原生打印任务派发失败，请检查打印机连接、纸张与双面打印设置。': { en: 'The native print job could not be dispatched. Check the printer connection, paper, and duplex settings.', ja: 'ネイティブ印刷ジョブを送信できませんでした。プリンターの接続、用紙、両面印刷設定を確認してください。', ru: 'Не удалось отправить нативное задание печати. Проверьте подключение, бумагу и настройки двусторонней печати.', es: 'No se pudo enviar el trabajo de impresión nativo. Comprueba la conexión, el papel y la configuración dúplex.' }
+  , '此打印机未报告双面打印能力': { en: 'This printer does not report duplex capability.', ja: 'このプリンターは両面印刷機能を報告していません。', ru: 'Этот принтер не сообщает о поддержке двусторонней печати.', es: 'Esta impresora no informa de capacidad dúplex.' }
+  , '打印机未提供双面能力信息；仍会按所选方式提交': { en: 'Duplex capability is unknown; the selected mode will still be submitted.', ja: '両面印刷機能は不明ですが、選択した方式で送信します。', ru: 'Поддержка двусторонней печати неизвестна; будет отправлен выбранный режим.', es: 'Se desconoce la capacidad dúplex; se enviará el modo seleccionado.' }
+  , '打印缩放比例': { en: 'Print Scale', ja: '印刷倍率', ru: 'Масштаб печати', es: 'Escala de impresión' }
+  , '打印缩放滑块': { en: 'Print scale slider', ja: '印刷倍率スライダー', ru: 'Ползунок масштаба печати', es: 'Control de escala de impresión' }
+  , '100% 为适合纸张；放大时页面边缘可能被裁切': { en: '100% fits the paper; enlarging may crop page edges.', ja: '100% は用紙に合わせます。拡大するとページ端が切れる場合があります。', ru: '100% вписывает страницу в лист; при увеличении края могут обрезаться.', es: '100% ajusta al papel; al ampliar pueden recortarse los bordes.' }
+  , '最终打印作业预览': { en: 'Final print job preview', ja: '最終印刷ジョブのプレビュー', ru: 'Предпросмотр итогового задания печати', es: 'Vista previa del trabajo de impresión final' }
+  , '正在生成高清预览': { en: 'Generating high-resolution preview', ja: '高解像度プレビューを生成中', ru: 'Создание предпросмотра высокого разрешения', es: 'Generando vista previa de alta resolución' }
 }
 
 for (const [phrase, translations] of Object.entries(phraseTranslations)) {
@@ -1033,7 +1100,7 @@ export const parameterMessages = {
     'page.managerInvalid': '不能删除全部页面', 'page.managerInvalidHint': '请至少保留一页后再应用。', 'page.managerSummaryChanged': '将保留 {keep} 页，删除 {remove} 页', 'page.managerSummaryClean': '尚未进行页面调整', 'page.managerReordered': '页面顺序已调整；删除与排序会同时应用。', 'page.managerReady': '拖动页面排序，或选择不需要的页面。', 'page.managerCancel': '取消', 'page.managerApply': '应用页面调整',
     'search.results': '找到 {count} 个结果', 'search.page': '第 {page} 页', 'insight.items': '{count} 项', 'insight.page': '第 {page} 页 · {label}', 'footer.page': '{pages} 页 · 第 {page} 页',
     'annotation.count': '{count} 条批注', 'annotation.pageLabel': '第 {page} 页批注', 'annotation.settings': '设置第 {page} 页批注', 'annotation.jumpToFirst': '跳转到第一条{status}批注', 'annotation.noneForStatus': '没有{status}批注', 'annotation.delete': '删除批注', 'annotation.deleteMany': '删除 {count} 条批注', 'annotation.replyTitle': '{label}：{content}'
-    , 'update.availableTitle': '发现新版本 {version}', 'update.description': '你正在使用 {current}。新版安装包已经发布，可前往 GitHub Releases 下载。', 'update.current': '当前版本 {version}', 'update.latest': '最新版本 {version}'
+    , 'update.availableTitle': '发现新版本 {version}', 'update.description': '你正在使用 {current}。新版安装包已经发布，可前往 GitHub Releases 下载。', 'update.current': '当前版本 {version}', 'update.latest': '最新版本 {version}', 'pageNumbers.existing': '文档中已有 {count} 个由 PDFuck 添加的页码对象；应用新设置会整体替换。'
   },
   en: {
     'page.selected': '{count} pages selected', 'page.count': '{count} pages', 'page.action': '{action} Selected {count} Pages', 'page.print': 'Print', 'page.export': 'Export',
@@ -1050,7 +1117,7 @@ export const parameterMessages = {
     'page.managerInvalid': 'Every page cannot be removed', 'page.managerInvalidHint': 'Keep at least one page before applying changes.', 'page.managerSummaryChanged': 'Keep {keep} pages and remove {remove}', 'page.managerSummaryClean': 'No page changes yet', 'page.managerReordered': 'Page order changed; reordering and removal will be applied together.', 'page.managerReady': 'Drag pages to reorder, or select pages you no longer need.', 'page.managerCancel': 'Cancel', 'page.managerApply': 'Apply Page Changes',
     'search.results': '{count} results found', 'search.page': 'Page {page}', 'insight.items': '{count} items', 'insight.page': 'Page {page} · {label}', 'footer.page': '{pages} pages · Page {page}',
     'annotation.count': '{count} annotations', 'annotation.pageLabel': 'Annotation on page {page}', 'annotation.settings': 'Configure annotation on page {page}', 'annotation.jumpToFirst': 'Jump to the first {status} annotation', 'annotation.noneForStatus': 'No {status} annotations', 'annotation.delete': 'Delete Annotation', 'annotation.deleteMany': 'Delete {count} Annotations', 'annotation.replyTitle': '{label}: {content}'
-    , 'update.availableTitle': 'Version {version} is available', 'update.description': 'You are using {current}. The new installer is available on GitHub Releases.', 'update.current': 'Current version {version}', 'update.latest': 'Latest version {version}'
+    , 'update.availableTitle': 'Version {version} is available', 'update.description': 'You are using {current}. The new installer is available on GitHub Releases.', 'update.current': 'Current version {version}', 'update.latest': 'Latest version {version}', 'pageNumbers.existing': '{count} page-number objects added by PDFuck already exist; applying new settings replaces the full set.'
   },
   ja: {
     'page.selected': '{count} ページを選択', 'page.count': '{count} ページ', 'page.action': '選択した {count} ページを{action}', 'page.print': '印刷', 'page.export': 'エクスポート',
@@ -1066,7 +1133,7 @@ export const parameterMessages = {
     'page.managerInvalid': 'すべてのページは削除できません', 'page.managerInvalidHint': '適用する前に少なくとも 1 ページ残してください。', 'page.managerSummaryChanged': '{keep} ページを保持し、{remove} ページを削除', 'page.managerSummaryClean': 'ページ変更はまだありません', 'page.managerReordered': 'ページ順を変更しました。並べ替えと削除をまとめて適用します。', 'page.managerReady': 'ページをドラッグして並べ替えるか、不要なページを選択してください。', 'page.managerCancel': 'キャンセル', 'page.managerApply': 'ページ変更を適用',
     'search.results': '{count} 件の結果', 'search.page': '{page} ページ', 'insight.items': '{count} 件', 'insight.page': '{page} ページ・{label}', 'footer.page': '{pages} ページ・{page} ページ目',
     'annotation.count': '{count} 件の注釈', 'annotation.pageLabel': '{page} ページの注釈', 'annotation.settings': '{page} ページの注釈を設定', 'annotation.jumpToFirst': '最初の「{status}」注釈へ移動', 'annotation.noneForStatus': '「{status}」の注釈はありません', 'annotation.delete': '注釈を削除', 'annotation.deleteMany': '{count} 件の注釈を削除', 'annotation.replyTitle': '{label}：{content}'
-    , 'update.availableTitle': '新しいバージョン {version}', 'update.description': '現在のバージョンは {current} です。新しいインストーラーは GitHub Releases からダウンロードできます。', 'update.current': '現在のバージョン {version}', 'update.latest': '最新バージョン {version}'
+    , 'update.availableTitle': '新しいバージョン {version}', 'update.description': '現在のバージョンは {current} です。新しいインストーラーは GitHub Releases からダウンロードできます。', 'update.current': '現在のバージョン {version}', 'update.latest': '最新バージョン {version}', 'pageNumbers.existing': 'PDFuck が追加したページ番号が {count} 個あります。新しい設定を適用するとすべて置き換わります。'
   },
   ru: {
     'page.selected': 'Выбрано страниц: {count}', 'page.count': '{count} стр.', 'page.action': '{action} выбранные страницы ({count})', 'page.print': 'Печать', 'page.export': 'Экспорт',
@@ -1082,7 +1149,7 @@ export const parameterMessages = {
     'page.managerInvalid': 'Нельзя удалить все страницы', 'page.managerInvalidHint': 'Перед применением оставьте хотя бы одну страницу.', 'page.managerSummaryChanged': 'Останется страниц: {keep}; удалить: {remove}', 'page.managerSummaryClean': 'Изменений страниц пока нет', 'page.managerReordered': 'Порядок страниц изменён; сортировка и удаление будут применены вместе.', 'page.managerReady': 'Перетаскивайте страницы или выберите ненужные страницы.', 'page.managerCancel': 'Отмена', 'page.managerApply': 'Применить изменения',
     'search.results': 'Найдено результатов: {count}', 'search.page': 'Страница {page}', 'insight.items': 'Элементов: {count}', 'insight.page': 'Страница {page} · {label}', 'footer.page': 'Страниц: {pages} · Страница {page}',
     'annotation.count': 'Аннотаций: {count}', 'annotation.pageLabel': 'Аннотация на странице {page}', 'annotation.settings': 'Настроить аннотацию на странице {page}', 'annotation.jumpToFirst': 'Перейти к первой аннотации «{status}»', 'annotation.noneForStatus': 'Нет аннотаций «{status}»', 'annotation.delete': 'Удалить аннотацию', 'annotation.deleteMany': 'Удалить {count} аннотаций', 'annotation.replyTitle': '{label}: {content}'
-    , 'update.availableTitle': 'Доступна версия {version}', 'update.description': 'Установлена версия {current}. Новый установщик доступен на GitHub Releases.', 'update.current': 'Текущая версия {version}', 'update.latest': 'Последняя версия {version}'
+    , 'update.availableTitle': 'Доступна версия {version}', 'update.description': 'Установлена версия {current}. Новый установщик доступен на GitHub Releases.', 'update.current': 'Текущая версия {version}', 'update.latest': 'Последняя версия {version}', 'pageNumbers.existing': 'В документе уже есть объектов нумерации PDFuck: {count}; новые настройки заменят весь набор.'
   },
   es: {
     'page.selected': '{count} páginas seleccionadas', 'page.count': '{count} pág.', 'page.action': '{action} las {count} páginas seleccionadas', 'page.print': 'Imprimir', 'page.export': 'Exportar',
@@ -1098,7 +1165,7 @@ export const parameterMessages = {
     'page.managerInvalid': 'No se pueden eliminar todas las páginas', 'page.managerInvalidHint': 'Conserve al menos una página antes de aplicar los cambios.', 'page.managerSummaryChanged': 'Conservar {keep} páginas y eliminar {remove}', 'page.managerSummaryClean': 'Aún no hay cambios de página', 'page.managerReordered': 'El orden cambió; la reordenación y eliminación se aplicarán juntas.', 'page.managerReady': 'Arrastre páginas para ordenar o seleccione las que ya no necesita.', 'page.managerCancel': 'Cancelar', 'page.managerApply': 'Aplicar cambios',
     'search.results': 'Se encontraron {count} resultados', 'search.page': 'Página {page}', 'insight.items': '{count} elementos', 'insight.page': 'Página {page} · {label}', 'footer.page': '{pages} páginas · Página {page}',
     'annotation.count': '{count} anotaciones', 'annotation.pageLabel': 'Anotación de la página {page}', 'annotation.settings': 'Configurar anotación de la página {page}', 'annotation.jumpToFirst': 'Ir a la primera anotación «{status}»', 'annotation.noneForStatus': 'No hay anotaciones «{status}»', 'annotation.delete': 'Eliminar anotación', 'annotation.deleteMany': 'Eliminar {count} anotaciones', 'annotation.replyTitle': '{label}: {content}'
-    , 'update.availableTitle': 'Versión {version} disponible', 'update.description': 'Está usando la versión {current}. El nuevo instalador está disponible en GitHub Releases.', 'update.current': 'Versión actual {version}', 'update.latest': 'Última versión {version}'
+    , 'update.availableTitle': 'Versión {version} disponible', 'update.description': 'Está usando la versión {current}. El nuevo instalador está disponible en GitHub Releases.', 'update.current': 'Versión actual {version}', 'update.latest': 'Última versión {version}', 'pageNumbers.existing': 'Ya existen {count} objetos de numeración añadidos por PDFuck; la nueva configuración sustituirá todo el conjunto.'
   }
 } as const
 export type TranslationKey = keyof typeof parameterMessages.zh

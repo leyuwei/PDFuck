@@ -10,3 +10,10 @@ export function wheelZoom(current: number, deltaY: number): number {
   const next = current * Math.exp(-deltaY * 0.0015)
   return Math.max(0.25, Math.min(4, next))
 }
+
+/** Normalize a wheel event and return the intended whole-page direction. */
+export function singlePageWheelDirection(deltaY: number, deltaMode: number): -1 | 0 | 1 {
+  const pixels = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? 600 : 1)
+  if (Math.abs(pixels) < 12) return 0
+  return pixels > 0 ? 1 : -1
+}

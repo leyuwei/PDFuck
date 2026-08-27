@@ -6,13 +6,18 @@ import { loadPreferences, savePreferences } from './app-preferences'
 describe('application preferences', () => {
   beforeEach(() => localStorage.clear())
 
-  it('keeps fit-width disabled for existing profiles until the user selects it', () => {
+  it('keeps page fitting disabled for existing profiles until the user selects it', () => {
     localStorage.setItem('pdfuck.preferences.v1', JSON.stringify({ theme: 'dark', documentBackgrounds: {} }))
-    expect(loadPreferences()).toEqual({ theme: 'dark', accent: undefined, fitWidth: false, documentBackgrounds: {} })
+    expect(loadPreferences()).toEqual({ theme: 'dark', accent: undefined, pageFit: 'none', documentBackgrounds: {} })
   })
 
-  it('persists the fit-width default for PDFs opened later', () => {
-    savePreferences({ theme: 'light', fitWidth: true, documentBackgrounds: {} })
-    expect(loadPreferences().fitWidth).toBe(true)
+  it('persists the last page fitting choice for PDFs opened later', () => {
+    savePreferences({ theme: 'light', pageFit: 'page', documentBackgrounds: {} })
+    expect(loadPreferences().pageFit).toBe('page')
+  })
+
+  it('migrates the legacy fit-width preference', () => {
+    localStorage.setItem('pdfuck.preferences.v1', JSON.stringify({ theme: 'light', fitWidth: true, documentBackgrounds: {} }))
+    expect(loadPreferences().pageFit).toBe('width')
   })
 })

@@ -6,12 +6,14 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrintPdfOptions, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
+import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrinterDescriptor, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
 import { translateCataloguePhrase, type InterfaceLanguage } from '../shared/i18n-catalogue'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
+import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
+import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -37,21 +39,11 @@ const windowSessions = new Map<number, MainWindowSession>()
 const documentTransfers = new Map<string, PendingDocumentTransfer>()
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
+let nativePrintBusy = false
 let recentWriteQueue: Promise<void> = Promise.resolve()
 let readingPositionWriteQueue: Promise<void> = Promise.resolve()
 let passwordStore: PdfPasswordStore | undefined
 const execFileAsync = promisify(execFile)
-
-const PRINT_PAPER_POINTS: Record<PrintPdfOptions['pageSize'], [number, number]> = {
-  A3: [841.89, 1190.55], A4: [595.28, 841.89], A5: [419.53, 595.28], Letter: [612, 792], Legal: [612, 1008], Tabloid: [792, 1224]
-}
-
-function printPageSizeMicrons(options: NonNullable<PrintPdfRequest['options']>): { width: number; height: number } {
-  const [width, height] = PRINT_PAPER_POINTS[options.pageSize]
-  const points = options.landscape ? [height, width] : [width, height]
-  const pointsToMicrons = (value: number) => Math.round(value * 352.7777778)
-  return { width: pointsToMicrons(points[0]), height: pointsToMicrons(points[1]) }
-}
 
 const testUserData = !app.isPackaged ? process.env.PDFUCK_TEST_USER_DATA : undefined
 if (testUserData) app.setPath('userData', resolve(testUserData))
@@ -340,38 +332,60 @@ function queuePdfPath(path: string): void {
   showMainWindow()
 }
 
+async function listPrinters(contents: WebContents): Promise<PrinterDescriptor[]> {
+  if (process.platform === 'win32') {
+    try { return await listWindowsPrinters() }
+    catch (error) { console.error('Native Windows printer discovery failed; using Electron discovery.', error) }
+  }
+  return describePrinters(await contents.getPrintersAsync())
+}
+
 async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promise<PrintPdfResult> {
   if (!request.data?.length) throw new Error('当前 PDF 没有可打印的内容。')
-  if (printWindow && !printWindow.isDestroyed()) throw new Error('打印对话框已经打开。')
+  const language = requireWindowSession(parent.webContents).interfaceLanguage
+  if (!validPrintOptions(request.options)) throw new Error(nativeText(language, '打印设置无效。'))
+  if (typeof request.printerName !== 'string' || !request.printerName || request.printerName.length > 512 || request.printerName.includes('\0')) throw new Error(nativeText(language, '请选择可用的打印机。'))
+  if (nativePrintBusy || (printWindow && !printWindow.isDestroyed())) throw new Error(nativeText(language, '已有打印任务正在派发，请稍候。'))
+  const printers = await listPrinters(parent.webContents)
+  const printer = printers.find((candidate) => candidate.name === request.printerName)
+  if (!printer) throw new Error(nativeText(language, '所选打印机不可用，请刷新后重试。'))
+  if (request.options.duplex !== 'simplex' && printer.supportsDuplex === false) throw new Error(nativeText(language, '所选打印机不支持双面打印。'))
   const temporary = join(app.getPath('temp'), `PDFuck-print-${randomUUID()}.pdf`)
+  if (process.platform === 'win32') {
+    if (nativePrintBusy) throw new Error(nativeText(language, '已有打印任务正在派发，请稍候。'))
+    nativePrintBusy = true
+    try {
+      await writeFile(temporary, request.data)
+      await printPdfWithWindowsDriver(temporary, printer.name, request.options, { appPath: app.getAppPath(), temporaryPath: app.getPath('temp') })
+      return { status: 'printed' }
+    } catch (error) {
+      console.error('Native Windows print dispatch failed.', error)
+      throw new Error(nativeText(language, '原生打印任务派发失败，请检查打印机连接、纸张与双面打印设置。'))
+    } finally {
+      nativePrintBusy = false
+      await unlink(temporary).catch(() => undefined)
+      if (!parent.isDestroyed()) { parent.focus(); parent.webContents.focus() }
+    }
+  }
   await writeFile(temporary, request.data)
   const window = new BrowserWindow({
-    width: 900, height: 720, show: false, skipTaskbar: true, parent, modal: true, autoHideMenuBar: true,
-    title: `${nativeText(requireWindowSession(parent.webContents).interfaceLanguage, '打印')} - ${basename(request.name || 'document.pdf')}`,
+    width: 900, height: 720, show: false, skipTaskbar: true, parent, autoHideMenuBar: true, paintWhenInitiallyHidden: true,
+    title: `${nativeText(language, '打印')} - ${basename(request.name || 'document.pdf')}`,
     webPreferences: { plugins: true, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
   })
   printWindow = window
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   try {
     await window.loadURL(pathToFileURL(temporary).href)
-    window.show(); window.focus()
-    await new Promise((resolveReady) => setTimeout(resolveReady, 180))
+    const ready = await waitForStablePrintPreview(
+      async () => (await window.webContents.capturePage()).toPNG(),
+      (milliseconds) => new Promise((resolveReady) => setTimeout(resolveReady, milliseconds))
+    )
+    if (!ready) throw new Error(nativeText(language, '打印内容加载失败，请重试。'))
     return await new Promise<PrintPdfResult>((resolvePrint, rejectPrint) => {
-      const options = request.options
-      const printOptions: Electron.WebContentsPrintOptions = options
-        ? {
-            // The renderer sends a PDF whose page box is already in the
-            // requested orientation. Passing landscape=true here makes some
-            // macOS printer drivers rotate that page a second time.
-            pageSize: printPageSizeMicrons(options),
-            landscape: false,
-            duplexMode: options.duplex === 'simplex' ? 'simplex' : options.duplex === 'longEdge' ? 'longEdge' : 'shortEdge'
-          }
-        : { usePrinterDefaultPageSize: true }
-      window.webContents.print({ silent: false, printBackground: true, ...printOptions }, (success, failureReason) => {
+      window.webContents.print(buildDirectPrintOptions(request.options, printer.name), (success, failureReason) => {
         if (success) resolvePrint({ status: 'printed' })
-        else if (/cancel/i.test(failureReason)) resolvePrint({ status: 'canceled' })
-        else rejectPrint(new Error(failureReason || '系统打印失败。'))
+        else rejectPrint(new Error(failureReason || nativeText(language, '打印机未能接收任务，请检查连接和纸张设置。')))
       })
     })
   } finally {
@@ -500,7 +514,18 @@ app.on('second-instance', (_event, argv) => {
 
 app.on('open-file', (event, path) => { event.preventDefault(); queuePdfPath(path) })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (process.platform === 'win32' && process.argv.includes('--validate-print-backend')) {
+    try {
+      await validateWindowsPrintBackend({ appPath: app.getAppPath(), temporaryPath: app.getPath('temp') })
+      console.log('Packaged Windows native print backend validation passed.')
+      app.exit(0)
+    } catch (error) {
+      console.error('Packaged Windows native print backend validation failed.', error)
+      app.exit(1)
+    }
+    return
+  }
   void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
@@ -616,6 +641,7 @@ app.whenReady().then(() => {
       throw error
     }
   })
+  ipcMain.handle('pdf:list-printers', (event) => listPrinters(requireMainWindow(event.sender).webContents))
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
     const session = requireWindowSession(event.sender)

@@ -20,13 +20,36 @@ async function main() {
     const page = await app.firstWindow()
     await page.locator('.pdf-page[data-page="1"]').waitFor({ timeout: 60000 })
     assert.equal(await page.locator('.brand em').innerText(), `v${version}`, 'the tested build must display the package version')
+    await page.getByRole('button', { name: '单页查看', exact: true }).click()
+    assert.equal(await page.locator('.page-stack.single .pdf-page').count(), 1, 'single-page mode must render exactly one whole page at a time')
+    await page.locator('.viewer').dispatchEvent('wheel', { deltaY: 120, deltaMode: 0 })
+    await page.waitForFunction(() => document.querySelector('.page-controls input')?.value === '2')
+    assert.equal(await page.locator('.page-stack.single .pdf-page').count(), 1, 'wheel navigation must not reveal an adjacent page')
+    await page.waitForTimeout(220)
+    await page.locator('.viewer').dispatchEvent('wheel', { deltaY: -120, deltaMode: 0 })
+    await page.waitForFunction(() => document.querySelector('.page-controls input')?.value === '1')
+    await page.getByRole('button', { name: '连续滚动', exact: true }).click()
     await page.getByRole('button', { name: '适合宽度', exact: true }).click()
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('pdfuck.preferences.v1') || '{}').fitWidth === true && document.querySelector('.zoom-value')?.textContent !== '100%')
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('pdfuck.preferences.v1') || '{}').pageFit === 'width' && document.querySelector('.zoom-value')?.textContent !== '100%')
     const fittedZoom = await page.locator('.zoom-value').innerText()
     await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), secondaryPdfPath)
     await page.locator('.window-tab').nth(1).waitFor({ timeout: 60000 })
     assert.equal(await page.locator('.window-tab').count(), 2, 'opening another PDF should create a second tab')
     await page.waitForFunction((expected) => document.querySelector('.zoom-value')?.textContent === expected, fittedZoom)
+    await page.getByRole('button', { name: '适合屏幕', exact: true }).click()
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('pdfuck.preferences.v1') || '{}').pageFit === 'page')
+    await page.waitForFunction(() => {
+      const viewer = document.querySelector('.viewer'), pdfPage = document.querySelector('.pdf-page')
+      if (!(viewer instanceof HTMLElement) || !(pdfPage instanceof HTMLElement)) return false
+      const viewerBounds = viewer.getBoundingClientRect(), pageBounds = pdfPage.getBoundingClientRect()
+      return pageBounds.width <= viewerBounds.width - 54 && pageBounds.height <= viewerBounds.height - 70
+    })
+    const fitBounds = await page.evaluate(() => {
+      const viewer = document.querySelector('.viewer'), pdfPage = document.querySelector('.pdf-page')
+      if (!(viewer instanceof HTMLElement) || !(pdfPage instanceof HTMLElement)) return undefined
+      return { page: pdfPage.getBoundingClientRect().toJSON(), viewer: viewer.getBoundingClientRect().toJSON() }
+    })
+    assert.ok(fitBounds && fitBounds.page.width <= fitBounds.viewer.width - 54 && fitBounds.page.height <= fitBounds.viewer.height - 70, `fit-page must keep the full page inside the visible viewer: ${JSON.stringify(fitBounds)}`)
 
     const firstTab = page.locator('.window-tab').first()
     const secondTab = page.locator('.window-tab').nth(1)

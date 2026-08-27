@@ -38,6 +38,8 @@ echo "Packaging PDFuck $version for macOS"
 npm ci
 npm run build
 npm run test:i18n-ui
+npm run test:print-native
+npm run test:print-ui
 npm run test:window-tabs
 npm run test:selection-scheduling
 npm run test:selection-scheduling-ui
@@ -45,7 +47,9 @@ git diff --check
 
 # Build the application bundle first so the exact bundle placed into the DMG is
 # the one that is verified and signed below.
-npx --no-install electron-builder --mac dir
+# npm ci has already installed this exact Electron version. Reuse its local
+# distribution so packaging does not perform a second GitHub download.
+npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist
 case "$(uname -m)" in
   arm64) app_bundle='release/mac-arm64/PDFuck.app' ;;
   x86_64) app_bundle='release/mac/PDFuck.app' ;;
@@ -101,6 +105,7 @@ trap - EXIT
 
 release_executable="$repo_root/$app_bundle/Contents/MacOS/PDFuck"
 PDFUCK_RELEASE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/release-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/print-ui-smoke.cjs
 
 dmg_hash="$(shasum -a 256 "$dmg" | awk '{print $1}')"
 zip_hash="$(shasum -a 256 "$zip" | awk '{print $1}')"
@@ -112,7 +117,7 @@ if [[ "${REQUIRE_NOTARIZATION:-0}" == '1' && "$notarization" != 'accepted by Gat
 fi
 
 manifest="release/PDFuck-$version-macOS-release.json"
-node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],tests:['typecheck','unit','i18n-catalogue','i18n-ui','window-tabs','selection-scheduling','selection-scheduling-ui','packaged-release-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
+node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],tests:['typecheck','unit','i18n-catalogue','i18n-ui','print-native-cjs','print-ui','window-tabs','selection-scheduling','selection-scheduling-ui','packaged-release-ui','packaged-print-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
 
 echo 'macOS release passed build, regression, bundle, DMG layout, packaged-app, version and hash checks.'
 echo "App:      $repo_root/$app_bundle"

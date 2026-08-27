@@ -21,6 +21,7 @@ interface Props {
   onDeletePages(): void
   onMergeFiles(): void
   onAddImage?(): void
+  onPageNumbers?(): void
   onSave(saveAs?: boolean): void
   onPrint(): void
   printing: boolean
@@ -119,7 +120,8 @@ export function ToolPanel(props: Props) {
       <PanelAction disabled={disabled} onClick={props.onDeletePages} hint={ui('预览、调整顺序并批量删除页面。')}>{ui('管理页面…')}</PanelAction><h3>{ui('内容')}</h3>
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint={ui('显示当前页文本块，点击任意一处直接编辑')}>{ui('编辑页面文字')}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint={ui('拖出文本框后设置内容和格式')}>{ui('在页面上添加文字')}</ToolButton>
-      <PanelAction disabled={disabled} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。')}>{ui('在页面上添加图片…')}</PanelAction></section>}
+      <PanelAction disabled={disabled} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。')}>{ui('在页面上添加图片…')}</PanelAction>
+      <PanelAction disabled={disabled} onClick={() => props.onPageNumbers?.()} hint={ui('在全部页面添加可自定义、可删除的页码。')}>{ui('在页面上增加页码')}</PanelAction></section>}
     {module === 'annotate' && <section><h2>{ui('批注')}</h2><p className="subtitle">{ui('拖动框选文字；Ctrl/⌘ 加选，Shift 选择连续批注，Delete 批量删除。')}</p><h3>{ui('文本批注')}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint={ui('框选文字 · Ctrl+H / ⌘H')}>{ui('文本高亮')}</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint={ui('框选原文 · Ctrl+R / ⌘R')}>{ui('文本替换')}</ToolButton>

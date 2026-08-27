@@ -48,16 +48,16 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 1.19.0
+.\scripts\package-windows.ps1 1.20.3
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 1.19.0
+bash scripts/package-macos.sh 1.20.3
 ```
 
-版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
+版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
 
 ## 5. 构建前检查
 
@@ -69,6 +69,8 @@ npm test
 npm run build
 npm run test:i18n-catalogue
 npm run test:i18n-ui
+npm run test:print-native
+npm run test:print-ui
 npm run test:window-tabs
 git diff --check
 ```
@@ -80,7 +82,7 @@ npm run test:selection-scheduling
 npm run test:selection-scheduling-ui
 ```
 
-这两项检查使用 `tmp/Scheduling0821m.pdf`。静态检查验证内部对象顺序异常时（下一行项目符号被写在当前行两个词之间），当前行选区既不带入符号也不产生下一行矩形；Electron UI 烟测以真实拖拽验证同一位置，并确认标题、按钮等桌面界面控件不能被浏览器式框选。缺少该测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，验证重启后的语言持久化、主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。
+这两项检查使用 `tmp/Scheduling0821m.pdf`。静态检查验证内部对象顺序异常时（下一行项目符号被写在当前行两个词之间），当前行选区既不带入符号也不产生下一行矩形；Electron UI 烟测以真实拖拽验证同一位置，并确认标题、按钮等桌面界面控件不能被浏览器式框选。缺少该测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，验证重启后的语言持久化、主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 PDFium、绑定系统默认设备，并让双面打印机驱动验证单面/短边/长边三个逐任务 DEVMODE 值，但不会发送纸张；非 Windows 平台安全跳过。`test:print-ui` 会在 900×760 的真实 Electron 窗口中核对系统设备名与双面能力，检查 25%–200% 缩放、五种语言、方向区域无溢出，并验证最终作业预览至少达到显示尺寸的两倍清晰度。两项测试都不会真正派发纸张，以免自动化误触实体打印机。
 
 涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、启用一次“适合宽度”后新打开文档自动继承该查看方式、前后拖动排序、内部标签拖动不会触发外部文件蓝框、拖出标签栏生成独立窗口、将独立窗口中的标签拖入另一个 PDFuck 窗口后自动回归标签页、来源空窗口自动关闭，以及关闭独立窗口时没有主进程异常。不要只以单元测试代替这项跨窗口回归。
 
@@ -229,7 +231,7 @@ Get-AuthenticodeSignature release\*.exe
 ## 8. 最终发布清单
 
 - `package.json`、`package-lock.json`、包内 `app.asar` 和目标平台文件属性版本完全一致。
-- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:window-tabs`、`git diff --check` 全部通过。
+- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:print-native`、`npm run test:print-ui`、`npm run test:window-tabs`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
 - DMG 保留卷图标、应用图标、Applications 快捷入口和正确 Finder 布局。

@@ -14,6 +14,25 @@ function Invoke-Native {
   if ($LASTEXITCODE -ne 0) { throw "Command failed ($LASTEXITCODE): $Command $($Arguments -join ' ')" }
 }
 
+function Get-Sha256Hash {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([System.BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-', '') }
+    finally { $algorithm.Dispose() }
+  } finally { $stream.Dispose() }
+}
+
+function Get-EmbeddedSigner {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  try {
+    $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($Path)
+    try { return $certificate.Subject }
+    finally { $certificate.Dispose() }
+  } catch { return $null }
+}
+
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Push-Location -LiteralPath $repoRoot
 try {
@@ -31,11 +50,15 @@ try {
   Invoke-Native -Command 'npm' -Arguments @('ci')
   Invoke-Native -Command 'npm' -Arguments @('run', 'build')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:i18n-ui')
+  Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-native')
+  Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:window-tabs')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-ui')
   Invoke-Native -Command 'git' -Arguments @('diff', '--check')
-  Invoke-Native -Command 'npx' -Arguments @('--no-install', 'electron-builder', '--win')
+  # npm ci has already installed this exact Electron version. Reuse its local
+  # distribution so packaging does not perform a second GitHub download.
+  Invoke-Native -Command 'npx' -Arguments @('--no-install', 'electron-builder', '--win', '--config.electronDist=node_modules/electron/dist')
 
   $releaseDirectory = Join-Path $repoRoot 'release'
   $unpackedExecutable = Join-Path $releaseDirectory 'win-unpacked\PDFuck.exe'
@@ -48,18 +71,35 @@ try {
 
   $asarVersion = (& node -e "const asar=require('@electron/asar'); const value=JSON.parse(asar.extractFile(process.argv[1], 'package.json').toString()).version; process.stdout.write(value)" $asarPath).Trim()
   if ($asarVersion -ne $currentVersion) { throw "Packaged app.asar version is $asarVersion, expected $currentVersion." }
+  $nativeUnpacked = Join-Path $releaseDirectory 'win-unpacked\resources\app.asar.unpacked\node_modules\windows-pdf-printer-native'
+  $nativeIndex = Join-Path $nativeUnpacked 'lib\index.js'
+  $nativePdfium = Join-Path $nativeUnpacked 'bin\pdfium.dll'
+  $nativeLicense = Join-Path $nativeUnpacked 'LICENSE'
+  foreach ($requiredNative in @($nativeIndex, $nativePdfium, $nativeLicense)) {
+    if (-not (Test-Path -LiteralPath $requiredNative -PathType Leaf)) { throw "Packaged native print resource is missing: $requiredNative" }
+  }
+  if (-not (Select-String -LiteralPath $nativeIndex -SimpleMatch './core/types/index.js' -Quiet)) { throw 'Packaged native printer ESM patch is missing.' }
+  if ((Get-Item -LiteralPath $nativePdfium).Length -lt 1000000) { throw 'Packaged PDFium DLL is incomplete.' }
+  if (-not (Select-String -LiteralPath $nativeLicense -SimpleMatch 'MIT License' -Quiet)) { throw 'Packaged native printer license is missing.' }
+  $koffiUnpacked = Join-Path $releaseDirectory 'win-unpacked\resources\app.asar.unpacked\node_modules\koffi'
+  if (-not (Test-Path -LiteralPath $koffiUnpacked -PathType Container)) { throw "Packaged native Koffi runtime is missing: $koffiUnpacked" }
   $fileVersion = (Get-Item -LiteralPath $unpackedExecutable).VersionInfo.ProductVersion
   if (-not $fileVersion.StartsWith($currentVersion)) { throw "PDFuck.exe product version is $fileVersion, expected $currentVersion." }
+  Invoke-Native -Command $unpackedExecutable -Arguments @('--validate-print-backend')
 
   $env:PDFUCK_RELEASE_EXECUTABLE = $unpackedExecutable
   $env:PDFUCK_RELEASE_VERSION = $currentVersion
   Invoke-Native -Command 'node' -Arguments @('scripts/release-ui-smoke.cjs')
+  $env:PDFUCK_SMOKE_EXECUTABLE = $unpackedExecutable
+  Invoke-Native -Command 'node' -Arguments @('scripts/print-ui-smoke.cjs')
 
   $artifacts = @($installer, $portable)
-  $hashes = $artifacts | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 }
+  # Use the framework implementation so release hashing also works in minimal
+  # Windows PowerShell hosts where Get-FileHash is not available after packaging.
+  $hashes = $artifacts | ForEach-Object { [pscustomobject]@{ Path = $_; Hash = Get-Sha256Hash -Path $_ } }
   $signatures = $artifacts | ForEach-Object {
-    $signature = Get-AuthenticodeSignature -LiteralPath $_
-    [ordered]@{ file = $_; status = [string]$signature.Status; signer = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { $null } }
+    $signer = Get-EmbeddedSigner -Path $_
+    [ordered]@{ file = $_; status = if ($signer) { 'Signed' } else { 'NotSigned' }; signer = $signer }
   }
   $manifestPath = Join-Path $releaseDirectory "PDFuck-$currentVersion-Windows-release.json"
   [ordered]@{
@@ -73,7 +113,7 @@ try {
     executableProductVersion = $fileVersion
     artifacts = @($hashes | ForEach-Object { [ordered]@{ file = $_.Path; bytes = (Get-Item -LiteralPath $_.Path).Length; sha256 = $_.Hash } })
     signatures = $signatures
-    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'window-tabs', 'selection-scheduling', 'selection-scheduling-ui', 'packaged-release-ui')
+    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'selection-scheduling', 'selection-scheduling-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui')
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
   Write-Host "Windows release passed build, regression, packaged-app, version and hash checks." -ForegroundColor Green

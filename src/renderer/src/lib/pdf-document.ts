@@ -2,7 +2,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
   applyMatrix, displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
@@ -11,6 +11,7 @@ import {
 import { fontCategory, normalizeFontFamily } from './text-fonts'
 import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
 import { rotatedImageBounds } from './image-geometry'
+import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, pageNumberRect, validatePageNumberTemplate } from './page-numbers'
 import type { PdfImportFile } from '../../../shared/contracts'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
@@ -476,6 +477,108 @@ export class PdfDocumentModel {
     page.node.addAnnot(this.document.context.register(dictionary))
     await this.commit()
     return id
+  }
+
+  private pageNumberEntries(): AnnotationEntry[] {
+    return this.annotationEntries().filter((entry) => decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckPageNumber'))) === 'true')
+  }
+
+  pageNumbers(): PageNumberRecord[] {
+    return this.pageNumberEntries().map((entry) => {
+      const dict = entry.dict
+      const horizontal = decodeObject(this.document, dict.get(PDFName.of('PDFuckPageNumberHorizontal')))
+      const vertical = decodeObject(this.document, dict.get(PDFName.of('PDFuckPageNumberVertical')))
+      const settings: PageNumberSettings = {
+        template: decodeObject(this.document, dict.get(PDFName.of('PDFuckPageNumberTemplate'))) || DEFAULT_PAGE_NUMBER_SETTINGS.template,
+        font: normalizeFontFamily(decodeObject(this.document, dict.get(PDFName.of('PDFuckFont'))) || DEFAULT_PAGE_NUMBER_SETTINGS.font),
+        size: numberValue(this.document, dict.get(PDFName.of('PDFuckSize')), DEFAULT_PAGE_NUMBER_SETTINGS.size),
+        color: decodeObject(this.document, dict.get(PDFName.of('PDFuckColor'))) || DEFAULT_PAGE_NUMBER_SETTINGS.color,
+        bold: decodeObject(this.document, dict.get(PDFName.of('PDFuckBold'))) === 'true',
+        italic: decodeObject(this.document, dict.get(PDFName.of('PDFuckItalic'))) === 'true',
+        horizontal: horizontal === 'left' || horizontal === 'right' ? horizontal : 'center',
+        vertical: vertical === 'top' ? 'top' : 'bottom',
+        edgeOffsetPercent: numberValue(this.document, dict.get(PDFName.of('PDFuckPageNumberEdgeOffset')), DEFAULT_PAGE_NUMBER_SETTINGS.edgeOffsetPercent),
+        sideMarginPercent: numberValue(this.document, dict.get(PDFName.of('PDFuckPageNumberSideMargin')), DEFAULT_PAGE_NUMBER_SETTINGS.sideMarginPercent)
+      }
+      return {
+        id: decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.index}`,
+        pageIndex: entry.pageIndex,
+        text: decodeObject(this.document, dict.get(PDFName.of('Contents'))),
+        rect: pdfBoundsToDisplayRect(numberArray(this.document, dict.get(PDFName.of('Rect'))), pageGeometry(entry.page)),
+        settings
+      }
+    })
+  }
+
+  private removePageNumberEntries(): number {
+    const entries = this.pageNumberEntries()
+    const byPage = new Map<PDFPage, number[]>()
+    entries.forEach((entry) => byPage.set(entry.page, [...(byPage.get(entry.page) || []), entry.index]))
+    byPage.forEach((indexes, page) => indexes.sort((left, right) => right - left).forEach((index) => page.node.Annots()?.remove(index)))
+    return entries.length
+  }
+
+  /** Replace the document's PDFuck page-number set as one undoable operation. */
+  async addPageNumbers(settings: PageNumberSettings, rasterize?: (text: string, rect: PdfRect, style: TextStyle) => Promise<Uint8Array | undefined>): Promise<void> {
+    const validationError = validatePageNumberTemplate(settings.template)
+    if (validationError) throw new Error(validationError)
+    if (!this.pageCount) throw new Error('文档没有可添加页码的页面。')
+    const normalized: PageNumberSettings = {
+      ...settings,
+      size: Math.max(6, Math.min(72, settings.size)),
+      edgeOffsetPercent: Math.max(0, Math.min(30, settings.edgeOffsetPercent)),
+      sideMarginPercent: Math.max(0, Math.min(30, settings.sideMarginPercent))
+    }
+    const total = this.pageCount
+    try {
+      this.removePageNumberEntries()
+      for (let pageIndex = 0; pageIndex < total; pageIndex += 1) {
+        const page = this.document.getPage(pageIndex)
+        const rect = pageNumberRect(this.getPageSize(pageIndex), normalized)
+        const text = formatPageNumber(normalized.template, pageIndex + 1, total)
+        const style: TextStyle = { font: normalized.font, size: normalized.size, color: normalized.color, bold: normalized.bold, italic: normalized.italic, align: normalized.horizontal, lineHeight: 1.25 }
+        const rasterPng = rasterize ? await rasterize(text, rect, style) : undefined
+        const appearance = await this.textAppearance(rect, text, style, rasterPng)
+        const [red, green, blue] = hexColor(style.color)
+        const dictionary = this.document.context.obj({})
+        const id = `pdfuck-page-number-${Date.now()}-${pageIndex}-${Math.random().toString(36).slice(2, 7)}`
+        dictionary.set(PDFName.of('Type'), PDFName.of('Annot'))
+        dictionary.set(PDFName.of('Subtype'), PDFName.of('FreeText'))
+        dictionary.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(rect, pageGeometry(page))))
+        dictionary.set(PDFName.of('Contents'), pdfString(text))
+        dictionary.set(PDFName.of('NM'), pdfString(id))
+        dictionary.set(PDFName.of('T'), pdfString('PDFuck'))
+        dictionary.set(PDFName.of('Subj'), pdfString('PDFuck Page Number'))
+        dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+        dictionary.set(PDFName.of('F'), PDFNumber.of(4))
+        dictionary.set(PDFName.of('Border'), this.document.context.obj([0, 0, 0]))
+        dictionary.set(PDFName.of('AP'), this.document.context.obj({ N: appearance }))
+        dictionary.set(PDFName.of('DA'), PDFString.of(`/Helv ${style.size} Tf ${red} ${green} ${blue} rg`))
+        dictionary.set(PDFName.of('Q'), PDFNumber.of(style.align === 'center' ? 1 : style.align === 'right' ? 2 : 0))
+        dictionary.set(PDFName.of('PDFuckPageNumber'), PDFName.of('true'))
+        dictionary.set(PDFName.of('PDFuckPageNumberTemplate'), pdfString(normalized.template))
+        dictionary.set(PDFName.of('PDFuckPageNumberHorizontal'), PDFName.of(normalized.horizontal))
+        dictionary.set(PDFName.of('PDFuckPageNumberVertical'), PDFName.of(normalized.vertical))
+        dictionary.set(PDFName.of('PDFuckPageNumberEdgeOffset'), PDFNumber.of(normalized.edgeOffsetPercent))
+        dictionary.set(PDFName.of('PDFuckPageNumberSideMargin'), PDFNumber.of(normalized.sideMarginPercent))
+        dictionary.set(PDFName.of('PDFuckFont'), pdfString(normalizeFontFamily(style.font)))
+        dictionary.set(PDFName.of('PDFuckSize'), PDFNumber.of(style.size))
+        dictionary.set(PDFName.of('PDFuckColor'), PDFString.of(style.color))
+        dictionary.set(PDFName.of('PDFuckBold'), PDFName.of(style.bold ? 'true' : 'false'))
+        dictionary.set(PDFName.of('PDFuckItalic'), PDFName.of(style.italic ? 'true' : 'false'))
+        page.node.addAnnot(this.document.context.register(dictionary))
+      }
+      await this.commit()
+    } catch (error) {
+      this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+      throw error
+    }
+  }
+
+  async deletePageNumbers(): Promise<number> {
+    const removed = this.removePageNumberEntries()
+    if (removed) await this.commit()
+    return removed
   }
 
   async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect, backgroundColor = '#ffffff'): Promise<string> {

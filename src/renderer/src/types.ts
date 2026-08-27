@@ -68,6 +68,35 @@ export interface TextObjectRecord {
   rect: PdfRect
   text: string
   style: TextStyle
+  /** Render the object in the viewer without exposing drag/edit affordances. */
+  locked?: boolean
+}
+
+export type PageNumberHorizontalAlignment = 'left' | 'center' | 'right'
+export type PageNumberVerticalAlignment = 'top' | 'bottom'
+
+export interface PageNumberSettings {
+  /** Supports {page} and {total}; all other characters are preserved. */
+  template: string
+  font: string
+  size: number
+  color: string
+  bold: boolean
+  italic: boolean
+  horizontal: PageNumberHorizontalAlignment
+  vertical: PageNumberVerticalAlignment
+  /** Distance from the selected top/bottom edge as a percentage of page height. */
+  edgeOffsetPercent: number
+  /** Left/right safe area as a percentage of page width. */
+  sideMarginPercent: number
+}
+
+export interface PageNumberRecord {
+  id: string
+  pageIndex: number
+  text: string
+  rect: PdfRect
+  settings: PageNumberSettings
 }
 
 /** A not-yet-persisted image preview being positioned on one PDF page. */

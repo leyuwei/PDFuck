@@ -57,12 +57,27 @@ export type SavePdfResult =
 export interface PrintPdfRequest {
   data: Uint8Array
   name: string
-  options?: PrintPdfOptions
+  /** Exact operating-system printer name returned by listPrinters(). */
+  printerName: string
+  options: PrintPdfOptions
+}
+
+/** Safe renderer-facing subset of Electron's platform-dependent printer data. */
+export interface PrinterDescriptor {
+  /** Stable operating-system device name used when dispatching the print job. */
+  name: string
+  /** Human-friendly printer name shown in the print panel. */
+  displayName: string
+  description: string
+  isDefault: boolean
+  /** null means that this platform/driver did not expose the capability. */
+  supportsDuplex: boolean | null
 }
 
 export interface PrintPdfOptions {
   pageSize: 'A4' | 'A3' | 'A5' | 'Letter' | 'Legal' | 'Tabloid'
-  landscape: boolean
+  /** Auto resolves the orientation independently for every imposed sheet. */
+  orientation: 'auto' | 'portrait' | 'landscape'
   duplex: 'simplex' | 'longEdge' | 'shortEdge'
   multiPage: boolean
   rows: number
@@ -160,6 +175,7 @@ export interface DesktopApi {
   openPdfFolder(path: string): Promise<void>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<SavePdfResult>
+  listPrinters(): Promise<PrinterDescriptor[]>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>

@@ -1,13 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { AnnotationKind, AnnotationReply, TextStyle } from '../types'
-import { fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
-import type { PdfImportFile, PrintPdfOptions, RecentPdf, UpdateCheckResult } from '../../../shared/contracts'
+import type { AnnotationKind, AnnotationReply, PageNumberSettings, TextStyle } from '../types'
+import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
+import type { PdfImportFile, PrinterDescriptor, PrintPdfOptions, RecentPdf, UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
-import { DEFAULT_PRINT_PDF_OPTIONS, printPaperSize, printSheetCount } from '../lib/print-layout'
-import { t, ui, useInterfaceLanguage } from '../lib/i18n'
+import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, printPaperSize, printSheetCount, type ResolvedPrintOrientation } from '../lib/print-layout'
+import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
+import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, validatePageNumberTemplate } from '../lib/page-numbers'
+
+function localizedFontLabel(label: string): string {
+  return label.endsWith('（原文字体）') ? `${label.slice(0, -6)} (${ui('原文字体')})` : translateUiText(label)
+}
+
+function printScaleLabel(value: number): string { return `${value}%` }
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
 export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply }
@@ -61,13 +68,34 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
   const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'Arial', size: 16, color: '#182033', bold: false, italic: false, align: 'left', lineHeight: 1.25 })
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   return <div className="modal-backdrop"><div className="modal text-dialog"><h2>{edit ? ui("编辑文字") : ui("添加文字")}</h2><p>{ui("设置文字内容和显示格式。添加后可在页面上拖动，双击可再次编辑。")}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
-    <div className="format-grid"><label>{ui("字体")}<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+    <div className="format-grid"><label>{ui("字体")}<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label>
       <label>{ui("字号")}<input type="number" min="6" max="144" value={style.size} onChange={(event) => setStyle({ ...style, size: Number(event.target.value) })} /></label>
       <label>{ui("颜色")}<input type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
       <label>{ui("对齐")}<select value={style.align} onChange={(event) => setStyle({ ...style, align: event.target.value as TextStyle['align'] })}><option value="left">{ui("左对齐")}</option><option value="center">{ui("居中")}</option><option value="right">{ui("右对齐")}</option></select></label>
       <label>{ui("行距")}<select value={style.lineHeight || 1.25} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("紧凑")}</option><option value="1.25">{ui("正文")}</option><option value="1.5">{ui("宽松")}</option><option value="2">{ui('双倍')}</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> {ui("粗体")}</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> {ui("斜体")}</button></div>
     <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("取消")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? ui("保存修改") : ui("添加")}</button></div></div></div>
+}
+
+export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { initial?: PageNumberSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: PageNumberSettings): void; onDelete(): void }) {
+  const [settings, setSettings] = useState<PageNumberSettings>(initial || DEFAULT_PAGE_NUMBER_SETTINGS)
+  const totalMatch = settings.template.match(/^\{page\}(.*)\{total\}$/)
+  const preset = settings.template === '{page}' ? 'page' : totalMatch ? 'total' : 'custom'
+  const separator = totalMatch?.[1] ?? ' / '
+  const error = validatePageNumberTemplate(settings.template)
+  const update = <K extends keyof PageNumberSettings,>(key: K, value: PageNumberSettings[K]) => setSettings((current) => ({ ...current, [key]: value }))
+  return <div className="modal-backdrop page-number-backdrop"><div className="modal page-number-dialog" role="dialog" aria-modal="true" aria-labelledby="page-number-title">
+    <header className="page-number-heading"><span aria-hidden="true">#</span><div><h2 id="page-number-title">{ui('在页面上增加页码')}</h2><p>{ui('使用相对页边距，自动适配横向、纵向和不同尺寸的页面。')}</p></div></header>
+    {existingCount > 0 && <div className="page-number-existing"><b>{ui('已检测到页码')}</b><span>{t('pageNumbers.existing', { count: existingCount })}</span></div>}
+    <section className="page-number-section"><h3>{ui('页码内容')}</h3><div className="segmented page-number-presets"><button type="button" className={preset === 'page' ? 'active' : ''} onClick={() => update('template', '{page}')}>{ui('仅页码')}</button><button type="button" className={preset === 'total' ? 'active' : ''} onClick={() => update('template', `{page}${separator}{total}`)}>{ui('页码 + 总页数')}</button><button type="button" className={preset === 'custom' ? 'active' : ''} onClick={() => { if (preset !== 'custom') update('template', ui('第 {page} 页，共 {total} 页')) }}>{ui('自定义模板')}</button></div>
+      {preset === 'total' && <label className="page-number-separator">{ui('页码与总页数分隔符')}<input value={separator} maxLength={12} onChange={(event) => update('template', `{page}${event.target.value}{total}`)} /></label>}
+      <label className={`page-number-template${error ? ' invalid' : ''}`}>{ui('模板')}<input value={settings.template} maxLength={120} spellCheck={false} onChange={(event) => update('template', event.target.value)} /><small>{error ? translateUiText(error) : ui('可用占位符：{page} 当前页，{total} 总页数')}</small></label>
+    </section>
+    <section className="page-number-section"><h3>{ui('字体与样式')}</h3><div className="page-number-format"><label>{ui('字体')}<select value={normalizeFontFamily(settings.font)} onChange={(event) => update('font', event.target.value)}>{fontOptionsFor(settings.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label><label>{ui('字号')}<input type="number" min="6" max="72" value={settings.size} onChange={(event) => update('size', Math.max(6, Math.min(72, Number(event.target.value) || 6)))} /></label><label>{ui('颜色')}<input type="color" value={settings.color} onChange={(event) => update('color', event.target.value)} /></label><div className="format-toggles"><button type="button" className={settings.bold ? 'active' : ''} onClick={() => update('bold', !settings.bold)}><b>B</b> {ui('粗体')}</button><button type="button" className={settings.italic ? 'active' : ''} onClick={() => update('italic', !settings.italic)}><i>I</i> {ui('斜体')}</button></div></div></section>
+    <section className="page-number-section page-number-position"><h3>{ui('位置')}</h3><label><span>{ui('水平对齐')}</span><div className="segmented"><button type="button" className={settings.horizontal === 'left' ? 'active' : ''} onClick={() => update('horizontal', 'left')}>{ui('居左')}</button><button type="button" className={settings.horizontal === 'center' ? 'active' : ''} onClick={() => update('horizontal', 'center')}>{ui('居中')}</button><button type="button" className={settings.horizontal === 'right' ? 'active' : ''} onClick={() => update('horizontal', 'right')}>{ui('居右')}</button></div></label><label><span>{ui('垂直位置')}</span><div className="segmented"><button type="button" className={settings.vertical === 'top' ? 'active' : ''} onClick={() => update('vertical', 'top')}>{ui('页面顶部')}</button><button type="button" className={settings.vertical === 'bottom' ? 'active' : ''} onClick={() => update('vertical', 'bottom')}>{ui('页面底部')}</button></div></label><div className="page-number-offsets"><label>{ui('距页面边缘')}<span><input type="number" min="0" max="30" step="0.5" value={settings.edgeOffsetPercent} onChange={(event) => update('edgeOffsetPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label><label>{ui('左右安全边距')}<span><input type="number" min="0" max="30" step="0.5" value={settings.sideMarginPercent} onChange={(event) => update('sideMarginPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label></div></section>
+    <div className="page-number-preview"><small>{ui('实时预览')}</small><div style={{ color: settings.color, fontFamily: fontCssFamily(settings.font), fontSize: `${Math.max(10, Math.min(24, settings.size))}px`, fontWeight: settings.bold ? 700 : 400, fontStyle: settings.italic ? 'italic' : 'normal', textAlign: settings.horizontal }}>{formatPageNumber(settings.template, Math.min(3, pageCount), pageCount)}</div></div>
+    <div className="modal-actions page-number-actions">{existingCount > 0 && <button type="button" className="danger" onClick={onDelete}>{ui('删除已添加的页码')}</button>}<span /><button type="button" onClick={onCancel}>{ui('取消')}</button><button type="button" className="primary" disabled={Boolean(error)} onClick={() => onSubmit(settings)}>{existingCount > 0 ? ui('更新页码') : ui('添加页码')}</button></div>
+  </div></div>
 }
 
 export function SaveAsRequiredDialog({ target, onCancel, onSaveAs }: { target: string; onCancel(): void; onSaveAs(): void }) {
@@ -163,7 +191,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const windowCount = Math.max(1, Math.ceil(order.length / PAGE_MANAGER_WINDOW_SIZE))
   const visibleStart = Math.min(windowIndex, windowCount - 1) * PAGE_MANAGER_WINDOW_SIZE
   const visibleOrder = order.slice(visibleStart, visibleStart + PAGE_MANAGER_WINDOW_SIZE)
-  const thumbnails = usePrintThumbnails(data, visibleOrder, 360, 460)
+  const { thumbnails } = usePrintThumbnails(data, visibleOrder, 360, 460)
   const kept = order.filter((page) => !removed.has(page))
   const reordered = order.some((page, index) => page !== initialOrder[index])
   const hasChanges = reordered || removed.size > 0
@@ -358,7 +386,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   </div></div>
 }
 
-export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'print' | 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
+export function PageSelectionDialog({ purpose: _purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
   const allPages = allPageIndices(pageCount)
   const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
   const [manual, setManual] = useState(() => compactPageSelection(allPages))
@@ -372,11 +400,11 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
     if (!result.invalid.length) setSelected(new Set(result.pages))
   }
   const isAll = selected.size === pageCount
-  const title = purpose === 'print' ? ui("选择要打印的页面") : ui("选择要导出的页面")
-  const action = purpose === 'print' ? t('page.print') : t('page.export')
+  const title = ui("选择要导出的页面")
+  const action = t('page.export')
   const valid = selected.size > 0 && invalid.length === 0
   return <div className="modal-backdrop"><div className="modal page-selection-dialog">
-    <div className="page-selection-heading"><span className={`page-selection-icon ${purpose}`} aria-hidden="true">{purpose === 'print' ? '▣' : '⇩'}</span><div><h2>{title}</h2><p>{ui("可直接点选页面，也可输入不连续页码和范围。")}</p></div></div>
+    <div className="page-selection-heading"><span className="page-selection-icon export" aria-hidden="true">⇩</span><div><h2>{title}</h2><p>{ui("可直接点选页面，也可输入不连续页码和范围。")}</p></div></div>
     <label className={`page-range-input${invalid.length ? ' invalid' : ''}`}><span>{ui("页码范围")}</span><div><input autoFocus value={manual} placeholder={ui("例如：1-3, 5, 8-10")} onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection([...selected])) }} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' && valid) onSubmit([...selected].sort((a, b) => a - b)) }} /><small>{invalid.length ? t('page.rangeInvalid', { value: invalid.join('、') }) : ui("支持逗号、空格和短横线；页码可不连续")}</small></div></label>
     <div className="page-selection-shortcuts"><button className={isAll ? 'active' : ''} onClick={() => replace(allPages)}>{ui("全部")}</button><button className={selected.size === 1 && selected.has(currentPage) ? 'active' : ''} onClick={() => replace([currentPage])}>{ui("当前页")}</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 0))}>{ui("奇数页")}</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 1))}>{ui("偶数页")}</button><button onClick={() => replace(allPages.filter((page) => !selected.has(page)))}>{ui("反选")}</button><button onClick={() => replace([])}>{ui("清空")}</button></div>
     <div className="page-selection-grid">{allPages.map((page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{page === currentPage ? ui("当前页") : selected.has(page) ? ui("已选择") : ui("未选择")}</small></button>)}</div>
@@ -385,9 +413,11 @@ export function PageSelectionDialog({ purpose, pageCount, currentPage, onCancel,
   </div></div>
 }
 
-function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 220, maxHeight = 280): Record<number, string> {
+function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 220, maxHeight = 280): { thumbnails: Record<number, string>; sizes: Record<number, { width: number; height: number }>; failed: Set<number> } {
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
+  const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
+  const [failed, setFailed] = useState<Set<number>>(new Set())
   const cache = useRef<Record<number, string>>({})
   const pageKey = pageIndices.join(',')
   const wantsThumbnails = pageIndices.length > 0
@@ -395,10 +425,12 @@ function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 
     let active = true
     cache.current = {}
     setThumbnails({})
+    setSizes({})
+    setFailed(new Set())
     setDocument(undefined)
     if (!wantsThumbnails) return () => { active = false }
     const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
-    task.promise.then((value) => { if (active) setDocument(value) }).catch(() => undefined)
+    task.promise.then((value) => { if (active) setDocument(value) }).catch(() => { if (active) setFailed(new Set(pageIndices)) })
     return () => { active = false; void task.destroy() }
   }, [data, wantsThumbnails])
   useEffect(() => {
@@ -414,17 +446,22 @@ function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 
           const pageIndex = pageIndices[cursor++]
           if (pageIndex === undefined) return
           if (cache.current[pageIndex]) continue
-          const page = await document.getPage(pageIndex + 1)
-          const base = page.getViewport({ scale: 1 })
-          const viewport = page.getViewport({ scale: Math.min(maxWidth / base.width, maxHeight / base.height) })
-          const canvas = window.document.createElement('canvas')
-          canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
-          const context = canvas.getContext('2d', { alpha: false })
-          if (!context) continue
-          await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
-          if (cancelled) return
-          cache.current[pageIndex] = canvas.toDataURL('image/png')
-          setThumbnails({ ...cache.current })
+          try {
+            const page = await document.getPage(pageIndex + 1)
+            const base = page.getViewport({ scale: 1 })
+            setSizes((current) => ({ ...current, [pageIndex]: { width: base.width, height: base.height } }))
+            const viewport = page.getViewport({ scale: Math.min(maxWidth / base.width, maxHeight / base.height) })
+            const canvas = window.document.createElement('canvas')
+            canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
+            const context = canvas.getContext('2d', { alpha: false })
+            if (!context) throw new Error('Canvas is unavailable')
+            await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+            if (cancelled) return
+            cache.current[pageIndex] = canvas.toDataURL('image/png')
+            setThumbnails({ ...cache.current })
+          } catch {
+            if (!cancelled) setFailed((current) => new Set(current).add(pageIndex))
+          }
         }
       }
       await Promise.all(Array.from({ length: Math.min(4, pageIndices.length) }, worker))
@@ -432,12 +469,67 @@ function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 
     void render().catch(() => undefined)
     return () => { cancelled = true }
   }, [document, pageKey, maxHeight, maxWidth])
-  return thumbnails
+  return { thumbnails, sizes, failed }
 }
 
-export function PrintOptionsDialog({ data, pages, onCancel, onSubmit }: { data: Uint8Array; pages: number[]; onCancel(): void; onSubmit(options: PrintPdfOptions): void }) {
+interface ImposedPrintPreview {
+  image?: string
+  orientation?: ResolvedPrintOrientation
+  loading: boolean
+  failed: boolean
+  pixelWidth: number
+  pixelHeight: number
+}
+
+/** Render the actual imposed PDF sheet, at retina density, so preview and job cannot drift. */
+function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): ImposedPrintPreview {
+  const [preview, setPreview] = useState<ImposedPrintPreview>({ loading: pageIndices.length > 0, failed: false, pixelWidth: 0, pixelHeight: 0 })
+  const pageKey = pageIndices.join(',')
+  const optionsKey = JSON.stringify(options)
+  useEffect(() => {
+    let active = true
+    let task: ReturnType<typeof getDocument> | undefined
+    const timer = window.setTimeout(() => {
+      if (!pageIndices.length) { setPreview({ loading: false, failed: false, pixelWidth: 0, pixelHeight: 0 }); return }
+      setPreview({ loading: true, failed: false, pixelWidth: 0, pixelHeight: 0 })
+      void (async () => {
+        const job = await createImposedPrintJob(data, pageIndices, options)
+        const orientation = job.orientations[0] || 'portrait'
+        task = getDocument({ data: job.data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
+        const document = await task.promise
+        const page = await document.getPage(1)
+        const base = page.getViewport({ scale: 1 })
+        const renderScale = Math.min(1600 / Math.max(1, base.width), 1600 / Math.max(1, base.height))
+        const viewport = page.getViewport({ scale: renderScale })
+        const canvas = window.document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
+        const context = canvas.getContext('2d', { alpha: false })
+        if (!context) throw new Error('Canvas is unavailable')
+        await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+        let displayCanvas = canvas
+        if (options.orientation === 'auto' && orientation === 'landscape' && canvas.height > canvas.width) {
+          const rotated = window.document.createElement('canvas')
+          rotated.width = canvas.height; rotated.height = canvas.width
+          const rotatedContext = rotated.getContext('2d', { alpha: false })
+          if (!rotatedContext) throw new Error('Canvas is unavailable')
+          rotatedContext.translate(rotated.width, 0); rotatedContext.rotate(Math.PI / 2); rotatedContext.drawImage(canvas, 0, 0)
+          displayCanvas = rotated
+        }
+        if (active) setPreview({ image: displayCanvas.toDataURL('image/png'), orientation, loading: false, failed: false, pixelWidth: displayCanvas.width, pixelHeight: displayCanvas.height })
+      })().catch(() => { if (active) setPreview({ loading: false, failed: true, pixelWidth: 0, pixelHeight: 0 }) })
+    }, 90)
+    return () => { active = false; window.clearTimeout(timer); void task?.destroy() }
+  }, [data, optionsKey, pageKey])
+  return preview
+}
+
+export function PrintDialog({ data, pageCount, currentPage, printers, printersLoading, printerError, onRefreshPrinters, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; printers: PrinterDescriptor[]; printersLoading: boolean; printerError?: string; onRefreshPrinters(): void; onCancel(): void; onSubmit(pages: number[], options: PrintPdfOptions, printerName: string): void }) {
+  const allPages = allPageIndices(pageCount)
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
+  const [manual, setManual] = useState(() => compactPageSelection(allPages))
+  const [sheetIndex, setSheetIndex] = useState(0)
   const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>(DEFAULT_PRINT_PDF_OPTIONS.pageSize)
-  const [landscape, setLandscape] = useState(DEFAULT_PRINT_PDF_OPTIONS.landscape)
+  const [orientation, setOrientation] = useState<PrintPdfOptions['orientation']>(DEFAULT_PRINT_PDF_OPTIONS.orientation)
   const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>(DEFAULT_PRINT_PDF_OPTIONS.duplex)
   const [multiPage, setMultiPage] = useState(DEFAULT_PRINT_PDF_OPTIONS.multiPage)
   const [rows, setRows] = useState(DEFAULT_PRINT_PDF_OPTIONS.rows)
@@ -445,31 +537,69 @@ export function PrintOptionsDialog({ data, pages, onCancel, onSubmit }: { data: 
   const [scale, setScale] = useState(DEFAULT_PRINT_PDF_OPTIONS.scale)
   // A border changes the actual PDF output, so leave it off unless requested.
   const [frame, setFrame] = useState(DEFAULT_PRINT_PDF_OPTIONS.frame)
-  const [sheetIndex, setSheetIndex] = useState(0)
-  const options = useMemo<PrintPdfOptions>(() => ({ pageSize, landscape, duplex, multiPage, rows, columns, scale, frame }), [pageSize, landscape, duplex, multiPage, rows, columns, scale, frame])
+  const [printerName, setPrinterName] = useState('')
+  const parsed = parsePageSelection(manual, pageCount)
+  const invalid = parsed.invalid
+  const pages = useMemo(() => [...selected].sort((a, b) => a - b), [selected])
+  const selectedPrinter = printers.find((printer) => printer.name === printerName)
+  const valid = pages.length > 0 && invalid.length === 0 && Boolean(selectedPrinter) && !printersLoading
+  const replace = (nextPages: number[]) => {
+    const normalized = [...new Set(nextPages)].sort((a, b) => a - b)
+    setSelected(new Set(normalized)); setManual(compactPageSelection(normalized)); setSheetIndex(0)
+  }
+  const changeManual = (value: string) => {
+    setManual(value)
+    const result = parsePageSelection(value, pageCount)
+    if (!result.invalid.length) { setSelected(new Set(result.pages)); setSheetIndex(0) }
+  }
+  const options = useMemo<PrintPdfOptions>(() => ({ pageSize, orientation, duplex, multiPage, rows, columns, scale, frame }), [pageSize, orientation, duplex, multiPage, rows, columns, scale, frame])
   const perSheet = multiPage ? rows * columns : 1
   const sheetCount = printSheetCount(pages.length, options)
   const previewPages = pages.slice(sheetIndex * perSheet, (sheetIndex + 1) * perSheet)
-  const thumbnails = usePrintThumbnails(data, previewPages)
-  const [paperWidth, paperHeight] = printPaperSize(options)
+  const preview = useImposedPrintPreview(data, previewPages, options)
+  const resolvedOrientation = preview.orientation || (orientation === 'landscape' ? 'landscape' : 'portrait')
+  const [paperWidth, paperHeight] = printPaperSize(options, resolvedOrientation)
   useEffect(() => { setSheetIndex((current) => Math.min(current, Math.max(0, sheetCount - 1))) }, [sheetCount])
+  useEffect(() => { if (selectedPrinter?.supportsDuplex === false && duplex !== 'simplex') setDuplex('simplex') }, [duplex, selectedPrinter])
+  useEffect(() => {
+    if (printers.some((printer) => printer.name === printerName)) return
+    let remembered = ''
+    try { remembered = window.localStorage.getItem('pdfuck.print-printer') || '' } catch { /* Storage can be disabled by policy. */ }
+    const next = printers.find((printer) => printer.name === remembered) || printers.find((printer) => printer.isDefault) || printers[0]
+    setPrinterName(next?.name || '')
+  }, [printerName, printers])
+  const changePrinter = (name: string) => {
+    setPrinterName(name)
+    try { window.localStorage.setItem('pdfuck.print-printer', name) } catch { /* Keep printing available without preferences. */ }
+  }
   const setPreset = (nextRows: number, nextColumns: number) => { setRows(nextRows); setColumns(nextColumns); setSheetIndex(0) }
-  return <div className="modal-backdrop print-modal-backdrop"><div className="modal print-options-dialog"><div className="print-dialog-heading"><div className="print-heading-copy"><span className="print-heading-icon" aria-hidden="true">⎙</span><div><h2>{ui("打印预览")}</h2><p>{t('print.overview', { pages: pages.length, sheets: sheetCount })}</p></div></div><button type="button" aria-label={ui("关闭打印设置")} title={ui("关闭")} onClick={onCancel}>×</button></div>
+  const isAll = selected.size === pageCount
+  return <div className="modal-backdrop print-modal-backdrop"><div className="modal print-options-dialog"><div className="print-dialog-heading"><div className="print-heading-copy"><span className="print-heading-icon" aria-hidden="true">⎙</span><div><h2>{ui("打印设置与预览")}</h2><p>{t('print.overview', { pages: pages.length, sheets: sheetCount })}</p></div></div><button type="button" aria-label={ui("关闭打印设置")} title={ui("关闭")} onClick={onCancel}>×</button></div>
     <div className="print-dialog-body"><aside className="print-controls">
-      <section className="print-control-section"><header><b>{ui("纸张设置")}</b><span>{pageSize} · {landscape ? ui("横向") : ui("纵向")}</span></header>
+      <section className="print-control-section print-printer-section"><header><b>{ui("打印机")}</b><button type="button" className="print-printer-refresh" disabled={printersLoading} aria-label={ui("刷新打印机")} title={ui("刷新打印机")} onClick={onRefreshPrinters}><span aria-hidden="true">↻</span></button></header>
+        <div className={`print-printer-picker${printerError || (!printersLoading && !printers.length) ? ' unavailable' : ''}`}><span className="print-printer-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" /></svg></span><div>{printersLoading ? <span className="print-printer-state">{ui("正在查找打印机…")}</span> : printers.length ? <><select className="print-printer-select" aria-label={ui("打印机")} value={printerName} onChange={(event) => changePrinter(event.target.value)}>{printers.map((printer) => <option key={printer.name} value={printer.name} data-duplex={String(printer.supportsDuplex)}>{printer.displayName}{printer.isDefault ? ` · ${ui("默认打印机")}` : ''}</option>)}</select>{selectedPrinter?.description && <small>{selectedPrinter.description}</small>}</> : <span className="print-printer-state">{ui("未找到可用打印机")}</span>}</div></div>
+        {printerError ? <small className="print-printer-message error">{printerError}</small> : <small className="print-printer-message">{ui("PDFuck 将把当前设置直接发送到所选打印机")}</small>}
+      </section>
+      <section className="print-control-section print-pages-section"><header><b>{ui("选择要打印的页面")}</b><span>{t('page.selected', { count: pages.length })}</span></header>
+        <label className={`print-range-field${invalid.length ? ' invalid' : ''}`}><span>{ui("页码范围")}</span><input value={manual} placeholder={ui("例如：1-3, 5, 8-10")} onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection(pages)) }} /><small>{invalid.length ? t('page.rangeInvalid', { value: invalid.join('、') }) : ui("支持逗号、空格和短横线；页码可不连续")}</small></label>
+        <div className="print-page-shortcuts"><button type="button" className={isAll ? 'active' : ''} onClick={() => replace(allPages)}>{ui("全部")}</button><button type="button" className={pages.length === 1 && selected.has(currentPage) ? 'active' : ''} onClick={() => replace([currentPage])}>{ui("当前页")}</button><button type="button" onClick={() => replace(allPages.filter((page) => page % 2 === 0))}>{ui("奇数页")}</button><button type="button" onClick={() => replace(allPages.filter((page) => page % 2 === 1))}>{ui("偶数页")}</button></div>
+        <div className="print-page-strip" aria-label={ui("选择要打印的页面")}>{allPages.map((page) => <button type="button" key={page} className={selected.has(page) ? 'selected' : ''} aria-pressed={selected.has(page)} title={t('page.preview', { page: page + 1 })} onClick={() => replace(selected.has(page) ? pages.filter((value) => value !== page) : [...pages, page])}>{page + 1}</button>)}</div>
+      </section>
+      <section className="print-control-section"><header><b>{ui("纸张设置")}</b><span>{pageSize} · {orientation === 'auto' ? ui("自动适应") : orientation === 'landscape' ? ui("横向") : ui("纵向")}</span></header>
         <label className="print-field"><span>{ui("纸张尺寸")}</span><select value={pageSize} onChange={(event) => { setPageSize(event.target.value as PrintPdfOptions['pageSize']); setSheetIndex(0) }}><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Tabloid</option></select></label>
-        <div className="print-field"><span>{ui("页面方向")}</span><div className="print-orientation" role="group" aria-label={ui("页面方向")}><button type="button" className={!landscape ? 'active' : ''} onClick={() => { setLandscape(false); setSheetIndex(0) }}><i className="paper-shape portrait" aria-hidden="true" />{ui("纵向")}</button><button type="button" className={landscape ? 'active' : ''} onClick={() => { setLandscape(true); setSheetIndex(0) }}><i className="paper-shape landscape" aria-hidden="true" />{ui("横向")}</button></div></div>
-        <label className="print-field"><span>{ui("印刷方式")}</span><select value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">{ui("单面打印")}</option><option value="longEdge">{ui("双面 · 长边翻页")}</option><option value="shortEdge">{ui("双面 · 短边翻页")}</option></select></label>
+        <div className="print-field print-orientation-field"><span>{ui("页面方向")}</span><div className="print-orientation" role="group" aria-label={ui("页面方向")}><button type="button" className={orientation === 'auto' ? 'active' : ''} onClick={() => { setOrientation('auto'); setSheetIndex(0) }}><i className="paper-shape auto" aria-hidden="true" />{ui("自动")}</button><button type="button" className={orientation === 'portrait' ? 'active' : ''} onClick={() => { setOrientation('portrait'); setSheetIndex(0) }}><i className="paper-shape portrait" aria-hidden="true" />{ui("纵向")}</button><button type="button" className={orientation === 'landscape' ? 'active' : ''} onClick={() => { setOrientation('landscape'); setSheetIndex(0) }}><i className="paper-shape landscape" aria-hidden="true" />{ui("横向")}</button></div>{orientation === 'auto' && <small className="print-orientation-hint">{ui("每张纸会根据其中的页面自动选择方向")}</small>}</div>
+        <label className={`print-field print-duplex-field${selectedPrinter?.supportsDuplex === false ? ' unsupported' : ''}`}><span>{ui("印刷方式")}</span><select className="print-duplex-select" value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">{ui("单面打印")}</option><option value="longEdge" disabled={selectedPrinter?.supportsDuplex === false}>{ui("双面 · 长边翻页")}</option><option value="shortEdge" disabled={selectedPrinter?.supportsDuplex === false}>{ui("双面 · 短边翻页")}</option></select><small>{selectedPrinter?.supportsDuplex === false ? ui("此打印机未报告双面打印能力") : selectedPrinter?.supportsDuplex === null ? ui("打印机未提供双面能力信息；仍会按所选方式提交") : ui("长边翻页适合书本装订，短边翻页适合日历装订")}</small></label>
       </section>
       <section className="print-control-section layout-section"><header><b>{ui("页面布局")}</b><span>{multiPage ? t('print.perSheet', { count: rows * columns }) : t('print.onePerSheet')}</span></header>
         <label className="print-multipage-toggle"><input type="checkbox" checked={multiPage} onChange={(event) => { setMultiPage(event.target.checked); setSheetIndex(0) }} /><span><b>{ui("合并多页到一张纸")}</b><small>{ui("PDFuck 将按右侧预览直接生成拼版")}</small></span><i aria-hidden="true" /></label>
-        {multiPage && <><div className="print-layout-presets" aria-label={ui("每张纸页数")}><button type="button" className={rows === 1 && columns === 2 ? 'active' : ''} onClick={() => setPreset(1, 2)}>{t('page.count', { count: 2 })}</button><button type="button" className={rows === 2 && columns === 2 ? 'active' : ''} onClick={() => setPreset(2, 2)}>{t('page.count', { count: 4 })}</button><button type="button" className={rows === 2 && columns === 3 ? 'active' : ''} onClick={() => setPreset(2, 3)}>{t('page.count', { count: 6 })}</button><button type="button" className={rows === 3 && columns === 3 ? 'active' : ''} onClick={() => setPreset(3, 3)}>{t('page.count', { count: 9 })}</button></div><div className="print-options-grid advanced"><label>{ui("缩放")}<input type="number" min="35" max="100" value={scale} onChange={(event) => setScale(Math.max(35, Math.min(100, Number(event.target.value) || 100)))} /><small>%</small></label><label>{ui("行数")}<input type="number" min="1" max="6" value={rows} onChange={(event) => { setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label><label>{ui("列数")}<input type="number" min="1" max="6" value={columns} onChange={(event) => { setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label></div><label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>{ui("显示页面边框")}</b><small>{ui("打印时保留浅灰分隔线")}</small></span></label></>}
+        {multiPage && <><div className="print-layout-presets" aria-label={ui("每张纸页数")}><button type="button" className={rows === 1 && columns === 2 ? 'active' : ''} onClick={() => setPreset(1, 2)}>{t('page.count', { count: 2 })}</button><button type="button" className={rows === 2 && columns === 2 ? 'active' : ''} onClick={() => setPreset(2, 2)}>{t('page.count', { count: 4 })}</button><button type="button" className={rows === 2 && columns === 3 ? 'active' : ''} onClick={() => setPreset(2, 3)}>{t('page.count', { count: 6 })}</button><button type="button" className={rows === 3 && columns === 3 ? 'active' : ''} onClick={() => setPreset(3, 3)}>{t('page.count', { count: 9 })}</button></div><div className="print-options-grid advanced"><label>{ui("行数")}<input type="number" min="1" max="6" value={rows} onChange={(event) => { setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label><label>{ui("列数")}<input type="number" min="1" max="6" value={columns} onChange={(event) => { setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label></div><label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>{ui("显示页面边框")}</b><small>{ui("打印时保留浅灰分隔线")}</small></span></label></>}
+        <div className="print-scale-control"><header><span>{ui("打印缩放比例")}</span><label><input className="print-scale-number" aria-label={ui("打印缩放比例")} type="number" min="25" max="200" value={scale} onChange={(event) => setScale(Math.max(25, Math.min(200, Number(event.target.value) || 100)))} /><small>%</small></label></header><input className="print-scale-slider" aria-label={ui("打印缩放滑块")} type="range" min="25" max="200" step="5" value={scale} onChange={(event) => setScale(Number(event.target.value))} /><div><button type="button" className={scale === 75 ? 'active' : ''} onClick={() => setScale(75)}>{printScaleLabel(75)}</button><button type="button" className={scale === 100 ? 'active' : ''} onClick={() => setScale(100)}>{printScaleLabel(100)}</button><button type="button" className={scale === 125 ? 'active' : ''} onClick={() => setScale(125)}>{printScaleLabel(125)}</button></div><small>{ui("100% 为适合纸张；放大时页面边缘可能被裁切")}</small></div>
       </section>
-    </aside><section className="print-preview"><header><div><b>{ui("纸张预览")}</b><small>{ui("输出效果与下方纸张比例一致")}</small></div><nav><button type="button" disabled={sheetIndex <= 0} aria-label={ui("上一张纸")} title={ui("上一张纸")} onClick={() => setSheetIndex((value) => Math.max(0, value - 1))}>‹</button><span>{sheetIndex + 1} / {sheetCount}</span><button type="button" disabled={sheetIndex >= sheetCount - 1} aria-label={ui("下一张纸")} title={ui("下一张纸")} onClick={() => setSheetIndex((value) => Math.min(sheetCount - 1, value + 1))}>›</button></nav></header>
-      <div className="print-paper-stage"><div className={`print-paper${landscape ? ' landscape' : ''}`} style={{ aspectRatio: `${paperWidth} / ${paperHeight}` }}><div className="print-preview-grid" style={{ gridTemplateRows: `repeat(${multiPage ? rows : 1}, minmax(0, 1fr))`, gridTemplateColumns: `repeat(${multiPage ? columns : 1}, minmax(0, 1fr))` }}>{previewPages.map((pageIndex) => <div key={pageIndex} className={`print-preview-cell${frame && multiPage ? ' framed' : ''}`}>{thumbnails[pageIndex] ? <img src={thumbnails[pageIndex]} alt={t('page.preview', { page: pageIndex + 1 })} /> : <span className="print-preview-loading">{ui("正在生成预览")}</span>}<small>{pageIndex + 1}</small></div>)}</div></div></div>
-      <footer><span>{multiPage ? `${rows} × ${columns} ${ui('拼版')}` : t('print.onePerSheet')}</span><b>{t('print.summary', { size: pageSize, orientation: landscape ? ui('横向') : ui('纵向'), duplex: duplex === 'simplex' ? ui('单面') : ui('双面') })}</b></footer>
+    </aside><section className="print-preview"><header><div><b>{ui("纸张预览")}</b><small>{orientation === 'auto' ? ui("方向已按当前纸张内容自动适配") : ui("输出效果与下方纸张比例一致")}</small></div><nav><button type="button" disabled={sheetIndex <= 0} aria-label={ui("上一张纸")} title={ui("上一张纸")} onClick={() => setSheetIndex((value) => Math.max(0, value - 1))}>‹</button><span>{sheetCount ? sheetIndex + 1 : 0} / {sheetCount}</span><button type="button" disabled={sheetIndex >= sheetCount - 1} aria-label={ui("下一张纸")} title={ui("下一张纸")} onClick={() => setSheetIndex((value) => Math.min(sheetCount - 1, value + 1))}>›</button></nav></header>
+      <div className="print-paper-stage"><div className={`print-paper${resolvedOrientation === 'landscape' ? ' landscape' : ''}`} style={{ aspectRatio: `${paperWidth} / ${paperHeight}` }}>{preview.image ? <img className="print-job-preview" src={preview.image} alt={ui("最终打印作业预览")} data-pixel-width={preview.pixelWidth} data-pixel-height={preview.pixelHeight} /> : <span className={`print-preview-loading${preview.failed ? ' failed' : ''}`}>{preview.failed ? ui("预览生成失败") : ui("正在生成高清预览")}</span>}</div></div>
+      <footer><span>{multiPage ? `${rows} × ${columns} ${ui('拼版')}` : t('print.onePerSheet')} · {scale}%</span><b>{t('print.summary', { size: pageSize, orientation: resolvedOrientation === 'landscape' ? ui('横向') : ui('纵向'), duplex: duplex === 'simplex' ? ui('单面') : ui('双面') })}</b></footer>
     </section></div>
-    <div className="modal-actions print-dialog-actions"><span>{t('print.layout', { pages: pages.length, sheets: sheetCount })}</span><button onClick={onCancel}>{ui("取消")}</button><button className="primary" onClick={() => onSubmit(options)}>{ui("打开系统打印")}</button></div>
+    <div className="modal-actions print-dialog-actions"><span className={!valid ? 'invalid' : ''}>{invalid.length ? ui("请修正页码范围后继续") : !pages.length ? ui("尚未选择页面") : printersLoading ? ui("正在查找打印机…") : !selectedPrinter ? ui("请选择可用的打印机。") : t('print.layout', { pages: pages.length, sheets: sheetCount })}</span><button onClick={onCancel}>{ui("取消")}</button><button className="primary" disabled={!valid} onClick={() => onSubmit(pages, options, printerName)}>{ui("发送到打印机")}</button></div>
   </div></div>
 }
 

@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 import { PdfDocumentModel } from './pdf-document'
 import type { AnnotationKind } from '../types'
@@ -294,5 +294,28 @@ describe('PdfDocumentModel', () => {
     expect(subset.pageCount).toBe(1)
     expect(subset.annotations()).toEqual([expect.objectContaining({ pageIndex: 0, content: 'selected page comment' })])
     expect(model.pageCount).toBe(3)
+  })
+
+  it('adds, persists, replaces, and removes relatively positioned page numbers on mixed pages', async () => {
+    const source = await PDFDocument.create()
+    source.addPage([600, 800])
+    const rotated = source.addPage([900, 500]); rotated.setRotation(degrees(90))
+    const model = await PdfDocumentModel.load(await source.save())
+    const settings = { template: 'Page {page} of {total}', font: 'Times New Roman', size: 12, color: '#43526a', bold: true, italic: false, horizontal: 'right' as const, vertical: 'bottom' as const, edgeOffsetPercent: 5, sideMarginPercent: 5 }
+    await model.addPageNumbers(settings)
+    expect(model.pageNumbers()).toEqual([
+      expect.objectContaining({ pageIndex: 0, text: 'Page 1 of 2', rect: expect.objectContaining({ x: 30, width: 540 }), settings: expect.objectContaining(settings) }),
+      expect.objectContaining({ pageIndex: 1, text: 'Page 2 of 2', rect: expect.objectContaining({ x: 25, width: 450 }), settings: expect.objectContaining(settings) })
+    ])
+    expect(model.textObjects()).toEqual([])
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.pageNumbers()).toHaveLength(2)
+    await reopened.addPageNumbers({ ...settings, template: '{page}', vertical: 'top' })
+    expect(reopened.pageNumbers().map((item) => item.text)).toEqual(['1', '2'])
+    expect(reopened.pageNumbers()[0].rect.y).toBeCloseTo(40)
+    expect(await reopened.deletePageNumbers()).toBe(2)
+    expect(reopened.pageNumbers()).toEqual([])
+    await reopened.undo()
+    expect(reopened.pageNumbers()).toHaveLength(2)
   })
 })

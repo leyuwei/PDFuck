@@ -1,11 +1,12 @@
 {
   "name": "pdfuck",
-  "version": "1.19.0",
+  "version": "1.20.3",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
   "license": "MIT",
   "scripts": {
+    "postinstall": "node scripts/patch-windows-printer-native.cjs",
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
@@ -21,6 +22,8 @@
     "test:window-tabs": "electron-vite build && node scripts/window-tabs-smoke.cjs",
     "test:i18n-catalogue": "node scripts/i18n-catalogue-audit.cjs",
     "test:i18n-ui": "electron-vite build && node scripts/i18n-ui-smoke.cjs",
+    "test:print-ui": "electron-vite build && node scripts/print-ui-smoke.cjs",
+    "test:print-native": "node scripts/print-native-smoke.cjs",
     "test:release-ui": "node scripts/release-ui-smoke.cjs",
     "test:watch": "vitest",
     "build": "npm run typecheck && npm test && npm run test:i18n-catalogue && electron-vite build",
@@ -57,13 +60,90 @@
     "appId": "cn.pdfuck.app",
     "productName": "PDFuck",
     "copyright": "Copyright © 2026 github@leyuwei",
-    "directories": { "output": "release" },
-    "files": ["out/**/*", "package.json"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
     "asar": true,
-    "fileAssociations": [{ "ext": "pdf", "name": "PDF Document", "description": "PDF 文档", "mimeType": "application/pdf", "role": "Viewer", "rank": "Default" }],
-    "win": { "target": ["portable", "nsis"], "artifactName": "PDFuck-${version}-Windows.${ext}", "icon": "resources/icon.ico", "legalTrademarks": "github@leyuwei" },
-    "nsis": { "oneClick": false, "allowElevation": true, "allowToChangeInstallationDirectory": true, "perMachine": true, "createDesktopShortcut": "always", "createStartMenuShortcut": true, "shortcutName": "PDFuck", "runAfterFinish": true, "installerLanguages": ["zh_CN", "en_US", "ja_JP", "ru_RU", "es_ES"], "installerIcon": "resources/icon.ico", "uninstallerIcon": "resources/icon.ico", "license": "LICENSE", "artifactName": "PDFuck-${version}-Windows-Setup.${ext}" },
-    "mac": { "target": ["dmg"], "category": "public.app-category.productivity", "icon": "resources/icon.png", "artifactName": "PDFuck-${version}-macOS.${ext}" },
-    "dmg": { "icon": "resources/icon.png", "backgroundColor": "#f4f6fa", "iconSize": 96, "iconTextSize": 12, "window": { "width": 620, "height": 430 }, "contents": [{ "x": 165, "y": 220, "type": "file" }, { "x": 455, "y": 220, "type": "link", "path": "/Applications" }] }
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "description": "PDF 文档",
+        "mimeType": "application/pdf",
+        "role": "Viewer",
+        "rank": "Default"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "artifactName": "PDFuck-${version}-Windows.${ext}",
+      "icon": "resources/icon.ico",
+      "legalTrademarks": "github@leyuwei"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "PDFuck",
+      "runAfterFinish": true,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US",
+        "ja_JP",
+        "ru_RU",
+        "es_ES"
+      ],
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "license": "LICENSE",
+      "artifactName": "PDFuck-${version}-Windows-Setup.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.png",
+      "artifactName": "PDFuck-${version}-macOS.${ext}"
+    },
+    "dmg": {
+      "icon": "resources/icon.png",
+      "backgroundColor": "#f4f6fa",
+      "iconSize": 96,
+      "iconTextSize": 12,
+      "window": {
+        "width": 620,
+        "height": 430
+      },
+      "contents": [
+        {
+          "x": 165,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 455,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  },
+  "optionalDependencies": {
+    "windows-pdf-printer-native": "2.1.1"
   }
 }
