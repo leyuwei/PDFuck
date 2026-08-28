@@ -1,6 +1,8 @@
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from './pdfjs'
 import type { ExportPage, RasterExportFormat } from '../../../shared/contracts'
 import { encodeRgbEps } from './eps'
+import { rasterExportDimensions } from './export-dpi'
+import { t } from './i18n'
 
 function canvasBytes(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => canvas.toBlob(async (blob) => {
@@ -22,6 +24,7 @@ function epsBytes(canvas: HTMLCanvasElement, widthPoints: number, heightPoints: 
 }
 
 export async function exportPdfPages(data: Uint8Array, format: RasterExportFormat, dpi: number, onProgress?: (completed: number, total: number, pageNumber: number) => void, pageIndices?: number[], password?: string): Promise<ExportPage[]> {
+  if (!Number.isFinite(dpi) || dpi <= 0) throw new Error(t('export.dpiInvalid'))
   const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
   const document: PDFDocumentProxy = await task.promise
   const outputs: ExportPage[] = []
@@ -35,9 +38,11 @@ export async function exportPdfPages(data: Uint8Array, format: RasterExportForma
       const page = await document.getPage(pageNumber)
       const base = page.getViewport({ scale: 1 })
       const viewport = page.getViewport({ scale: dpi / 72 })
+      const dimensions = rasterExportDimensions(base.width, base.height, dpi)
+      if (!dimensions) throw new Error(t('export.dpiTooLarge', { page: pageNumber, dpi }))
       const canvas = window.document.createElement('canvas')
-      canvas.width = Math.max(1, Math.floor(viewport.width))
-      canvas.height = Math.max(1, Math.floor(viewport.height))
+      canvas.width = dimensions.width
+      canvas.height = dimensions.height
       const context = canvas.getContext('2d')
       if (!context) throw new Error('无法创建页面画布。')
       if (format === 'jpg') { context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height) }

@@ -6,7 +6,7 @@ import { normalizeRect, rectUnion } from '../lib/geometry'
 import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
-import { canvasOutputScale, singlePageWheelDirection, wheelZoom } from '../lib/rendering'
+import { canvasOutputScale, singlePageWheelDecision, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
 import { pageTextCaretOffsetAt, pageTextRegionHasReplacement, replacementTextRect } from '../lib/page-text-edit'
@@ -211,7 +211,7 @@ const REGEX_PRESETS = [
   { label: '括号内容', value: '[（(][^）)]{1,80}[）)]' }
 ]
 
-function SearchPanel({ document, onClose, onJump, onFocusTarget }: { document: PDFDocumentProxy; onClose(): void; onJump(pageIndex: number): void; onFocusTarget(target: SearchFocusTarget): void }) {
+function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocumentProxy; onClose(): void; onFocusTarget(target: SearchFocusTarget): void }) {
   const [query, setQuery] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [fuzzy, setFuzzy] = useState(true)
@@ -289,7 +289,7 @@ function SearchPanel({ document, onClose, onJump, onFocusTarget }: { document: P
     <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />{ui("匹配大小写")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />{ui("模糊匹配")}</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />{ui("正则表达式")}</label></div>
     {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">{ui("常用正则表达式")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
     {error && <p className="pdf-search-error">{error}</p>}
-    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => { onJump(result.pageIndex); onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace }) }}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
+    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace })}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
   </div>
 }
 
@@ -616,6 +616,12 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (textFocus || citationHits.length) setTextRequested(true)
   }, [textFocus, citationHits.length])
 
+  // The active page must always expose its text layer, even when a fast
+  // programmatic jump outruns the intersection observer during startup.
+  useEffect(() => {
+    if (activePage) setTextRequested(true)
+  }, [activePage])
+
   useEffect(() => {
     if (!page || !canvasRef.current || !renderEligible) return
     let cancelled = false
@@ -890,6 +896,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const singlePageWheelResetRef = useRef<number | undefined>(undefined)
   const singlePageWheelLatchedRef = useRef(false)
   const singlePageWheelDeltaRef = useRef(0)
+  const singlePageWheelLastInteriorRef = useRef(0)
+  const singlePageTargetScrollRef = useRef<{ pageIndex: number; edge: 'start' | 'end' } | undefined>(undefined)
+  const previousModeRef = useRef(mode)
   const wheelAnchorRef = useRef<{ pageIndex?: number; x?: number; y?: number; clientX: number; clientY: number; baseZoom: number; viewportX: number; viewportY: number; scrollLeft: number; scrollTop: number } | undefined>(undefined)
   const handleSize = useCallback((index: number, size: { width: number; height: number }) => {
     setSizes((current) => {
@@ -980,6 +989,27 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
   }, [])
 
+  useLayoutEffect(() => {
+    const target = singlePageTargetScrollRef.current
+    const viewport = viewportRef.current
+    if (mode !== 'single' || !viewport || target?.pageIndex !== currentPage) return
+    const apply = () => { viewport.scrollTop = target.edge === 'start' ? 0 : Math.max(0, viewport.scrollHeight - viewport.clientHeight) }
+    const frame = requestAnimationFrame(apply)
+    const timer = window.setTimeout(() => { apply(); if (singlePageTargetScrollRef.current === target) singlePageTargetScrollRef.current = undefined }, 100)
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [currentPage, mode, sizes])
+
+  useLayoutEffect(() => {
+    const previous = previousModeRef.current
+    previousModeRef.current = mode
+    if (previous === mode || mode !== 'single' || singlePageTargetScrollRef.current) return
+    const viewport = viewportRef.current
+    if (viewport) viewport.scrollTop = 0
+    singlePageWheelDeltaRef.current = 0
+    singlePageWheelLatchedRef.current = false
+    singlePageWheelLastInteriorRef.current = 0
+  }, [mode])
+
   useEffect(() => {
     setTextFocus(undefined); setVisualFocus(undefined); setCitationHits([])
     restoredDocumentRef.current = undefined
@@ -1069,16 +1099,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     }
     requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
   }
-  const focusSearchPage = (pageIndex: number) => {
-    goToPage(pageIndex); setSearchFocusPage(pageIndex); window.setTimeout(() => setSearchFocusPage((current) => current === pageIndex ? undefined : current), 1050)
-  }
   const focusText = (pageIndex: number, text: string, occurrence = 0, caseSensitive = false, ignoreWhitespace = false) => {
     onPageChange(pageIndex)
     const token = ++insightFocusSequenceRef.current
     if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
     setVisualFocus(undefined)
     setTextFocus({ pageIndex, text, occurrence, caseSensitive, ignoreWhitespace, token })
-    requestAnimationFrame(() => { goToPage(pageIndex); window.setTimeout(() => goToPage(pageIndex), 80) })
     insightFocusTimerRef.current = window.setTimeout(() => { setTextFocus((current) => current?.token === token ? undefined : current); insightFocusTimerRef.current = undefined }, 1000)
   }
   const focusVisual = (pageIndex: number, rects?: PdfRect[]) => {
@@ -1087,7 +1113,6 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
     setTextFocus(undefined)
     setVisualFocus({ pageIndex, rects, token })
-    requestAnimationFrame(() => { goToPage(pageIndex); window.setTimeout(() => goToPage(pageIndex), 80) })
     insightFocusTimerRef.current = window.setTimeout(() => { setVisualFocus((current) => current?.token === token ? undefined : current); insightFocusTimerRef.current = undefined }, 1000)
   }
   const pageSnapshots = useCallback(async (includeImages = false): Promise<Array<PageTextSnapshot & { imageCount?: number }>> => {
@@ -1162,17 +1187,39 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }, [currentPage, document, pages, virtualized])
   const handleWheel = (event: React.WheelEvent) => {
     if (mode === 'single' && !event.ctrlKey) {
+      const viewport = viewportRef.current
+      if (!viewport || !document) return
+      if (singlePageWheelLatchedRef.current) { event.preventDefault(); return }
+      const decision = singlePageWheelDecision(event.deltaY, event.deltaMode, viewport.scrollTop, viewport.clientHeight, viewport.scrollHeight, singlePageWheelDeltaRef.current)
+      singlePageWheelDeltaRef.current = decision.accumulated
+      if (decision.kind === 'scroll') {
+        singlePageWheelLastInteriorRef.current = performance.now()
+        if (singlePageWheelResetRef.current !== undefined) window.clearTimeout(singlePageWheelResetRef.current)
+        singlePageWheelResetRef.current = undefined
+        return
+      }
       event.preventDefault()
+      const now = performance.now()
+      // Momentum from the gesture that just scrolled the remaining few pixels
+      // must stop at the page edge.  Require a short idle gap before a fresh
+      // boundary gesture may navigate, otherwise a small viewport can still
+      // scroll and flip in one physical wheel motion.
+      if (now - singlePageWheelLastInteriorRef.current < 180) {
+        singlePageWheelLastInteriorRef.current = now
+        singlePageWheelDeltaRef.current = 0
+        return
+      }
       if (singlePageWheelResetRef.current !== undefined) window.clearTimeout(singlePageWheelResetRef.current)
-      singlePageWheelResetRef.current = window.setTimeout(() => { singlePageWheelLatchedRef.current = false; singlePageWheelDeltaRef.current = 0; singlePageWheelResetRef.current = undefined }, 180)
-      if (singlePageWheelLatchedRef.current || !document) return
-      singlePageWheelDeltaRef.current += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 600 : 1)
-      const direction = singlePageWheelDirection(singlePageWheelDeltaRef.current, 0)
-      if (!direction) return
+      singlePageWheelResetRef.current = window.setTimeout(() => { singlePageWheelLatchedRef.current = false; singlePageWheelDeltaRef.current = 0; singlePageWheelResetRef.current = undefined }, 260)
+      if (decision.kind !== 'page' || !decision.direction) return
       singlePageWheelLatchedRef.current = true
       singlePageWheelDeltaRef.current = 0
-      const nextPage = Math.max(0, Math.min(document.numPages - 1, currentPage + direction))
-      if (nextPage !== currentPage) onPageChange(nextPage)
+      const nextPage = Math.max(0, Math.min(document.numPages - 1, currentPage + decision.direction))
+      if (nextPage !== currentPage) {
+        singlePageWheelLastInteriorRef.current = 0
+        singlePageTargetScrollRef.current = { pageIndex: nextPage, edge: decision.direction > 0 ? 'start' : 'end' }
+        onPageChange(nextPage)
+      }
       return
     }
     if (!event.ctrlKey) return
@@ -1206,6 +1253,6 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} searchFocusPage={searchFocusPage} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
-    {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onJump={goToPage} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
+    {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })

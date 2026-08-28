@@ -404,12 +404,20 @@ export class PdfDocumentModel {
   }
 
   /** Keep and arrange the supplied original page indices in a single undoable edit. */
-  async arrangePages(pageIndices: number[]): Promise<void> {
+  async arrangePages(pageIndices: number[], rotations: Record<number, number> = {}): Promise<void> {
+    const rotationEntries = Object.entries(rotations).map(([page, rotation]) => [Number(page), rotation] as const)
     if (!pageIndices.length || new Set(pageIndices).size !== pageIndices.length || pageIndices.some((page) => page < 0 || page >= this.pageCount)) throw new Error('页面排序无效。')
-    if (pageIndices.length === this.pageCount && pageIndices.every((page, index) => page === index)) return
+    if (rotationEntries.some(([page, rotation]) => !Number.isInteger(page) || page < 0 || page >= this.pageCount || !Number.isFinite(rotation) || rotation % 90 !== 0)) throw new Error('页面旋转设置无效。')
+    const rotationFor = (page: number) => ((rotations[page] || 0) % 360 + 360) % 360
+    const hasRotations = pageIndices.some((page) => rotationFor(page) !== 0)
+    if (!hasRotations && pageIndices.length === this.pageCount && pageIndices.every((page, index) => page === index)) return
     const reordered = await PDFDocument.create()
     const pages = await reordered.copyPages(this.document, pageIndices)
-    pages.forEach((page) => reordered.addPage(page))
+    pages.forEach((page, index) => {
+      const rotation = rotationFor(pageIndices[index])
+      if (rotation) page.setRotation(degrees((page.getRotation().angle + rotation) % 360))
+      reordered.addPage(page)
+    })
     this.document = reordered
     await this.commit()
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
@@ -796,11 +804,15 @@ export class PdfDocumentModel {
     await this.commit()
   }
 
-  private findAnnotation(id: string): AnnotationEntry {
-    const entry = this.annotationEntries().find((candidate) => {
+  private findAnnotationOptional(id: string): AnnotationEntry | undefined {
+    return this.annotationEntries().find((candidate) => {
       const current = decodeObject(this.document, candidate.dict.get(PDFName.of('NM'))) || `${candidate.pageIndex}:${candidate.ref?.toString() || candidate.index}`
       return current === id
     })
+  }
+
+  private findAnnotation(id: string): AnnotationEntry {
+    const entry = this.findAnnotationOptional(id)
     if (!entry) throw new Error('找不到这条批注，它可能已经被删除。')
     return entry
   }
@@ -911,8 +923,12 @@ export class PdfDocumentModel {
     await this.commit()
   }
 
-  async deleteAnnotation(id: string): Promise<void> {
-    const entry = this.findAnnotation(id)
+  async deleteAnnotation(id: string): Promise<boolean> {
+    // Deletion is intentionally idempotent. UI events can arrive twice before
+    // React has removed the row (for example, a very fast double click), and a
+    // stale delete must never turn into a native error/focus interruption.
+    const entry = this.findAnnotationOptional(id)
+    if (!entry) return false
     const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
     const matches = groupId
       ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId)
@@ -927,6 +943,7 @@ export class PdfDocumentModel {
       indexes.sort((left, right) => right - left).forEach((index) => page.node.Annots()?.remove(index))
     })
     await this.commit()
+    return true
   }
 }
 

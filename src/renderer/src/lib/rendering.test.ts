@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canvasOutputScale, singlePageWheelDirection, wheelZoom } from './rendering'
+import { canvasOutputScale, singlePageWheelDecision, singlePageWheelDirection, wheelZoom } from './rendering'
 
 describe('PDF rendering scheduler helpers', () => {
   it('caps very large high-DPI page canvases to the memory budget', () => {
@@ -22,5 +22,18 @@ describe('PDF rendering scheduler helpers', () => {
     expect(singlePageWheelDirection(-1, 1)).toBe(-1)
     expect(singlePageWheelDirection(1, 2)).toBe(1)
     expect(singlePageWheelDirection(4, 0)).toBe(0)
+  })
+
+  it('keeps single-page wheel input inside a scrollable page before navigating', () => {
+    expect(singlePageWheelDecision(120, 0, 0, 500, 1200)).toEqual({ kind: 'scroll', direction: 0, accumulated: 0 })
+    expect(singlePageWheelDecision(-120, 0, 420, 500, 1200)).toEqual({ kind: 'scroll', direction: 0, accumulated: 0 })
+    expect(singlePageWheelDecision(40, 0, 700, 500, 1200)).toEqual({ kind: 'edge', direction: 0, accumulated: 40 })
+    expect(singlePageWheelDecision(60, 0, 700, 500, 1200, 40)).toEqual({ kind: 'page', direction: 1, accumulated: 0 })
+    expect(singlePageWheelDecision(-100, 0, 0, 500, 1200)).toEqual({ kind: 'edge', direction: 0, accumulated: -48 })
+    expect(singlePageWheelDecision(-100, 0, 0, 500, 1200, -48)).toEqual({ kind: 'page', direction: -1, accumulated: 0 })
+  })
+
+  it('resets edge accumulation when the wheel reverses direction', () => {
+    expect(singlePageWheelDecision(-30, 0, 0, 500, 500, 70)).toEqual({ kind: 'edge', direction: 0, accumulated: -30 })
   })
 })

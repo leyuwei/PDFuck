@@ -185,6 +185,20 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     // never ran and the range skipped or reordered visible text.
     : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
       ? words.map((word, index) => ({ word, index })).filter(({ word }) => {
+        // Geometry can repair a scrambled content stream, but it must not let
+        // a widened flow corridor pull an adjacent column back into the
+        // selection.  A tiny formula glyph may be classified with the other
+        // column even though it visibly sits inside this paragraph, so retain
+        // such fragments only when their centre stays inside the unexpanded
+        // endpoint-run corridor.  Full prose from the other side of the gutter
+        // (the test2.pdf regression) remains outside that seed corridor.
+        if (word.column !== anchorColumn && startWord.textRunRect && endWord.textRunRect) {
+          const seedLeft = Math.min(startWord.textRunRect.x, endWord.textRunRect.x)
+          const seedRight = Math.max(startWord.textRunRect.x + startWord.textRunRect.width, endWord.textRunRect.x + endWord.textRunRect.width)
+          const centre = word.rect.x + word.rect.width / 2
+          const seedPadding = endpointHeight * 0.35
+          if (centre < seedLeft - seedPadding || centre > seedRight + seedPadding) return false
+        }
         const y = word.rect.y
         const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY && (!flowBounds || wordBelongsToFlow(candidate, flowBounds)))
         const left = bandWords.length ? Math.min(...bandWords.map((candidate) => candidate.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)

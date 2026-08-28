@@ -14,6 +14,7 @@ import { PdfPasswordStore } from './pdf-password-store'
 import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
+import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -318,8 +319,7 @@ function requireMainWindow(sender: WebContents): BrowserWindow {
 function showMainWindow(): void {
   const window = mainSession?.window
   if (!window || window.isDestroyed()) return
-  if (window.isMinimized()) window.restore()
-  window.show(); window.focus(); window.webContents.focus()
+  showAndFocusWindow(window)
 }
 
 function queuePdfPath(path: string): void {
@@ -364,7 +364,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     } finally {
       nativePrintBusy = false
       await unlink(temporary).catch(() => undefined)
-      if (!parent.isDestroyed()) { parent.focus(); parent.webContents.focus() }
+      returnFocusToWindow(parent)
     }
   }
   await writeFile(temporary, request.data)
@@ -392,7 +392,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     if (!window.isDestroyed()) window.destroy()
     if (printWindow === window) printWindow = null
     await unlink(temporary).catch(() => undefined)
-    if (!parent.isDestroyed()) { parent.focus(); parent.webContents.focus() }
+    returnFocusToWindow(parent)
   }
 }
 
@@ -478,8 +478,7 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
     for (const [transferId, transfer] of documentTransfers) if (transfer.source === session) clearDocumentTransfer(transferId)
     if (mainSession === session) mainSession = null
   })
-  window.once('ready-to-show', () => { window.show(); window.focus(); window.webContents.focus() })
-  window.on('focus', () => { if (!window.isDestroyed()) window.webContents.focus() })
+  window.once('ready-to-show', () => showAndFocusWindow(window))
   const captureTarget = process.env.PDFUCK_CAPTURE
   if (captureTarget) window.webContents.once('did-finish-load', () => setTimeout(async () => {
     if (window.isDestroyed()) return

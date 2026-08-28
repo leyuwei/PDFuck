@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ModuleKey, Tool, ViewMode } from '../types'
 import type { ExportFormat } from '../../../shared/contracts'
@@ -7,6 +7,7 @@ import { AnnotationLab } from './AnnotationLab'
 import { EditIcon } from './EditIcon'
 import { setInterfaceLanguage, t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { isMacPlatform, shortcutLabel } from '../lib/platform-shortcuts'
+import { parseExportDpiInput } from '../lib/export-dpi'
 import './theme-settings.css'
 
 interface Props {
@@ -111,6 +112,17 @@ export function ToolPanel(props: Props) {
   const language = useInterfaceLanguage()
   const platform = props.platform || 'win32'
   const mac = isMacPlatform(platform)
+  const [exportDpiInput, setExportDpiInput] = useState(() => String(props.exportDpi))
+  const exportDpiEditing = useRef(false)
+  const parsedExportDpi = parseExportDpiInput(exportDpiInput)
+  useEffect(() => {
+    if (!exportDpiEditing.current) setExportDpiInput(String(props.exportDpi))
+  }, [props.exportDpi])
+  const updateExportDpi = (value: string) => {
+    setExportDpiInput(value)
+    const dpi = parseExportDpiInput(value)
+    if (dpi !== undefined) props.onExportDpi(dpi)
+  }
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>{ui('查看')}</h2><p className="subtitle">{ui('选择适合当前阅读场景的页面布局。')}</p><h3>{ui('页面布局')}</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>{ui('连续滚动')}</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>{ui('单页查看')}</button></div>
@@ -122,7 +134,7 @@ export function ToolPanel(props: Props) {
     {module === 'edit' && <section><h2>{ui('编辑')}</h2><p className="subtitle">{ui('直接调整页面或添加带格式的文字和图片内容。')}</p><h3>{ui('页面')}</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="crop" />} hint={ui('拖动框选要保留的页面区域')}>{ui('框选裁切页面')}</ToolButton>
       <PanelAction disabled={readOnly} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui('无需先打开 PDF；选择插入位置并调整导入文件顺序。')}>{ui('从文件合并 PDF…')}</PanelAction>
-      <PanelAction disabled={disabled} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('预览、调整顺序并批量删除页面。')}>{ui('管理页面…')}</PanelAction><h3>{ui('内容')}</h3>
+      <PanelAction disabled={disabled} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('预览、调整顺序和方向，并批量删除页面。')}>{ui('管理页面…')}</PanelAction><h3>{ui('内容')}</h3>
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="edit_text" />} hint={ui('显示当前页文本块，点击任意一处直接编辑')}>{ui('编辑页面文字')}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="add_text" />} hint={ui('拖出文本框后设置内容和格式')}>{ui('在页面上添加文字')}</ToolButton>
       <PanelAction disabled={disabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。')}>{ui('在页面上添加图片…')}</PanelAction>
@@ -138,8 +150,8 @@ export function ToolPanel(props: Props) {
     {module === 'save' && <section><h2>{ui('保存')}</h2><p className="subtitle">{ui('保存完整文档，或只打印、导出真正需要的页面。')}</p><h3>PDF</h3>
       <PanelAction tone="primary" disabled={disabled} onClick={() => props.onSave(false)} shortcut={shortcutLabel('save', platform)} hint={ui('将当前所有修改写回此文件。')}>{ui('保存 PDF')}</PanelAction><PanelAction disabled={disabled} onClick={() => props.onSave(true)} hint={ui('选择新位置保存，原文件保持不变。')}>{ui('另存为 PDF…')}</PanelAction><h3>{ui('打印')}</h3>
       <PanelAction disabled={disabled || props.printing} onClick={props.onPrint} shortcut={shortcutLabel('print', platform)} hint={ui('可选择连续或不连续页码，包含尚未保存的修改。')}>{props.printing ? ui('正在打开打印对话框…') : ui('选择页面并打印…')}</PanelAction><h3>{ui('指定页面导出')}</h3>
-      <PanelAction disabled={disabled} onClick={props.onExport} hint={ui('可选不连续页码；文件名保留原文档页码后缀。')}>{ui('选择页面并导出…')}</PanelAction><div className="tool-control-card export-settings-card"><label>{ui('文件格式')}<select value={props.exportFormat} onChange={(event) => props.onExportFormat(event.target.value as Props['exportFormat'])}><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="eps">EPS</option></select></label>
+      <PanelAction disabled={disabled || (props.exportFormat !== 'pdf' && parsedExportDpi === undefined)} onClick={props.onExport} hint={ui('可选不连续页码；文件名保留原文档页码后缀。')}>{ui('选择页面并导出…')}</PanelAction><div className="tool-control-card export-settings-card"><label>{ui('文件格式')}<select value={props.exportFormat} onChange={(event) => props.onExportFormat(event.target.value as Props['exportFormat'])}><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="eps">EPS</option></select></label>
       {props.exportFormat === 'pdf' && <><span className="export-mode-label">{ui('PDF 输出方式')}</span><div className="segmented export-mode"><button className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>{ui('合并为一个 PDF')}</button><button className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>{ui('每页单独 PDF')}</button></div></>}
-      {props.exportFormat !== 'pdf' && <label>{ui('输出清晰度')}<div className="input-suffix"><input type="number" min="72" max="600" value={props.exportDpi} onChange={(event) => props.onExportDpi(Math.max(72, Math.min(600, Number(event.target.value))))} /><span>DPI</span></div></label>}</div></section>}
+      {props.exportFormat !== 'pdf' && <label>{ui('输出清晰度')}<div className="input-suffix"><input type="text" inputMode="decimal" value={exportDpiInput} aria-invalid={parsedExportDpi === undefined} onFocus={() => { exportDpiEditing.current = true }} onBlur={() => { exportDpiEditing.current = false }} onChange={(event) => updateExportDpi(event.target.value)} /><span>DPI</span></div><small className={`export-dpi-hint${parsedExportDpi === undefined ? ' invalid' : ''}`}>{parsedExportDpi === undefined ? t('export.dpiInvalid') : t('export.dpiHint')}</small></label>}</div></section>}
   </aside>
 }

@@ -72,6 +72,29 @@ describe('ToolPanel theme colours', () => {
     await act(async () => root.unmount())
   })
 
+  it('keeps the exact raster DPI draft and never clamps or fills it while the user types', async () => {
+    const root = createRoot(container)
+    const onExportDpi = vi.fn()
+    const common = { platform: 'win32', activeTool: 'none' as const, mode: 'continuous' as const, disabled: false, readOnly: false, exportFormat: 'png' as const, exportDpi: 150, pdfExportMode: 'combined' as const, onTool: () => undefined, onMode: () => undefined, onDeletePages: () => undefined, onMergeFiles: () => undefined, onSave: () => undefined, onPrint: () => undefined, printing: false, onExport: () => undefined, onExportFormat: () => undefined, onExportDpi, onPdfExportMode: () => undefined, onSearch: () => undefined, onVisuals: () => undefined, onCitations: () => undefined, citationsEnabled: false, onGrammar: () => undefined, theme: 'light' as const, accent: '#5575de', hasCustomAccent: false, documentBackground: '#ffffff', onTheme: () => undefined, onAccent: () => undefined, onClearAccent: () => undefined, onDocumentBackground: () => undefined, hasCustomDocumentBackground: false, onClearDocumentBackground: () => undefined, onAddAiAnnotation: () => undefined, onCopy: () => undefined }
+    await act(async () => root.render(<ToolPanel {...common} module="save" />))
+    const input = container.querySelector<HTMLInputElement>('input[inputmode="decimal"]')!
+    const exportButton = [...container.querySelectorAll<HTMLButtonElement>('.tool-panel-action')].find((button) => button.textContent?.includes('选择页面并导出'))!
+    input.focus()
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, ''); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(input.value).toBe('')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(exportButton.disabled).toBe(true)
+    expect(container.textContent).toContain('请输入大于 0 的 DPI')
+
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '327.5'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(input.value).toBe('327.5')
+    expect(onExportDpi).toHaveBeenLastCalledWith(327.5)
+    expect(exportButton.disabled).toBe(false)
+    input.blur()
+    expect(input.value).toBe('327.5')
+    await act(async () => root.unmount())
+  })
+
   it('uses separate adaptive shortcut keycaps in annotation tools', async () => {
     const root = createRoot(container)
     const common = { activeTool: 'none' as const, mode: 'continuous' as const, disabled: false, readOnly: false, exportFormat: 'pdf' as const, exportDpi: 144, pdfExportMode: 'combined' as const, onTool: () => undefined, onMode: () => undefined, onDeletePages: () => undefined, onMergeFiles: () => undefined, onSave: () => undefined, onPrint: () => undefined, printing: false, onExport: () => undefined, onExportFormat: () => undefined, onExportDpi: () => undefined, onPdfExportMode: () => undefined, onSearch: () => undefined, onVisuals: () => undefined, onCitations: () => undefined, citationsEnabled: false, onGrammar: () => undefined, theme: 'light' as const, accent: '#5575de', hasCustomAccent: false, documentBackground: '#ffffff', onTheme: () => undefined, onAccent: () => undefined, onClearAccent: () => undefined, onDocumentBackground: () => undefined, hasCustomDocumentBackground: false, onClearDocumentBackground: () => undefined, onAddAiAnnotation: () => undefined, onCopy: () => undefined }

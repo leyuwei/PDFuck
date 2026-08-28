@@ -33,7 +33,7 @@ Copyright © 2026 github@leyuwei
 - **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. Source-run flow corridors keep drag selections inside their paragraph or column while retaining inline formula fragments, so interleaved chart labels and neighboring columns do not overflow into the selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
-- **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster exports support 72-600 DPI.
+- **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
 ## Download and Install
@@ -70,7 +70,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - The seven primary editing actions use compact line icons that match the Annotate tools while preserving the existing labels and descriptions.
 - Crop pages with a movable selection and eight resize handles, then confirm before applying.
 - Delete the current, odd, even, or any selected pages.
-- Manage pages in a single thumbnail storyboard with fixed preview frames, a large focused-page inspector, stable pointer dragging with insertion feedback, keyboard reordering, batch removal, cross-group position moves, and 20-page on-demand preview groups for large documents.
+- Manage pages in a single thumbnail storyboard with fixed preview frames, a large focused-page inspector, stable pointer dragging with insertion feedback, keyboard reordering, batch removal, cross-group position moves, and per-page rotate-left 90°, flip 180°, and rotate-right 90° controls. Ordering, orientation, and removal are applied as one undoable transaction; large documents use 20-page on-demand preview groups.
 - Merge pages from existing PDF, PNG, JPG/JPEG, or EPS files, even before a PDF is opened. After import, batch-select page ranges and move them to the beginning, end, or a specified position before confirming the order. EPS is rasterized locally through Ghostscript when it is installed.
 - Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
 - Add PNG (including transparent PNG) or JPG images to the current page. Position, resize, rotate, and lock the aspect ratio in a live preview before confirming it into the PDF; reopen the PDF later to edit or remove the image again.
@@ -84,7 +84,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Set a persistent local annotation-author name from the movable Author window. New annotations write that name into the PDF; one visibility switch can show stable-color author badges above each annotation body, preserving the full content-column width without adding a column.
 - Use the page context menu or the floating selection toolbar to create annotations.
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
-- Edit or delete existing annotations from the page or list. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
+- Edit or delete existing annotations from the page or list. Duplicate rapid delete events are idempotent, so a stale second event cannot open a native alert or detach the active editor/IME. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
 - The Annotation Lab provides AI Polish presets for plain-language explanation, logic review, grammar-only checking, human-like phrasing, inconsistency detection, highlighting contributions, and custom prompts. Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. API keys and model settings are kept in local browser storage.
 
 ### Save, Print, and Export
@@ -94,7 +94,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Select all, current, odd, even, or arbitrary non-contiguous pages. Printing supports paper size, multi-page layouts, optional page frames, and an independent 25%-200% scale for both one-page and multi-page printing. Values above 100% deliberately allow edge cropping.
 - The preview is rendered at high pixel density from the same imposed PDF that is dispatched to the printer, including scale, orientation, margins, multi-page placement, and frames. Windows output uses a 600-DPI PDFium raster passed to the selected driver for clearer physical output.
 - Print orientation can be forced to portrait or landscape, or left on the default per-sheet Auto mode. Auto evaluates the actual pages placed on each sheet, so mixed portrait/landscape documents keep the matching orientation in both the application preview and the imposed PDF dispatched to the printer.
-- Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS support 72-600 DPI and preserve original page-number suffixes such as `_001` and `_003`.
+- Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS accept any positive DPI entered by the user without live correction and preserve original page-number suffixes such as `_001` and `_003`; unsafe canvas sizes are rejected with a localized explanation.
 
 ## Keyboard Shortcuts
 
@@ -127,7 +127,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion.
+The build also audits the i18n catalogue. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
 ### Package a Release with One Command
 
@@ -145,17 +145,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.8` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.10` before packaging:
 
 ```powershell
-npm run package:windows -- 1.20.8
+npm run package:windows -- 1.20.10
 ```
 
 ```sh
-npm run package:macos -- 1.20.8
+npm run package:macos -- 1.20.10
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.8` and `bash scripts/package-macos.sh 1.20.8`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.10` and `bash scripts/package-macos.sh 1.20.10`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -263,7 +263,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区，复制时自动清掉 PDF 硬回行并修复常见英文断词。
 - **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
-- **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS。
+- **中文输入不会再被快捷键或错误弹窗抢走**：文本框只在首次出现时聚焦；窗口切回、输入法组合输入和全局快捷键各自遵守焦点边界。快速重复删除同一条批注会被当作一次幂等操作，不再触发会让输入法脱离编辑器的系统原生错误框；其他错误改在应用内显示并在关闭后恢复原焦点。
+- **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
 ## Windows 下载与安装
@@ -332,7 +333,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 - 七项主编辑功能均使用与批注工具协调的简洁线性图标，同时保留原有标题与说明；
 - 框选裁切页面，初选后可移动并通过八个控制点精调大小；点击页面内“确认范围”后才询问是否执行裁切；
-- 页面管理器采用统一缩略图故事板和右侧大图详情；拖动时显示悬浮影子与插入位置，松手后再重排，也可用方向键或目标位置跨组移动；支持多页批量删除，大文档每组按需生成 20 页预览，排序和删除作为一次可撤销修改提交；
+- 页面管理器采用统一缩略图故事板和右侧大图详情；拖动时显示悬浮影子与插入位置，松手后再重排，也可用方向键或目标位置跨组移动；每页可向左旋转 90°、翻转 180°或向右旋转 90°，缩略图与大图会即时预览；支持多页批量删除，大文档每组按需生成 20 页预览，排序、方向和删除作为一次可撤销修改提交；
 - 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG 或 EPS 合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会在本机 Ghostscript 可用时离线栅格化导入；
 - 添加自定义字体类别、字号、颜色、粗体、斜体和对齐方式的文字；
 - 可在当前页面添加 PNG（包括透明 PNG）或 JPG 图片；导入后先在页面上拖动调整位置、大小、旋转角度和原始比例锁，确认后才正式写入 PDF；已添加图片会保留可编辑源数据，重开 PDF 后仍可在编辑模块选中、调整或删除；
@@ -396,7 +397,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 打印方向支持自动、纵向和横向；默认自动模式会针对每一张输出纸上的实际页面独立选择方向，横纵页面混排文档的应用预览和最终提交给系统的打印 PDF 保持一致；
 - 输入 `1-3, 5, 8-10` 即可快速指定页码，错误范围会即时提示；
 - 把指定页面导出为新 PDF，或导出 PNG、JPG、EPS；
-- 图片与 EPS 支持 72–600 DPI，并保留原文档页码后缀，例如 `_001`、`_003`。
+- 图片与 EPS 接受用户直接输入的任意正数 DPI，编辑时不会自动改写或填充；若所需画布超出当前设备的安全容量，会给出多语言错误而不是静默降低 DPI，并保留原文档页码后缀，例如 `_001`、`_003`。
 
 ## 快捷键
 
@@ -433,6 +434,8 @@ npm run build
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
+页面方向、DPI 与输入法回归使用 `npm run test:page-manager-input-ui`。它会先在真实 Electron 窗口对同一批注连续派发两次删除，确认没有原生/应用错误弹窗，再立即新建批注验证普通文字、中文 composition 和窗口失焦再聚焦后的输入；同时验证三种逐页方向变换及保存结果，以及 DPI 草稿不被纠正。
+
 ### 一键打包发布
 
 请在仓库根目录、对应的目标系统上执行脚本。两个脚本都要求 Node.js 22 或更高版本，并会通过 `npm ci` 安装锁定依赖，执行全部发布回归，打包应用，启动最终可执行程序完成冒烟测试，核对包内版本，最后生成 SHA-256 发布清单。
@@ -449,17 +452,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.8`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.10`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.20.8
+npm run package:windows -- 1.20.10
 ```
 
 ```sh
-npm run package:macos -- 1.20.8
+npm run package:macos -- 1.20.10
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.8` 和 `bash scripts/package-macos.sh 1.20.8`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.10` 和 `bash scripts/package-macos.sh 1.20.10`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

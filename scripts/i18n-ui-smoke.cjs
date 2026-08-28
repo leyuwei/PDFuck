@@ -28,6 +28,20 @@ async function assertNoChineseControls(page, scope) {
 // Chinese while the application chrome is displayed in another language.
 const interfaceControls = '.titlebar, .tool-panel, .nav-rail, .window-manager-bar, .modal-backdrop, .toast, .temporary-document-warning'
 
+async function assertAdaptiveToolPanel(page, language, module) {
+  const violations = await page.locator('.tool-panel .tool-action-button, .tool-panel .tool-panel-action, .tool-panel .tool-button, .tool-panel .subtitle, .tool-panel .hint, .tool-panel .info-card').evaluateAll((elements) => elements.flatMap((element) => {
+    if (!(element instanceof HTMLElement) || !element.offsetParent) return []
+    const bounds = element.getBoundingClientRect()
+    const horizontal = element.scrollWidth - element.clientWidth
+    const vertical = element.scrollHeight - element.clientHeight
+    const descendants = [...element.querySelectorAll('span, strong, small, kbd')].filter((child) => child instanceof HTMLElement)
+    const childEscapes = descendants.some((child) => { const box = child.getBoundingClientRect(); return box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1 || child.scrollWidth > child.clientWidth + 1 || child.scrollHeight > child.clientHeight + 1 })
+    const escaped = vertical > 1 || (element.tagName !== 'BUTTON' && horizontal > 1) || childEscapes
+    return escaped ? [{ tag: element.tagName, className: element.className, text: (element.innerText || '').replace(/\s+/g, ' ').slice(0, 120), client: [element.clientWidth, element.clientHeight], scroll: [element.scrollWidth, element.scrollHeight], children: descendants.map((child) => { const box = child.getBoundingClientRect(); return { tag: child.tagName, className: child.className, left: box.left, right: box.right, width: box.width, client: [child.clientWidth, child.clientHeight], scroll: [child.scrollWidth, child.scrollHeight] } }) }] : []
+  }))
+  assert.deepEqual(violations, [], `${language}/${module} tool-panel copy escaped its adaptive border`)
+}
+
 async function main() {
   // The former page-wide DOM translator caused both missed copy and a performance
   // regression. The catalogue audit owns the source scan; this smoke test keeps a
@@ -39,8 +53,10 @@ async function main() {
   const app = await launch()
   try {
     const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 700))
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const languages = [
+      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], transferPrompt: '释放以移回文档标签页', cjkFree: false },
       { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
       { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
       { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
@@ -60,8 +76,10 @@ async function main() {
       for (const module of language.modules) {
         await page.locator('.nav-rail').getByRole('button', { name: module, exact: true }).click()
         await page.getByRole('heading', { name: module, exact: true }).waitFor()
+        await assertAdaptiveToolPanel(page, language.value, module)
       }
       await page.locator('.nav-rail').getByRole('button', { name: language.view, exact: true }).click()
+      await assertAdaptiveToolPanel(page, language.value, language.view)
       const documentTransfer = await page.evaluateHandle(() => {
         const transfer = new DataTransfer()
         const token = '12345678-1234-1234-1234-1234567890ab'
@@ -85,7 +103,7 @@ async function main() {
     await page.getByRole('heading', { name: 'Ver', exact: true }).waitFor()
     await page.getByText('No hay documento abierto', { exact: true }).first().waitFor()
     assert.equal(await page.getByText('准备就绪', { exact: true }).count(), 0, 'stored initial status was not localized after restart')
-    console.log(JSON.stringify({ languages: ['en', 'ja', 'ru', 'es'], persisted: 'es', domObserver: false }, null, 2))
+    console.log(JSON.stringify({ languages: ['zh', 'en', 'ja', 'ru', 'es'], persisted: 'es', adaptiveSmallWindow: [900, 700], domObserver: false }, null, 2))
   } finally {
     await restarted.close()
   }
@@ -110,11 +128,16 @@ async function main() {
       const label = element.querySelector('span')
       if (!(peer instanceof HTMLElement) || !(label instanceof HTMLElement)) return null
       const labelStyle = getComputedStyle(label), peerStyle = getComputedStyle(peer)
-      return { searchHeight: element.getBoundingClientRect().height, peerHeight: peer.getBoundingClientRect().height, searchFontSize: labelStyle.fontSize, peerFontSize: peerStyle.fontSize, searchFontWeight: labelStyle.fontWeight, peerFontWeight: peerStyle.fontWeight }
+      const elementStyle = getComputedStyle(element)
+      return { searchHeight: element.getBoundingClientRect().height, peerHeight: peer.getBoundingClientRect().height, searchMinHeight: elementStyle.minHeight, peerMinHeight: peerStyle.minHeight, searchPaddingTop: elementStyle.paddingTop, peerPaddingTop: peerStyle.paddingTop, searchRadius: elementStyle.borderRadius, peerRadius: peerStyle.borderRadius, searchFontSize: labelStyle.fontSize, peerFontSize: peerStyle.fontSize, searchFontWeight: labelStyle.fontWeight, peerFontWeight: peerStyle.fontWeight, searchFits: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1, peerFits: peer.scrollWidth <= peer.clientWidth + 1 && peer.scrollHeight <= peer.clientHeight + 1 }
     })
-    assert.ok(searchLayout && Math.abs(searchLayout.searchHeight - searchLayout.peerHeight) <= 1, 'search PDF must use the same button height as the reading tools below it')
+    assert.ok(searchLayout && searchLayout.searchHeight >= 38 && searchLayout.peerHeight >= 38, 'reading-tool borders must keep the shared minimum height')
+    assert.equal(searchLayout.searchMinHeight, searchLayout.peerMinHeight, 'search PDF must use the same adaptive minimum height as peer actions')
+    assert.equal(searchLayout.searchPaddingTop, searchLayout.peerPaddingTop, 'search PDF must use the same adaptive vertical padding as peer actions')
+    assert.equal(searchLayout.searchRadius, searchLayout.peerRadius, 'search PDF must use the same border radius as peer actions')
     assert.equal(searchLayout.searchFontSize, searchLayout.peerFontSize, 'search PDF must use the same text size as the reading tools below it')
     assert.equal(searchLayout.searchFontWeight, searchLayout.peerFontWeight, 'search PDF must use the same text weight as the reading tools below it')
+    assert.ok(searchLayout.searchFits && searchLayout.peerFits, 'localized reading-tool text must remain inside its adaptive button border')
     fs.mkdirSync(screenshotDirectory, { recursive: true })
     await page.screenshot({ path: path.join(screenshotDirectory, `reading-tools-${packageVersion}.png`) })
     await page.locator('.nav-rail').getByRole('button', { name: 'Editar', exact: true }).click()
@@ -238,6 +261,7 @@ async function main() {
     await page.getByRole('heading', { name: 'Управление страницами', exact: true }).waitFor()
     await page.getByRole('heading', { name: 'Раскадровка страниц', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Применить изменения', exact: true }).waitFor()
+    for (const label of ['Повернуть влево на 90°', 'Перевернуть на 180°', 'Повернуть вправо на 90°']) await page.getByRole('button', { name: label, exact: true }).waitFor()
     assert.equal(await page.locator('.page-manager-card').count(), 15, 'page manager must preview the visible Russian document group')
     await assertNoChineseControls(page, interfaceControls)
     await page.getByRole('button', { name: 'Отмена', exact: true }).last().click()
@@ -248,6 +272,17 @@ async function main() {
     await page.locator('.nav-rail').getByRole('button', { name: '注釈', exact: true }).click()
     await page.getByText('注釈リスト', { exact: true }).waitFor()
   } finally {
+    const cleanupWindow = documentApp.windows()[0]
+    if (cleanupWindow && !cleanupWindow.isClosed()) {
+      try {
+        await cleanupWindow.keyboard.press('Escape')
+        for (let attempt = 0; attempt < 4 && await cleanupWindow.locator('.quick-save').isEnabled(); attempt += 1) {
+          await cleanupWindow.keyboard.press('Control+z')
+          await cleanupWindow.waitForTimeout(120)
+        }
+        await cleanupWindow.waitForFunction(() => document.querySelector('.quick-save')?.hasAttribute('disabled'), undefined, { timeout: 5000 })
+      } catch { /* A failed assertion may already have closed the renderer. */ }
+    }
     await documentApp.close()
     fs.rmSync(userData, { recursive: true, force: true })
   }

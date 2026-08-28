@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PageSelectionDialog, PrintDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, ErrorDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PageSelectionDialog, PrintDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UpdateDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { WindowManagerBar, reorderDocumentTabs } from './components/WindowManagerBar'
 import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
+import { isImeCompositionKey, isTextEntryEvent } from './lib/keyboard-input'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PageNumberSettings, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
 import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PrinterDescriptor, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
@@ -197,6 +198,7 @@ export default function App() {
   const passwordResolve = useRef<((value: PdfPasswordDialogResult | null) => void) | undefined>(undefined)
   const secureStorageResolve = useRef<((value: boolean) => void) | undefined>(undefined)
   const confirmResolve = useRef<((value: boolean) => void) | undefined>(undefined)
+  const deletingAnnotationIds = useRef(new Set<string>())
   const allowWindowCloseRef = useRef(false)
   const [data, setData] = useState<Uint8Array>()
   const [module, setModule] = useState<ModuleKey>('view')
@@ -224,6 +226,7 @@ export default function App() {
   const [documentName, setDocumentName] = useState('未打开文档')
   const [status, setStatus] = useState('准备就绪')
   const [dialog, setDialog] = useState<DialogState>(null)
+  const [errorMessage, setErrorMessage] = useState<string>()
   const [maximized, setMaximized] = useState(false)
   const [draggingFile, setDraggingFile] = useState(false)
   const [draggingDocumentTransfer, setDraggingDocumentTransfer] = useState(false)
@@ -273,7 +276,11 @@ export default function App() {
   }, [])
   const showError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
-    setStatus(`操作失败：${message}`); window.alert(`${ui('操作失败')}\n\n${translateUiText(message)}`)
+    setStatus(`操作失败：${message}`)
+    // Native window.alert can leave Chromium's IME detached from the active
+    // editor after a rapid failure path. Keep errors inside React so focus can
+    // be restored deterministically when the user dismisses the message.
+    setErrorMessage(translateUiText(message))
   }, [])
   const askConfirmation = useCallback((message: string): Promise<boolean> => new Promise((resolve) => { confirmResolve.current = resolve; setDialog({ type: 'confirm', message, destructive: true }) }), [])
   const closeCurrentWindow = useCallback(async () => {
@@ -294,7 +301,7 @@ export default function App() {
     setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
-    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null)
+    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
     setTemporaryWarningDismissed(false); setInsight(undefined)
     setCitationsEnabled(false)
   }, [])
@@ -810,18 +817,42 @@ export default function App() {
       for (const segment of segments) await model.addAnnotation(segment.pageIndex, 'highlight', segment.rects, content, undefined, undefined, groupId, preferences.annotationAuthor)
     }, '智能润色已添加到批注列表', false)
   }, [mutate, preferences.annotationAuthor, selection])
+  const performAnnotationDeletion = useCallback((representatives: string[], trackedIds: string[], successMessage: (deleted: number) => string) => {
+    const pending = deletingAnnotationIds.current
+    if (trackedIds.some((id) => pending.has(id))) return
+    trackedIds.forEach((id) => pending.add(id))
+    const model = modelRef.current, documentId = activeDocumentIdRef.current
+    if (!model) { trackedIds.forEach((id) => pending.delete(id)); return }
+    void (async () => {
+      try {
+        let deleted = 0
+        for (const id of representatives) if (await model.deleteAnnotation(id)) deleted += 1
+        if (deleted && modelRef.current === model && activeDocumentIdRef.current === documentId) syncModel(successMessage(deleted), false)
+      } catch (error) {
+        showError(error)
+      } finally {
+        trackedIds.forEach((id) => pending.delete(id))
+      }
+    })()
+  }, [showError, syncModel])
   const deleteAnnotation = useCallback((annotation: AnnotationRecord) => {
     const groupedIds = new Set(annotations.filter((candidate) => annotation.groupId ? candidate.groupId === annotation.groupId : candidate.id === annotation.id).map((candidate) => candidate.id))
+    if (!groupedIds.size) groupedIds.add(annotation.id)
+    if ([...groupedIds].some((id) => deletingAnnotationIds.current.has(id))) return
     setSelectedAnnotation((current) => current && groupedIds.has(current) ? undefined : current); setSelectedAnnotationIds((current) => current.filter((id) => !groupedIds.has(id))); setFocusedAnnotation((current) => current && groupedIds.has(current) ? undefined : current)
-    void mutate((model) => model.deleteAnnotation(annotation.id), '批注已删除，可按 Ctrl/⌘Z 撤销', false)
-  }, [annotations, mutate])
+    performAnnotationDeletion([annotation.id], [...groupedIds], () => '批注已删除，可按 Ctrl/⌘Z 撤销')
+  }, [annotations, performAnnotationDeletion])
   const deleteAnnotations = useCallback((ids: string[]) => {
     const selected = [...new Set(ids)].flatMap((id) => annotations.find((annotation) => annotation.id === id) || [])
-    const representatives = [...new Map(selected.map((annotation) => [annotation.groupId || annotation.id, annotation.id])).values()]
-    if (!representatives.length) return
+    const selectedGroups = [...new Map(selected.map((annotation) => {
+      const key = annotation.groupId || annotation.id
+      const trackedIds = annotations.filter((candidate) => annotation.groupId ? candidate.groupId === annotation.groupId : candidate.id === annotation.id).map((candidate) => candidate.id)
+      return [key, { representative: annotation.id, trackedIds }] as const
+    })).values()].filter((group) => !group.trackedIds.some((id) => deletingAnnotationIds.current.has(id)))
+    if (!selectedGroups.length) return
     setSelectedAnnotation(undefined); setSelectedAnnotationIds([]); setFocusedAnnotation(undefined)
-    void mutate(async (model) => { for (const id of representatives) await model.deleteAnnotation(id) }, `已删除 ${representatives.length} 条批注，可按 Ctrl/⌘Z 撤销`, false)
-  }, [annotations, mutate])
+    performAnnotationDeletion(selectedGroups.map((group) => group.representative), selectedGroups.flatMap((group) => group.trackedIds), (deleted) => `已删除 ${deleted} 条批注，可按 Ctrl/⌘Z 撤销`)
+  }, [annotations, performAnnotationDeletion])
   const inlineEditAnnotation = useCallback(async (id: string, content: string) => {
     const model = modelRef.current; if (!model) return
     await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false)
@@ -925,9 +956,9 @@ export default function App() {
   }, [showError])
 
   useEffect(() => { const handler = (event: KeyboardEvent) => {
+    if (isImeCompositionKey(event)) return
     const command = event.ctrlKey || event.metaKey
-    const target = event.target
-    const editingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)
+    const editingText = isTextEntryEvent(event)
     if (event.altKey && !command && !editingText && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && data?.length) {
       event.preventDefault()
       const page = Math.max(0, Math.min(pageCount - 1, currentPage + (event.key === 'ArrowLeft' ? -1 : 1)))
@@ -1035,12 +1066,13 @@ export default function App() {
     {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}
     {dialog?.type === 'save_as_required' && <SaveAsRequiredDialog target={dialog.target} onCancel={() => setDialog(null)} onSaveAs={() => { setDialog(null); void savePdf(true) }} />}
     {dialog?.type === 'open_pdf' && <OpenPdfDialog recent={recentFiles} onCancel={() => setDialog(null)} onOpen={(path) => { setDialog(null); void openPath(path) }} onBrowse={() => { setDialog(null); void chooseOpen() }} />}
-    {dialog?.type === 'manage_pages' && data && <PageManagerDialog data={data} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(order) => { setDialog(null); void mutate((model) => model.arrangePages(order), '页面已调整；可保存 PDF 以保留修改') }} />}
+    {dialog?.type === 'manage_pages' && data && <PageManagerDialog data={data} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(order, rotations) => { setDialog(null); void mutate((model) => model.arrangePages(order, rotations), '页面已调整；可保存 PDF 以保留修改') }} />}
     {dialog?.type === 'merge_files' && <MergeFilesDialog files={dialog.files} pageCount={dialog.pageCount} creating={dialog.creating} onCancel={() => setDialog(null)} onSubmit={(result) => { setDialog(null); void confirmMergeFiles(result.files, result.insertion) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void exportPages(pages) }} />}
     {dialog?.type === 'crop_confirm' && <ConfirmDialog message={ui('将当前页面裁切为框选区域？')} onCancel={() => setDialog(null)} onConfirm={() => { const crop = dialog; setDialog(null); void mutate((value) => value.cropPage(crop.pageIndex, crop.rect), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”'); setTool('none') }} />}
     {dialog?.type === 'confirm' && <ConfirmDialog message={dialog.message} destructive={dialog.destructive} onCancel={() => { setDialog(null); confirmResolve.current?.(false); confirmResolve.current = undefined }} onConfirm={() => { setDialog(null); confirmResolve.current?.(true); confirmResolve.current = undefined }} />}
     {dialog?.type === 'print' && data && <PrintDialog data={data} pageCount={pageCount} currentPage={currentPage} printers={printers} printersLoading={printersLoading} printerError={printerError} onRefreshPrinters={() => void refreshPrinters()} onCancel={() => setDialog(null)} onSubmit={(pages, options, printerName) => { setDialog(null); void printPdf(pages, options, printerName) }} />}
+    {errorMessage && <ErrorDialog message={errorMessage} onClose={() => setErrorMessage(undefined)} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />
     {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui('未发现可定位项目')}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label={ui('关闭结果')} title={ui('关闭')}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: hit.label })}</b><span>{'reference' in hit ? hit.reference : hit.context}</span></button>)}</div></div>}

@@ -4,6 +4,7 @@ import { AI_PRESETS, defaultSettings, detectAiLanguage, loadAiSettings, polishTe
 import { normalizeCopiedText } from '../lib/clipboard-text'
 import { translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { shortcutLabel } from '../lib/platform-shortcuts'
+import { isImeCompositionKey, isTextEntryEvent } from '../lib/keyboard-input'
 import './annotation-lab.css'
 
 interface Props { selection?: string; selectionKey?: string; platform?: string; onAdd(content: string): void | Promise<void>; onCopy(content: string): void }
@@ -29,7 +30,7 @@ export function AnnotationLab({ selection, selectionKey, platform = 'win32', onA
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i' && normalizedSelection) { event.preventDefault(); setOpen(true) }
+      if (!isImeCompositionKey(event) && !isTextEntryEvent(event) && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i' && normalizedSelection) { event.preventDefault(); setOpen(true) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)

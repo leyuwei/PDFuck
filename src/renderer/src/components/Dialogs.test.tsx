@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog, ConfirmDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog } from './Dialogs'
+import { AnnotationDialog, ConfirmDialog, ErrorDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog } from './Dialogs'
 import { setInterfaceLanguage } from '../lib/i18n'
 
 vi.mock('../lib/pdfjs', () => ({
@@ -11,6 +11,11 @@ vi.mock('../lib/pdfjs', () => ({
   getDocument: vi.fn(() => ({ promise: new Promise(() => undefined), destroy: vi.fn() })),
   PDFJS_WASM_URL: ''
 }))
+
+function ErrorDialogHarness({ message, onClose }: { message: string; onClose(): void }) {
+  const [open, setOpen] = useState(true)
+  return open ? <ErrorDialog message={message} onClose={() => { setOpen(false); onClose() }} /> : null
+}
 
 describe('AnnotationDialog focus', () => {
   let container: HTMLDivElement
@@ -28,7 +33,7 @@ describe('AnnotationDialog focus', () => {
     vi.unstubAllGlobals()
   })
 
-  it('focuses the editor initially and restores it when the app regains focus', async () => {
+  it('focuses the editor initially without stealing focus or interrupting IME composition later', async () => {
     const root = createRoot(container)
     await act(async () => {
       root.render(<AnnotationDialog state={{ kind: 'note' }} onCancel={() => undefined} onSubmit={() => undefined} />)
@@ -44,8 +49,48 @@ describe('AnnotationDialog focus', () => {
       window.dispatchEvent(new Event('focus'))
       await new Promise((resolve) => window.setTimeout(resolve, 10))
     })
-    expect(document.activeElement).toBe(textarea)
+    expect(document.activeElement).toBe(cancel)
 
+    textarea.focus()
+    await act(async () => {
+      textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'zhong' }))
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '中文输入')
+      textarea.dispatchEvent(new InputEvent('input', { bubbles: true, data: '中文输入', inputType: 'insertCompositionText', isComposing: true }))
+      textarea.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文输入' }))
+    })
+    expect(textarea.value).toBe('中文输入')
+
+    await act(async () => root.unmount())
+  })
+
+  it('keeps errors inside the app and restores the previous editor focus after dismissal', async () => {
+    const editor = document.createElement('textarea')
+    document.body.append(editor)
+    editor.focus()
+    const onClose = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<ErrorDialogHarness message="找不到这条批注，它可能已经被删除。" onClose={onClose} />))
+
+    const alert = container.querySelector('[role="alertdialog"]')!
+    const confirm = [...alert.querySelectorAll('button')].find((button) => button.textContent === '确定')!
+    expect(alert.textContent).toContain('操作失败')
+    expect(document.activeElement).toBe(confirm)
+    await act(async () => confirm.click())
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(document.activeElement).toBe(editor)
+
+    editor.remove()
+    await act(async () => root.unmount())
+  })
+
+  it('localizes the in-app error surface', async () => {
+    const root = createRoot(container)
+    const titles = { zh: '操作失败', en: 'Action failed', ja: '操作に失敗しました', ru: 'Сбой операции', es: 'Error de operación' } as const
+    for (const [language, title] of Object.entries(titles)) {
+      setInterfaceLanguage(language as keyof typeof titles)
+      await act(async () => root.render(<ErrorDialog key={language} message="Regression" onClose={() => undefined} />))
+      expect(container.querySelector('h2')?.textContent).toBe(title)
+    }
     await act(async () => root.unmount())
   })
 
@@ -244,13 +289,32 @@ describe('AnnotationDialog focus', () => {
     await act(async () => root.unmount())
   })
 
+  it('stages left, right, and 180-degree page orientation changes for one model transaction', async () => {
+    const onSubmit = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<PageManagerDialog data={Uint8Array.of(1)} pageCount={3} currentPage={0} onCancel={() => undefined} onSubmit={onSubmit} />))
+    const clickByLabel = async (label: string) => act(async () => { (container.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement).click() })
+    await clickByLabel('向右旋转 90°')
+    await clickByLabel('翻转 180°')
+    expect(container.querySelector('.page-manager-orientation')?.textContent).toContain('方向 270°')
+
+    await act(async () => { (container.querySelector('[data-page-manager-page="1"]') as HTMLElement).click() })
+    await clickByLabel('向左旋转 90°')
+    expect(container.querySelector('.page-manager-orientation')?.textContent).toContain('方向 270°')
+    await act(async () => { ([...container.querySelectorAll('button')].find((button) => button.textContent === '应用页面调整') as HTMLButtonElement).click() })
+    expect(onSubmit).toHaveBeenCalledWith([0, 1, 2], { 0: 270, 1: 270 })
+    await act(async () => root.unmount())
+  })
+
   it('renders every page-manager control in all five interface languages', async () => {
     const root = createRoot(container)
     await act(async () => root.render(<PageManagerDialog data={Uint8Array.of(1)} pageCount={6} currentPage={0} onCancel={() => undefined} onSubmit={() => undefined} />))
     const titles = { zh: '页面管理', en: 'Manage Pages', ja: 'ページを管理', ru: 'Управление страницами', es: 'Gestionar páginas' } as const
+    const rotateRight = { zh: '向右旋转 90°', en: 'Rotate right 90°', ja: '右へ 90°回転', ru: 'Повернуть вправо на 90°', es: 'Girar 90° a la derecha' } as const
     for (const [language, title] of Object.entries(titles)) {
       await act(async () => setInterfaceLanguage(language as keyof typeof titles))
       expect(container.querySelector('#page-manager-title')?.textContent).toBe(title)
+      expect(container.querySelector(`[aria-label="${rotateRight[language as keyof typeof rotateRight]}"]`)).not.toBeNull()
       expect(container.querySelector('.page-manager-footer-actions')?.textContent).not.toMatch(/\{\w+\}/)
       if (language === 'en' || language === 'ru' || language === 'es') expect(container.querySelector('.page-manager-dialog')?.textContent).not.toMatch(/[\u3400-\u9fff]/u)
     }

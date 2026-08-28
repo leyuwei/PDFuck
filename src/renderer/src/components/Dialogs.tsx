@@ -22,13 +22,7 @@ export interface AnnotationDialogResult { content: string; color: string; reply?
 function useDeferredFocus<T extends HTMLElement>() {
   const ref = useRef<T>(null)
   useLayoutEffect(() => {
-    const focus = () => ref.current?.focus({ preventScroll: true })
-    focus()
-    const frame = window.requestAnimationFrame(focus)
-    const timer = window.setTimeout(focus, 40)
-    const handleWindowFocus = () => { focus(); window.setTimeout(focus, 0) }
-    window.addEventListener('focus', handleWindowFocus)
-    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); window.removeEventListener('focus', handleWindowFocus) }
+    ref.current?.focus({ preventScroll: true })
   }, [])
   return ref
 }
@@ -159,7 +153,7 @@ export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }:
 
 const PAGE_MANAGER_WINDOW_SIZE = 20
 
-type PageManagerIconName = 'close' | 'grip' | 'previous' | 'next' | 'trash' | 'restore' | 'reset' | 'pages'
+type PageManagerIconName = 'close' | 'grip' | 'previous' | 'next' | 'trash' | 'restore' | 'reset' | 'pages' | 'rotate-left' | 'rotate-right' | 'flip'
 
 function PageManagerIcon({ name }: { name: PageManagerIconName }) {
   if (name === 'grip') return <svg viewBox="0 0 20 20" aria-hidden="true"><circle key="a" cx="6" cy="5" r="1.45" /><circle key="b" cx="14" cy="5" r="1.45" /><circle key="c" cx="6" cy="10" r="1.45" /><circle key="d" cx="14" cy="10" r="1.45" /><circle key="e" cx="6" cy="15" r="1.45" /><circle key="f" cx="14" cy="15" r="1.45" /></svg>
@@ -167,6 +161,9 @@ function PageManagerIcon({ name }: { name: PageManagerIconName }) {
   if (name === 'restore') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 9.2a6.2 6.2 0 1 0 1.6-3.8L3.8 7.1M3.8 3.9v3.2H7" /></svg>
   if (name === 'reset') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.3 8a6 6 0 1 1 .7 5.4M4.3 8V4.7M4.3 8h3.3" /></svg>
   if (name === 'pages') return <svg viewBox="0 0 20 20" aria-hidden="true"><rect key="page" x="5.2" y="3.2" width="9.8" height="12.8" rx="1.4" /><path key="back" d="M3 6v9.2A1.8 1.8 0 0 0 4.8 17H12" /></svg>
+  if (name === 'rotate-left') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.1 7.3A6 6 0 1 1 4.5 12M5.1 7.3V3.9M5.1 7.3h3.4" /></svg>
+  if (name === 'rotate-right') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M14.9 7.3a6 6 0 1 0 .6 4.7M14.9 7.3V3.9M14.9 7.3h-3.4" /></svg>
+  if (name === 'flip') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.4 8.2A6 6 0 0 1 15 5.6M15.6 11.8A6 6 0 0 1 5 14.4M15 5.6V2.8M15 5.6h-2.8M5 14.4v2.8M5 14.4h2.8" /></svg>
   if (name === 'close') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>
   if (name === 'previous') return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.8-5.2 5.2 5.2 5.2" /></svg>
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.8 5.2 5.2-5.2 5.2" /></svg>
@@ -174,13 +171,17 @@ function PageManagerIcon({ name }: { name: PageManagerIconName }) {
 
 type PageManagerDropPlacement = 'before' | 'after'
 type PageManagerDragVisual = { page: number; targetPage?: number; placement?: PageManagerDropPlacement; x: number; y: number }
+export type PageManagerRotations = Record<number, number>
+
+function normalizedPageRotation(value: number): number { return ((Math.round(value / 90) * 90) % 360 + 360) % 360 }
 
 /** A storyboard workspace: final card order is the PDF order, selected cards are removed. */
-export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pageOrder: number[]): void }) {
+export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pageOrder: number[], rotations: PageManagerRotations): void }) {
   useInterfaceLanguage()
   const initialOrder = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
   const [order, setOrder] = useState(initialOrder)
   const [removed, setRemoved] = useState<Set<number>>(() => new Set<number>())
+  const [rotations, setRotations] = useState<PageManagerRotations>({})
   const [windowIndex, setWindowIndex] = useState(() => Math.floor(currentPage / PAGE_MANAGER_WINDOW_SIZE))
   const [jumpValue, setJumpValue] = useState('')
   const [moveValue, setMoveValue] = useState('')
@@ -194,7 +195,8 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const { thumbnails } = usePrintThumbnails(data, visibleOrder, 360, 460)
   const kept = order.filter((page) => !removed.has(page))
   const reordered = order.some((page, index) => page !== initialOrder[index])
-  const hasChanges = reordered || removed.size > 0
+  const orientationChanged = Object.values(rotations).some((rotation) => normalizedPageRotation(rotation) !== 0)
+  const hasChanges = reordered || removed.size > 0 || orientationChanged
   const focusedPosition = Math.max(0, order.indexOf(focusedPage))
   const requestedMovePosition = Number(moveValue) - 1
   const validMovePosition = Number.isInteger(requestedMovePosition) && requestedMovePosition >= 0 && requestedMovePosition < order.length && requestedMovePosition !== focusedPosition
@@ -244,6 +246,13 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     setRemoved((current) => { const next = new Set(current); next.has(page) ? next.delete(page) : next.add(page); return next })
     focusPage(page)
   }
+  const rotatePage = (page: number, delta: -90 | 90 | 180) => setRotations((current) => {
+    const rotation = normalizedPageRotation((current[page] || 0) + delta)
+    const next = { ...current }
+    if (rotation) next[page] = rotation
+    else delete next[page]
+    return next
+  })
   const markCurrent = () => {
     setRemoved((current) => new Set(current).add(currentPage))
     const position = order.indexOf(currentPage)
@@ -253,6 +262,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const resetChanges = () => {
     setOrder(initialOrder)
     setRemoved(new Set())
+    setRotations({})
     setWindowIndex(Math.floor(currentPage / PAGE_MANAGER_WINDOW_SIZE))
     focusPage(currentPage)
   }
@@ -348,6 +358,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
           {visibleOrder.map((page, visibleIndex) => {
             const index = visibleStart + visibleIndex
             const isRemoved = removed.has(page)
+            const rotation = normalizedPageRotation(rotations[page] || 0)
             const dropClass = dragVisual?.targetPage === page && dragVisual.placement ? ` drop-${dragVisual.placement}` : ''
             return <article key={page} data-page-manager-page={page} className={`page-manager-card${isRemoved ? ' removed' : ''}${focusedPage === page ? ' focused' : ''}${dragVisual?.page === page ? ' dragging' : ''}${dropClass}`} onClick={() => focusPage(page)}>
               <div className="page-manager-card-top">
@@ -355,9 +366,10 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
                 <button type="button" className="page-manager-remove-toggle" aria-pressed={isRemoved} title={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} aria-label={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} onClick={(event) => { event.stopPropagation(); toggleRemoved(page) }}>{isRemoved ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}</button>
               </div>
               <button type="button" className="page-manager-thumbnail" onClick={(event) => { event.stopPropagation(); focusPage(page) }} aria-label={t('page.preview', { page: page + 1 })}>
-                {thumbnails[page] ? <img draggable={false} src={thumbnails[page]} alt="" /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+                {thumbnails[page] ? <img className={rotation % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${rotation}deg)` }} draggable={false} src={thumbnails[page]} alt="" /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
                 <span className="page-manager-original-badge">{t('page.managerOriginalShort', { page: page + 1 })}</span>
                 {page === currentPage && <span className="page-manager-current-badge">{t('page.managerCurrentBadge')}</span>}
+                {rotation !== 0 && <span className="page-manager-rotation-badge">{t('page.managerRotation', { degrees: rotation })}</span>}
                 {isRemoved && <span className="page-manager-removed-badge"><PageManagerIcon name="trash" />{t('page.managerMarkedForRemoval')}</span>}
               </button>
             </article>
@@ -368,10 +380,11 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
       <aside className="page-manager-inspector" aria-label={t('page.managerInspector')}>
         <header><div><small>{t('page.managerInspector')}</small><h3>{t('page.managerFocusedPage', { position: focusedPosition + 1 })}</h3></div>{focusedPage === currentPage && <span>{t('page.managerCurrentBadge')}</span>}</header>
         <div className={`page-manager-inspector-preview${removed.has(focusedPage) ? ' removed' : ''}`}>
-          {thumbnails[focusedPage] ? <img draggable={false} src={thumbnails[focusedPage]} alt={t('page.preview', { page: focusedPage + 1 })} /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+          {thumbnails[focusedPage] ? <img className={normalizedPageRotation(rotations[focusedPage] || 0) % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${normalizedPageRotation(rotations[focusedPage] || 0)}deg)` }} draggable={false} src={thumbnails[focusedPage]} alt={t('page.preview', { page: focusedPage + 1 })} /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
           {removed.has(focusedPage) && <b>{t('page.managerMarkedForRemoval')}</b>}
         </div>
         <dl><div><dt>{t('page.managerFinalPosition')}</dt><dd>{focusedPosition + 1}</dd></div><div><dt>{t('page.managerOriginalPage')}</dt><dd>{focusedPage + 1}</dd></div></dl>
+        <section className="page-manager-orientation"><header><span>{t('page.managerOrientation')}</span><b>{t('page.managerRotation', { degrees: normalizedPageRotation(rotations[focusedPage] || 0) })}</b></header><div><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateLeft')} aria-label={t('page.managerRotateLeft')} onClick={() => rotatePage(focusedPage, -90)}><PageManagerIcon name="rotate-left" /><span>{t('page.managerRotateLeft')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerFlip')} aria-label={t('page.managerFlip')} onClick={() => rotatePage(focusedPage, 180)}><PageManagerIcon name="flip" /><span>{t('page.managerFlip')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateRight')} aria-label={t('page.managerRotateRight')} onClick={() => rotatePage(focusedPage, 90)}><PageManagerIcon name="rotate-right" /><span>{t('page.managerRotateRight')}</span></button></div></section>
         <div className="page-manager-move-control"><label htmlFor="page-manager-position">{t('page.managerMoveTo')}</label><div><input id="page-manager-position" value={moveValue} inputMode="numeric" pattern="[0-9]*" placeholder={String(focusedPosition + 1)} onChange={(event) => setMoveValue(event.target.value.replace(/\D/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') moveFocusedToPosition() }} /><button type="button" disabled={!validMovePosition} onClick={moveFocusedToPosition}>{t('page.managerMoveAction')}</button></div><small>{t('page.managerMoveHint', { count: pageCount })}</small></div>
         <button type="button" className={`page-manager-inspector-remove${removed.has(focusedPage) ? ' restore' : ''}`} onClick={() => toggleRemoved(focusedPage)}>{removed.has(focusedPage) ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}<span>{removed.has(focusedPage) ? t('page.managerRestorePage') : t('page.managerRemovePage')}</span></button>
         <p className="page-manager-keyboard-hint">{t('page.managerKeyboardHint')}</p>
@@ -380,8 +393,8 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
 
     {dragVisual && <div className="page-manager-drag-preview" style={{ left: dragVisual.x, top: dragVisual.y }}><PageManagerIcon name="grip" /><span>{t('page.managerDraggingPage', { page: dragVisual.page + 1 })}</span></div>}
     <footer className="page-manager-footer">
-      <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : reordered ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>
-      <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t('page.managerCancel')}</button><button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept)}>{t('page.managerApply')}</button></div>
+      <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : hasChanges ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>
+      <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t('page.managerCancel')}</button><button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept, Object.fromEntries(Object.entries(rotations).filter(([page, rotation]) => kept.includes(Number(page)) && normalizedPageRotation(rotation) !== 0)))}>{t('page.managerApply')}</button></div>
     </footer>
   </div></div>
 }
@@ -662,4 +675,16 @@ export function MergeFilesDialog({ files, pageCount, creating, onCancel, onSubmi
 export function ConfirmDialog({ message, destructive = false, onCancel, onConfirm }: { message: string; destructive?: boolean; onCancel(): void; onConfirm(): void }) {
   const cancelRef = useDeferredFocus<HTMLButtonElement>()
   return <div className={`modal-backdrop${destructive ? ' unsaved-close-backdrop' : ''}`}><div className={`modal${destructive ? ' unsaved-close-dialog' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message"><h2 id="confirm-dialog-title">{destructive ? ui('未保存的修改') : ui('请确认')}</h2><p id="confirm-dialog-message">{message}</p><div className="modal-actions"><button ref={cancelRef} type="button" className={destructive ? 'unsaved-close-cancel' : undefined} onClick={onCancel}>{ui('取消')}</button><button type="button" className={destructive ? 'unsaved-close-confirm' : 'primary'} onClick={onConfirm}>{destructive ? ui('确认关闭') : ui('确定')}</button></div></div></div>
+}
+
+export function ErrorDialog({ message, onClose }: { message: string; onClose(): void }) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useLayoutEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeRef.current?.focus({ preventScroll: true })
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
+    }
+  }, [])
+  return <div className="modal-backdrop error-dialog-backdrop"><div className="modal error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="error-dialog-title" aria-describedby="error-dialog-message"><div className="error-dialog-heading"><span aria-hidden="true">!</span><h2 id="error-dialog-title">{ui('操作失败')}</h2></div><p id="error-dialog-message">{message}</p><div className="modal-actions"><button ref={closeRef} type="button" className="primary" onClick={onClose}>{ui('确定')}</button></div></div></div>
 }

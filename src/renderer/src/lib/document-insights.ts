@@ -139,9 +139,15 @@ function referenceEntries(text: string): ReferenceEntry[] {
 
 export function citationLinks(pages: PageTextSnapshot[]): CitationLink[] {
   const normalizedPages = pages.map((page) => ({ ...page, text: normalizeInsightText(page.text) }))
-  const references = normalizedPages.find((page) => referenceHeadingIndex(page.text) >= 0)
-  if (!references) return []
-  const entries = referenceEntries(references.text)
+  const referenceStart = normalizedPages.findIndex((page) => referenceHeadingIndex(page.text) >= 0)
+  if (referenceStart < 0) return []
+  const references = normalizedPages[referenceStart]
+  // Reference lists routinely continue across several pages.  Parsing only
+  // the page that contains the heading silently truncated Scheduling0826m at
+  // [4], because [5]–[38] live on the following page.  Preserve the heading
+  // page as the parser anchor, then append every remaining page so numbered
+  // entries can span both page and column boundaries.
+  const entries = referenceEntries(normalizedPages.slice(referenceStart).map((page) => page.text).join(' '))
   if (!entries.length) return []
   const links: CitationLink[] = []
   normalizedPages.filter((page) => page.pageIndex < references.pageIndex).forEach((page) => {

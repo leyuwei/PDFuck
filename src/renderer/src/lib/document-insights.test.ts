@@ -36,6 +36,17 @@ describe('document insights', () => {
     expect(links[0].reference).toContain('[1]')
   })
 
+  it('keeps parsing a numbered reference list across following pages', () => {
+    const links = citationLinks([
+      { pageIndex: 0, text: 'Prior work [1], [4], and [6] supports the result.' },
+      { pageIndex: 11, text: 'R EFERENCES [1] First reference. [2] Second reference.' },
+      { pageIndex: 12, text: '[3] Third reference. [4] Fourth reference. [5] Fifth reference. [6] Sixth reference.' }
+    ])
+    expect(links.map((link) => link.citation)).toEqual(['1', '4', '6'])
+    expect(links[1].reference).toBe('[4] Fourth reference.')
+    expect(links[2].reference).toBe('[6] Sixth reference.')
+  })
+
   it('only reports high-confidence grammar findings', () => {
     expect(grammarIssues([{ pageIndex: 1, text: 'The result is tested and the input was received.' }])).toEqual([])
     const issues = grammarIssues([{ pageIndex: 1, text: 'It are tested. They was repeated repeated.' }])

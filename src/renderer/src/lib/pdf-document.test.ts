@@ -222,8 +222,11 @@ describe('PdfDocumentModel', () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const id = await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 120, height: 12 }], 'delete me')
     expect(model.annotations()).toHaveLength(1)
-    await model.deleteAnnotation(id)
+    expect(await model.deleteAnnotation(id)).toBe(true)
     expect(model.annotations()).toHaveLength(0)
+    const bytesAfterFirstDelete = model.bytes
+    expect(await model.deleteAnnotation(id)).toBe(false)
+    expect(model.bytes).toEqual(bytesAfterFirstDelete)
     const reopened = await PdfDocumentModel.load(model.bytes)
     expect(reopened.annotations()).toHaveLength(0)
   })
@@ -321,6 +324,28 @@ describe('PdfDocumentModel', () => {
     expect(model.pageCount).toBe(5)
     expect([0, 1, 2, 3, 4].map((page) => model.getPageSize(page).width)).toEqual([600, 601, 602, 603, 604])
     await expect(model.arrangePages([])).rejects.toThrow('页面排序无效')
+  })
+
+  it('applies per-page quarter turns and 180-degree flips with ordering as one undoable operation', async () => {
+    const source = await PDFDocument.create()
+    source.addPage([300, 500])
+    source.addPage([400, 600]).setRotation(degrees(90))
+    source.addPage([500, 700])
+    const model = await PdfDocumentModel.load(await source.save())
+
+    await model.arrangePages([2, 0, 1], { 2: 90, 0: 180, 1: 270 })
+    expect([0, 1, 2].map((page) => model.getPageSize(page))).toEqual([
+      { width: 700, height: 500 },
+      { width: 300, height: 500 },
+      { width: 400, height: 600 }
+    ])
+    const transformed = await PDFDocument.load(model.bytes)
+    expect(transformed.getPages().map((page) => page.getRotation().angle)).toEqual([90, 180, 0])
+
+    await model.undo()
+    const restored = await PDFDocument.load(model.bytes)
+    expect(restored.getPages().map((page) => page.getRotation().angle)).toEqual([0, 90, 0])
+    await expect(model.arrangePages([0, 1, 2], { 0: 45 })).rejects.toThrow('页面旋转设置无效')
   })
 
   it('creates a non-destructive PDF subset in the selected order', async () => {

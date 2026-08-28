@@ -318,6 +318,7 @@
 .page-manager-remove-toggle svg { width: 16px; height: 16px; }
 
 .page-manager-thumbnail {
+  container-type: size;
   position: relative;
   width: 100%;
   min-width: 0;
@@ -349,7 +350,9 @@
   box-shadow: 0 3px 12px #17233c24;
   -webkit-user-drag: none;
   user-select: none;
+  transition: transform .16s ease;
 }
+.page-manager-thumbnail img.quarter-turn { width: 100cqh; height: 100cqw; max-width: none; max-height: none; }
 
 .page-manager-thumbnail-loading {
   display: grid;
@@ -371,6 +374,7 @@
 
 .page-manager-original-badge,
 .page-manager-current-badge,
+.page-manager-rotation-badge,
 .page-manager-removed-badge {
   position: absolute;
   z-index: 2;
@@ -387,6 +391,7 @@
 }
 .page-manager-original-badge { left: 8px; bottom: 8px; background: #202c3ddb; color: #fff; }
 .page-manager-current-badge { right: 8px; bottom: 8px; background: #496bd6e8; color: #fff; }
+.page-manager-rotation-badge { right: 8px; top: 8px; background: #f5f8ffed; color: #4966c5; }
 .page-manager-removed-badge { inset: 50% auto auto 50%; transform: translate(-50%, -50%); background: #a93642e8; color: #fff; font-size: 9px; }
 .page-manager-removed-badge svg { width: 13px !important; height: 13px !important; }
 .page-manager-card.removed .page-manager-thumbnail img { opacity: .35; filter: grayscale(.45); }
@@ -415,6 +420,7 @@
 .page-manager-inspector > header > span { padding: 5px 7px; border-radius: 6px; background: #eaf0ff; color: #4665cb; font-size: 8px; font-weight: 750; white-space: nowrap; }
 
 .page-manager-inspector-preview {
+  container-type: size;
   position: relative;
   width: 100%;
   height: 320px;
@@ -429,7 +435,8 @@
   border-radius: 11px;
   background: #eef2f7;
 }
-.page-manager-inspector-preview img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; background: #fff; box-shadow: 0 5px 20px #17233c28; -webkit-user-drag: none; }
+.page-manager-inspector-preview img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; background: #fff; box-shadow: 0 5px 20px #17233c28; -webkit-user-drag: none; transition: transform .16s ease; }
+.page-manager-inspector-preview img.quarter-turn { width: 100cqh; height: 100cqw; max-width: none; max-height: none; }
 .page-manager-inspector-preview.removed img { opacity: .32; filter: grayscale(.5); }
 .page-manager-inspector-preview > b { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); padding: 7px 9px; border-radius: 7px; background: #a93642e8; color: #fff; font-size: 9px; white-space: nowrap; }
 
@@ -442,6 +449,15 @@
 .page-manager-inspector dl > div { display: grid; gap: 4px; padding: 10px 11px; border: 1px solid #e3e8f0; border-radius: 9px; background: #f8faff; }
 .page-manager-inspector dt { color: #818da0; font-size: 8px; font-weight: 700; }
 .page-manager-inspector dd { margin: 0; color: #2e3c53; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.page-manager-orientation { display: grid; gap: 7px; }
+.page-manager-orientation > header { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #55637a; font-size: 9px; font-weight: 750; }
+.page-manager-orientation > header b { overflow: hidden; color: #5570cf; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.page-manager-orientation > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.page-manager-orientation button { min-width: 0; min-height: 46px; display: grid; place-items: center; align-content: center; gap: 3px; padding: 5px; border-color: #d5ddea; background: #f8faff; color: #4e607a; }
+.page-manager-orientation button:hover:not(:disabled) { border-color: #9eb0e5; background: #eef3ff; color: #4261c4; }
+.page-manager-orientation button svg { width: 16px !important; height: 16px !important; }
+.page-manager-orientation button span { max-width: 100%; overflow: hidden; font-size: 8px; font-weight: 720; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 
 .page-manager-move-control { display: grid; gap: 7px; }
 .page-manager-move-control > label { color: #55637a; font-size: 9px; font-weight: 750; }
@@ -544,6 +560,11 @@
 .theme-dark .page-manager-inspector-preview { border-color: #3d4d63; background: #111a27; }
 .theme-dark .page-manager-inspector { border-left-color: #3b4c64; }
 .theme-dark .page-manager-move-control > label { color: #c4d0e0; }
+.theme-dark .page-manager-orientation > header { color: #c4d0e0; }
+.theme-dark .page-manager-orientation > header b { color: #b8caff; }
+.theme-dark .page-manager-orientation button { border-color: #485c77; background: #172338; color: #c5d1e3; }
+.theme-dark .page-manager-orientation button:hover:not(:disabled) { border-color: #708bd1; background: #263958; color: #e4ecff; }
+.theme-dark .page-manager-rotation-badge { background: #233857ed; color: #c6d5ff; }
 .theme-dark .page-manager-jump input,
 .theme-dark .page-manager-move-control input { border-color: #485c77; background: #152033; color: #e6edf8; }
 .theme-dark .page-manager-inspector-remove { border-color: #80505a; background: #33232c; color: #f0b3b9; }
@@ -571,7 +592,7 @@
   .page-manager-jump { grid-column: 1 / -1; justify-self: stretch; }
   .page-manager-jump input { flex: 1; }
   .page-manager-workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .page-manager-inspector { grid-row: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .8fr) auto; align-items: center; gap: 9px; padding: 10px 15px; overflow: visible; border-left: 0; border-bottom: 1px solid #dfe5ee; }
+  .page-manager-inspector { grid-row: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .8fr) minmax(180px, 1fr) auto; align-items: center; gap: 9px; padding: 10px 15px; overflow: visible; border-left: 0; border-bottom: 1px solid #dfe5ee; }
   .page-manager-inspector-preview,
   .page-manager-inspector dl,
   .page-manager-keyboard-hint { display: none; }
@@ -580,6 +601,10 @@
   .page-manager-move-control { gap: 3px; }
   .page-manager-move-control > label,
   .page-manager-move-control > small { display: none; }
+  .page-manager-orientation { gap: 3px; }
+  .page-manager-orientation > header { display: none; }
+  .page-manager-orientation button { min-height: 35px; padding: 3px; }
+  .page-manager-orientation button span { display: none; }
   .page-manager-inspector-remove { width: 38px; min-width: 38px; height: 35px; min-height: 35px; padding: 0; }
   .page-manager-inspector-remove span { display: none; }
   .page-manager-storyboard { grid-row: 2; }
