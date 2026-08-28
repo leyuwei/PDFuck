@@ -195,6 +195,14 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations().find((annotation) => annotation.kind === 'replace')?.reply).toEqual({ status: 'handled', content: '已处理' })
   })
 
+  it('stores the configured author in the standard PDF annotation field', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const id = await model.addAnnotation(0, 'highlight', [{ x: 70, y: 110, width: 150, height: 15 }], 'authored note', undefined, undefined, undefined, '  Yuwei   Le  ')
+    expect(model.annotations().find((annotation) => annotation.id === id)?.author).toBe('Yuwei Le')
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.annotations().find((annotation) => annotation.id === id)?.author).toBe('Yuwei Le')
+  })
+
   it('deletes every visual segment belonging to one cross-page annotation', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const groupId = 'cross-page-regression-group'

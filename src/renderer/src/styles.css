@@ -123,6 +123,73 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .annotation-lab-settings-backdrop { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; padding: 20px; background: #10182666; backdrop-filter: blur(2px); }.annotation-lab-settings-backdrop .annotation-lab-settings { position: static; width: min(360px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto; padding: 16px; border: 1px solid #ccd6e8; border-radius: 8px; background: #fff; box-shadow: 0 22px 70px #10182666; }.annotation-lab-settings-backdrop .annotation-lab-settings header { margin-bottom: 10px; }.annotation-lab-settings-backdrop .annotation-lab-settings header button { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; font-size: 20px; }.annotation-lab-settings-backdrop .annotation-lab-settings footer { min-height: 0; margin: 16px 0 0; padding: 14px 0 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #dce3ef; background: transparent; color: inherit; }.annotation-lab-settings-backdrop .annotation-lab-settings footer button { min-width: 96px; height: 38px; padding: 0 16px; }.theme-dark .theme-color-control > span:first-child { color: #c4d0e1; }.theme-dark .annotation-lab-settings-backdrop { background: #03081099; }.theme-dark .annotation-lab-settings-backdrop .annotation-lab-settings { background: #1c2738; border-color: #475a73; }.theme-dark .annotation-lab-settings-backdrop .annotation-lab-settings footer { border-color: #475a73; }
 .theme-dark .theme-color-trigger, .theme-dark .theme-color-popover { border-color: #4a5d77; background: #202d40; color: #d4deec; }.theme-dark .theme-color-trigger:hover { background: #293850; }.theme-dark .theme-color-hex { border-color: #445671; }.theme-dark .theme-color-hex input { border-color: #4d607b; background: #172235; color: #e0e8f5; }.save-as-required-backdrop { background: #10182777; backdrop-filter: blur(3px); }.save-as-required-dialog { width: 490px; display: grid; grid-template-columns: 46px minmax(0, 1fr); column-gap: 13px; padding: 24px; border: 1px solid #d7deeb; }.save-as-required-symbol { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; background: linear-gradient(145deg, #d9942e, #c76d42); box-shadow: 0 7px 18px #bd773b45; color: #fff; font-size: 25px; font-weight: 850; }.save-as-required-copy small { color: #aa6c20; font-size: 10px; font-weight: 800; letter-spacing: .6px; }.save-as-required-copy h2 { margin-top: 3px; }.save-as-required-copy p { margin: 7px 0 0; color: #68758b; font-size: 11px; line-height: 1.65; }.save-as-required-copy p b { color: #3a465c; word-break: break-all; }.save-as-required-note { grid-column: 1 / -1; display: grid; gap: 3px; margin-top: 17px; padding: 11px 12px; border-radius: 8px; background: #f7f1e8; color: #785d36; }.save-as-required-note b { font-size: 10px; }.save-as-required-note span { font-size: 10px; }.save-as-required-dialog .modal-actions { grid-column: 1 / -1; margin-top: 18px; }.theme-dark .save-as-required-dialog { border-color: #4b5b72; background: #1d293b; }.theme-dark .save-as-required-copy p { color: #bac5d5; }.theme-dark .save-as-required-copy p b { color: #edf3fb; }.theme-dark .save-as-required-note { background: #392f25; color: #ead7bc; }.theme-color-control > span:first-child { flex: none; white-space: nowrap; }
 
+/* Action-card shortcuts and edit icons share one visual grammar across every module. */
+.tool-panel-action.with-icon { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; }
+.tool-panel-action.with-icon.has-shortcut, .tool-button.with-icon.has-shortcut { grid-template-columns: 28px minmax(0, 1fr) auto; }
+.tool-button kbd, .annotation-lab-launch kbd { flex: none; padding: 3px 6px; border: 1px solid #d8deea; border-bottom-width: 2px; border-radius: 5px; background: #f5f7fb; color: #737e93; font: 9px/1.4 "Segoe UI", sans-serif; white-space: nowrap; }
+.tool-panel .tool-action-button { height: 38px; }
+.search-pdf-action { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.search-pdf-action kbd { flex: none; padding: 3px 6px; border: 1px solid #d8deea; border-bottom-width: 2px; border-radius: 5px; background: #f5f7fb; color: #737e93; font: 9px/1.4 "Segoe UI", sans-serif; white-space: nowrap; }
+.tool-panel-action.primary kbd { border-color: color-mix(in srgb, #fff 45%, transparent); background: color-mix(in srgb, #fff 16%, transparent); color: #fff; }
+.edit-tool-icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; color: #5e6e89; }
+.edit-tool-icon .accent { color: var(--theme-accent, #5575de); stroke-width: 2.15; }
+.tool-button.active .edit-tool-icon { color: currentColor; }
+.theme-dark .tool-panel-action kbd, .theme-dark .tool-button kbd, .theme-dark .search-pdf-action kbd { border-color: #52657e; background: #172235; color: #c0ccdc; }
+.theme-dark .tool-panel-action.primary kbd { border-color: color-mix(in srgb, #fff 38%, transparent); background: color-mix(in srgb, #fff 13%, transparent); color: #fff; }
+
+/* Annotation authors are configured in a movable utility window and stay inside the content cell. */
+.annotation-toolbar .annotation-author-button { height: 27px; min-width: 0; margin-left: auto; padding: 4px 7px; display: flex; align-items: center; gap: 4px; color: #68758c; font-size: 10px; white-space: nowrap; }
+.annotation-toolbar .annotation-line-toggle { margin-left: 0; }
+.annotation-author-glyph { flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.annotation-author-button .annotation-author-glyph { color: var(--theme-accent, #5575de); }
+.annotation-author-window { position: fixed; z-index: 180; width: 330px; overflow: hidden; border: 1px solid #cfd9e8; border-radius: 12px; background: #fff; color: #263247; box-shadow: 0 20px 58px #17233d4d; }
+.annotation-author-window > header { min-height: 58px; padding: 10px 11px 10px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #e5eaf2; background: linear-gradient(180deg, #fbfcff, #f6f8fc); cursor: move; touch-action: none; }
+.annotation-author-window > header > div { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.annotation-author-window > header > div > span { width: 31px; height: 31px; flex: none; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--app-accent, #5575de) 13%, #fff); color: var(--app-accent, #5575de); }
+.annotation-author-window > header > div > div { min-width: 0; display: grid; gap: 2px; }
+.annotation-author-window > header b { color: #34415a; font-size: 12px; }
+.annotation-author-window > header small { overflow: hidden; color: #8994a7; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.annotation-author-window > header button { width: 27px; min-width: 27px; height: 27px; padding: 0; border: 0; background: transparent; color: #7f8a9d; font-size: 20px; line-height: 1; cursor: pointer; }
+.annotation-author-body { padding: 14px; display: grid; gap: 12px; }
+.annotation-author-name { display: grid; gap: 5px; color: #526078; font-size: 10px; font-weight: 750; }
+.annotation-author-name input { width: 100%; height: 35px; padding: 0 10px; border: 1px solid #d3dbe7; border-radius: 7px; outline: 0; font-size: 11px; font-weight: 600; }
+.annotation-author-name input:focus { border-color: var(--app-accent, #5575de); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent, #5575de) 14%, transparent); }
+.annotation-author-name.invalid input { border-color: #d76a72; background: #fff8f8; }
+.annotation-author-name small { color: #8b95a7; font-size: 8px; font-weight: 500; line-height: 1.4; }
+.annotation-author-visible { min-height: 53px; padding: 9px 10px; display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: center; gap: 10px; border: 1px solid #dce3ed; border-radius: 8px; background: #fafbfe; }
+.annotation-author-visible > span { display: grid; gap: 2px; }
+.annotation-author-visible b { color: #45536b; font-size: 10px; }
+.annotation-author-visible small { color: #8a95a7; font-size: 8px; line-height: 1.35; }
+.annotation-author-switch { width: 30px; min-width: 30px; height: 19px; padding: 0; position: relative; border: 0; border-radius: 10px; background: #cbd2dd; box-shadow: inset 0 0 0 1px #b9c2cf; }
+.annotation-author-switch:hover:not(:disabled) { border: 0; background: #b9c3d1; }
+.annotation-author-switch:focus-visible { outline: 2px solid var(--app-accent, #5575de); outline-offset: 2px; }
+.annotation-author-switch i { position: absolute; left: 2px; top: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #17213b42; transition: transform .15s ease; }
+.annotation-author-visible.active { border-color: color-mix(in srgb, var(--app-accent, #5575de) 45%, #dce3ed); background: color-mix(in srgb, var(--app-accent, #5575de) 6%, #fff); }
+.annotation-author-visible.active .annotation-author-switch { background: var(--app-accent, #5575de); box-shadow: none; }
+.annotation-author-visible.active .annotation-author-switch:hover:not(:disabled) { background: color-mix(in srgb, var(--app-accent, #5575de) 88%, #263d83); }
+.annotation-author-visible.active .annotation-author-switch i { transform: translateX(11px); }
+.annotation-author-preview { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px 8px; }
+.annotation-author-preview > span { color: #7b879a; font-size: 9px; font-weight: 750; }
+.annotation-author-preview > small { grid-column: 1 / -1; color: #939dad; font-size: 8px; line-height: 1.35; }
+.annotation-author-window > footer { min-height: 57px; padding: 10px 13px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid #e5eaf2; background: #fafbfc; }
+.annotation-author-window > footer button { min-width: 72px; height: 34px; padding: 0 12px; font-size: 10px; }
+.annotation-content { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; overflow-wrap: anywhere; white-space: normal; }
+.annotation-author-meta { min-width: 0; height: 18px; display: flex; align-items: center; }
+.annotation-content-value { min-width: 0; width: 100%; display: block; overflow-wrap: anywhere; }
+.annotation-author-badge { min-width: 0; max-width: 105px; height: 18px; padding: 0 6px 0 5px; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; border: 1px solid var(--author-border); border-radius: 9px; background: var(--author-bg); color: var(--author-text); font-size: 8px; font-weight: 750; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.annotation-author-badge i { width: 5px; height: 5px; flex: none; border-radius: 50%; background: currentColor; opacity: .82; }
+.annotation-panel.single-line .annotation-content { display: grid; overflow: hidden; white-space: normal; }
+.annotation-panel.single-line .annotation-content-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.annotation-content textarea { width: 100%; }
+.annotation-author-window.theme-dark { border-color: #4b5d76; background: #1c2738; color: #e4ebf7; }
+.annotation-author-window.theme-dark > header, .annotation-author-window.theme-dark > footer { border-color: #43546d; background: #202d40; }
+.annotation-author-window.theme-dark > header > div > span { background: color-mix(in srgb, var(--app-accent, #5575de) 24%, #172235); }
+.annotation-author-window.theme-dark > header b, .annotation-author-window.theme-dark .annotation-author-visible b { color: #e8eef7; }
+.annotation-author-window.theme-dark > header small, .annotation-author-window.theme-dark .annotation-author-name small, .annotation-author-window.theme-dark .annotation-author-visible small, .annotation-author-window.theme-dark .annotation-author-preview > small { color: #a9b7ca; }
+.annotation-author-window.theme-dark .annotation-author-name { color: #c9d5e5; }
+.annotation-author-window.theme-dark input { border-color: #4b5e78; background: #172235; color: #e6edf8; }
+.annotation-author-window.theme-dark .annotation-author-visible { border-color: #465873; background: #202c3e; }
+
 /* Keep the target-page decision compact, and reuse the calm recent-file cards. */
 .merge-target-page { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 13px; padding: 12px; border: 1px solid #e0e6f0; border-radius: 9px; background: #fff; }.merge-target-page > span { color: #47556e; font-size: 11px; font-weight: 750; }.merge-target-page-field { display: flex; align-items: center; gap: 10px; min-width: 0; }.merge-page-input { flex: 0 0 118px; }.merge-target-page-field > b { min-width: 0; color: #66748b; font-size: 11px; font-weight: 600; }.merge-target-page small { margin: 0; }.theme-dark .merge-target-page { border-color: #40516a; background: #172235; }.theme-dark .merge-target-page > span { color: #d9e5f6; }.theme-dark .merge-target-page-field > b { color: #aebcd0; }
 .open-pdf-recent .open-pdf-recent-item { background: transparent !important; }.open-pdf-recent .open-pdf-recent-item .recent-pdf-icon { padding: 0 0 5px; border: 1px solid #d8e0f1; border-radius: 6px; background: linear-gradient(145deg, #fff, #edf2ff); color: #4562c3; }.open-pdf-recent .open-pdf-recent-item:hover { background: #f5f7ff !important; border-color: #dfe5f5 !important; }.theme-dark .open-pdf-recent .open-pdf-recent-item .recent-pdf-icon { border-color: #4a5d78; background: #243148; color: #b7cbef; }.theme-dark .open-pdf-recent .open-pdf-recent-item:hover { background: #27364d !important; border-color: #49617f !important; }

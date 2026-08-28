@@ -24,6 +24,8 @@ Copyright © 2026 github@leyuwei
 - **Lightweight paper-oriented grammar checks**: Flags common English spelling, repeated-word, and subject-verb agreement issues and links each result back to its context. It is a review aid, not an uncontrolled rewrite engine.
 - **Edit PDF text as editable objects**: PDF.js text blocks are regrouped into natural chunks. New text inherits the source font, size, weight, style, alignment, color, and sampled page background, and remains movable and editable after saving.
 - **Annotations built for review**: Highlight, replace, delete, underline, note, and insert annotations can carry explanations, colors, replies, and positions that persist in the saved PDF.
+- **Reviewer identities without list clutter**: A movable Annotation Author window stores the local reviewer name for future PDF annotations. Its single visibility switch can place compact, stable-color author badges above the annotation body, preserving the full content-column width without adding another list column.
+- **Platform-native shortcut guidance**: Functional buttons use one consistent keycap style and automatically show Windows or macOS conventions. The seven Edit actions also use matching compact line icons for faster scanning.
 - **Character-level selection**: Select partial words, half-lines, mixed Chinese and English text, and cross-line ranges precisely. Replacement lines and insertion arrows snap to actual character boundaries.
 - **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
@@ -65,6 +67,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 
 ### Edit
 
+- The seven primary editing actions use compact line icons that match the Annotate tools while preserving the existing labels and descriptions.
 - Crop pages with a movable selection and eight resize handles, then confirm before applying.
 - Delete the current, odd, even, or any selected pages.
 - Manage pages in a single thumbnail storyboard with fixed preview frames, a large focused-page inspector, stable pointer dragging with insertion feedback, keyboard reordering, batch removal, cross-group position moves, and 20-page on-demand preview groups for large documents.
@@ -78,6 +81,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 ### Annotate
 
 - Highlight, replace, delete, underline, note, and insert text annotations.
+- Set a persistent local annotation-author name from the movable Author window. New annotations write that name into the PDF; one visibility switch can show stable-color author badges above each annotation body, preserving the full content-column width without adding a column.
 - Use the page context menu or the floating selection toolbar to create annotations.
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
@@ -96,15 +100,15 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 
 | Shortcut | Action |
 | --- | --- |
-| `Ctrl+S` | Save the current PDF |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
-| `Ctrl+P` | Open the unified page-selection, print-settings, and preview window |
-| `Ctrl+C` / `Cmd+C` | Copy the selected PDF text and remove hard line breaks |
-| `Ctrl` + mouse wheel | Zoom |
+| `Ctrl+S` (`⌘S` on macOS) | Save the current PDF |
+| `Ctrl+Z` (`⌘Z` on macOS) | Undo |
+| `Ctrl+Y` / `Ctrl+Shift+Z` (`⌘⇧Z` on macOS) | Redo |
+| `Ctrl+P` (`⌘P` on macOS) | Open the unified page-selection, print-settings, and preview window |
+| `Ctrl+C` (`⌘C` on macOS) | Copy the selected PDF text and remove hard line breaks |
+| `Ctrl` + mouse wheel (`⌘` + mouse wheel on macOS) | Zoom |
 | `Alt+Left/Right` (`Option` on macOS) | Previous/next page |
 | `Shift+Left/Right` | Expand or shrink the text selection by character |
-| `Ctrl+I` / `Cmd+I` | Open the Annotation Lab AI Polish dialog |
+| `Ctrl+I` (`⌘I` on macOS) | Open the Annotation Lab AI Polish dialog |
 
 ## Run from Source
 
@@ -141,17 +145,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.6` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.20.8` before packaging:
 
 ```powershell
-npm run package:windows -- 1.20.6
+npm run package:windows -- 1.20.8
 ```
 
 ```sh
-npm run package:macos -- 1.20.6
+npm run package:macos -- 1.20.8
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.6` and `bash scripts/package-macos.sh 1.20.6`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.8` and `bash scripts/package-macos.sh 1.20.8`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -248,6 +252,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
 - **批注是审稿工作流，不是装饰层**：高亮、替换、删除、下划线、便笺和插入六类批注都能携带文字说明；批注内容、颜色、位置和回复会随 PDF 保存，重开文档仍可继续编辑。
+- **批注人清楚可辨，列表仍然干净**：可在可移动的“批注人”浮窗中持久保存本机审阅者姓名，今后的新批注会把姓名写入 PDF；单一外显开关可在批注正文上方显示稳定配色的紧凑标签，正文仍独占完整内容列宽度，也不会额外增加列表列。
+- **快捷键提示遵循当前系统**：所有功能按钮统一使用右侧键帽样式，并自动切换 Windows 与 macOS 的按键习惯；编辑模块七项主功能也补齐了与批注工具一致的简洁线性图标。
 - **字符级批注，半行文字也不丢精度**：单击得到字符间光标，拖动只选择真正命中的字符；跨行、半词和中英文混排都能精确标记，替换线与插入箭头会吸附到真实字符边界。选中文字后，页面浮动工具栏和右键菜单都能直接创建批注。
 - **三种快捷回复，把意见变成决定**：每条批注旁边都有“✓ 已处理 / ? 想一想 / × 不做了”快捷按钮，一次点击即可更新状态；状态会以淡绿、淡黄、淡红的行背景呈现，不必打开批注逐条确认。需要补充上下文时，还能输入自定义回复。
 - **回复统计就是返修进度板**：批注列表按“未回复、已处理、想一想、不做了”统计数量，点击统计项即可跳到第一条对应批注；审稿结束前，未回复和“想一想”数量就是明确的待办清单。
@@ -324,6 +330,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 编辑
 
+- 七项主编辑功能均使用与批注工具协调的简洁线性图标，同时保留原有标题与说明；
 - 框选裁切页面，初选后可移动并通过八个控制点精调大小；点击页面内“确认范围”后才询问是否执行裁切；
 - 页面管理器采用统一缩略图故事板和右侧大图详情；拖动时显示悬浮影子与插入位置，松手后再重排，也可用方向键或目标位置跨组移动；支持多页批量删除，大文档每组按需生成 20 页预览，排序和删除作为一次可撤销修改提交；
 - 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG 或 EPS 合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会在本机 Ghostscript 可用时离线栅格化导入；
@@ -369,6 +376,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 文本替换线与插入箭头默认使用深蓝色，插入箭头按字符边界精确指向文字中间；
 - 多段或半行批注仅在真正标记的片段上响应鼠标，未标记文字仍可继续精准框选和批注；
 - 每条批注支持自定义回复，以及“已处理 / 想一想 / 不做了”三种快捷回复；快捷状态默认不外显文字，而以淡绿、淡黄、淡红列表底色表达；
+- 列表顶部“批注人”按钮会打开可移动浮窗；姓名会持久保存并写入今后的新批注，单一外显开关可在每条批注正文上方显示稳定配色标签，使正文独占完整内容列宽度且不新增列表列；
 - 批注列表默认完整多行显示内容，也可通过顶部按钮切换为紧凑单行模式；列表仍支持定位、编辑、删除和收起为 46 px 窄栏；
 - 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失；
 - 删除批注会立即执行，不再二次确认；误删可用 `Ctrl/⌘Z` 撤销。
@@ -394,15 +402,15 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 | 快捷键 | 功能 |
 | --- | --- |
-| `Ctrl+S` | 保存当前 PDF |
-| `Ctrl+Z` | 撤销当前 PDF 的上一步修改 |
-| `Ctrl+Y` / `Ctrl+Shift+Z` | 重做当前 PDF 的下一步修改 |
-| `Ctrl+P` | 打开合并后的页码选择、打印设置与预览窗口 |
-| `Ctrl+C` / `Cmd+C` | 复制当前 PDF 文字选区，并自动去除回行 |
-| `Ctrl+鼠标滚轮` | 快速缩放页面 |
+| `Ctrl+S`（macOS 为 `⌘S`） | 保存当前 PDF |
+| `Ctrl+Z`（macOS 为 `⌘Z`） | 撤销当前 PDF 的上一步修改 |
+| `Ctrl+Y` / `Ctrl+Shift+Z`（macOS 为 `⌘⇧Z`） | 重做当前 PDF 的下一步修改 |
+| `Ctrl+P`（macOS 为 `⌘P`） | 打开合并后的页码选择、打印设置与预览窗口 |
+| `Ctrl+C`（macOS 为 `⌘C`） | 复制当前 PDF 文字选区，并自动去除回行 |
+| `Ctrl+鼠标滚轮`（macOS 为 `⌘+鼠标滚轮`） | 快速缩放页面 |
 | `Alt+←/→`（macOS 为 `Option+←/→`） | 快速翻到上一页或下一页 |
 | `Shift+←/→` | 所有模式下逐字符扩展或收缩文字选区 |
-| `Ctrl+I` / `Cmd+I` | 打开批注实验室的智能润色窗口 |
+| `Ctrl+I`（macOS 为 `⌘I`） | 打开批注实验室的智能润色窗口 |
 
 ## 从源码运行
 
@@ -441,17 +449,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.6`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.20.8`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.20.6
+npm run package:windows -- 1.20.8
 ```
 
 ```sh
-npm run package:macos -- 1.20.6
+npm run package:macos -- 1.20.8
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.6` 和 `bash scripts/package-macos.sh 1.20.6`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.20.8` 和 `bash scripts/package-macos.sh 1.20.8`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

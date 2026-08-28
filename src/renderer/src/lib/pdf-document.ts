@@ -13,6 +13,7 @@ import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
 import { rotatedImageBounds } from './image-geometry'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, pageNumberRect, validatePageNumberTemplate } from './page-numbers'
 import type { PdfImportFile } from '../../../shared/contracts'
+import { normalizeAnnotationAuthor } from './annotation-author'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
   highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线', ai_polish: '智能润色'
@@ -804,7 +805,7 @@ export class PdfDocumentModel {
     return entry
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string): Promise<string> {
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string): Promise<string> {
     const page = this.document.getPage(pageIndex)
     const geometry = pageGeometry(page)
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -824,7 +825,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('Subtype'), PDFName.of(subtypeFor(kind)))
     dictionary.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(bounds, geometry)))
     dictionary.set(PDFName.of('Contents'), pdfString(content))
-    dictionary.set(PDFName.of('T'), pdfString('PDFuck'))
+    dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
     if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))

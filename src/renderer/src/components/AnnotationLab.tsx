@@ -3,11 +3,12 @@ import { AnnotationIcon } from './AnnotationIcon'
 import { AI_PRESETS, defaultSettings, detectAiLanguage, loadAiSettings, polishText, promptForLanguage, providerSettings, saveAiSettings, type AiLanguage, type AiSettings } from '../lib/ai-polish'
 import { normalizeCopiedText } from '../lib/clipboard-text'
 import { translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
+import { shortcutLabel } from '../lib/platform-shortcuts'
 import './annotation-lab.css'
 
-interface Props { selection?: string; selectionKey?: string; onAdd(content: string): void | Promise<void>; onCopy(content: string): void }
+interface Props { selection?: string; selectionKey?: string; platform?: string; onAdd(content: string): void | Promise<void>; onCopy(content: string): void }
 
-export function AnnotationLab({ selection, selectionKey, onAdd, onCopy }: Props) {
+export function AnnotationLab({ selection, selectionKey, platform = 'win32', onAdd, onCopy }: Props) {
   useInterfaceLanguage()
   const t = ui
   const [open, setOpen] = useState(false)
@@ -74,7 +75,7 @@ export function AnnotationLab({ selection, selectionKey, onAdd, onCopy }: Props)
 
   return <>
     <h3>{t('实验室')}</h3>
-    <div className="annotation-lab-tool-row"><button type="button" className="tool-button with-icon annotation-lab-launch" onClick={() => setOpen(true)}><AnnotationIcon kind="ai_polish" /><span className="tool-button-copy"><strong>{t('智能润色')}</strong><small>{t('框选文字 · Ctrl+I / ⌘I')}</small></span></button><button type="button" className="annotation-lab-settings-trigger" title={ui('模型设置')} aria-label={ui('模型设置')} onClick={() => setSettingsOpen(true)}>⚙</button></div>
+    <div className="annotation-lab-tool-row"><button type="button" className="tool-button with-icon has-shortcut annotation-lab-launch" onClick={() => setOpen(true)}><AnnotationIcon kind="ai_polish" /><span className="tool-button-copy"><strong>{t('智能润色')}</strong><small>{t('框选文字')}</small></span><kbd>{shortcutLabel('aiPolish', platform)}</kbd></button><button type="button" className="annotation-lab-settings-trigger" title={ui('模型设置')} aria-label={ui('模型设置')} onClick={() => setSettingsOpen(true)}>⚙</button></div>
     {settingsOpen && <div className="annotation-lab-settings-backdrop" role="presentation" onPointerDown={() => setSettingsOpen(false)}><section className="annotation-lab-settings" role="dialog" aria-modal="true" aria-label={ui('智能润色模型设置')} onPointerDown={(event) => event.stopPropagation()}><header><b>{t('模型设置')}</b><button type="button" onClick={() => setSettingsOpen(false)} aria-label={ui('关闭模型设置')}>×</button></header>
       <label>{t('服务商')}<select value={settings.provider} onChange={(event) => setSettings(providerSettings(settings, event.target.value as AiSettings['provider']))}><option value="openai">{t('OpenAI / 中转')}</option><option value="claude">{t('Claude / 中转')}</option><option value="bigmodel">BigModel Plan</option><option value="doubao">Doubao</option><option value="deepseek">DeepSeek</option><option value="kimi">KIMI</option><option value="custom">{t('自定义 OpenAI 兼容')}</option></select></label>
       <label>{t('接口地址')}<input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} /></label><label>{ui('API 密钥')}<input type="password" value={settings.apiKey} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} /></label><label>{t('模型')}<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} /></label>

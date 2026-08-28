@@ -33,7 +33,7 @@ describe('annotation localization', () => {
   it('localizes blank annotation defaults, quick replies, and the delete action', async () => {
     const root = createRoot(container)
     setInterfaceLanguage('en')
-    await act(async () => root.render(<AnnotationPanel collapsed={false} annotations={[{ id: 'empty', pageIndex: 0, kind: 'underline', author: '', content: '', color: '#000000', reply: { status: 'handled', content: '已处理' }, rects: [] }]} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
+    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ id: 'empty', pageIndex: 0, kind: 'underline', author: '', content: '', color: '#000000', reply: { status: 'handled', content: '已处理' }, rects: [] }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
     expect(container.textContent).toContain('No content')
     expect(container.querySelector('.annotation-actions button')?.textContent).toBe('Delete Annotation')
     expect(container.querySelector('.annotation-settings-button')?.getAttribute('title')).toBe('Reply: Resolved')

@@ -1,3 +1,5 @@
+import { DEFAULT_ANNOTATION_AUTHOR, normalizeAnnotationAuthor } from './annotation-author'
+
 export type AppTheme = 'light' | 'dark'
 export type PageFitPreference = 'none' | 'width' | 'page'
 
@@ -8,11 +10,15 @@ export interface AppPreferences {
   /** Apply the last explicitly selected page fitting mode to newly opened PDFs. */
   pageFit: PageFitPreference
   documentBackgrounds: Record<string, string>
+  /** Stored in the standard PDF annotation author field for newly created annotations. */
+  annotationAuthor: string
+  /** Reveal compact, colour-coded author badges inside annotation content cells. */
+  showAnnotationAuthors: boolean
 }
 
 const KEY = 'pdfuck.preferences.v1'
 export const DEFAULT_ACCENT = '#5575de'
-const fallback: AppPreferences = { theme: 'light', pageFit: 'none', documentBackgrounds: {} }
+const fallback: AppPreferences = { theme: 'light', pageFit: 'none', documentBackgrounds: {}, annotationAuthor: DEFAULT_ANNOTATION_AUTHOR, showAnnotationAuthors: false }
 
 function validColor(value: unknown): value is string { return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) }
 
@@ -23,7 +29,7 @@ export function loadPreferences(): AppPreferences {
     // as the default so the new restore action accurately reflects its state.
     const accent = validColor(value.accent) && value.accent.toLowerCase() !== DEFAULT_ACCENT ? value.accent : undefined
     const pageFit: PageFitPreference = value.pageFit === 'width' || value.pageFit === 'page' ? value.pageFit : value.fitWidth === true ? 'width' : 'none'
-    return { theme: value.theme === 'dark' ? 'dark' : 'light', accent, pageFit, documentBackgrounds: value.documentBackgrounds && typeof value.documentBackgrounds === 'object' ? value.documentBackgrounds : {} }
+    return { theme: value.theme === 'dark' ? 'dark' : 'light', accent, pageFit, documentBackgrounds: value.documentBackgrounds && typeof value.documentBackgrounds === 'object' ? value.documentBackgrounds : {}, annotationAuthor: normalizeAnnotationAuthor(value.annotationAuthor), showAnnotationAuthors: value.showAnnotationAuthors === true }
   } catch { return fallback }
 }
 

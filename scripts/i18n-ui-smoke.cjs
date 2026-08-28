@@ -4,9 +4,11 @@ const path = require('node:path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '..')
+const packageVersion = require('../package.json').version
 const userData = path.join(root, 'tmp', 'i18n-ui-smoke-user')
 const entry = path.join(root, 'out/main/index.js')
 const pdfPath = path.join(root, 'tmp', 'Scheduling0821m.pdf')
+const screenshotDirectory = path.join(root, 'output', 'playwright')
 
 async function launch(args = []) {
   return electron.launch({ executablePath: process.env.PDFUCK_SMOKE_EXECUTABLE || require('electron'), args: [entry, ...args], env: { ...process.env, PDFUCK_TEST_USER_DATA: userData } })
@@ -98,7 +100,25 @@ async function main() {
     await page.getByRole('button', { name: 'Ajustar al ancho', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Ajustar página', exact: true }).waitFor()
     assert.equal(await page.locator('.fit-control svg').count(), 2, 'both page fitting controls must be icon buttons')
+    const platform = await page.evaluate(() => window.desktop.platform)
+    const searchAction = page.locator('.search-pdf-action')
+    await searchAction.getByText('Buscar en PDF', { exact: true }).waitFor()
+    assert.equal(await searchAction.locator('small').count(), 0, 'search PDF must not render a subtitle')
+    assert.equal(await searchAction.locator('kbd').innerText(), platform === 'darwin' ? '⌘F' : 'Ctrl+F', 'search keycap must match the current platform')
+    const searchLayout = await searchAction.evaluate((element) => {
+      const peer = element.nextElementSibling
+      const label = element.querySelector('span')
+      if (!(peer instanceof HTMLElement) || !(label instanceof HTMLElement)) return null
+      const labelStyle = getComputedStyle(label), peerStyle = getComputedStyle(peer)
+      return { searchHeight: element.getBoundingClientRect().height, peerHeight: peer.getBoundingClientRect().height, searchFontSize: labelStyle.fontSize, peerFontSize: peerStyle.fontSize, searchFontWeight: labelStyle.fontWeight, peerFontWeight: peerStyle.fontWeight }
+    })
+    assert.ok(searchLayout && Math.abs(searchLayout.searchHeight - searchLayout.peerHeight) <= 1, 'search PDF must use the same button height as the reading tools below it')
+    assert.equal(searchLayout.searchFontSize, searchLayout.peerFontSize, 'search PDF must use the same text size as the reading tools below it')
+    assert.equal(searchLayout.searchFontWeight, searchLayout.peerFontWeight, 'search PDF must use the same text weight as the reading tools below it')
+    fs.mkdirSync(screenshotDirectory, { recursive: true })
+    await page.screenshot({ path: path.join(screenshotDirectory, `reading-tools-${packageVersion}.png`) })
     await page.locator('.nav-rail').getByRole('button', { name: 'Editar', exact: true }).click()
+    assert.equal(await page.locator('.edit-tool-icon').count(), 7, 'all seven edit actions must use the shared line-icon system')
     await page.getByText('Añadir números de página', { exact: true }).click()
     await page.getByRole('heading', { name: 'Añadir números de página', exact: true }).waitFor()
     await page.getByText('Página + total', { exact: true }).waitFor()
@@ -124,6 +144,59 @@ async function main() {
     for (const chinese of ['批注列表', '回复统计', '列表字号', '单行', '实验室', '智能润色', '适合宽度']) {
       assert.equal(await page.getByText(chinese, { exact: true }).count(), 0, `untranslated UI label: ${chinese}`)
     }
+    const shortcutKeys = await page.locator('.tool-panel .tool-button kbd').allInnerTexts()
+    if (platform === 'darwin') {
+      assert.ok(shortcutKeys.includes('⌘H') && shortcutKeys.includes('⌫'), 'macOS annotation keycaps must use Command and Backspace symbols')
+      assert.ok(shortcutKeys.every((key) => !key.includes('Ctrl') && key !== 'Insert'), 'macOS must not advertise Windows-only keycaps')
+    } else {
+      assert.ok(shortcutKeys.includes('Ctrl+H') && shortcutKeys.includes('Delete') && shortcutKeys.includes('Insert'), 'Windows annotation keycaps must use Windows conventions')
+      assert.ok(shortcutKeys.every((key) => !key.includes('⌘')), 'Windows must not advertise macOS keycaps')
+    }
+    await page.locator('.annotation-author-button').click()
+    const authorWindow = page.locator('.annotation-author-window')
+    await authorWindow.getByText('Autor de anotaciones', { exact: true }).waitFor()
+    await assertNoChineseControls(page, '.annotation-author-window')
+    const authorBefore = await authorWindow.boundingBox()
+    if (authorBefore) {
+      await page.mouse.move(authorBefore.x + 80, authorBefore.y + 24)
+      await page.mouse.down()
+      await page.mouse.move(authorBefore.x - 35, authorBefore.y + 55, { steps: 4 })
+      await page.mouse.up()
+      const authorAfter = await authorWindow.boundingBox()
+      assert.ok(authorAfter && (Math.abs(authorAfter.x - authorBefore.x) > 10 || Math.abs(authorAfter.y - authorBefore.y) > 10), 'annotation author window must be movable')
+    }
+    await authorWindow.locator('.annotation-author-name input').fill('Revisor Uno')
+    assert.equal(await authorWindow.locator('input[type="checkbox"]').count(), 0, 'annotation author settings must not expose a duplicate checkbox')
+    const authorVisibility = authorWindow.getByRole('switch', { name: 'Mostrar autores en la lista', exact: true })
+    assert.equal(await authorVisibility.getAttribute('aria-checked'), 'false', 'author visibility switch must start from the persisted state')
+    await authorVisibility.click()
+    assert.equal(await authorVisibility.getAttribute('aria-checked'), 'true', 'the single author visibility switch must toggle the setting')
+    await page.screenshot({ path: path.join(screenshotDirectory, `annotation-author-${packageVersion}.png`) })
+    await authorWindow.getByRole('button', { name: 'Guardar ajustes', exact: true }).click()
+    const storedAuthor = await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.preferences.v1') || '{}'))
+    assert.equal(storedAuthor.annotationAuthor, 'Revisor Uno', 'annotation author name must persist locally')
+    assert.equal(storedAuthor.showAnnotationAuthors, true, 'author visibility must persist locally')
+    await documentPage.click({ button: 'right', position: { x: 220, y: 170 } })
+    await page.locator('.context-menu').getByText('Nota', { exact: true }).click()
+    const annotationDialog = page.locator('.annotation-dialog')
+    await annotationDialog.locator('textarea').fill('Author smoke annotation')
+    await annotationDialog.getByRole('button', { name: 'Confirmar', exact: true }).click()
+    await page.locator('.annotation-row .annotation-author-badge').getByText('Revisor Uno', { exact: true }).waitFor()
+    assert.equal(await page.locator('.annotation-header').evaluate((element) => element.children.length), 5, 'author badges must not add a list column')
+    const authoredRow = page.locator('.annotation-row').filter({ hasText: 'Author smoke annotation' }).first()
+    const authorLayout = await authoredRow.evaluate((row) => {
+      const content = row.querySelector('.annotation-content'), author = row.querySelector('.annotation-author-meta'), value = row.querySelector('.annotation-content-value')
+      if (!(content instanceof HTMLElement) || !(author instanceof HTMLElement) || !(value instanceof HTMLElement)) return null
+      const contentRect = content.getBoundingClientRect(), authorRect = author.getBoundingClientRect(), valueRect = value.getBoundingClientRect()
+      return { authorBottom: authorRect.bottom, valueTop: valueRect.top, contentLeft: contentRect.left, contentWidth: contentRect.width, valueLeft: valueRect.left, valueWidth: valueRect.width }
+    })
+    assert.ok(authorLayout && authorLayout.authorBottom <= authorLayout.valueTop + 0.5, 'annotation author must sit above the annotation body')
+    assert.ok(authorLayout && Math.abs(authorLayout.contentLeft - authorLayout.valueLeft) <= 0.5 && authorLayout.valueWidth >= authorLayout.contentWidth - 0.5, 'annotation body must retain the full content-column width')
+    await page.screenshot({ path: path.join(screenshotDirectory, `annotation-author-list-${packageVersion}.png`) })
+    await page.locator('.annotation-line-toggle').click()
+    const compactAuthorBottom = await authoredRow.locator('.annotation-author-meta').evaluate((element) => element.getBoundingClientRect().bottom)
+    const compactValueTop = await authoredRow.locator('.annotation-content-value').evaluate((element) => element.getBoundingClientRect().top)
+    assert.ok(compactAuthorBottom <= compactValueTop + 0.5, 'single-line mode must keep the author above the annotation body')
     await page.locator('.annotation-lab-launch').click()
     for (const label of ['Explicación sencilla', 'Mejorar la lógica', 'Solo gramática', 'Redacción natural', 'Resolver incoherencias', 'Destacar puntos fuertes']) {
       await page.locator('.ai-polish-window').getByText(label, { exact: true }).waitFor()

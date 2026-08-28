@@ -4,7 +4,9 @@ import type { ModuleKey, Tool, ViewMode } from '../types'
 import type { ExportFormat } from '../../../shared/contracts'
 import { AnnotationIcon } from './AnnotationIcon'
 import { AnnotationLab } from './AnnotationLab'
+import { EditIcon } from './EditIcon'
 import { setInterfaceLanguage, t, ui, useInterfaceLanguage } from '../lib/i18n'
+import { isMacPlatform, shortcutLabel } from '../lib/platform-shortcuts'
 import './theme-settings.css'
 
 interface Props {
@@ -48,11 +50,12 @@ interface Props {
   selectionKey?: string
   onAddAiAnnotation(content: string): void
   onCopy(content: string): void
+  platform?: string
 }
 
-const ToolButton = ({ tool, activeTool, children, hint, icon, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span></button>
+const ToolButton = ({ tool, activeTool, children, hint, icon, shortcut, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; shortcut?: string; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}`} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
 
-const PanelAction = ({ children, hint, disabled, onClick, tone = 'default', shortcut }: { children: React.ReactNode; hint: string; disabled?: boolean; onClick(): void; tone?: 'default' | 'primary' | 'danger'; shortcut?: string }) => <button type="button" className={`tool-panel-action ${tone}`} disabled={disabled} onClick={onClick}><span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
+const PanelAction = ({ children, hint, disabled, icon, onClick, tone = 'default', shortcut }: { children: React.ReactNode; hint: string; disabled?: boolean; icon?: React.ReactNode; onClick(): void; tone?: 'default' | 'primary' | 'danger'; shortcut?: string }) => <button type="button" className={`tool-panel-action ${tone}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}`} disabled={disabled} onClick={onClick}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
 
 const THEME_COLORS = [
   ['靛蓝', '#5575de'], ['蓝色', '#2f7de1'], ['青绿', '#23826b'], ['森林绿', '#3d8a57'],
@@ -106,33 +109,35 @@ export function ThemeColorPicker({ label, value, theme, onChange }: { label: str
 export function ToolPanel(props: Props) {
   const { module, activeTool, mode, disabled, onTool, readOnly } = props
   const language = useInterfaceLanguage()
+  const platform = props.platform || 'win32'
+  const mac = isMacPlatform(platform)
   return <aside className="tool-panel">
     {module === 'view' && <section><h2>{ui('查看')}</h2><p className="subtitle">{ui('选择适合当前阅读场景的页面布局。')}</p><h3>{ui('页面布局')}</h3>
       <div className="segmented"><button className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>{ui('连续滚动')}</button><button className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>{ui('单页查看')}</button></div>
       <h3>{ui('主题')}</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>{ui('明快')}</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>{ui('夜间')}</button></div><div className="theme-settings"><div className="theme-setting"><div className="theme-setting-copy"><b>{ui('软件主题色')}</b><small>{ui('控制按钮与强调色')}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui('软件主题色')} value={props.accent} theme={props.theme} onChange={props.onAccent} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title={ui('恢复默认软件主题色')} aria-label={ui('恢复默认软件主题色')}>↺</button></div></div><div className="theme-setting"><div className="theme-setting-copy"><b>{ui('PDF 纸张背景')}</b><small>{ui('仅作用于当前 PDF')}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui('PDF 纸张背景')} value={props.documentBackground} theme={props.theme} onChange={props.onDocumentBackground} /><button type="button" className="color-reset" disabled={!props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title={ui('恢复默认 PDF 纸张背景')} aria-label={ui('恢复默认 PDF 纸张背景')}>↺</button></div></div></div><p className="hint theme-settings-hint">{ui('PDF 纸张背景仅保存在当前文档的本机偏好中。')}</p>
 <h3>{ui('界面语言')}</h3><label className="language-select"><select value={language} aria-label={ui('界面语言')} onChange={(event) => setInterfaceLanguage(event.target.value as typeof language)}><option value="zh">简体中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ru">Русский</option><option value="es">Español</option></select></label>
-      <h3>{ui('阅读工具')}</h3><button className="wide tool-action-button" disabled={disabled} onClick={props.onSearch}>{ui('搜索 PDF')} <kbd>Ctrl+F</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>{ui('一键图表')}</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? ui('关闭引文标记') : ui('关联引文')}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>{ui('语法检查')}</button>
+      <h3>{ui('阅读工具')}</h3><button type="button" className="wide tool-action-button search-pdf-action" disabled={disabled} onClick={props.onSearch}><span>{ui('搜索 PDF')}</span><kbd>{shortcutLabel('search', platform)}</kbd></button><button className="wide tool-action-button" disabled={disabled} onClick={props.onVisuals}>{ui('一键图表')}</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? ui('关闭引文标记') : ui('关联引文')}</button><button className="wide tool-action-button" disabled={disabled} onClick={props.onGrammar}>{ui('语法检查')}</button>
       {readOnly && <div className="encrypted-readonly"><b>{ui('加密文档 · 只读')}</b><span>{ui('当前编辑引擎无法安全写回加密 PDF，阅读和缩放不受影响。')}</span></div>}
-      <div className="info-card"><b>{ui('阅读提示')}</b><span>{ui('Ctrl/⌘ + 滚轮缩放；Alt/Option + 左右方向键快速翻页。')}</span></div></section>}
+      <div className="info-card"><b>{ui('阅读提示')}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div></section>}
     {module === 'edit' && <section><h2>{ui('编辑')}</h2><p className="subtitle">{ui('直接调整页面或添加带格式的文字和图片内容。')}</p><h3>{ui('页面')}</h3>
-      <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} hint={ui('拖动框选要保留的页面区域')}>{ui('框选裁切页面')}</ToolButton>
-      <PanelAction disabled={readOnly} onClick={props.onMergeFiles} hint={ui('无需先打开 PDF；选择插入位置并调整导入文件顺序。')}>{ui('从文件合并 PDF…')}</PanelAction>
-      <PanelAction disabled={disabled} onClick={props.onDeletePages} hint={ui('预览、调整顺序并批量删除页面。')}>{ui('管理页面…')}</PanelAction><h3>{ui('内容')}</h3>
-      <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} hint={ui('显示当前页文本块，点击任意一处直接编辑')}>{ui('编辑页面文字')}</ToolButton>
-      <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} hint={ui('拖出文本框后设置内容和格式')}>{ui('在页面上添加文字')}</ToolButton>
-      <PanelAction disabled={disabled} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。')}>{ui('在页面上添加图片…')}</PanelAction>
-      <PanelAction disabled={disabled} onClick={() => props.onPageNumbers?.()} hint={ui('在全部页面添加可自定义、可删除的页码。')}>{ui('在页面上增加页码')}</PanelAction></section>}
-    {module === 'annotate' && <section><h2>{ui('批注')}</h2><p className="subtitle">{ui('拖动框选文字；Ctrl/⌘ 加选，Shift 选择连续批注，Delete 批量删除。')}</p><h3>{ui('文本批注')}</h3>
-      <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} hint={ui('框选文字 · Ctrl+H / ⌘H')}>{ui('文本高亮')}</ToolButton>
-      <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} hint={ui('框选原文 · Ctrl+R / ⌘R')}>{ui('文本替换')}</ToolButton>
-      <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="delete_text" />} hint={ui('框选文字 · Delete')}>{ui('文本删除')}</ToolButton>
-      <ToolButton tool="underline" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="underline" />} hint={ui('框选文字 · Ctrl+U / ⌘U')}>{ui('加下划线')}</ToolButton><h3>{ui('位置批注')}</h3>
-      <ToolButton tool="note" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="note" />} hint={ui('选择文字 · Ctrl+N / ⌘N')}>{ui('自由批注')}</ToolButton>
-      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} hint={ui('选择文字 · Insert')}>{ui('插入文字')}</ToolButton>
-      <AnnotationLab selection={props.selection} selectionKey={props.selectionKey} onAdd={props.onAddAiAnnotation} onCopy={props.onCopy} /></section>}
+      <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="crop" />} hint={ui('拖动框选要保留的页面区域')}>{ui('框选裁切页面')}</ToolButton>
+      <PanelAction disabled={readOnly} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui('无需先打开 PDF；选择插入位置并调整导入文件顺序。')}>{ui('从文件合并 PDF…')}</PanelAction>
+      <PanelAction disabled={disabled} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('预览、调整顺序并批量删除页面。')}>{ui('管理页面…')}</PanelAction><h3>{ui('内容')}</h3>
+      <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="edit_text" />} hint={ui('显示当前页文本块，点击任意一处直接编辑')}>{ui('编辑页面文字')}</ToolButton>
+      <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} icon={<EditIcon kind="add_text" />} hint={ui('拖出文本框后设置内容和格式')}>{ui('在页面上添加文字')}</ToolButton>
+      <PanelAction disabled={disabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui('导入 PNG 或 JPG；在当前页调整位置、大小和旋转后再确认。')}>{ui('在页面上添加图片…')}</PanelAction>
+      <PanelAction disabled={disabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui('在全部页面添加可自定义、可删除的页码。')}>{ui('在页面上增加页码')}</PanelAction></section>}
+    {module === 'annotate' && <section><h2>{ui('批注')}</h2><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui('文本批注')}</h3>
+      <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui('框选文字')}>{ui('文本高亮')}</ToolButton>
+      <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="replace" />} shortcut={shortcutLabel('replace', platform)} hint={ui('框选原文')}>{ui('文本替换')}</ToolButton>
+      <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="delete_text" />} shortcut={shortcutLabel('deleteSelection', platform)} hint={ui('框选文字')}>{ui('文本删除')}</ToolButton>
+      <ToolButton tool="underline" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="underline" />} shortcut={shortcutLabel('underline', platform)} hint={ui('框选文字')}>{ui('加下划线')}</ToolButton><h3>{ui('位置批注')}</h3>
+      <ToolButton tool="note" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="note" />} shortcut={shortcutLabel('note', platform)} hint={ui('选择文字')}>{ui('自由批注')}</ToolButton>
+      <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} icon={<AnnotationIcon kind="insert" />} shortcut={shortcutLabel('insert', platform)} hint={ui('选择文字')}>{ui('插入文字')}</ToolButton>
+      <AnnotationLab platform={platform} selection={props.selection} selectionKey={props.selectionKey} onAdd={props.onAddAiAnnotation} onCopy={props.onCopy} /></section>}
     {module === 'save' && <section><h2>{ui('保存')}</h2><p className="subtitle">{ui('保存完整文档，或只打印、导出真正需要的页面。')}</p><h3>PDF</h3>
-      <PanelAction tone="primary" disabled={disabled} onClick={() => props.onSave(false)} hint={ui('将当前所有修改写回此文件。')}>{ui('保存 PDF')}</PanelAction><PanelAction disabled={disabled} onClick={() => props.onSave(true)} hint={ui('选择新位置保存，原文件保持不变。')}>{ui('另存为 PDF…')}</PanelAction><h3>{ui('打印')}</h3>
-      <PanelAction disabled={disabled || props.printing} onClick={props.onPrint} shortcut="Ctrl+P" hint={ui('可选择连续或不连续页码，包含尚未保存的修改。')}>{props.printing ? ui('正在打开打印对话框…') : ui('选择页面并打印…')}</PanelAction><h3>{ui('指定页面导出')}</h3>
+      <PanelAction tone="primary" disabled={disabled} onClick={() => props.onSave(false)} shortcut={shortcutLabel('save', platform)} hint={ui('将当前所有修改写回此文件。')}>{ui('保存 PDF')}</PanelAction><PanelAction disabled={disabled} onClick={() => props.onSave(true)} hint={ui('选择新位置保存，原文件保持不变。')}>{ui('另存为 PDF…')}</PanelAction><h3>{ui('打印')}</h3>
+      <PanelAction disabled={disabled || props.printing} onClick={props.onPrint} shortcut={shortcutLabel('print', platform)} hint={ui('可选择连续或不连续页码，包含尚未保存的修改。')}>{props.printing ? ui('正在打开打印对话框…') : ui('选择页面并打印…')}</PanelAction><h3>{ui('指定页面导出')}</h3>
       <PanelAction disabled={disabled} onClick={props.onExport} hint={ui('可选不连续页码；文件名保留原文档页码后缀。')}>{ui('选择页面并导出…')}</PanelAction><div className="tool-control-card export-settings-card"><label>{ui('文件格式')}<select value={props.exportFormat} onChange={(event) => props.onExportFormat(event.target.value as Props['exportFormat'])}><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="eps">EPS</option></select></label>
       {props.exportFormat === 'pdf' && <><span className="export-mode-label">{ui('PDF 输出方式')}</span><div className="segmented export-mode"><button className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>{ui('合并为一个 PDF')}</button><button className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>{ui('每页单独 PDF')}</button></div></>}
       {props.exportFormat !== 'pdf' && <label>{ui('输出清晰度')}<div className="input-suffix"><input type="number" min="72" max="600" value={props.exportDpi} onChange={(event) => props.onExportDpi(Math.max(72, Math.min(600, Number(event.target.value))))} /><span>DPI</span></div></label>}</div></section>}
