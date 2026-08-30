@@ -20,7 +20,7 @@ import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelecti
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { shortcutLabel } from '../lib/platform-shortcuts'
 
-export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 interface ViewerProps {
   data?: Uint8Array
@@ -1021,7 +1021,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     setDocument(undefined); setSizes({})
     let active = true
     const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
-    task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => onError(error instanceof Error ? error : new Error(String(error))))
+    task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])
 
@@ -1147,7 +1147,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const checkGrammar = async () => {
     const hits = grammarIssues(await pageSnapshots()); setGrammarTerms([]); onInsight('grammar', hits)
   }
-  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
+  const documentText = async () => (await pageSnapshots()).map((page) => `--- Page ${page.pageIndex + 1} ---\n${page.text}`).join('\n\n')
+  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined

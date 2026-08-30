@@ -1,6 +1,6 @@
 import type { AnnotationKind, Tool } from '../types'
 
-type IconKind = AnnotationKind | Extract<Tool, 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'>
+type IconKind = AnnotationKind | Extract<Tool, 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'> | 'ai_review' | 'ai_suggest'
 
 export function AnnotationIcon({ kind, size = 22 }: { kind: IconKind; size?: number }) {
   const normalized = kind === 'delete_text' ? 'delete' : kind
@@ -12,5 +12,7 @@ export function AnnotationIcon({ kind, size = 22 }: { kind: IconKind; size?: num
     {normalized === 'delete' && <><path className="detail" d="M5 8h14M5 16h14" /><path className="accent" d="M4 12h16" /></>}
     {normalized === 'underline' && <><path d="M7 5v5a5 5 0 0 0 10 0V5" /><path className="accent" d="M5 19h14" /></>}
     {normalized === 'ai_polish' && <><path d="m12 3 1.6 5.1L19 10l-5.4 1.7L12 17l-1.6-5.3L5 10l5.4-1.9z" /><path className="accent" d="m18 15 .8 2.4L21 18l-2.2.7L18 21l-.8-2.3L15 18l2.2-.6z" /></>}
+    {normalized === 'ai_review' && <><path d="M6 3.5h9l3 3V20H6z" /><path className="detail" d="M15 3.5V7h3M9 11h6M9 14h4" /><path className="accent" d="m15.5 15.2.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>}
+    {normalized === 'ai_suggest' && <><path d="M5 5h14v10H9l-4 4z" /><path className="detail" d="M8 9h5M8 12h4" /><path className="accent" d="m17 8 .7 1.8 1.8.7-1.8.7L17 13l-.7-1.8-1.8-.7 1.8-.7z" /></>}
   </svg>
 }

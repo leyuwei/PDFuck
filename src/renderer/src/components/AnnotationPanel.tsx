@@ -18,6 +18,8 @@ interface Props {
   onColor(id: string, color: string): Promise<void>
   onReply(id: string, reply?: AnnotationReply): Promise<void>
   onDelete(ids: string[]): void
+  aiSuggestionsEnabled?: boolean
+  onAiSuggestion?(annotation: AnnotationRecord): void
   annotationAuthor: string
   showAnnotationAuthors: boolean
   theme: 'light' | 'dark'
@@ -41,7 +43,7 @@ function annotationContent(annotation: AnnotationRecord, t: (value: string) => s
   return annotation.content === '标记删除' ? t('标记删除') : annotation.content
 }
 
-function AnnotationRow({ annotation, selected, showAuthor, onSelect, onEdit, onColor, onReply }: { annotation: AnnotationRecord; selected: boolean; showAuthor: boolean; onSelect(options?: { additive?: boolean; range?: boolean }): void; onEdit(content: string): Promise<void>; onColor(color: string): Promise<void>; onReply(reply?: AnnotationReply): Promise<void> }) {
+function AnnotationRow({ annotation, selected, showAuthor, aiSuggestionsEnabled, onSelect, onEdit, onColor, onReply, onAiSuggestion }: { annotation: AnnotationRecord; selected: boolean; showAuthor: boolean; aiSuggestionsEnabled?: boolean; onSelect(options?: { additive?: boolean; range?: boolean }): void; onEdit(content: string): Promise<void>; onColor(color: string): Promise<void>; onReply(reply?: AnnotationReply): Promise<void>; onAiSuggestion?(): void }) {
   const t = ui
   const rowRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
@@ -68,11 +70,12 @@ function AnnotationRow({ annotation, selected, showAuthor, onSelect, onEdit, onC
       <div className="annotation-settings-title"><b>{t('批注设置')}</b><button type="button" onClick={() => setSettings(false)} aria-label={t('关闭批注设置')}>×</button></div>
       <AnnotationColorPicker compact color={annotation.color} onChange={(color) => void onColor(color)} />
       <AnnotationReplyPicker compact reply={annotation.reply} onChange={(reply) => void onReply(reply)} onQuickReply={() => setSettings(false)} />
+      {aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={() => { setSettings(false); onAiSuggestion?.() }}><AnnotationIcon kind="ai_suggest" size={18} /><span><b>{t('生成 AI 修改建议')}</b><small>{t('结合批注与多段正文上下文')}</small></span><i aria-hidden="true">›</i></button>}
     </div>}
   </div>
 }
 
-export function AnnotationPanel({ annotations, selectedId, selectedIds = [], collapsed, annotationAuthor, showAnnotationAuthors, theme, accent, onToggle, onSelect, onEdit, onColor, onReply, onDelete, onAuthorSettings }: Props) {
+export function AnnotationPanel({ annotations, selectedId, selectedIds = [], collapsed, annotationAuthor, showAnnotationAuthors, theme, accent, aiSuggestionsEnabled = false, onToggle, onSelect, onEdit, onColor, onReply, onDelete, onAuthorSettings, onAiSuggestion }: Props) {
   useInterfaceLanguage()
   const t = ui
   const [singleLine, setSingleLine] = useState(false)
@@ -107,7 +110,7 @@ export function AnnotationPanel({ annotations, selectedId, selectedIds = [], col
     <div className="annotation-toolbar"><span>{t('列表字号')}</span><div className="annotation-font-stepper"><button type="button" disabled={fontSize <= 10} onClick={() => setFontSize((value) => Math.max(10, value - 1))} aria-label={t('减小批注列表字号')} title={t('减小字号')}>A−</button><output>{fontSize}</output><button type="button" disabled={fontSize >= 15} onClick={() => setFontSize((value) => Math.min(15, value + 1))} aria-label={t('增大批注列表字号')} title={t('增大字号')}>A＋</button></div><AnnotationAuthorSettings author={annotationAuthor} showAuthors={showAnnotationAuthors} theme={theme} accent={accent} onSave={onAuthorSettings} /><button type="button" className="annotation-line-toggle" aria-pressed={singleLine} title={t(singleLine ? '切换为完整多行显示' : '切换为紧凑单行显示')} onClick={() => setSingleLine((value) => !value)}><span>{singleLine ? '☰' : '≡'}</span><span className="annotation-line-label">{t(singleLine ? '多行' : '单行')}</span></button></div>
     <section className={`annotation-summary${summaryCollapsed ? ' collapsed' : ''}`}><header><div><b>{t('回复统计')}</b><small>{message('annotation.count', { count: annotations.length })}</small></div><button type="button" onClick={() => setSummaryCollapsed((value) => !value)} aria-expanded={!summaryCollapsed} aria-label={t(summaryCollapsed ? '展开回复统计' : '收起回复统计')} title={t(summaryCollapsed ? '展开统计' : '收起统计')}>{summaryCollapsed ? '⌄' : '⌃'}</button></header>{!summaryCollapsed && <div className="annotation-summary-grid">{statuses.map((item) => <button type="button" key={item.status} className={item.status} disabled={!counts[item.status]} onClick={() => jumpToStatus(item.status)} title={counts[item.status] ? message('annotation.jumpToFirst', { status: t(item.label) }) : message('annotation.noneForStatus', { status: t(item.label) })}><b>{counts[item.status]}</b><span>{t(item.label)}</span></button>)}</div>}</section>
     <div className="annotation-header"><span /><span>{t('页')}</span><span>{t('状态')}</span><span>{t('内容（双击编辑）')}</span><span /></div>
-    <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} selected={selectedIds.includes(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} onSelect={(options) => onSelect(annotation, options)} onEdit={(content) => onEdit(annotation.id, content)} onColor={(color) => onColor(annotation.id, color)} onReply={(reply) => onReply(annotation.id, reply)} />) : <div className="empty-list">{t('还没有批注')}<br /><small>{t('在页面上框选文字开始批注')}</small></div>}</div>
+    <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} selected={selectedIds.includes(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} aiSuggestionsEnabled={aiSuggestionsEnabled} onSelect={(options) => onSelect(annotation, options)} onEdit={(content) => onEdit(annotation.id, content)} onColor={(color) => onColor(annotation.id, color)} onReply={(reply) => onReply(annotation.id, reply)} onAiSuggestion={() => onAiSuggestion?.(annotation)} />) : <div className="empty-list">{t('还没有批注')}<br /><small>{t('在页面上框选文字开始批注')}</small></div>}</div>
     <div className="annotation-actions"><button onClick={() => onDelete(selectedIds.length ? selectedIds : selected ? [selected.id] : [])} disabled={!selectedIds.length && !selected} className="danger">{selectedIds.length > 1 ? message('annotation.deleteMany', { count: selectedIds.length }) : message('annotation.delete')}</button></div>
   </aside>
 }

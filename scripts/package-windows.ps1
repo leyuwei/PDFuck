@@ -50,6 +50,8 @@ try {
   Invoke-Native -Command 'npm' -Arguments @('ci')
   Invoke-Native -Command 'npm' -Arguments @('run', 'build')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:i18n-ui')
+  Invoke-Native -Command 'node' -Arguments @('scripts/workflow-state-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/lab-features-ui-smoke.cjs')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-native')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:print-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:window-tabs')
@@ -101,6 +103,8 @@ try {
   $env:PDFUCK_RELEASE_VERSION = $currentVersion
   Invoke-Native -Command 'node' -Arguments @('scripts/release-ui-smoke.cjs')
   $env:PDFUCK_SMOKE_EXECUTABLE = $unpackedExecutable
+  Invoke-Native -Command 'node' -Arguments @('scripts/workflow-state-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/lab-features-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/print-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/page-manager-input-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/selection-scheduling-0826-ui-smoke.cjs')
@@ -128,7 +132,7 @@ try {
     executableProductVersion = $fileVersion
     artifacts = @($hashes | ForEach-Object { [ordered]@{ file = $_.Path; bytes = (Get-Item -LiteralPath $_.Path).Length; sha256 = $_.Hash } })
     signatures = $signatures
-    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'page-text-edit-ui', 'page-manager-input-ui', 'selection-scheduling', 'selection-scheduling-ui', 'selection-scheduling-0826', 'selection-scheduling-0826-ui', 'selection-test2', 'selection-test2-ui', 'citations-scheduling-0826', 'reading-navigation-ui', 'selection-chinese', 'selection-chinese-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-print-ui', 'packaged-page-manager-input-ui', 'packaged-selection-scheduling-0826-ui', 'packaged-selection-test2-ui', 'packaged-reading-navigation-ui', 'packaged-selection-chinese-ui')
+    tests = @('typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'workflow-state-ui', 'lab-features-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'page-text-edit-ui', 'page-manager-input-ui', 'selection-scheduling', 'selection-scheduling-ui', 'selection-scheduling-0826', 'selection-scheduling-0826-ui', 'selection-test2', 'selection-test2-ui', 'citations-scheduling-0826', 'reading-navigation-ui', 'selection-chinese', 'selection-chinese-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-workflow-state-ui', 'packaged-lab-features-ui', 'packaged-print-ui', 'packaged-page-manager-input-ui', 'packaged-selection-scheduling-0826-ui', 'packaged-selection-test2-ui', 'packaged-reading-navigation-ui', 'packaged-selection-chinese-ui')
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
   Write-Host "Windows release passed build, regression, packaged-app, version and hash checks." -ForegroundColor Green

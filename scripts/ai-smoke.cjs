@@ -25,7 +25,7 @@ async function main() {
   try {
     const page = await app.firstWindow()
     await page.waitForSelector('.titlebar', { timeout: 60000 })
-    const result = await page.evaluate(({ baseUrl }) => window.desktop.aiRequest({ url: `${baseUrl}/chat/completions`, headers: { authorization: 'Bearer smoke-key' }, body: JSON.stringify({ model: 'smoke-model' }) }), { baseUrl })
+    const result = await page.evaluate(({ baseUrl }) => window.desktop.aiRequest({ url: `${baseUrl}/chat/completions`, headers: { authorization: 'Bearer smoke-key' }, body: JSON.stringify({ model: 'smoke-model' }), timeoutMs: 120000 }), { baseUrl })
     assert.equal(result.status, 200)
     const responsePayload = JSON.parse(result.body)
     assert.equal(responsePayload.choices[0].message.content.map((item) => item.text).join(''), 'mock reply')

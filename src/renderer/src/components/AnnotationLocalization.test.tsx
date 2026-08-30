@@ -23,7 +23,7 @@ describe('annotation localization', () => {
     }
     for (const [language, labels] of Object.entries(expectations) as Array<[keyof typeof expectations, string[]]>) {
       setInterfaceLanguage(language)
-      await act(async () => { root.render(<AnnotationLab selection="Sample text" onAdd={() => undefined} onCopy={() => undefined} />) })
+      await act(async () => { root.render(<AnnotationLab selection={{ pageIndex: 0, text: 'Sample text', rects: [{ x: 0, y: 0, width: 10, height: 10 }] }} onAdd={() => undefined} onCopy={() => undefined} />) })
       await act(async () => { (container.querySelector('.annotation-lab-launch') as HTMLButtonElement).click() })
       for (const label of labels) expect(container.getElementsByClassName('ai-preset-grid')[0].textContent).toContain(label)
     }

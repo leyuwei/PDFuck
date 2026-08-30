@@ -58,9 +58,13 @@ async function main() {
 
       let copied = ''
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        await page.waitForTimeout(100)
+        await page.bringToFront()
         await page.keyboard.press('Control+C')
-        copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+        for (let poll = 0; poll < 20; poll += 1) {
+          await page.waitForTimeout(100)
+          copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+          if (include.test(copied)) break
+        }
         if (include.test(copied)) break
       }
       assert.match(copied, include, `page ${pageIndex + 1}: copied text lost the intended flow`)

@@ -72,7 +72,14 @@ async function main() {
     await result.click()
     const focus = page.locator('.insight-focus-ring').first()
     await focus.waitFor({ timeout: 10000 })
-    await page.waitForTimeout(300)
+    await page.waitForFunction(() => {
+      const element = document.querySelector('.insight-focus-ring')
+      const viewport = element?.closest('.viewer')
+      if (!element || !viewport) return false
+      const box = element.getBoundingClientRect()
+      const viewportBox = viewport.getBoundingClientRect()
+      return box.top >= viewportBox.top - 2 && box.bottom <= viewportBox.bottom + 2
+    }, undefined, { timeout: 1000 })
     const focusVisibility = await focus.evaluate((element) => {
       const box = element.getBoundingClientRect()
       const viewport = element.closest('.viewer')?.getBoundingClientRect()

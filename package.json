@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "1.20.10",
+  "version": "1.21.2",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:ai-smoke": "electron-vite build && node scripts/ai-smoke.cjs",
+    "test:workflow-state-ui": "electron-vite build && node scripts/workflow-state-ui-smoke.cjs",
+    "test:lab-features-ui": "electron-vite build && node scripts/lab-features-ui-smoke.cjs",
     "test:selection-smoke": "electron-vite build && node scripts/selection-smoke.cjs",
     "test:selection-cpaper": "node scripts/selection-cpaper-smoke.cjs",
     "test:selection-cpaper-ui": "electron-vite build && node scripts/selection-cpaper-ui-smoke.cjs",
@@ -50,7 +52,9 @@
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.2.108",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

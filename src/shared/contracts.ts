@@ -157,6 +157,8 @@ export interface AiRequest {
   url: string
   headers: Record<string, string>
   body: string
+  /** Renderer-selected response deadline. The main process validates its range. */
+  timeoutMs: number
 }
 
 export interface AiResponse {

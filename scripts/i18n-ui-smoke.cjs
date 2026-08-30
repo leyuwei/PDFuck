@@ -56,11 +56,11 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 700))
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const languages = [
-      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], transferPrompt: '释放以移回文档标签页', cjkFree: false },
-      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
-      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
-      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
-      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true }
+      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], timeout: '响应超时时间', transferPrompt: '释放以移回文档标签页', cjkFree: false },
+      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
+      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
+      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
+      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true }
     ]
     const languageSelect = page.locator('.language-select select')
     await languageSelect.waitFor()
@@ -78,6 +78,12 @@ async function main() {
         await page.getByRole('heading', { name: module, exact: true }).waitFor()
         await assertAdaptiveToolPanel(page, language.value, module)
       }
+      await page.locator('.nav-rail').getByRole('button', { name: language.modules[1], exact: true }).click()
+      await page.locator('.annotation-lab-settings-trigger').click()
+      await page.locator('.annotation-lab-settings label').filter({ hasText: language.timeout }).waitFor()
+      assert.equal(await page.locator('.ai-timeout-input input').inputValue(), '120', `${language.value} timeout default must be 120 seconds`)
+      if (language.cjkFree) await assertNoChineseControls(page, '.annotation-lab-settings')
+      await page.locator('.annotation-lab-settings header button').click()
       await page.locator('.nav-rail').getByRole('button', { name: language.view, exact: true }).click()
       await assertAdaptiveToolPanel(page, language.value, language.view)
       const documentTransfer = await page.evaluateHandle(() => {
@@ -159,6 +165,7 @@ async function main() {
     await page.keyboard.press('Control+z')
     await page.locator('.text-object').first().waitFor({ state: 'detached' })
     await page.locator('.window-dirty-dot').waitFor({ state: 'detached' })
+    if (await page.locator('.error-dialog').count()) throw new Error(`unexpected page-number undo error: ${await page.locator('.error-dialog').innerText()}`)
     await page.locator('.nav-rail').getByRole('button', { name: 'Anotar', exact: true }).click()
     await page.waitForTimeout(150)
     for (const label of ['Lista de anotaciones', 'Resumen de respuestas', 'Tamaño de texto de la lista', 'Una línea', 'Laboratorio', 'Edición con IA']) {
@@ -220,7 +227,7 @@ async function main() {
     const compactAuthorBottom = await authoredRow.locator('.annotation-author-meta').evaluate((element) => element.getBoundingClientRect().bottom)
     const compactValueTop = await authoredRow.locator('.annotation-content-value').evaluate((element) => element.getBoundingClientRect().top)
     assert.ok(compactAuthorBottom <= compactValueTop + 0.5, 'single-line mode must keep the author above the annotation body')
-    await page.locator('.annotation-lab-launch').click()
+    await page.locator('.annotation-lab-launch.has-shortcut').click()
     for (const label of ['Explicación sencilla', 'Mejorar la lógica', 'Solo gramática', 'Redacción natural', 'Resolver incoherencias', 'Destacar puntos fuertes']) {
       await page.locator('.ai-polish-window').getByText(label, { exact: true }).waitFor()
     }

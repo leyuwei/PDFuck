@@ -101,8 +101,10 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
 }
 
 async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
-  if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('智能润色请求无效。')
-  if (request.body.length > 2_000_000) throw new Error('智能润色请求过大，请缩短框选内容后重试。')
+  if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('AI 请求无效。')
+  if (Buffer.byteLength(request.body, 'utf8') > 64 * 1024 * 1024) throw new Error('AI 请求超过 64 MB。请缩短内容，或在全文评价中改用转换后的文档文字。')
+  const requestedTimeout = typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs) ? request.timeoutMs : 120_000
+  const timeoutMs = Math.round(Math.max(5_000, Math.min(3_600_000, requestedTimeout)))
   let target: URL
   try { target = new URL(request.url) } catch { throw new Error('接口地址无效，请检查 URL 是否完整（需以 http:// 或 https:// 开头）。') }
   if (target.protocol !== 'https:' && target.protocol !== 'http:') throw new Error('接口地址只支持 http:// 或 https://。')
@@ -115,13 +117,13 @@ async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
     }
   }
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 45_000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await net.fetch(target.toString(), { method: 'POST', headers, body: request.body, signal: controller.signal })
     const body = await response.text()
     return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('请求超时（45 秒）。请检查网络、代理或接口地址后重试。')
+    if (controller.signal.aborted) throw new Error('请求超时。请增大模型设置中的响应超时时间，或检查网络、代理和接口地址。')
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   } finally { clearTimeout(timeout) }
 }
