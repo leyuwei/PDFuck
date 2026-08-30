@@ -3,6 +3,7 @@
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as aiPolish from '../lib/ai-polish'
 import { AnnotationLab, type AnnotationSuggestionRequest } from './AnnotationLab'
 
 const selection = { pageIndex: 0, text: 'Selected text', rects: [{ x: 10, y: 20, width: 80, height: 12 }] }
@@ -25,7 +26,7 @@ describe('AnnotationLab settings and availability', () => {
     document.body.append(container)
   })
 
-  afterEach(() => container.remove())
+  afterEach(() => { vi.restoreAllMocks(); container.remove() })
 
   it('keeps the shortcut keycap in the launch button and persists a custom timeout', async () => {
     const root = createRoot(container)
@@ -119,6 +120,30 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.render(<OneShotSuggestionHarness mounted onConsumed={consumed} />))
     expect(container.querySelector('.annotation-suggestion-window')).toBeNull()
     expect(consumed).toHaveBeenCalledTimes(1)
+    await act(async () => root.unmount())
+  })
+
+  it('keeps a running full-document review alive while its document is hidden and restores the result', async () => {
+    const root = createRoot(container)
+    let finishReview!: (value: string) => void
+    const response = new Promise<string>((resolve) => { finishReview = resolve })
+    const review = vi.spyOn(aiPolish, 'reviewDocument').mockReturnValue(response)
+    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    const props = { visible: true, getDocument: vi.fn(async () => ({ name: 'first.pdf', text: 'First document', bytes: new Uint8Array([1]) })), onAdd: vi.fn(), onCopy: vi.fn() }
+
+    await act(async () => root.render(<AnnotationLab {...props} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-launch')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-window button.primary.wide')!.click())
+    expect(review).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.lab-review-progress')).not.toBeNull()
+
+    await act(async () => root.render(<AnnotationLab {...props} visible={false} />))
+    expect(container.querySelector('.full-review-window')).toBeNull()
+    await act(async () => { finishReview('# Review finished'); await response })
+    await act(async () => root.render(<AnnotationLab {...props} visible />))
+    expect(container.querySelector('.full-review-window')).not.toBeNull()
+    expect(container.querySelector('.ai-markdown h1')?.textContent).toBe('Review finished')
+    expect(container.querySelector('.lab-review-progress')).toBeNull()
     await act(async () => root.unmount())
   })
 

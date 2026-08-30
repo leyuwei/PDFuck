@@ -21,7 +21,13 @@ async function fixture(directory) {
   }
   const file = path.join(directory, 'lab-features.pdf')
   await fs.writeFile(file, await document.save())
-  return file
+  const switchDocument = await PDFDocument.create()
+  const switchPage = switchDocument.addPage([612, 792])
+  const switchFont = await switchDocument.embedFont(StandardFonts.Helvetica)
+  switchPage.drawText('A separate PDF opened while AI is reviewing.', { x: 72, y: 680, size: 18, font: switchFont, color: rgb(0.08, 0.12, 0.2) })
+  const switchFile = path.join(directory, 'lab-switch-target.pdf')
+  await fs.writeFile(switchFile, await switchDocument.save())
+  return { primary: file, switchTarget: switchFile }
 }
 
 async function launch(userData, pdf) {
@@ -64,7 +70,7 @@ async function selectPageText(page, pageIndex) {
   await page.waitForFunction((value) => document.querySelector('footer')?.textContent?.includes(`已选择：${value}`), expected, { timeout: 5000 })
 }
 
-async function verifyLabFeatures(userData, pdf, requests) {
+async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
   const app = await launch(userData, pdf)
   try {
     const page = await app.firstWindow()
@@ -145,6 +151,23 @@ async function verifyLabFeatures(userData, pdf, requests) {
     const remaining = Number(countdown.match(/\d+/)?.[0])
     assert.ok(remaining >= 118 && remaining <= 120, `Expected countdown to start from configured 120 seconds, got ${countdown}`)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-progress-${releaseVersion}.png`) })
+
+    await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), switchTarget)
+    const originalTab = page.locator('.window-tab').filter({ hasText: 'lab-features.pdf' })
+    const switchTab = page.locator('.window-tab').filter({ hasText: 'lab-switch-target.pdf' })
+    await switchTab.waitFor({ timeout: 60000 })
+    assert.equal(await page.locator('.full-review-window').count(), 0, 'The original document AI window must stay isolated while another PDF is active')
+    await page.waitForTimeout(1200)
+    await originalTab.click()
+    await page.locator('.lab-review-progress').waitFor({ timeout: 10000 })
+    const resumedCountdown = Number((await page.locator('.lab-review-progress header span').textContent()).match(/\d+/)?.[0])
+    assert.ok(resumedCountdown < remaining && resumedCountdown > 0, `The restored countdown must keep advancing: ${resumedCountdown}`)
+    await switchTab.click()
+    assert.equal(await page.locator('.full-review-window').count(), 0, 'Manual document switching must hide, not transfer, another PDF AI session')
+    await originalTab.click()
+    await page.locator('.full-review-window').waitFor({ timeout: 10000 })
+    console.log('[lab-smoke] running review survived PDF opening and manual tab switches')
+
     await page.getByText('FULL REVIEW RESULT', { exact: true }).waitFor({ timeout: 15000 })
     assert.equal(await page.locator('.full-review-window .ai-markdown h1').textContent(), 'FULL REVIEW RESULT')
     assert.equal(await page.locator('.full-review-window .ai-markdown li').count(), 2)
@@ -235,7 +258,7 @@ async function main() {
     assert.equal(payload.model, 'lab-smoke-model')
     requests.push(body)
     const content = body.includes('FULL REVIEW RESULT') ? suggestionMarkdown : reviewMarkdown
-    if (!body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 1200))
+    if (!body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 6000))
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end(JSON.stringify({ choices: [{ message: { content } }] }))
   })
@@ -245,8 +268,8 @@ async function main() {
     const userData = path.join(temporary, 'user-data')
     const pdf = await fixture(temporary)
     await configure(userData, `http://127.0.0.1:${address.port}/v1`)
-    await verifyLabFeatures(userData, pdf, requests)
-    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', copyAndWriteback: 'passed' }))
+    await verifyLabFeatures(userData, pdf.primary, pdf.switchTarget, requests)
+    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', copyAndWriteback: 'passed' }))
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))

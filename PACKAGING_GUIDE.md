@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 1.21.2
+.\scripts\package-windows.ps1 1.21.4
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 1.21.2
+bash scripts/package-macos.sh 1.21.4
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -98,7 +98,7 @@ npm run test:selection-chinese-ui
 
 `test:workflow-state-ui` 使用真实 Electron 窗口验证无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议请求、智能润色快捷键同行布局与 5–3600 秒自定义超时持久化；发布脚本还会对最终可执行文件再次运行该项回归。
 
-`test:lab-features-ui` 会生成两页 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、三功能按钮与快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、按文档持久化的跨页多段上下文、AI 请求组合与自定义回复写回；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
+`test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及五种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、三功能按钮与快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、按文档持久化的跨页多段上下文、AI 请求组合与自定义回复写回；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
 
 涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、启用一次“适合宽度”后新打开文档自动继承该查看方式、前后拖动排序、内部标签拖动不会触发外部文件蓝框、拖出标签栏生成独立窗口、将独立窗口中的标签拖入另一个 PDFuck 窗口后自动回归标签页、来源空窗口自动关闭，以及关闭独立窗口时没有主进程异常。不要只以单元测试代替这项跨窗口回归。
 

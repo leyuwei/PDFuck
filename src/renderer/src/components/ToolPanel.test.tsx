@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hexToHsv, hsvToHex, ToolPanel } from './ToolPanel'
+
+function PersistentLabProbe({ visible }: { visible: boolean }) {
+  const [progress, setProgress] = useState(0)
+  if (!visible) return null
+  return <button type="button" className="persistent-lab-probe" onClick={() => setProgress((value) => value + 1)}>{progress}</button>
+}
 
 describe('ToolPanel theme colours', () => {
   let container: HTMLDivElement
@@ -146,6 +152,19 @@ describe('ToolPanel theme colours', () => {
     await act(async () => root.render(<ToolPanel {...common} platform="win32" module="annotate" />))
     expect([...container.querySelectorAll('kbd')].map((node) => node.textContent)).toEqual(['Ctrl+H', 'Ctrl+R', 'Delete', 'Ctrl+U', 'Ctrl+N', 'Insert', 'Ctrl+I'])
     expect(container.textContent).not.toContain('⌘')
+    await act(async () => root.unmount())
+  })
+
+  it('keeps the externally hosted Lab mounted while another module is active', async () => {
+    const root = createRoot(container)
+    const common = { activeTool: 'none' as const, mode: 'continuous' as const, hasDocument: true, dirty: false, readOnly: false, exportFormat: 'pdf' as const, exportDpi: 144, pdfExportMode: 'combined' as const, onTool: () => undefined, onMode: () => undefined, onDeletePages: () => undefined, onMergeFiles: () => undefined, onSave: () => undefined, onPrint: () => undefined, printing: false, onExport: () => undefined, onExportFormat: () => undefined, onExportDpi: () => undefined, onPdfExportMode: () => undefined, onSearch: () => undefined, onVisuals: () => undefined, onCitations: () => undefined, citationsEnabled: false, onGrammar: () => undefined, theme: 'light' as const, accent: '#5575de', hasCustomAccent: false, documentBackground: '#ffffff', onTheme: () => undefined, onAccent: () => undefined, onClearAccent: () => undefined, onDocumentBackground: () => undefined, hasCustomDocumentBackground: false, onClearDocumentBackground: () => undefined, onAddAiAnnotation: () => undefined, onCopy: () => undefined }
+    await act(async () => root.render(<ToolPanel {...common} module="annotate" annotationLabHost={<PersistentLabProbe key="document-1" visible />} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.persistent-lab-probe')!.click())
+    expect(container.querySelector('.persistent-lab-probe')?.textContent).toBe('1')
+    await act(async () => root.render(<ToolPanel {...common} module="view" annotationLabHost={<PersistentLabProbe key="document-1" visible={false} />} />))
+    expect(container.querySelector('.persistent-lab-probe')).toBeNull()
+    await act(async () => root.render(<ToolPanel {...common} module="annotate" annotationLabHost={<PersistentLabProbe key="document-1" visible />} />))
+    expect(container.querySelector('.persistent-lab-probe')?.textContent).toBe('1')
     await act(async () => root.unmount())
   })
 })

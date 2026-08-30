@@ -155,11 +155,44 @@ function parseJson(body: string): Record<string, unknown> {
   try { return JSON.parse(body) as Record<string, unknown> } catch { return {} }
 }
 
-function responseError(response: Pick<AiResponse, 'status' | 'statusText' | 'body'>): Error {
+const FRIENDLY_HTTP_ERRORS: Partial<Record<number, string>> = {
+  400: '请求参数或模型不兼容。请核对模型名称、接口地址和服务商的接口要求。',
+  401: '身份验证失败。请检查 API Key、账户权限和接口地址。',
+  403: '服务拒绝了请求。请检查 API Key 权限、账户状态和模型访问权限。',
+  404: '没有找到模型或接口路径。请核对模型名称，以及接口地址是否包含正确的 API 版本。',
+  408: 'AI 服务或中转网关响应超时。请缩短输入后重试；若反复发生，请检查接口地址或联系服务商。',
+  413: '发送内容超过了服务商限制。请缩短输入；全文评价可改用转换后的文档文字。',
+  422: '请求参数或模型不兼容。请核对模型名称、接口地址和服务商的接口要求。',
+  429: '请求过于频繁或账户额度不足。请稍后重试，并检查服务商的余额、配额和速率限制。',
+  500: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  502: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  503: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  504: 'AI 服务或中转网关响应超时。请缩短输入后重试；若反复发生，请检查接口地址或联系服务商。',
+  520: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  521: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  522: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  523: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
+  524: 'AI 服务或中转网关等待模型返回超时。这通常不是本软件的响应超时；请缩短输入、改用更快的模型、直连官方 API，或联系中转服务商。',
+  525: '中转网关无法与上游 AI 服务建立安全连接。请检查接口地址，或联系中转服务商处理证书问题。',
+  526: '中转网关无法与上游 AI 服务建立安全连接。请检查接口地址，或联系中转服务商处理证书问题。'
+}
+
+function responseDetail(response: Pick<AiResponse, 'statusText' | 'body'>): string {
   const payload = parseJson(response.body)
   const error = payload.error
-  const detail = typeof error === 'string' ? error : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string' ? (error as { message: string }).message : typeof payload.message === 'string' ? payload.message : response.body.trim().replace(/\s+/gu, ' ').slice(0, 300)
-  return new Error(`请求失败（${response.status}）：${detail || response.statusText || '服务未返回详细原因'}`)
+  const jsonDetail = typeof error === 'string'
+    ? error
+    : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : typeof payload.message === 'string' ? payload.message : ''
+  if (jsonDetail.trim()) return jsonDetail.trim().replace(/\s+/gu, ' ').slice(0, 300)
+  const body = response.body.trim()
+  const plainBody = /<(?:!doctype|html|head|body)\b/iu.test(body) ? '' : body.replace(/<[^>]*>/gu, ' ').replace(/\s+/gu, ' ').trim()
+  return (plainBody || response.statusText || '服务未返回详细原因').slice(0, 300)
+}
+
+function responseError(response: Pick<AiResponse, 'status' | 'statusText' | 'body'>): Error {
+  return new Error(`请求失败（${response.status}）：${FRIENDLY_HTTP_ERRORS[response.status] || responseDetail(response)}`)
 }
 
 async function sendRequest(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<AiResponse> {
@@ -171,7 +204,7 @@ async function sendRequest(url: string, headers: Record<string, string>, body: s
     const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal })
     return { status: response.status, statusText: response.statusText, body: await response.text() }
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('请求超时。请增大模型设置中的响应超时时间，或检查网络、代理和接口地址。')
+    if (controller.signal.aborted) throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
     throw error
   } finally { clearTimeout(timeout) }
 }
@@ -188,10 +221,40 @@ function requestCredentials(settings: AiSettings): { model: string; claude: bool
   return { model, claude, headers }
 }
 
+function streamedContent(body: string): string {
+  let output = ''
+  for (const rawLine of body.split(/\r?\n/gu)) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith(':') || line.startsWith('event:') || line.startsWith('id:') || line.startsWith('retry:')) continue
+    const data = line.startsWith('data:') ? line.slice(5).trim() : line
+    if (!data || data === '[DONE]' || !data.startsWith('{')) continue
+    const chunk = parseJson(data)
+    const choice = (chunk.choices as Array<{ delta?: { content?: unknown }; message?: { content?: unknown }; text?: unknown }> | undefined)?.[0]
+    const delta = chunk.delta as { text?: unknown } | undefined
+    const text = contentText(choice?.delta?.content)
+      || contentText(delta?.text)
+      || contentText(choice?.message?.content)
+      || contentText(choice?.text)
+    output += text
+  }
+  return output
+}
+
+function streamUnsupported(response: AiResponse): boolean {
+  if (response.status !== 400 && response.status !== 422) return false
+  const detail = responseDetail(response)
+  return /stream/iu.test(detail) && /unsupported|not supported|not support|must be false|only false|disabled|unknown|unrecognized|invalid|unexpected|extra|additional|不支持|必须为 false|未知|无效|未识别/iu.test(detail)
+}
+
 async function requestOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>): Promise<string> {
   let response: AiResponse
+  const url = endpoint(settings)
+  const timeoutMs = normalizeAiTimeoutSeconds(settings.timeoutSeconds) * 1000
   try {
-    response = await sendRequest(endpoint(settings), headers, JSON.stringify(payload), normalizeAiTimeoutSeconds(settings.timeoutSeconds) * 1000)
+    response = await sendRequest(url, { ...headers, accept: 'text/event-stream' }, JSON.stringify({ ...payload, stream: true }), timeoutMs)
+    // Some older OpenAI-compatible relays reject the stream field instead of ignoring it.
+    // Fall back only after an explicit, immediate compatibility error; never replay a timed-out or billable request.
+    if (streamUnsupported(response)) response = await sendRequest(url, { ...headers, accept: 'application/json' }, JSON.stringify(payload), timeoutMs)
   } catch (error) {
     if (error instanceof Error && /failed to fetch|networkerror|load failed/iu.test(error.message)) throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
     if (error instanceof Error && error.message) throw error
@@ -202,8 +265,9 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
   const output = claude
     ? contentText(responsePayload.content)
     : contentText((responsePayload.choices as Array<{ message?: { content?: unknown }; text?: unknown }> | undefined)?.[0]?.message?.content ?? (responsePayload.choices as Array<{ text?: unknown }> | undefined)?.[0]?.text)
-  if (!output.trim()) throw new Error('模型未返回可显示的内容，请检查模型、额度或接口兼容性。')
-  return output.trim()
+  const normalizedOutput = output || streamedContent(response.body)
+  if (!normalizedOutput.trim()) throw new Error('模型未返回可显示的内容，请检查模型、额度或接口兼容性。')
+  return normalizedOutput.trim()
 }
 
 function systemInstruction(language: AiLanguage): string {

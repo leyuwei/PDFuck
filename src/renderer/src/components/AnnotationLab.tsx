@@ -25,6 +25,7 @@ export interface AnnotationSuggestionRequest { token: number; annotationId: stri
 export interface LabDocumentPayload extends FullReviewDocument {}
 
 interface Props {
+  visible?: boolean
   selection?: PageTextSelection
   selectionKey?: string
   documentKey?: string
@@ -52,7 +53,7 @@ function contextPageLabel(context: AnnotationSuggestionContext): string {
   return message('search.page', { page: context.pageIndexes.map((page) => page + 1).join(', ') })
 }
 
-export function AnnotationLab({ selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, onAdd, onAddFullReview, onAddSuggestion, onCopy }: Props) {
+export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, onAdd, onAddFullReview, onAddSuggestion, onCopy }: Props) {
   const interfaceLanguage = useInterfaceLanguage() as AiLanguage
   const t = ui
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
@@ -95,17 +96,22 @@ export function AnnotationLab({ selection, selectionKey, documentKey, platform =
   const reviewProgress = reviewStartedAt === undefined ? undefined : aiRequestProgress(settings.timeoutSeconds, reviewStartedAt, reviewProgressNow)
 
   useEffect(() => {
+    if (!visible) return
     const handler = (event: KeyboardEvent) => {
       if (!isImeCompositionKey(event) && !isTextEntryEvent(event) && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i' && normalizedSelection) { event.preventDefault(); setActiveWindow('polish') }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [normalizedSelection])
+  }, [normalizedSelection, visible])
   useEffect(() => {
+    if (!visible) return
     const handler = () => { if (normalizedSelection) setActiveWindow('polish') }
     window.addEventListener('pdfuck:open-ai-polish', handler)
     return () => window.removeEventListener('pdfuck:open-ai-polish', handler)
-  }, [normalizedSelection])
+  }, [normalizedSelection, visible])
+  useEffect(() => {
+    if (visible && !busy && !reviewBusy && !suggestionBusy) setSettings(loadAiSettings())
+  }, [visible])
   useEffect(() => {
     polishRequestId.current += 1
     setResult(''); setError(''); setBusy(false); setAdding(false)
@@ -229,6 +235,7 @@ export function AnnotationLab({ selection, selectionKey, documentKey, platform =
     try { await onAddSuggestion(activeSuggestionRequest.annotationId, suggestionResult); setActiveWindow(undefined); setActiveSuggestionRequest(undefined) } catch (cause) { setSuggestionError(cause instanceof Error ? cause.message : String(cause)); setSuggestionAdding(false) }
   }
 
+  if (!visible) return null
   const windowStyle = { transform: `translate(${position.x}px, ${position.y}px)` }
   return <div className="annotation-lab">
     <div className="annotation-lab-heading"><h3>{t('实验室')}</h3><button type="button" className="annotation-lab-settings-trigger" title={t('实验室模型设置')} aria-label={t('实验室模型设置')} onClick={() => setSettingsOpen(true)}>⚙</button></div>

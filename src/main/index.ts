@@ -123,7 +123,7 @@ async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
     const body = await response.text()
     return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('请求超时。请增大模型设置中的响应超时时间，或检查网络、代理和接口地址。')
+    if (controller.signal.aborted) throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   } finally { clearTimeout(timeout) }
 }

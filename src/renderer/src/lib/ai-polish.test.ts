@@ -64,12 +64,65 @@ describe('polishText transport and response handling', () => {
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(polishText({ ...settings, timeoutSeconds: 275 }, '改写', '原文')).resolves.toBe('第一段第二段')
-    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key' }), timeoutMs: 275_000 }))
+    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key', accept: 'text/event-stream' }), timeoutMs: 275_000 }))
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).stream).toBe(true)
   })
 
-  it('shows useful text returned by non-JSON HTTP errors', async () => {
+  it('collects OpenAI-compatible event streams so gateways receive early response bytes', async () => {
+    const aiRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      statusText: 'OK',
+      body: 'data: {"choices":[{"delta":{"content":"流式"}}]}\n\ndata: {"choices":[{"delta":{"content":"回复"}}]}\n\ndata: [DONE]\n'
+    })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(polishText(settings, '改写', '原文')).resolves.toBe('流式回复')
+  })
+
+  it('falls back once when an older relay explicitly rejects streaming', async () => {
+    const aiRequest = vi.fn()
+      .mockResolvedValueOnce({ status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: { message: 'Unsupported parameter: stream' } }) })
+      .mockResolvedValueOnce({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: '兼容回复' } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(polishText(settings, '改写', '原文')).resolves.toBe('兼容回复')
+    expect(aiRequest).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).stream).toBe(true)
+    expect(JSON.parse(aiRequest.mock.calls[1][0].body).stream).toBeUndefined()
+    expect(aiRequest.mock.calls[1][0].headers.accept).toBe('application/json')
+  })
+
+  it('explains rate limits and quota failures instead of exposing only the status code', async () => {
     vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockResolvedValue({ status: 429, statusText: 'Too Many Requests', body: 'quota exceeded' }) } })
-    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('请求失败（429）：quota exceeded')
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('请求过于频繁或账户额度不足')
+  })
+
+  it('explains 524 relay timeouts without replaying a long, potentially billable request', async () => {
+    const aiRequest = vi.fn().mockResolvedValue({ status: 524, statusText: 'A timeout occurred', body: '<!DOCTYPE html><html><body>cloud gateway trace</body></html>' })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('这通常不是本软件的响应超时')
+    expect(aiRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [401, '身份验证失败'],
+    [403, '服务拒绝了请求'],
+    [404, '没有找到模型或接口路径'],
+    [413, '发送内容超过了服务商限制'],
+    [502, '暂时不可用'],
+    [504, '响应超时']
+  ])('classifies HTTP %s into an actionable diagnostic', async (status, expected) => {
+    vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockResolvedValue({ status, statusText: 'Error', body: '<html>opaque proxy page</html>' }) } })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow(expected)
+  })
+
+  it('keeps the local configured timeout distinct from an upstream 524 timeout', async () => {
+    const localTimeout = '已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。'
+    vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockRejectedValue(new Error(localTimeout)) } })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow(localTimeout)
+  })
+
+  it('preserves a concise provider diagnostic for unknown status codes', async () => {
+    vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockResolvedValue({ status: 418, statusText: 'Custom Error', body: JSON.stringify({ error: { message: 'provider-specific diagnostic' } }) }) } })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('请求失败（418）：provider-specific diagnostic')
   })
 
   it('converts transport failures into a stable diagnostic error', async () => {
@@ -109,6 +162,18 @@ describe('Lab document review and annotation suggestion transport', () => {
     await expect(reviewDocument(claude, 'Inspect layout.', { name: 'draft.pdf', bytes: new Uint8Array([37, 80, 68, 70]) }, 'file', 'en')).resolves.toBe('Claude review')
     const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
     expect(payload.messages[0].content[0]).toEqual(expect.objectContaining({ type: 'document', source: expect.objectContaining({ type: 'base64', media_type: 'application/pdf', data: 'JVBERg==' }) }))
+  })
+
+  it('collects Claude event streams as well as OpenAI-compatible streams', async () => {
+    const aiRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      statusText: 'OK',
+      body: 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Claude "}}\n\nevent: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"stream"}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n'
+    })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    const claude = { ...settings, provider: 'claude' as const, baseUrl: PROVIDER_PRESETS.claude.baseUrl, model: PROVIDER_PRESETS.claude.model }
+    await expect(polishText(claude, 'Rewrite.', 'Original.')).resolves.toBe('Claude stream')
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).stream).toBe(true)
   })
 
   it('combines the annotation request with every recorded context passage', async () => {
