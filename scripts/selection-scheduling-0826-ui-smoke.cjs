@@ -57,9 +57,13 @@ async function main() {
       if (side === 'right') assert.ok(geometry.minLeft >= 0.508, `page ${pageIndex + 1}: right flow reached the left side: ${JSON.stringify(geometry)}`)
 
       let copied = ''
+      await app.evaluate(({ clipboard }, sentinel) => clipboard.writeText(sentinel), `PDFuck-selection-pending-${pageIndex}`)
       for (let attempt = 0; attempt < 4; attempt += 1) {
         await page.bringToFront()
-        await page.keyboard.press('Control+C')
+        await page.mouse.click(points.start.x + 2, points.start.y + points.start.height / 2, { button: 'right' })
+        const copyItem = page.locator('.context-menu .copy-item')
+        await copyItem.waitFor({ timeout: 5000 })
+        await copyItem.click()
         for (let poll = 0; poll < 20; poll += 1) {
           await page.waitForTimeout(100)
           copied = await app.evaluate(({ clipboard }) => clipboard.readText())

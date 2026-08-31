@@ -35,8 +35,10 @@ export interface SavePdfRequest {
 /** A file selected specifically for insertion into the active document. */
 export interface PdfImportFile {
   name: string
-  /** EPS sources are rasterized to PNG by the trusted main process. */
+  /** EPS sources are rasterized and Office sources are converted to PDF by the trusted main process. */
   format: 'pdf' | 'png' | 'jpg'
+  /** Preserves the visible source type after a Word or PowerPoint file is converted to PDF. */
+  sourceFormat?: 'doc' | 'docx' | 'ppt' | 'pptx'
   data: Uint8Array
 }
 
@@ -106,6 +108,8 @@ export interface WindowDocumentState {
   dirty: boolean
   hasDocument: boolean
   encrypted: boolean
+  /** Number of real document tabs in this native window. */
+  documentCount?: number
 }
 
 export interface ManagedPdfDocument extends WindowDocumentState {

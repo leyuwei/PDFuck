@@ -2,7 +2,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, rgb, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
   applyMatrix, displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
@@ -14,6 +14,7 @@ import { rotatedImageBounds } from './image-geometry'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, pageNumberRect, validatePageNumberTemplate } from './page-numbers'
 import type { PdfImportFile } from '../../../shared/contracts'
 import { normalizeAnnotationAuthor } from './annotation-author'
+import { appendPdfBookmarks, deletePdfBookmark, readPdfBookmarks, remapPdfBookmarks, renamePdfBookmark, replacePdfBookmarks } from './pdf-bookmarks'
 
 const KIND_LABEL: Record<AnnotationKind, string> = {
   highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线', ai_polish: '智能润色'
@@ -153,6 +154,33 @@ export class PdfDocumentModel {
   get pageCount(): number { return this.document.getPageCount() }
   get canUndo(): boolean { return this.undoStack.length > 0 }
   get canRedo(): boolean { return this.redoStack.length > 0 }
+  bookmarks(): PdfBookmark[] { return readPdfBookmarks(this.document) }
+
+  async replaceBookmarks(bookmarks: PdfBookmark[]): Promise<void> {
+    replacePdfBookmarks(this.document, bookmarks)
+    await this.commit()
+  }
+
+  async appendBookmarks(bookmarks: PdfBookmark[]): Promise<void> {
+    appendPdfBookmarks(this.document, bookmarks)
+    await this.commit()
+  }
+
+  async renameBookmark(id: string, title: string): Promise<void> {
+    if (!renamePdfBookmark(this.document, id, title)) throw new Error('找不到这条书签，它可能已经被删除。')
+    await this.commit()
+  }
+
+  async deleteBookmark(id: string): Promise<void> {
+    if (!deletePdfBookmark(this.document, id)) throw new Error('找不到这条书签，它可能已经被删除。')
+    await this.commit()
+  }
+
+  async deleteAllBookmarks(): Promise<void> {
+    if (!this.bookmarks().length) return
+    replacePdfBookmarks(this.document, [])
+    await this.commit()
+  }
   async pageSubset(pageIndices: number[]): Promise<Uint8Array> {
     const pages = [...new Set(pageIndices)]
     if (!pages.length) throw new Error('请至少选择一个页面。')
@@ -241,7 +269,16 @@ export class PdfDocumentModel {
     if (!pages.length) throw new Error('请至少选择一个要删除的页面。')
     if (pages.some((page) => page < 0 || page >= this.pageCount)) throw new Error('选择的页码超出了文档范围。')
     if (pages.length >= this.pageCount) throw new Error('不能删除文档中的全部页面。')
+    const bookmarks = this.bookmarks()
+    const removed = new Set(pages)
+    const remainingPageOrder = this.document.getPageIndices().filter((page) => !removed.has(page))
     pages.forEach((page) => this.document.removePage(page))
+    if (bookmarks.length) {
+      // Refresh pdf-lib's cached page wrappers before resolving the new outline
+      // destinations; otherwise a removed page reference can be written back.
+      this.document = await PDFDocument.load(await this.document.save({ useObjectStreams: false }), { updateMetadata: false })
+      replacePdfBookmarks(this.document, remapPdfBookmarks(bookmarks, remainingPageOrder))
+    }
     await this.commit()
     // pdf-lib caches page wrappers; reload after structural edits so later page indices
     // always refer to the actual remaining pages.
@@ -411,6 +448,7 @@ export class PdfDocumentModel {
     const rotationFor = (page: number) => ((rotations[page] || 0) % 360 + 360) % 360
     const hasRotations = pageIndices.some((page) => rotationFor(page) !== 0)
     if (!hasRotations && pageIndices.length === this.pageCount && pageIndices.every((page, index) => page === index)) return
+    const bookmarks = this.bookmarks()
     const reordered = await PDFDocument.create()
     const pages = await reordered.copyPages(this.document, pageIndices)
     pages.forEach((page, index) => {
@@ -418,6 +456,7 @@ export class PdfDocumentModel {
       if (rotation) page.setRotation(degrees((page.getRotation().angle + rotation) % 360))
       reordered.addPage(page)
     })
+    if (bookmarks.length) replacePdfBookmarks(reordered, remapPdfBookmarks(bookmarks, pageIndices))
     this.document = reordered
     await this.commit()
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })

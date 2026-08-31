@@ -64,9 +64,10 @@ async function main() {
   await removePath(userData)
   await createFixture()
   fs.mkdirSync(screenshotDirectory, { recursive: true })
+  const packagedExecutable = process.env.PDFUCK_SMOKE_EXECUTABLE
   const app = await electron.launch({
-    executablePath: process.env.PDFUCK_SMOKE_EXECUTABLE || require('electron'),
-    args: [entry, fixture],
+    executablePath: packagedExecutable || require('electron'),
+    args: packagedExecutable ? [`--user-data-dir=${userData}`, fixture] : [entry, fixture],
     env: { ...process.env, PDFUCK_TEST_USER_DATA: userData }
   })
   try {

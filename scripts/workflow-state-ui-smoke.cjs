@@ -125,6 +125,16 @@ async function verifyDocumentWorkflow(userData, pdf) {
     await page.locator('.annotation-row').first().locator('.annotation-settings-button').click()
     await page.locator('.annotation-row').first().locator('.annotation-ai-suggestion').click()
     await page.waitForSelector('.annotation-suggestion-window', { timeout: 10000 })
+    const automaticContext = page.locator('.suggestion-auto-context article')
+    await automaticContext.waitFor({ timeout: 10000 })
+    assert.ok((await automaticContext.innerText()).includes('Selected text survives module switching'), 'a text annotation must automatically collect nearby text')
+    const automaticSwitch = page.locator('.suggestion-auto-context [role="switch"]')
+    assert.equal(await automaticSwitch.getAttribute('aria-checked'), 'true')
+    await automaticSwitch.click()
+    assert.equal(await automaticSwitch.getAttribute('aria-checked'), 'false')
+    assert.ok((await page.locator('.automatic-context-state').innerText()).includes('已关闭'))
+    await automaticSwitch.click()
+    await automaticContext.waitFor({ timeout: 10000 })
     await page.locator('.annotation-suggestion-window > header button').click()
     assert.equal(await page.locator('.annotation-suggestion-window').count(), 0, 'Explicit suggestion window should close normally')
 
@@ -152,7 +162,7 @@ async function main() {
     const pdf = await createFixture(temporary)
     await verifyEmptyDocumentState(path.join(temporary, 'empty-user'))
     await verifyDocumentWorkflow(path.join(temporary, 'document-user'), pdf)
-    console.log(JSON.stringify({ emptyDocumentButtons: 'passed', cleanSave: 'passed', selectionTransfer: 'passed', annotationActivation: 'passed', annotationSuggestionTrigger: 'explicit-only', aiTimeout: 275, shortcutLayout: 'inline' }))
+    console.log(JSON.stringify({ emptyDocumentButtons: 'passed', cleanSave: 'passed', selectionTransfer: 'passed', annotationActivation: 'passed', annotationSuggestionTrigger: 'explicit-only', automaticContext: 'nearby-text-pass', aiTimeout: 275, shortcutLayout: 'inline' }))
   } finally { await fs.rm(temporary, { recursive: true, force: true }) }
 }
 

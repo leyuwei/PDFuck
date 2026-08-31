@@ -17,11 +17,16 @@ import {
   saveAnnotationSuggestionContexts, selectionContextKey, type AnnotationSuggestionContext
 } from '../lib/annotation-suggestion-contexts'
 import { AiMarkdown } from './AiMarkdown'
+import {
+  DEFAULT_AUTOMATIC_CONTEXT_LEVEL, MAX_AUTOMATIC_CONTEXT_LEVEL, MIN_AUTOMATIC_CONTEXT_LEVEL,
+  type AutomaticAnnotationContext, type AutomaticAnnotationContextIssue, type AutomaticAnnotationContextRequest,
+  type AutomaticAnnotationContextResult
+} from '../lib/automatic-annotation-context'
 import './annotation-lab.css'
 
 export const FULL_REVIEW_CONSENT_KEY = 'pdfuck.lab.full-review-consent.v1'
 
-export interface AnnotationSuggestionRequest { token: number; annotationId: string; annotationContent: string; pageIndex: number }
+export interface AnnotationSuggestionRequest extends AutomaticAnnotationContextRequest { token: number; annotationId: string; annotationContent: string; pageIndex: number }
 export interface LabDocumentPayload extends FullReviewDocument {}
 
 interface Props {
@@ -36,6 +41,7 @@ interface Props {
   onSuggestionRequestConsumed?(token: number): void
   onAnnotationSuggestionsEnabledChange?(enabled: boolean): void
   getDocument?(mode: FullReviewSendMode): Promise<LabDocumentPayload>
+  getAutomaticContext?(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>
   onAdd(content: string): void | Promise<void>
   onAddFullReview?(content: string): void | Promise<void>
   onAddSuggestion?(annotationId: string, content: string): void | Promise<void>
@@ -53,7 +59,7 @@ function contextPageLabel(context: AnnotationSuggestionContext): string {
   return message('search.page', { page: context.pageIndexes.map((page) => page + 1).join(', ') })
 }
 
-export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, onAdd, onAddFullReview, onAddSuggestion, onCopy }: Props) {
+export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, getAutomaticContext, onAdd, onAddFullReview, onAddSuggestion, onCopy }: Props) {
   const interfaceLanguage = useInterfaceLanguage() as AiLanguage
   const t = ui
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
@@ -81,6 +87,11 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   const [suggestionPresetId, setSuggestionPresetId] = useState(ANNOTATION_SUGGESTION_PRESETS[0].id)
   const [suggestionInstruction, setSuggestionInstruction] = useState(() => localizedPrompt(ANNOTATION_SUGGESTION_PRESETS[0], interfaceLanguage))
   const [activeSuggestionRequest, setActiveSuggestionRequest] = useState<AnnotationSuggestionRequest>()
+  const [automaticContextEnabled, setAutomaticContextEnabled] = useState(true)
+  const [automaticContextLevel, setAutomaticContextLevel] = useState(DEFAULT_AUTOMATIC_CONTEXT_LEVEL)
+  const [automaticContext, setAutomaticContext] = useState<AutomaticAnnotationContext>()
+  const [automaticContextIssue, setAutomaticContextIssue] = useState<AutomaticAnnotationContextIssue>()
+  const [automaticContextLoading, setAutomaticContextLoading] = useState(false)
   const [contexts, setContexts] = useState<AnnotationSuggestionContext[]>([])
   const [persistContexts, setPersistContexts] = useState(false)
   const [suggestionResult, setSuggestionResult] = useState('')
@@ -130,12 +141,30 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     suggestionRequestId.current += 1
     setActiveSuggestionRequest(suggestionRequest)
     const saved = loadAnnotationSuggestionContexts(documentKey)
-    setContexts(saved); setPersistContexts(hasAnnotationSuggestionContextStore(documentKey)); setSuggestionResult(''); setSuggestionError(''); setSuggestionBusy(false); setSuggestionAdding(false)
+    setContexts(saved); setPersistContexts(hasAnnotationSuggestionContextStore(documentKey)); setAutomaticContext(undefined); setAutomaticContextIssue(undefined); setAutomaticContextLoading(false); setSuggestionResult(''); setSuggestionError(''); setSuggestionBusy(false); setSuggestionAdding(false)
     setSuggestionPresetId(ANNOTATION_SUGGESTION_PRESETS[0].id)
     setSuggestionInstruction(localizedPrompt(ANNOTATION_SUGGESTION_PRESETS[0], interfaceLanguage))
     setActiveWindow('suggestion')
     onSuggestionRequestConsumed?.(suggestionRequest.token)
   }, [suggestionRequest?.token, documentKey, onSuggestionRequestConsumed])
+  useEffect(() => {
+    let active = true
+    if (!activeSuggestionRequest || !automaticContextEnabled || !getAutomaticContext) {
+      setAutomaticContext(undefined); setAutomaticContextIssue(undefined); setAutomaticContextLoading(false)
+      return () => { active = false }
+    }
+    setAutomaticContextLoading(true); setAutomaticContextIssue(undefined)
+    const timer = window.setTimeout(() => {
+      void getAutomaticContext(activeSuggestionRequest, automaticContextLevel).then((result) => {
+        if (!active) return
+        setAutomaticContext(result.context); setAutomaticContextIssue(result.issue); setAutomaticContextLoading(false)
+      }).catch(() => {
+        if (!active) return
+        setAutomaticContext(undefined); setAutomaticContextIssue('no-text'); setAutomaticContextLoading(false)
+      })
+    }, 120)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [activeSuggestionRequest, automaticContextEnabled, automaticContextLevel, getAutomaticContext])
   useEffect(() => {
     if (!reviewBusy || reviewStartedAt === undefined) return
     setReviewProgressNow(Date.now())
@@ -220,11 +249,12 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   }
   const submitSuggestion = async () => {
     if (!activeSuggestionRequest) return
-    if (!contexts.length) { setSuggestionError('请至少加入一段正文上下文。'); return }
+    const requestContexts = [...(automaticContextEnabled && automaticContext ? [automaticContext.text] : []), ...contexts.map((context) => context.text)]
+    if (!requestContexts.length) { setSuggestionError('请至少加入一段正文上下文。'); return }
     const current = ++suggestionRequestId.current
     setSuggestionBusy(true); setSuggestionError(''); setSuggestionResult('')
     try {
-      const output = await suggestForAnnotation(settings, suggestionInstruction, activeSuggestionRequest.annotationContent, contexts.map((context) => context.text), interfaceLanguage)
+      const output = await suggestForAnnotation(settings, suggestionInstruction, activeSuggestionRequest.annotationContent, requestContexts, interfaceLanguage)
       if (suggestionRequestId.current === current) setSuggestionResult(output)
     } catch (cause) { if (suggestionRequestId.current === current) setSuggestionError(cause instanceof Error ? cause.message : String(cause)) }
     finally { if (suggestionRequestId.current === current) setSuggestionBusy(false) }
@@ -237,6 +267,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
   if (!visible) return null
   const windowStyle = { transform: `translate(${position.x}px, ${position.y}px)` }
+  const hasSuggestionContext = Boolean(automaticContextEnabled && automaticContext?.text) || contexts.length > 0
   return <div className="annotation-lab">
     <div className="annotation-lab-heading"><h3>{t('实验室')}</h3><button type="button" className="annotation-lab-settings-trigger" title={t('实验室模型设置')} aria-label={t('实验室模型设置')} onClick={() => setSettingsOpen(true)}>⚙</button></div>
     <div className="annotation-lab-tools">
@@ -259,6 +290,6 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
     {activeWindow === 'review' && <div className="ai-polish-window lab-workflow-window full-review-window" style={windowStyle}><header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag}><span><AnnotationIcon kind="ai_review" />{t('全文评价')}</span><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t('关闭')}>×</button></header><p className="lab-workflow-intro">{t('选择发送方式和审稿提示词。AI 将接收整个文档。')}</p><div className="lab-send-mode" role="radiogroup" aria-label={t('文档发送方式')}><button type="button" role="radio" aria-checked={reviewMode === 'text'} className={reviewMode === 'text' ? 'active' : ''} onClick={() => setReviewMode('text')}><b>{t('发送转换后的文档文字')}</b><small>{t('兼容性更好，保留逐页标记')}</small></button><button type="button" role="radio" aria-checked={reviewMode === 'file'} className={reviewMode === 'file' ? 'active' : ''} onClick={() => setReviewMode('file')}><b>{t('直接发送 PDF 文件')}</b><small>{t('可保留版面，但模型必须支持 PDF 输入')}</small></button></div>{reviewMode === 'file' && <p className="lab-compatibility-note">{t('文件输入格式的兼容性由 AI 提供商或中转接口决定；若请求失败，请改用文档文字。')}</p>}<label className="lab-field-title">{t('审稿提示词')}</label><div className="ai-preset-grid lab-preset-grid">{FULL_REVIEW_PRESETS.map((preset) => <button type="button" key={preset.id} className={reviewPresetId === preset.id ? 'active' : ''} onClick={() => { setReviewPresetId(preset.id); setReviewInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={reviewInstruction} aria-label={t('审稿提示词')} onChange={(event) => { setReviewPresetId(''); setReviewInstruction(event.target.value) }} /><button type="button" className="primary wide" disabled={reviewBusy} onClick={() => void submitReview()}>{reviewBusy ? t('正在审阅整个文档…') : t('开始全文评价')}</button>{reviewBusy && reviewProgress && <div className="lab-review-progress" role="progressbar" aria-label={t('全文评价进度')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(reviewProgress.elapsedPercent)}><header><b>{t('AI 正在审阅整个文档')}</b><span>{message('lab.reviewCountdown', { seconds: reviewProgress.remainingSeconds })}</span></header><div className="lab-review-progress-track"><i style={{ width: `${reviewProgress.elapsedPercent}%` }} /></div><small>{t('最长等待时间以模型设置中的响应超时为准。')}</small></div>}{reviewError && <p className="ai-polish-error">{translateUiText(reviewError)}</p>}{reviewResult && <><AiMarkdown content={reviewResult} className="lab-long-result" /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(reviewResult)}>{t('复制回复')}</button><button type="button" className="primary" disabled={reviewAdding} onClick={() => void addReviewResult()}>{reviewAdding ? t('正在添加…') : t('添加到批注')}</button></div></>}</div>}
 
-    {activeWindow === 'suggestion' && activeSuggestionRequest && <div className="ai-polish-window lab-workflow-window annotation-suggestion-window" style={windowStyle}><header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag}><span><AnnotationIcon kind="ai_suggest" />{t('批注建议')}</span><button type="button" onClick={() => { setActiveWindow(undefined); setActiveSuggestionRequest(undefined) }} aria-label={t('关闭')}>×</button></header><div className="suggestion-annotation"><small>{t('批注要求')}</small><b>{activeSuggestionRequest.annotationContent || t('无内容')}</b><span>{message('search.page', { page: activeSuggestionRequest.pageIndex + 1 })}</span></div><p className="lab-workflow-intro">{t('请在 PDF 中框选相关正文，每次框选后点击“加入当前选区”。可重复加入多段。')}</p><button type="button" className="capture-context-button" disabled={!normalizedSelection} onClick={captureContext}><span>＋</span>{normalizedSelection ? t('加入当前选区') : t('等待框选正文')}</button><div className={`suggestion-persist${persistContexts ? ' active' : ''}`}><label><input type="checkbox" checked={persistContexts} disabled={!documentKey} onChange={(event) => changePersistContexts(event.target.checked)} /><span><b>{t('为本文档保留这些上下文')}</b><small>{t(documentKey ? '后续批注建议会自动载入；关闭后将清除本机保存。' : '当前文档没有稳定路径，暂时无法持久化。')}</small></span></label></div><div className="suggestion-contexts"><header><b>{t('已记录的上下文')}</b><span>{contexts.length}</span></header>{contexts.length ? contexts.map((context, index) => <article key={context.key}><div><b>{contextPageLabel(context)}</b><span>{context.text}</span></div><button type="button" aria-label={t('移除这段上下文')} onClick={() => removeContext(index)}>×</button></article>) : <p>{t('尚未加入上下文。你可以跨页、多次框选。')}</p>}</div><label className="lab-field-title">{t('建议提示词')}</label><div className="ai-preset-grid lab-preset-grid">{ANNOTATION_SUGGESTION_PRESETS.map((preset) => <button type="button" key={preset.id} className={suggestionPresetId === preset.id ? 'active' : ''} onClick={() => { setSuggestionPresetId(preset.id); setSuggestionInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={suggestionInstruction} aria-label={t('建议提示词')} onChange={(event) => { setSuggestionPresetId(''); setSuggestionInstruction(event.target.value) }} /><button type="button" className="primary wide" disabled={suggestionBusy || !contexts.length} onClick={() => void submitSuggestion()}>{suggestionBusy ? t('正在生成修改建议…') : t('生成批注建议')}</button>{suggestionError && <p className="ai-polish-error">{translateUiText(suggestionError)}</p>}{suggestionResult && <><AiMarkdown content={suggestionResult} className="lab-long-result" /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(suggestionResult)}>{t('复制回复')}</button><button type="button" className="primary" disabled={suggestionAdding} onClick={() => void addSuggestionResult()}>{suggestionAdding ? t('正在添加…') : t('添加到批注')}</button></div></>}</div>}
+    {activeWindow === 'suggestion' && activeSuggestionRequest && <div className="ai-polish-window lab-workflow-window annotation-suggestion-window" style={windowStyle}><header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag}><span><AnnotationIcon kind="ai_suggest" />{t('批注建议')}</span><button type="button" onClick={() => { setActiveWindow(undefined); setActiveSuggestionRequest(undefined) }} aria-label={t('关闭')}>×</button></header><div className="suggestion-annotation"><small>{t('批注要求')}</small><b>{activeSuggestionRequest.annotationContent || t('无内容')}</b><span>{message('search.page', { page: activeSuggestionRequest.pageIndex + 1 })}</span></div><section className={`suggestion-auto-context${automaticContextEnabled ? ' active' : ''}`}><header><div><b>{t('自动上下文')}</b><small>{t('根据批注位置自动选取附近正文')}</small></div><button type="button" role="switch" aria-checked={automaticContextEnabled} aria-label={t('自动上下文')} onClick={() => setAutomaticContextEnabled((value) => !value)}><i aria-hidden="true" /></button></header><label className="automatic-context-level"><span><b>{t('上下文量')}</b><output>{automaticContextLevel} / {MAX_AUTOMATIC_CONTEXT_LEVEL}</output></span><input type="range" min={MIN_AUTOMATIC_CONTEXT_LEVEL} max={MAX_AUTOMATIC_CONTEXT_LEVEL} step={1} value={automaticContextLevel} disabled={!automaticContextEnabled} aria-label={t('上下文量')} onChange={(event) => setAutomaticContextLevel(Number(event.target.value))} /><small>{t('向两侧扩展批注附近的正文；数值越大，提供给 AI 的上下文越多。')}</small></label>{activeSuggestionRequest.kind === 'note' && <p className="automatic-context-note">{t('自由位置批注只有在靠近可识别正文时才会自动选取，避免误取无关内容。')}</p>}{!automaticContextEnabled ? <p className="automatic-context-state">{t('自动上下文已关闭；你仍可手动加入选区。')}</p> : automaticContextLoading ? <p className="automatic-context-state loading">{t('正在选取批注附近的上下文…')}</p> : automaticContext ? <article><b>{contextPageLabel({ key: 'automatic', ...automaticContext })}</b><span>{automaticContext.text}</span></article> : <p className="automatic-context-state warning">{t(automaticContextIssue === 'detached-note' ? '这条自由位置批注未贴近可识别正文，请手动框选需要的上下文。' : '批注附近没有可识别正文，请手动框选需要的上下文。')}</p>}</section><p className="lab-workflow-intro">{t('自动上下文会立即加入；如需补充，可在 PDF 中多次框选并加入其他正文。')}</p><button type="button" className="capture-context-button" disabled={!normalizedSelection} onClick={captureContext}><span>＋</span>{normalizedSelection ? t('加入当前选区') : t('等待框选正文')}</button><div className={`suggestion-persist${persistContexts ? ' active' : ''}`}><label><input type="checkbox" checked={persistContexts} disabled={!documentKey} onChange={(event) => changePersistContexts(event.target.checked)} /><span><b>{t('为本文档保留这些上下文')}</b><small>{t(documentKey ? '后续批注建议会自动载入；关闭后将清除本机保存。' : '当前文档没有稳定路径，暂时无法持久化。')}</small></span></label></div><div className="suggestion-contexts"><header><b>{t('已记录的上下文')}</b><span>{contexts.length}</span></header>{contexts.length ? contexts.map((context, index) => <article key={context.key}><div><b>{contextPageLabel(context)}</b><span>{context.text}</span></div><button type="button" aria-label={t('移除这段上下文')} onClick={() => removeContext(index)}>×</button></article>) : <p>{t('尚未手动加入上下文。你可以跨页、多次框选。')}</p>}</div><label className="lab-field-title">{t('建议提示词')}</label><div className="ai-preset-grid lab-preset-grid">{ANNOTATION_SUGGESTION_PRESETS.map((preset) => <button type="button" key={preset.id} className={suggestionPresetId === preset.id ? 'active' : ''} onClick={() => { setSuggestionPresetId(preset.id); setSuggestionInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={suggestionInstruction} aria-label={t('建议提示词')} onChange={(event) => { setSuggestionPresetId(''); setSuggestionInstruction(event.target.value) }} /><button type="button" className="primary wide" disabled={suggestionBusy || !hasSuggestionContext} onClick={() => void submitSuggestion()}>{suggestionBusy ? t('正在生成修改建议…') : t('生成批注建议')}</button>{suggestionError && <p className="ai-polish-error">{translateUiText(suggestionError)}</p>}{suggestionResult && <><AiMarkdown content={suggestionResult} className="lab-long-result" /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(suggestionResult)}>{t('复制回复')}</button><button type="button" className="primary" disabled={suggestionAdding} onClick={() => void addSuggestionResult()}>{suggestionAdding ? t('正在添加…') : t('添加到批注')}</button></div></>}</div>}
   </div>
 }

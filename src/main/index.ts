@@ -11,6 +11,7 @@ import { nativeWindowTitle } from '../shared/window-session'
 import { translateCataloguePhrase, type InterfaceLanguage } from '../shared/i18n-catalogue'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
+import { convertOfficeDocument, OfficeImportError, officeImportSourceFormat } from './office-import'
 import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
@@ -179,10 +180,26 @@ async function openPdfImports(paths: string[]): Promise<PdfImportFile[]> {
   const files: PdfImportFile[] = []
   for (const path of paths) {
     const format = importFormat(path)
+    const sourceFormat = officeImportSourceFormat(path)
     const extension = extname(path).toLowerCase()
     if (format) files.push({ name: basename(path), format, data: new Uint8Array(await readFile(path)) })
     else if (extension === '.eps') files.push({ name: basename(path), format: 'png', data: await rasterizeEps(path) })
-    else throw new Error('仅支持导入 PDF、PNG、JPG、JPEG 或 EPS 文件。')
+    else if (sourceFormat) {
+      try {
+        const data = await convertOfficeDocument(path, {
+          platform: process.platform,
+          resourcesPath: process.resourcesPath,
+          homePath: app.getPath('home'),
+          temporaryPath: app.getPath('temp'),
+          environment: process.env,
+          execute: async (command, args, options) => { await execFileAsync(command, args, options) }
+        })
+        files.push({ name: basename(path), format: 'pdf', sourceFormat, data })
+      } catch (error) {
+        if (error instanceof OfficeImportError && error.code === 'converter-unavailable') throw new Error('导入 Word 或 PowerPoint 文档需要 LibreOffice，或 Windows/macOS 上的 Microsoft Office。请安装后重试。')
+        throw new Error('无法转换 Word 或 PowerPoint 文档。请确认文件有效、未受密码保护，并检查 LibreOffice 或 Microsoft Office 权限。')
+      }
+    } else throw new Error('仅支持导入 PDF、PNG、JPG、JPEG、EPS、Word 或 PowerPoint 文件。')
   }
   return files
 }
@@ -460,7 +477,7 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
     backgroundColor: '#f4f6fa', show: false, title: 'PDFuck',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, spellcheck: false }
   })
-  const session: MainWindowSession = { window, initialPaths: options.initialPaths || [], detachedDocument: options.detachedDocument, initialDelivered: false, closeApproved: false, interfaceLanguage: 'zh', fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false }
+  const session: MainWindowSession = { window, initialPaths: options.initialPaths || [], detachedDocument: options.detachedDocument, initialDelivered: false, closeApproved: false, interfaceLanguage: 'zh', fileName: '未打开文档', dirty: false, hasDocument: false, encrypted: false, documentCount: 0 }
   // BrowserWindow.webContents becomes invalid by the time the `closed` event
   // fires. Keep its id while the window is alive so cleanup never touches a
   // destroyed Electron object.
@@ -471,7 +488,7 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); window.setTitle(nativeWindowTitle(session, session.interfaceLanguage)) })
   window.on('close', (event) => {
-    if (session.closeApproved || !session.dirty) return
+    if (session.closeApproved || !session.dirty && (session.documentCount || 0) <= 1) return
     event.preventDefault()
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })
@@ -560,7 +577,7 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(session.window, {
       title: nativeText(session.interfaceLanguage, '从文件合并 PDF'),
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps'] }]
+      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps', 'doc', 'docx', 'ppt', 'pptx'] }]
     })
     return result.canceled ? null : openPdfImports(result.filePaths)
   })
@@ -686,6 +703,7 @@ app.whenReady().then(async () => {
     const session = requireWindowSession(event.sender)
     session.fileName = typeof state.fileName === 'string' ? state.fileName.slice(0, 260) : '未打开文档'
     session.dirty = Boolean(state.dirty); session.hasDocument = Boolean(state.hasDocument); session.encrypted = Boolean(state.encrypted)
+    session.documentCount = Number.isInteger(state.documentCount) ? Math.max(0, Math.min(1000, state.documentCount!)) : Number(session.hasDocument)
     session.window.setTitle(nativeWindowTitle(session, session.interfaceLanguage))
   })
   ipcMain.on('window:minimize', (event) => requireMainWindow(event.sender).minimize())

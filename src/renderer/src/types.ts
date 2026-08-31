@@ -1,5 +1,17 @@
 export type ModuleKey = 'view' | 'edit' | 'annotate' | 'save'
 export type ViewMode = 'continuous' | 'single'
+
+/** A PDF document-outline item. pageIndex is absent for unsupported external actions. */
+export interface PdfBookmark {
+  id: string
+  title: string
+  pageIndex?: number
+  open: boolean
+  bold?: boolean
+  italic?: boolean
+  color?: string
+  children: PdfBookmark[]
+}
 export type Tool = 'none' | 'text_select' | 'crop' | 'add_text' | 'edit_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
 export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'delete' | 'underline' | 'ai_polish'
 export type AnnotationReplyStatus = 'handled' | 'thinking' | 'declined' | 'custom'

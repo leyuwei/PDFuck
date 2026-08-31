@@ -3,7 +3,7 @@
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog, ConfirmDialog, ErrorDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog } from './Dialogs'
+import { AnnotationDialog, ConfirmDialog, ErrorDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog, UnsavedCloseDialog } from './Dialogs'
 import { setInterfaceLanguage } from '../lib/i18n'
 
 vi.mock('../lib/pdfjs', () => ({
@@ -120,12 +120,39 @@ describe('AnnotationDialog focus', () => {
     await act(async () => root.unmount())
   })
 
+  it('reuses the destructive warning design for closing multiple documents', async () => {
+    const root = createRoot(container)
+    await act(async () => root.render(<ConfirmDialog message="当前打开了 2 个文档。" title="关闭多个文档" confirmLabel="全部关闭" destructive onCancel={() => undefined} onConfirm={() => undefined} />))
+    expect(container.querySelector('h2')?.textContent).toBe('关闭多个文档')
+    const closeAll = [...container.querySelectorAll('button')].find((button) => button.textContent === '全部关闭')!
+    expect(closeAll.classList.contains('unsaved-close-confirm')).toBe(true)
+    expect(container.querySelector('.unsaved-close-cancel')).not.toBeNull()
+    await act(async () => root.unmount())
+  })
+
+  it('offers save-and-close while retaining the safe cancel and destructive discard actions', async () => {
+    const onDecision = vi.fn()
+    const root = createRoot(container)
+    await act(async () => root.render(<UnsavedCloseDialog message="文档有未保存的修改" onDecision={onDecision} />))
+    const cancel = container.querySelector<HTMLButtonElement>('.unsaved-close-cancel')!
+    const save = container.querySelector<HTMLButtonElement>('.unsaved-close-save')!
+    const discard = container.querySelector<HTMLButtonElement>('.unsaved-close-confirm')!
+    expect(cancel.textContent).toBe('取消')
+    expect(save.textContent).toBe('保存后关闭')
+    expect(discard.textContent).toBe('不保存并关闭')
+    expect(document.activeElement).toBe(cancel)
+    await act(async () => save.click())
+    expect(onDecision).toHaveBeenCalledWith('save')
+    await act(async () => root.unmount())
+  })
+
   it('keeps imported files in a separate reorderable list and inserts them before a selected page', async () => {
     const onSubmit = vi.fn()
     const root = createRoot(container)
-    const files = [{ name: 'first.pdf', format: 'pdf' as const, data: Uint8Array.of(1) }, { name: 'second.png', format: 'png' as const, data: Uint8Array.of(2) }]
+    const files = [{ name: 'first.docx', format: 'pdf' as const, sourceFormat: 'docx' as const, data: Uint8Array.of(1) }, { name: 'second.png', format: 'png' as const, data: Uint8Array.of(2) }]
     await act(async () => root.render(<MergeFilesDialog files={files} pageCount={150} creating={false} onCancel={() => undefined} onSubmit={onSubmit} />))
     expect(container.querySelectorAll('.merge-source-item')).toHaveLength(2)
+    expect(container.querySelector('.merge-source-item')?.textContent).toContain('DOCX')
     expect(container.querySelector('.page-range-input')).toBeNull()
     await act(async () => { (container.querySelector('[aria-label="下移文件"]') as HTMLButtonElement).click() })
     await act(async () => { ([...container.querySelectorAll('button')].find((button) => button.textContent === '某页之前') as HTMLButtonElement).click() })
@@ -192,6 +219,13 @@ describe('AnnotationDialog focus', () => {
     expect(container.textContent).toContain('打印设置与预览')
     expect((container.querySelector('.print-printer-select') as HTMLSelectElement).value).toBe('office-device')
     expect(container.querySelectorAll('.print-page-strip button')).toHaveLength(5)
+    const multiPageSwitch = container.querySelector<HTMLButtonElement>('.print-multipage-toggle')!
+    expect(multiPageSwitch.getAttribute('role')).toBe('switch')
+    expect(multiPageSwitch.querySelector('input[type="checkbox"]')).toBeNull()
+    await act(async () => multiPageSwitch.click())
+    expect(multiPageSwitch.getAttribute('aria-checked')).toBe('true')
+    expect(container.querySelector('.print-layout-presets')).not.toBeNull()
+    await act(async () => multiPageSwitch.click())
     await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('.print-page-shortcuts button')].find((button) => button.textContent === '当前页')!).click() })
     await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('.print-orientation button')].find((button) => button.textContent === '横向')!).click() })
     const duplex = container.querySelector<HTMLSelectElement>('.print-duplex-select')!

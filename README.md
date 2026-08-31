@@ -31,7 +31,8 @@ Copyright © 2026 github@leyuwei
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
 - **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Source-run flow corridors keep drag selections inside their paragraph or column while retaining inline formula fragments, so interleaved chart labels and neighboring columns do not overflow into the selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
-- **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes.
+- **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes. Closing dirty work offers **Save and Close**, **Close Without Saving**, and a pulsing **Cancel** action; multi-document windows can save every dirty tab before closing.
+- **Standard PDF bookmarks and recognition**: Documents with outlines automatically open a collapsible, resizable bookmark sidebar with hierarchy controls, inline search, font sizing, double-click title editing, and undoable single-item deletion. The View panel recognizes numbered, localized, chapter-style, semantic, and optional typography-based headings across multiple languages, limits the hierarchy to levels 1–6, removes/restores false candidates directly in preview, appends or replaces outlines, and deletes all bookmarks as one undoable edit. Academic recognition normalizes PDF small caps, follows multi-column reading order, joins wrapped Roman-numeral headings, and rejects chart axes, formulas, years, and prose section references.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
@@ -63,7 +64,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Continuous or single-page reading, page navigation, zoom, fit-to-width, fit-page, and high-DPI rendering. In single-page mode, each mouse-wheel gesture turns exactly one page and only one page is shown. Fit Width and Fit Page use compact toolbar icons; the last fitting choice becomes the default for subsequently opened PDFs.
 - Light and dark themes, a customizable app accent, and a per-document PDF paper background. Both colors have a full picker with HEX input, presets, and reset controls.
 - Drag-and-drop opening, recent files, single-window document tabs, and independent state per tab.
-- Reading tools for PDF search, figure/table discovery, citation links, and grammar checks.
+- Reading tools for PDF search, bookmark recognition, figure/table discovery, citation links, and grammar checks. Existing standard PDF outlines automatically open in a collapsible, resizable sidebar with search, font controls, hierarchy expansion, navigation, double-click title editing, and single-item deletion. Recognition combines four safe-by-default multilingual rule groups plus opt-in typography assistance, optional document-specific heading terms, a 1–6 level depth limit, and removable/restorable preview candidates, then appends or replaces standard PDF bookmarks; page deletion and reordering keep surviving destinations aligned.
 
 ### Edit
 
@@ -71,7 +72,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Crop pages with a movable selection and eight resize handles, then confirm before applying.
 - Delete the current, odd, even, or any selected pages.
 - Manage pages in a single thumbnail storyboard with fixed preview frames, a large focused-page inspector, stable pointer dragging with insertion feedback, keyboard reordering, batch removal, cross-group position moves, and per-page rotate-left 90°, flip 180°, and rotate-right 90° controls. Ordering, orientation, and removal are applied as one undoable transaction; large documents use 20-page on-demand preview groups.
-- Merge pages from existing PDF, PNG, JPG/JPEG, or EPS files, even before a PDF is opened. After import, batch-select page ranges and move them to the beginning, end, or a specified position before confirming the order. EPS is rasterized locally through Ghostscript when it is installed.
+- Merge pages from existing PDF, PNG, JPG/JPEG, EPS, Word (`.doc`/`.docx`), or PowerPoint (`.ppt`/`.pptx`) files, even before a PDF is opened. After import, batch-select page ranges and move them to the beginning, end, or a specified position before confirming the order. EPS is rasterized locally through Ghostscript when it is installed. Office files are converted locally with LibreOffice on Windows, macOS, or Linux; installed Microsoft Office is also used as a fallback on Windows and macOS.
 - Add formatted text with custom font, size, color, bold, italic, alignment, line spacing, paragraph spacing, character spacing, and 50%-200% text width.
 - Add PNG (including transparent PNG) or JPG images to the current page. Position, resize, rotate, and lock the aspect ratio in a live preview before confirming it into the PDF; reopen the PDF later to edit or remove the image again.
 - Add polished page numbers across the document with `{page}` / `{total}` templates, custom separators, font styling, horizontal and vertical alignment, and edge-relative percentage margins that adapt independently to mixed page sizes and orientations. PDFuck-created page numbers can be detected, replaced as a set, or removed after reopening the file.
@@ -85,14 +86,14 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Use the page context menu or the floating selection toolbar to create annotations.
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Double-clicking any page annotation activates the Annotate module before opening its editor, regardless of the current module. Duplicate rapid delete events are idempotent, so a stale second event cannot open a native alert or detach the active editor/IME. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
-- Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions combines one annotation with multiple text selections and can optionally retain those selections locally per PDF for reuse. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. The workflows include native Chinese, English, Japanese, Russian, and Spanish prompts; only AI Polish has a keyboard shortcut.
+- Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions automatically selects nearby text from the annotation geometry, offers a five-level context-amount slider, and still accepts multiple manual selections that can optionally be retained locally per PDF. Free-position notes only receive automatic context when they are genuinely near recognizable text, avoiding unrelated paragraphs, figures, or columns. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. The workflows include native Chinese, English, Japanese, Russian, and Spanish prompts; only AI Polish has a keyboard shortcut.
 - Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. Long responses request server-sent streaming by default so upstream gateways receive response bytes early; an older relay that explicitly rejects streaming falls back once without replaying timeouts or ambiguous billable requests. HTTP 524, other gateway timeouts, temporary service failures, authentication, model-route, input-size, and quota/rate-limit errors receive distinct actionable diagnostics instead of raw status pages. API keys, shared model settings, and a customizable 5–3600 second response timeout (120 seconds by default) are kept in local browser storage.
 
 ### Save, Print, and Export
 
-- Save or Save As PDF, including unsaved in-memory changes. The normal Save action is disabled until the document actually has unsaved changes; Save As remains available for an open clean document.
-- PDFuck discovers the printers installed in the operating system and selects one directly inside the unified page-selection, settings, and preview window. On Windows, jobs use the native GDI/DEVMODE path and query each driver's duplex capability; simplex, long-edge duplex, and short-edge duplex are written into that individual job instead of inheriting the printer default.
-- Select all, current, odd, even, or arbitrary non-contiguous pages. Printing supports paper size, multi-page layouts, optional page frames, and an independent 25%-200% scale for both one-page and multi-page printing. Values above 100% deliberately allow edge cropping.
+- Save or Save As PDF, including unsaved in-memory changes. The normal Save action is disabled until the document actually has unsaved changes; Save As remains available for an open clean document. Closing a dirty tab or window offers Save and Close, while a dirty multi-document window saves all modified tabs in sequence and stops safely if any Save As dialog is canceled.
+- PDFuck discovers the printers installed in the operating system and selects one directly inside the unified page-selection, settings, and preview window. On Windows, jobs use the native GDI/DEVMODE path and query each driver's duplex capability; simplex, long-edge binding (`DMDUP_VERTICAL`), and short-edge binding (`DMDUP_HORIZONTAL`) are written correctly into that individual job instead of inheriting the printer default. macOS and other supported Electron platforms keep the same physical long-/short-edge meaning.
+- Select all, current, odd, even, or arbitrary non-contiguous pages. Printing supports paper size, multi-page layouts, optional page frames, and an independent 25%-200% scale for both one-page and multi-page printing. The preview and controls each occupy half of the dialog body, and multi-page layout uses one accessible switch without a duplicate checkbox. Values above 100% deliberately allow edge cropping.
 - The preview is rendered at high pixel density from the same imposed PDF that is dispatched to the printer, including scale, orientation, margins, multi-page placement, and frames. Windows output uses a 600-DPI PDFium raster passed to the selected driver for clearer physical output.
 - Print orientation can be forced to portrait or landscape, or left on the default per-sheet Auto mode. Auto evaluates the actual pages placed on each sheet, so mixed portrait/landscape documents keep the matching orientation in both the application preview and the imposed PDF dispatched to the printer.
 - Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS accept any positive DPI entered by the user without live correction and preserve original page-number suffixes such as `_001` and `_003`; unsafe canvas sizes are rejected with a localized explanation.
@@ -115,6 +116,8 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 
 Requires Node.js 22 or newer. Windows PowerShell, macOS Terminal, and Linux shells are supported.
 
+Word/PowerPoint merge import additionally requires LibreOffice on any supported desktop platform, or an installed copy of Microsoft Office on Windows/macOS. Conversion stays on the local computer. EPS import similarly requires Ghostscript.
+
 ```sh
 npm ci
 npm run dev
@@ -128,7 +131,9 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all five UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
+The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all five UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
+
+`npm run test:bookmarks-ui` additionally verifies undoable single-bookmark deletion and removal/restoration of recognition-preview candidates. `npm run test:bookmark-recognition-papers` opens the real `m91474-li paper.pdf` and `Scheduling0826m.pdf` fixtures in Electron and checks their exact 6/9 Roman-numeral section sequences, Abstract/References entries, wrapped headings, and false-positive exclusion.
 
 ### Package a Release with One Command
 
@@ -146,17 +151,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.21.4` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.21.8` before packaging:
 
 ```powershell
-npm run package:windows -- 1.21.4
+npm run package:windows -- 1.21.8
 ```
 
 ```sh
-npm run package:macos -- 1.21.4
+npm run package:macos -- 1.21.8
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.4` and `bash scripts/package-macos.sh 1.21.4`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.8` and `bash scripts/package-macos.sh 1.21.8`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -326,7 +331,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 文件未真正拖入窗口时，拖放提示会立即消失，不再遮挡界面；
 - 未打开 PDF 时显示最近使用列表，可点击快速打开；
 - 已有文档时继续打开、双击或拖入 PDF，会在同一个主窗口新增文档标签；
-- 文档标签栏支持切换、打开、单独关闭、前后拖动排序；将标签拖出标签栏即可创建独立窗口，再拖入另一个 PDFuck 窗口会自动回归标签页，当前内存修改不丢失；
+- 文档标签栏支持切换、打开、单独关闭、前后拖动排序；将标签拖出标签栏即可创建独立窗口，再拖入另一个 PDFuck 窗口会自动回归标签页，当前内存修改不丢失；关闭有改动的标签或窗口时可选择“保存后关闭 / 不保存并关闭 / 取消”，多文档窗口可依次保存全部有改动的标签后再关闭；
+- 文档含标准 PDF 书签时会自动显示可收起、可拖动改宽的书签边栏；支持边栏内搜索、字号调节、分级展开/折叠和跳转，双击可原位改名，也可单独删除并撤销。查看模块的“识别书签”默认组合数字、多国语言数字、章节和典型标题词四类稳健规则，排版辅助改为按需启用；支持自定义标题词、1–6 级深度、预览中剔除/恢复误识别项、追加、覆盖或全部删除。学术论文识别会规范化 PDF 小型大写、按双栏阅读顺序排序、合并换行的罗马数字标题，并排除图表坐标、公式、年份和正文中的章节引用；
 - 每个标签保留独立页码、缩放、工具和未保存状态，原生窗口标题跟随当前 PDF 文件名。
 - 打包版本启动后会在后台检查 GitHub Releases；更新提示支持下载、稍后提醒和跳过当前版本。
 
@@ -335,7 +341,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 七项主编辑功能均使用与批注工具协调的简洁线性图标，同时保留原有标题与说明；
 - 框选裁切页面，初选后可移动并通过八个控制点精调大小；点击页面内“确认范围”后才询问是否执行裁切；
 - 页面管理器采用统一缩略图故事板和右侧大图详情；拖动时显示悬浮影子与插入位置，松手后再重排，也可用方向键或目标位置跨组移动；每页可向左旋转 90°、翻转 180°或向右旋转 90°，缩略图与大图会即时预览；支持多页批量删除，大文档每组按需生成 20 页预览，排序、方向和删除作为一次可撤销修改提交；
-- 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG 或 EPS 合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会在本机 Ghostscript 可用时离线栅格化导入；
+- 无需先打开 PDF，即可将已有 PDF、PNG、JPG/JPEG、EPS、Word（`.doc`/`.docx`）或 PowerPoint（`.ppt`/`.pptx`）合并成新文档；已有文档可明确选择插入到开头、末尾、指定页之前或之后。多个导入文件在独立列表中拖动或用上下按钮排序，且每个文件内部页面保持原有顺序。EPS 会通过本机 Ghostscript 离线栅格化；Office 文档优先通过 Windows、macOS、Linux 都可用的 LibreOffice 在本机转换，并在 Windows/macOS 上回退到已安装的 Microsoft Office；
 - 添加自定义字体类别、字号、颜色、粗体、斜体和对齐方式的文字；
 - 可在当前页面添加 PNG（包括透明 PNG）或 JPG 图片；导入后先在页面上拖动调整位置、大小、旋转角度和原始比例锁，确认后才正式写入 PDF；已添加图片会保留可编辑源数据，重开 PDF 后仍可在编辑模块选中、调整或删除；
 - 可为全部页面批量增加美观页码：支持 `{page}` / `{total}` 模板、任意分隔符、字体/字号/颜色/粗斜体、左中右与页顶/页底对齐，并按每页宽高使用百分比边距独立定位，可正确适配横向、纵向及混合尺寸页面；重开 PDF 后仍可整组更新或删除由 PDFuck 添加的页码；
@@ -385,7 +391,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组，标题不再带多余上下分隔线，模型设置齿轮位于分组标题右侧；智能润色、全文评价和批注建议共用同一连接与超时设置，只有智能润色显示 `Ctrl/⌘I` 快捷键。
 - 每个 PDF 标签拥有相互隔离、持续挂载的 AI 会话；打开新 PDF 或手动切换标签时，原文档的 AI 浮窗只会暂时隐藏，请求和倒计时继续运行，切回后会恢复原进度、错误或返回结果，不会把内容串到当前 PDF。
 - “全文评价”首次使用时必须勾选数据风险声明，复选框说明保持同行且声明卡片与浮窗边界留有一致间距；可发送带逐页标记的全文文字或当前 PDF 文件，并从五语预置审稿提示词中选择或自行修改。请求期间会按用户设置的超时时间显示进度条和剩余秒数。
-- “批注建议”功能开启后，只能从单条批注设置区的专用按钮启动建议流程；请求在打开后立即按一次性事件消费，切换模块或双击任意批注都不会重放旧浮窗。流程支持跨页、多次框选并显式加入上下文；用户还可选择把上下文按当前 PDF 持久保存在本机，后续批注自动载入，关闭后立即清除该文档的本机副本。
+- “批注建议”功能开启后，只能从单条批注设置区的专用按钮启动建议流程；请求在打开后立即按一次性事件消费，切换模块或双击任意批注都不会重放旧浮窗。流程会按批注的页面几何自动选取同栏附近正文，并提供 1–5 级上下文量滑动条；自由位置批注只有确实靠近可识别正文时才自动取文，避免误抓图表、边栏或无关段落。用户仍可跨页、多次框选补充上下文，也可选择把手动上下文按当前 PDF 持久保存在本机，后续批注自动载入，关闭后立即清除该文档的本机副本。
 - 智能润色、全文评价和批注建议的 AI 回复都会安全渲染 GitHub 风格 Markdown（标题、列表、表格、引用和代码等）；复制和写入批注仍使用原始回复，复制时保留 Markdown 换行与标记。
 - 智能润色会根据框选文字的主要语言自动使用中文或英文提示词；切换中文、英文选区时会同步切换预置提示词，混合文本按字符占比判断。
 - 夜间模式默认使用浅蓝灰文档纸张底色，保证多栏正文和公式在深色界面中仍清晰可读；多栏跨栏选区按真实文字列分段绘制并支持高亮、替换、删除和下划线批注。
@@ -395,9 +401,9 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ### 保存、打印与导出
 
-- 保存或另存为 PDF；
-- 软件会直接识别操作系统中已安装的打印机，并在统一打印浮窗内完成设备选择、页码选择、设置和预览；Windows 会走原生 GDI/DEVMODE 通道，读取每台驱动的双面能力，并把单面、长边双面或短边双面写入当前作业，不再继承打印机默认值；
-- 可选择全部、当前、奇数、偶数或任意不连续页面，并设置纸张、每张纸多页拼版、25%–200% 独立缩放和页面边框；单页与多页拼版都支持缩放，超过 100% 时允许按预览裁切边缘；默认不添加页面边框，只有主动勾选时才会写入分隔线；
+- 保存或另存为 PDF；关闭有未保存修改的标签或窗口时可直接“保存后关闭”，多文档保存会在任一另存为被取消时安全停止关闭；
+- 软件会直接识别操作系统中已安装的打印机，并在统一打印浮窗内完成设备选择、页码选择、设置和预览；Windows 会走原生 GDI/DEVMODE 通道，读取每台驱动的双面能力，严格按长边装订 `DMDUP_VERTICAL`、短边装订 `DMDUP_HORIZONTAL` 写入当前作业；macOS 等平台保持相同的物理翻边语义；
+- 可选择全部、当前、奇数、偶数或任意不连续页面，并设置纸张、每张纸多页拼版、25%–200% 独立缩放和页面边框；打印设置区与预览区各占浮窗主体一半，多页拼版只保留一个可访问开关，不再重复显示复选框；单页与多页拼版都支持缩放，超过 100% 时允许按预览裁切边缘；默认不添加页面边框，只有主动勾选时才会写入分隔线；
 - 预览不再使用近似缩略图，而是以高像素密度直接渲染即将派发的最终拼版 PDF，缩放、方向、页边距、多页位置和边框与作业保持同源；Windows 物理输出使用 600 DPI PDFium 栅格交给所选驱动；
 - 打印方向支持自动、纵向和横向；默认自动模式会针对每一张输出纸上的实际页面独立选择方向，横纵页面混排文档的应用预览和最终提交给系统的打印 PDF 保持一致；
 - 输入 `1-3, 5, 8-10` 即可快速指定页码，错误范围会即时提示；
@@ -422,6 +428,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 需要 Node.js 22 或更高版本。Windows PowerShell、macOS Terminal 和 Linux shell 都可以使用下面的命令。
 
+合并导入 Word/PowerPoint 还需要任一平台安装 LibreOffice，或在 Windows/macOS 安装 Microsoft Office；转换只在本机进行。EPS 导入同样需要 Ghostscript。
+
 ```sh
 npm ci
 npm run dev
@@ -435,13 +443,15 @@ npm test
 npm run build
 ```
 
-本版本的 `npm run test:ai-smoke` 会把真实 SSE 流式响应完整送过 Electron 主进程代理；单元测试还覆盖 OpenAI 与 Claude 流式事件、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类和五种界面语言。`npm run test:workflow-state-ui` 在真实 Electron 窗口覆盖无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议浮窗、智能润色快捷键同行布局和自定义超时持久化。`npm run test:lab-features-ui` 会启动本地模拟 AI 服务，真实验证无分隔线且与标准按钮一致的实验室排版、免责声明复选框几何与边距、全文评价倒计时、打开新 PDF 与手动往返切换时的按文档进度隔离和结果恢复、Markdown 渲染及原文复制、按文档持久化的多页上下文、请求载荷和两条批注写回链路，并输出视觉检查截图。
+本版本的 `npm run test:ai-smoke` 会把真实 SSE 流式响应完整送过 Electron 主进程代理；单元测试还覆盖 OpenAI 与 Claude 流式事件、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类和五种界面语言。`npm run test:workflow-state-ui` 在真实 Electron 窗口覆盖无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议浮窗、智能润色快捷键同行布局和自定义超时持久化。`npm run test:lab-features-ui` 会启动本地模拟 AI 服务，真实验证无分隔线且与标准按钮一致的实验室排版、免责声明复选框几何与边距、全文评价倒计时、打开新 PDF 与手动往返切换时的按文档进度隔离和结果恢复、Markdown 渲染及原文复制、自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的多页手动上下文、请求载荷和两条批注写回链路，并输出视觉检查截图。`npm run test:bookmarks-ui` 会生成含标准层级书签和标题文字的 PDF，在真实 Electron 窗口验证边栏自动显示、搜索/字号/拖宽/折叠、窄窗口与批注栏兼容、双击改名、识别规则与深度、追加/覆盖/清空、撤销、“保存后关闭”和最终书签落盘。
 
 针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese` 和 `npm run test:selection-chinese-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；中间两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页，覆盖公式碎片保留、图表文字隔离、单双栏流域裁剪、反向拖拽、真实 Electron 选区矩形与剪贴板文字；最后两项使用 `tmp/7.申报书原件.pdf` 第 3 页，验证异常子集字体度量归一化，并在真实 Electron 中逐像素对比中文标题、正文与选区带的纵向中心。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
 页面方向、DPI 与输入法回归使用 `npm run test:page-manager-input-ui`。它会先在真实 Electron 窗口对同一批注连续派发两次删除，确认没有原生/应用错误弹窗，再立即新建批注验证普通文字、中文 composition 和窗口失焦再聚焦后的输入；同时验证三种逐页方向变换及保存结果，以及 DPI 草稿不被纠正。
+
+`npm run test:bookmarks-ui` 还会验证可撤销的书签单项删除，以及识别预览候选项的剔除与恢复。`npm run test:bookmark-recognition-papers` 会在真实 Electron 中逐页识别 `m91474-li paper.pdf` 和 `Scheduling0826m.pdf`，精确核对其 6/9 个罗马数字章节、Abstract/References、跨行标题及图表/公式/正文误报排除。
 
 ### 一键打包发布
 
@@ -459,17 +469,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.21.4`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.21.8`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.21.4
+npm run package:windows -- 1.21.8
 ```
 
 ```sh
-npm run package:macos -- 1.21.4
+npm run package:macos -- 1.21.8
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.4` 和 `bash scripts/package-macos.sh 1.21.4`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.8` 和 `bash scripts/package-macos.sh 1.21.8`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

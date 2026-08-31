@@ -4,12 +4,14 @@ import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as aiPolish from '../lib/ai-polish'
+import type { AutomaticAnnotationContextRequest } from '../lib/automatic-annotation-context'
 import { AnnotationLab, type AnnotationSuggestionRequest } from './AnnotationLab'
 
 const selection = { pageIndex: 0, text: 'Selected text', rects: [{ x: 10, y: 20, width: 80, height: 12 }] }
+const suggestionGeometry = { kind: 'note' as const, anchors: [{ pageIndex: 0, rects: [{ x: 10, y: 20, width: 12, height: 12 }] }] }
 
 function OneShotSuggestionHarness({ mounted, onConsumed }: { mounted: boolean; onConsumed(token: number): void }) {
-  const [request, setRequest] = useState<AnnotationSuggestionRequest | undefined>({ token: 41, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0 })
+  const [request, setRequest] = useState<AnnotationSuggestionRequest | undefined>({ token: 41, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0, ...suggestionGeometry })
   if (!mounted) return null
   return <AnnotationLab suggestionRequest={request} onSuggestionRequestConsumed={(token) => {
     onConsumed(token)
@@ -94,7 +96,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('records multiple selections for one annotation suggestion without duplicates', async () => {
     const root = createRoot(container)
-    const request = { token: 1, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0 }
+    const request = { token: 1, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0, ...suggestionGeometry }
     const props = { suggestionRequest: request, onAdd: vi.fn(), onCopy: vi.fn() }
     await act(async () => root.render(<AnnotationLab {...props} selection={selection} selectionKey="first" />))
     await act(async () => container.querySelector<HTMLButtonElement>('.capture-context-button')!.click())
@@ -120,6 +122,24 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.render(<OneShotSuggestionHarness mounted onConsumed={consumed} />))
     expect(container.querySelector('.annotation-suggestion-window')).toBeNull()
     expect(consumed).toHaveBeenCalledTimes(1)
+    await act(async () => root.unmount())
+  })
+
+  it('loads automatic context immediately and recomputes it from the amount slider', async () => {
+    const root = createRoot(container)
+    const getAutomaticContext = vi.fn(async (_request: AutomaticAnnotationContextRequest, level: number) => ({ context: { text: `Automatic context level ${level}`, pageIndexes: [0] } }))
+    const request = { token: 7, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0, ...suggestionGeometry }
+    await act(async () => root.render(<AnnotationLab suggestionRequest={request} getAutomaticContext={getAutomaticContext} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 140)) })
+    expect(container.querySelector('.suggestion-auto-context article')?.textContent).toContain('Automatic context level 3')
+    const slider = container.querySelector<HTMLInputElement>('.automatic-context-level input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(slider, '5')
+      slider.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 140))
+    })
+    expect(container.querySelector('.suggestion-auto-context article')?.textContent).toContain('Automatic context level 5')
+    expect(getAutomaticContext).toHaveBeenLastCalledWith(expect.objectContaining({ annotationId: 'note-1' }), 5)
     await act(async () => root.unmount())
   })
 
@@ -149,7 +169,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('optionally persists contexts for the same document and clears them when disabled', async () => {
     const root = createRoot(container)
-    const request = { token: 1, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0 }
+    const request = { token: 1, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0, ...suggestionGeometry }
     const common = { documentKey: 'C:\\papers\\persistent.pdf', onAdd: vi.fn(), onCopy: vi.fn() }
     await act(async () => root.render(<AnnotationLab {...common} suggestionRequest={request} selection={selection} />))
     await act(async () => container.querySelector<HTMLButtonElement>('.capture-context-button')!.click())

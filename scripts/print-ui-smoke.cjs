@@ -84,6 +84,27 @@ async function main() {
     }
     const finalPreview = page.locator('.print-job-preview')
     await finalPreview.waitFor({ timeout: 30000 })
+    const layoutWidths = await page.evaluate(() => {
+      const body = document.querySelector('.print-dialog-body')
+      const controls = document.querySelector('.print-controls')
+      const preview = document.querySelector('.print-preview')
+      if (!(body instanceof HTMLElement) || !(controls instanceof HTMLElement) || !(preview instanceof HTMLElement)) return undefined
+      return { body: body.getBoundingClientRect().width, controls: controls.getBoundingClientRect().width, preview: preview.getBoundingClientRect().width }
+    })
+    assert.ok(layoutWidths, 'print layout bounds are unavailable')
+    assert.ok(Math.abs(layoutWidths.controls / layoutWidths.body - 0.5) <= 0.02, `print controls should occupy half the dialog body: ${JSON.stringify(layoutWidths)}`)
+    assert.ok(Math.abs(layoutWidths.preview / layoutWidths.body - 0.5) <= 0.02, `print preview should occupy half the dialog body: ${JSON.stringify(layoutWidths)}`)
+    const multiPageSwitch = page.locator('.print-multipage-toggle')
+    assert.equal(await multiPageSwitch.getAttribute('role'), 'switch', 'multi-page layout must expose one semantic switch')
+    assert.equal(await multiPageSwitch.locator('input[type="checkbox"]').count(), 0, 'multi-page layout must not duplicate the switch with a checkbox')
+    const initialMultiPageState = await multiPageSwitch.getAttribute('aria-checked')
+    await finalPreview.evaluate((image) => { window.__pdfuckPrintSmokePreviousPreview = image.getAttribute('src') })
+    await multiPageSwitch.click()
+    assert.notEqual(await multiPageSwitch.getAttribute('aria-checked'), initialMultiPageState, 'multi-page switch did not toggle')
+    await page.waitForFunction(() => {
+      const image = document.querySelector('.print-job-preview')
+      return image instanceof HTMLImageElement && image.getAttribute('src') !== window.__pdfuckPrintSmokePreviousPreview && image.complete && image.naturalWidth === Number(image.dataset.pixelWidth) && image.naturalHeight === Number(image.dataset.pixelHeight)
+    }, undefined, { timeout: 30000 })
     const previewQuality = await finalPreview.evaluate((image) => ({ naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight, clientWidth: image.clientWidth, clientHeight: image.clientHeight, sourceWidth: Number(image.dataset.pixelWidth), sourceHeight: Number(image.dataset.pixelHeight) }))
     assert.ok(previewQuality.naturalWidth >= previewQuality.clientWidth * 2, `preview width is not retina sharp: ${JSON.stringify(previewQuality)}`)
     assert.ok(previewQuality.naturalHeight >= previewQuality.clientHeight * 2, `preview height is not retina sharp: ${JSON.stringify(previewQuality)}`)
@@ -91,7 +112,7 @@ async function main() {
     assert.equal(previewQuality.naturalHeight, previewQuality.sourceHeight)
     const screenshot = path.join(screenshotDir, `print-dialog-${require('../package.json').version}.png`)
     await page.screenshot({ path: screenshot })
-    console.log(JSON.stringify({ printUiSmoke: 'passed', viewport: '900x760', systemPrinterCount: systemPrinters.length, printers: printerResults, orientation: results, previewQuality, screenshot }, null, 2))
+    console.log(JSON.stringify({ printUiSmoke: 'passed', viewport: '900x760', systemPrinterCount: systemPrinters.length, printers: printerResults, orientation: results, layoutWidths, multiPageSwitch: true, previewQuality, screenshot }, null, 2))
   } finally {
     await app.close()
     fs.rmSync(userData, { recursive: true, force: true })

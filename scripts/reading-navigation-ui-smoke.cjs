@@ -90,7 +90,7 @@ async function main() {
     assert.ok(searchScroll.scrollTop > 80, `search did not scroll to the lower-page match: ${JSON.stringify(searchScroll)}`)
     await page.locator('.pdf-search-heading button').click()
 
-    await page.locator('.tool-panel .tool-action-button').nth(2).click()
+    await page.getByRole('button', { name: '关联引文', exact: true }).click()
     const insight = page.locator('.insight-panel')
     await insight.waitFor({ timeout: 60000 })
     await page.waitForFunction(() => document.querySelectorAll('.insight-list button').length >= 40, undefined, { timeout: 60000 })

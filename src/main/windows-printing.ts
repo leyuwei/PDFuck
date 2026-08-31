@@ -112,7 +112,10 @@ export async function listWindowsPrinters(): Promise<PrinterDescriptor[]> {
 /** Windows DEVMODE constants: paper, duplex and orientation are per-job. */
 export function buildNativePrintJobOptions(options: PrintPdfOptions): NativePrintJobOptions {
   const paperSize = { Letter: 1, Tabloid: 3, Legal: 5, A3: 8, A4: 9, A5: 11 }[options.pageSize]
-  const duplex = { simplex: 1, shortEdge: 2, longEdge: 3 }[options.duplex]
+  // Win32 defines DMDUP_VERTICAL (2) as long-edge binding and
+  // DMDUP_HORIZONTAL (3) as short-edge binding. Keep the UI's physical edge
+  // meaning intact instead of interpreting these constants as page direction.
+  const duplex = { simplex: 1, longEdge: 2, shortEdge: 3 }[options.duplex]
   return {
     copies: 1,
     collate: false,
