@@ -86,7 +86,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Use the page context menu or the floating selection toolbar to create annotations.
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Double-clicking any page annotation activates the Annotate module before opening its editor, regardless of the current module. Duplicate rapid delete events are idempotent, so a stale second event cannot open a native alert or detach the active editor/IME. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
-- Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions automatically selects nearby text from the annotation geometry, offers a five-level context-amount slider, and still accepts multiple manual selections that can optionally be retained locally per PDF. Free-position notes only receive automatic context when they are genuinely near recognizable text, avoiding unrelated paragraphs, figures, or columns. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. The workflows include native Chinese, English, Japanese, Russian, and Spanish prompts; only AI Polish has a keyboard shortcut.
+- Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions automatically selects nearby text from the annotation geometry, offers a five-level context-amount slider, and still accepts multiple manual selections that can optionally be retained locally per PDF. Free-position notes only receive automatic context when they are genuinely near recognizable text, avoiding unrelated paragraphs, figures, or columns. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Add to Reply is bound to the originating document, writes every segment of a cross-page annotation atomically, verifies the result, and exposes the multiline reply in both the annotation row and reply settings; saved replies are restored after reopening. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. The workflows include native Chinese, English, Japanese, Russian, and Spanish prompts; only AI Polish has a keyboard shortcut.
 - Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. Long responses request server-sent streaming by default so upstream gateways receive response bytes early; an older relay that explicitly rejects streaming falls back once without replaying timeouts or ambiguous billable requests. HTTP 524, other gateway timeouts, temporary service failures, authentication, model-route, input-size, and quota/rate-limit errors receive distinct actionable diagnostics instead of raw status pages. API keys, shared model settings, and a customizable 5–3600 second response timeout (120 seconds by default) are kept in local browser storage.
 
 ### Save, Print, and Export
@@ -151,17 +151,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.21.8` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.21.10` before packaging:
 
 ```powershell
-npm run package:windows -- 1.21.8
+npm run package:windows -- 1.21.10
 ```
 
 ```sh
-npm run package:macos -- 1.21.8
+npm run package:macos -- 1.21.10
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.8` and `bash scripts/package-macos.sh 1.21.8`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.10` and `bash scripts/package-macos.sh 1.21.10`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -391,7 +391,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组，标题不再带多余上下分隔线，模型设置齿轮位于分组标题右侧；智能润色、全文评价和批注建议共用同一连接与超时设置，只有智能润色显示 `Ctrl/⌘I` 快捷键。
 - 每个 PDF 标签拥有相互隔离、持续挂载的 AI 会话；打开新 PDF 或手动切换标签时，原文档的 AI 浮窗只会暂时隐藏，请求和倒计时继续运行，切回后会恢复原进度、错误或返回结果，不会把内容串到当前 PDF。
 - “全文评价”首次使用时必须勾选数据风险声明，复选框说明保持同行且声明卡片与浮窗边界留有一致间距；可发送带逐页标记的全文文字或当前 PDF 文件，并从五语预置审稿提示词中选择或自行修改。请求期间会按用户设置的超时时间显示进度条和剩余秒数。
-- “批注建议”功能开启后，只能从单条批注设置区的专用按钮启动建议流程；请求在打开后立即按一次性事件消费，切换模块或双击任意批注都不会重放旧浮窗。流程会按批注的页面几何自动选取同栏附近正文，并提供 1–5 级上下文量滑动条；自由位置批注只有确实靠近可识别正文时才自动取文，避免误抓图表、边栏或无关段落。用户仍可跨页、多次框选补充上下文，也可选择把手动上下文按当前 PDF 持久保存在本机，后续批注自动载入，关闭后立即清除该文档的本机副本。
+- “批注建议”功能开启后，只能从单条批注设置区的专用按钮启动建议流程；请求在打开后立即按一次性事件消费，切换模块或双击任意批注都不会重放旧浮窗。流程会按批注的页面几何自动选取同栏附近正文，并提供 1–5 级上下文量滑动条；自由位置批注只有确实靠近可识别正文时才自动取文，避免误抓图表、边栏或无关段落。用户仍可跨页、多次框选补充上下文，也可选择把手动上下文按当前 PDF 持久保存在本机，后续批注自动载入，关闭后立即清除该文档的本机副本。“添加到回复”严格绑定发起建议的 PDF，会原子写入跨页批注的全部分段并回读校验；写入后会选中目标批注，在列表与回复设置中显示保留 Markdown 换行的多行回复，保存并重开 PDF 后仍可恢复。
 - 智能润色、全文评价和批注建议的 AI 回复都会安全渲染 GitHub 风格 Markdown（标题、列表、表格、引用和代码等）；复制和写入批注仍使用原始回复，复制时保留 Markdown 换行与标记。
 - 智能润色会根据框选文字的主要语言自动使用中文或英文提示词；切换中文、英文选区时会同步切换预置提示词，混合文本按字符占比判断。
 - 夜间模式默认使用浅蓝灰文档纸张底色，保证多栏正文和公式在深色界面中仍清晰可读；多栏跨栏选区按真实文字列分段绘制并支持高亮、替换、删除和下划线批注。
@@ -469,17 +469,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.21.8`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.21.10`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.21.8
+npm run package:windows -- 1.21.10
 ```
 
 ```sh
-npm run package:macos -- 1.21.8
+npm run package:macos -- 1.21.10
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.8` 和 `bash scripts/package-macos.sh 1.21.8`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.10` 和 `bash scripts/package-macos.sh 1.21.10`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

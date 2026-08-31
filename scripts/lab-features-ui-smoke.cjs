@@ -244,8 +244,21 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     console.log('[lab-smoke] annotation suggestion response received')
     await page.locator('.annotation-suggestion-window .ai-polish-actions button').first().click()
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), suggestionMarkdown)
-    await page.locator('.annotation-suggestion-window .ai-polish-actions button.primary').click()
-    await page.waitForFunction(() => document.querySelector('.annotation-row .annotation-settings-button')?.getAttribute('title')?.includes('ANNOTATION SUGGESTION RESULT'))
+    const addToReply = page.locator('.annotation-suggestion-window .ai-polish-actions button.primary')
+    assert.equal(await addToReply.textContent(), '添加到回复')
+    await addToReply.click()
+    await switchTab.click()
+    assert.equal(await page.locator('.annotation-reply-preview').count(), 0, 'A reply writeback must never leak into the document switched to during the save')
+    await originalTab.click()
+    await annotation.locator('.annotation-reply-preview').waitFor()
+    assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
+    await annotation.locator('.annotation-settings-button').click()
+    assert.ok((await annotation.locator('.annotation-current-reply').innerText()).includes('Align the conclusion.'))
+    assert.equal(await annotation.locator('.custom-reply-row textarea').inputValue(), suggestionMarkdown)
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-suggestion-reply-${releaseVersion}.png`) })
+    await annotation.locator('.annotation-settings-title button').click()
+    await page.locator('.quick-save').click()
+    await page.waitForFunction(() => document.querySelector('.quick-save')?.hasAttribute('disabled'))
 
     assert.equal(requests.length, 2)
     assert.ok(requests[0].includes('--- Page 1 ---') && requests[0].includes('First context passage'))
@@ -253,7 +266,26 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.ok(requests[1].includes('FULL REVIEW RESULT'))
     assert.ok(requests[1].includes('First'))
     assert.ok(requests[1].includes('Second'))
-    console.log('[lab-smoke] copy, writeback, and payloads verified')
+    console.log('[lab-smoke] copy, visible reply writeback, save, and payloads verified')
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
+    await app.close()
+  }
+}
+
+async function verifyPersistedSuggestionReply(userData, pdf) {
+  const app = await launch(userData, pdf)
+  try {
+    const page = await app.firstWindow()
+    await page.waitForSelector('.pdf-page[data-page="0"]', { timeout: 60000 })
+    await page.locator('.nav-rail button').filter({ hasText: '批注' }).click()
+    const annotation = page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).first()
+    await annotation.locator('.annotation-reply-preview').waitFor({ timeout: 10000 })
+    assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
+    await annotation.locator('.annotation-settings-button').click()
+    assert.equal(await annotation.locator('.custom-reply-row textarea').inputValue(), suggestionMarkdown)
+    assert.ok((await annotation.locator('.annotation-current-reply').innerText()).includes('Align the conclusion.'))
+    console.log('[lab-smoke] saved AI reply restored after reopening the PDF')
   } finally {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
     await app.close()
@@ -283,7 +315,8 @@ async function main() {
     const pdf = await fixture(temporary)
     await configure(userData, `http://127.0.0.1:${address.port}/v1`)
     await verifyLabFeatures(userData, pdf.primary, pdf.switchTarget, requests)
-    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', automaticContext: 'conservative-free-note-pass', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', copyAndWriteback: 'passed' }))
+    await verifyPersistedSuggestionReply(userData, pdf.primary)
+    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', automaticContext: 'conservative-free-note-pass', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', copyAndWriteback: 'passed', replyVisibility: 'passed', replyPersistence: 'passed' }))
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))

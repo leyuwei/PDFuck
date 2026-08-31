@@ -934,13 +934,57 @@ export default function App() {
     await model.addAnnotation(0, 'note', [], content, { x: Math.max(24, size.width - 42), y: 42 }, undefined, undefined, preferences.annotationAuthor)
     syncModel('全文评价已作为第一页便笺添加到批注列表', false)
   }, [preferences.annotationAuthor, syncModel])
-  const addAnnotationSuggestion = useCallback(async (annotationId: string, content: string) => {
-    const model = modelRef.current
-    if (!model) throw new Error('请先打开 PDF 文档。')
-    if (!annotations.some((annotation) => annotation.id === annotationId)) throw new Error('目标批注已不存在，请重新选择。')
+  const addAnnotationSuggestion = useCallback(async (documentIdOrAnnotationId: number | string, annotationIdOrContent: string, suggestionContent?: string) => {
+    const documentId = typeof documentIdOrAnnotationId === 'number' ? documentIdOrAnnotationId : activeDocumentIdRef.current
+    const annotationId = typeof documentIdOrAnnotationId === 'number' ? annotationIdOrContent : documentIdOrAnnotationId
+    const content = typeof documentIdOrAnnotationId === 'number' ? suggestionContent || '' : annotationIdOrContent
+    const initialSession = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
+    const model = initialSession?.model
+    if (!initialSession || !model) throw new Error('请先打开 PDF 文档。')
+    const target = model.annotations().find((annotation) => annotation.id === annotationId)
+    if (!target) throw new Error('目标批注已不存在，请重新选择。')
+
     await model.updateAnnotationReply(annotationId, { status: 'custom', content })
-    syncModel('AI 修改建议已写入批注回复', false)
-  }, [annotations, syncModel])
+    const nextAnnotations = model.annotations()
+    const writtenAnnotations = target.groupId
+      ? nextAnnotations.filter((annotation) => annotation.groupId === target.groupId)
+      : nextAnnotations.filter((annotation) => annotation.id === annotationId)
+    if (!writtenAnnotations.length || writtenAnnotations.some((annotation) => annotation.reply?.status !== 'custom' || annotation.reply.content !== content.trim())) {
+      throw new Error('AI 修改建议写入失败，请重试。')
+    }
+
+    const successMessage = 'AI 修改建议已写入批注回复'
+    const latestSession = documentId === activeDocumentIdRef.current && modelRef.current === model
+      ? liveSessionRef.current
+      : sessionsRef.current.get(documentId)
+    if (!latestSession || latestSession.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
+    const nextSession: DocumentSession = {
+      ...latestSession,
+      model,
+      annotations: nextAnnotations,
+      textObjects: viewerTextObjects(model),
+      imageObjects: model.images(),
+      bookmarks: model.bookmarks(),
+      selectedAnnotation: annotationId,
+      dirty: model.dirty,
+      canUndo: model.canUndo,
+      canRedo: model.canRedo,
+      status: successMessage
+    }
+    sessionsRef.current.set(documentId, nextSession)
+    setDocumentTabs((current) => {
+      const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(nextSession) : item) }
+      tabsSnapshotRef.current = snapshot
+      return snapshot
+    })
+
+    if (documentId === activeDocumentIdRef.current && modelRef.current === model) {
+      setAnnotations(nextAnnotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks)
+      setSelectedAnnotation(annotationId); setSelectedAnnotationIds(writtenAnnotations.map((annotation) => annotation.id)); setCurrentPage(target.pageIndex)
+      setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty; setStatus(successMessage)
+      viewerRef.current?.focusAnnotation(annotationId, target.pageIndex)
+    }
+  }, [])
   const toggleAnnotationSuggestions = useCallback((enabled: boolean) => {
     setAnnotationSuggestionsEnabled(enabled); saveAnnotationSuggestionsEnabled(enabled)
     if (!enabled) setAnnotationSuggestionRequest(undefined)
@@ -1194,7 +1238,7 @@ export default function App() {
     if (!session) return null
     const visible = id === activeDocumentId && module === 'annotate'
     const request = annotationSuggestionRequest?.documentId === id ? annotationSuggestionRequest : undefined
-    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={request} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={visible ? getAutomaticAnnotationContext : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} />
+    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={request} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={visible ? getAutomaticAnnotationContext : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onCopy={(content) => void copyAiResponse(content)} />
   })
   return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
     if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }

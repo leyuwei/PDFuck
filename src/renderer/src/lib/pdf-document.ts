@@ -931,8 +931,16 @@ export class PdfDocumentModel {
   }
 
   async updateAnnotationReply(id: string, reply?: AnnotationReply): Promise<void> {
-    const dict = this.findAnnotation(id).dict
-    this.setAnnotationReply(dict, reply); dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    const entry = this.findAnnotation(id)
+    const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
+    const entries = groupId
+      ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId)
+      : [entry]
+    const modifiedAt = PDFString.fromDate(new Date())
+    for (const candidate of entries) {
+      this.setAnnotationReply(candidate.dict, reply)
+      candidate.dict.set(PDFName.of('M'), modifiedAt)
+    }
     await this.commit()
   }
 

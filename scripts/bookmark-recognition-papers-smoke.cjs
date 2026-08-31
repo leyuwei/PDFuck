@@ -4,6 +4,7 @@ const path = require('node:path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '..')
+const releaseVersion = process.env.PDFUCK_RELEASE_VERSION || require(path.join(root, 'package.json')).version
 const entry = path.join(root, 'out/main/index.js')
 const output = path.join(root, 'output', 'playwright')
 const papers = [
@@ -54,7 +55,7 @@ async function recognize(paper) {
     assert.deepEqual(topLevel, paper.expected, `${paper.key} top-level recognition mismatch:\n${JSON.stringify(rows, null, 2)}`)
     assert.equal(rows.some((row) => /\bi\.e\.|equation|theorem proves/iu.test(row.title)), false, `${paper.key} must not recognize prose or formula fragments`)
     fs.mkdirSync(output, { recursive: true })
-    const screenshot = path.join(output, `bookmark-recognition-${paper.key}-v1.21.8.png`)
+    const screenshot = path.join(output, `bookmark-recognition-${paper.key}-v${releaseVersion}.png`)
     await page.screenshot({ path: screenshot, fullPage: true })
     return { paper: paper.key, topLevel, candidates: rows.length, screenshot }
   } finally {

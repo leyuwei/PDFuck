@@ -143,6 +143,28 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.unmount())
   })
 
+  it('writes the generated suggestion through the explicit Add to Reply action', async () => {
+    const root = createRoot(container)
+    const reply = '## AI suggestion\n\n- Clarify the method.'
+    vi.spyOn(aiPolish, 'suggestForAnnotation').mockResolvedValue(reply)
+    const onAddSuggestion = vi.fn(async () => undefined)
+    const request = { token: 8, annotationId: 'note-1', annotationContent: 'Clarify the method.', pageIndex: 0, ...suggestionGeometry }
+    const getAutomaticContext = vi.fn(async () => ({ context: { text: 'Nearby method context', pageIndexes: [0] } }))
+    await act(async () => root.render(<AnnotationLab suggestionRequest={request} getAutomaticContext={getAutomaticContext} onAddSuggestion={onAddSuggestion} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 140)) })
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-suggestion-window button.primary.wide')!.click())
+    await act(async () => { await Promise.resolve() })
+    const writeButton = container.querySelector<HTMLButtonElement>('.annotation-suggestion-window .ai-polish-actions button.primary')!
+    expect(writeButton.textContent).toBe('添加到回复')
+    await act(async () => writeButton.click())
+
+    expect(onAddSuggestion).toHaveBeenCalledTimes(1)
+    expect(onAddSuggestion).toHaveBeenCalledWith('note-1', reply)
+    expect(container.querySelector('.annotation-suggestion-window')).toBeNull()
+    await act(async () => root.unmount())
+  })
+
   it('keeps a running full-document review alive while its document is hidden and restores the result', async () => {
     const root = createRoot(container)
     let finishReview!: (value: string) => void

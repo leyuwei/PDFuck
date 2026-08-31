@@ -30,4 +30,16 @@ describe('AnnotationPanel AI suggestion trigger', () => {
     expect(onAiSuggestion).toHaveBeenCalledWith(annotation)
     await act(async () => root.unmount())
   })
+
+  it('shows a multiline custom reply in both the annotation row and reply settings', async () => {
+    const root = createRoot(container)
+    const reply = '## AI suggestion\n\n- Clarify the method.\n- Align the conclusion.'
+    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ ...annotation, reply: { status: 'custom', content: reply } }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
+
+    expect(container.querySelector('.annotation-reply-preview')?.textContent).toContain('AI suggestion')
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-settings-button')!.click())
+    expect(container.querySelector('.annotation-current-reply')?.textContent).toContain('Align the conclusion.')
+    expect(container.querySelector<HTMLTextAreaElement>('.custom-reply-row textarea')?.value).toBe(reply)
+    await act(async () => root.unmount())
+  })
 })

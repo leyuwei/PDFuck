@@ -5,11 +5,12 @@ const { _electron: electron } = require('playwright')
 const { PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef, PDFString, StandardFonts, rgb } = require('pdf-lib')
 
 const root = path.resolve(__dirname, '..')
+const releaseVersion = process.env.PDFUCK_RELEASE_VERSION || require(path.join(root, 'package.json')).version
 const entry = path.join(root, 'out/main/index.js')
 const fixture = path.join(root, 'tmp', 'bookmark-ui-smoke.pdf')
 const userData = path.join(root, 'tmp', 'bookmark-ui-smoke-user')
-const screenshot = path.join(root, 'output', 'playwright', 'bookmark-sidebar-v1.21.8.png')
-const recognitionScreenshot = path.join(root, 'output', 'playwright', 'bookmark-recognition-v1.21.8.png')
+const screenshot = path.join(root, 'output', 'playwright', `bookmark-sidebar-v${releaseVersion}.png`)
+const recognitionScreenshot = path.join(root, 'output', 'playwright', `bookmark-recognition-v${releaseVersion}.png`)
 
 async function createFixture() {
   fs.mkdirSync(path.dirname(fixture), { recursive: true })

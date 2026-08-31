@@ -16,10 +16,11 @@ export function AnnotationReplyPicker({ reply, onChange, onQuickReply, compact =
   useInterfaceLanguage()
   const t = ui
   const [custom, setCustom] = useState(reply?.status === 'custom' ? reply.content : '')
-  useEffect(() => { if (reply?.status === 'custom') setCustom(reply.content) }, [reply])
+  useEffect(() => { setCustom(reply?.status === 'custom' ? reply.content : '') }, [reply])
   const submitCustom = () => { const content = custom.trim(); if (content) onChange({ status: 'custom', content }) }
   return <div className={`annotation-reply-picker${compact ? ' compact' : ''}`}><span className="annotation-control-label">{t('回复')}</span>
     <div className="quick-reply-row">{QUICK_REPLIES.map((item) => <button type="button" key={item.status} className={reply?.status === item.status ? `active ${item.status}` : item.status} onClick={() => { onChange(reply?.status === item.status ? undefined : quickReply(item.status)); onQuickReply?.() }}><i />{t(item.label)}</button>)}{reply && <button type="button" className="clear-reply" onClick={() => onChange(undefined)}>{t('清除')}</button>}</div>
-    <div className="custom-reply-row"><input aria-label={t('自定义回复')} value={custom} placeholder={t('自定义回复…')} onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); submitCustom() } }} /><button type="button" disabled={!custom.trim()} onClick={submitCustom}>{t('回复')}</button></div>
+    {reply?.status === 'custom' && <div className="annotation-current-reply" role="status"><b>{t('当前回复')}</b><p>{reply.content}</p></div>}
+    <div className="custom-reply-row"><textarea rows={3} aria-label={t('自定义回复')} value={custom} placeholder={t('自定义回复…')} onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submitCustom() } }} /><button type="button" disabled={!custom.trim()} onClick={submitCustom}>{t('回复')}</button></div>
   </div>
 }

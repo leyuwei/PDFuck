@@ -218,6 +218,25 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations()).toHaveLength(0)
   })
 
+  it('writes one multiline AI reply to every segment of a cross-page annotation and persists it', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const groupId = 'cross-page-ai-reply-group'
+    const first = await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 120, height: 12 }], '请修改跨页内容', undefined, undefined, groupId)
+    await model.addAnnotation(1, 'highlight', [{ x: 72, y: 120, width: 160, height: 12 }], '请修改跨页内容', undefined, undefined, groupId)
+    const reply = '## AI 修改建议\n\n- 补充方法说明\n- 对齐结论'
+
+    await model.updateAnnotationReply(first, { status: 'custom', content: reply })
+    expect(model.annotations().filter((annotation) => annotation.groupId === groupId).map((annotation) => annotation.reply)).toEqual([
+      { status: 'custom', content: reply },
+      { status: 'custom', content: reply }
+    ])
+
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.annotations().filter((annotation) => annotation.groupId === groupId).every((annotation) => annotation.reply?.content === reply)).toBe(true)
+    await model.undo()
+    expect(model.annotations().filter((annotation) => annotation.groupId === groupId).every((annotation) => annotation.reply === undefined)).toBe(true)
+  })
+
   it('removes the persisted annotation object so reopening cannot reveal a hidden duplicate', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const id = await model.addAnnotation(0, 'highlight', [{ x: 72, y: 120, width: 120, height: 12 }], 'delete me')

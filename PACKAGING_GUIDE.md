@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 1.21.8
+.\scripts\package-windows.ps1 1.21.10
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 1.21.8
+bash scripts/package-macos.sh 1.21.10
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -100,7 +100,7 @@ npm run test:selection-chinese-ui
 
 `test:workflow-state-ui` 使用真实 Electron 窗口验证无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议请求、智能润色快捷键同行布局与 5–3600 秒自定义超时持久化；发布脚本还会对最终可执行文件再次运行该项回归。Office 合并导入由单元测试分别模拟 Windows、macOS 与 Linux 的 LibreOffice 查找路径，以及 Windows/macOS 的 Microsoft Office 回退脚本；目标系统仍应至少用一个真实 DOCX 和 PPTX 做人工导入抽检。
 
-`test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及五种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、三功能按钮与快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、AI 请求组合与自定义回复写回；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
+`test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及五种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、三功能按钮与快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、切换标签期间仍定向到原文档的 AI 回复写回、回复行与设置区可见性，以及保存重开后的回复持久化；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
 
 涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 
