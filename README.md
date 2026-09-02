@@ -30,7 +30,8 @@ Copyright © 2026 github@leyuwei
 - **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
-- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Source-run flow corridors keep drag selections inside their paragraph or column while retaining inline formula fragments, so interleaved chart labels and neighboring columns do not overflow into the selection. `Shift` + arrow keys adjust the range, while copying removes hard PDF line breaks and common English word splits.
+- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Stable page gutters must remain empty through most visual rows, preventing repeated equation or matrix indentation from becoming false columns; captions, wide formulas, and other spanning content remain independent visual blocks. If automatic layout detection is wrong, the page context menu exposes an opt-in correction editor for draggable vertical column boundaries and top/bottom boundaries around spanning formulas or images, persisted locally by PDF fingerprint and page. `Shift` + arrow keys adjust the range. Copying joins hard PDF line breaks with Unicode script awareness: spaces remain between words in languages that use them, while Chinese, Japanese, Thai, and mixed CJK/Latin boundaries do not gain artificial spaces; common multilingual word splits are repaired.
+- **Responsive heavy-image pages**: Oversized PDF image strips are downsampled to a bounded decode surface, text extraction no longer waits for image operators, and a localized loading placeholder covers the first progressive canvas paint instead of exposing a blank page.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes. Closing dirty work offers **Save and Close**, **Close Without Saving**, and a pulsing **Cancel** action; multi-document windows can save every dirty tab before closing.
 - **Standard PDF bookmarks and recognition**: Documents with outlines automatically open a collapsible, resizable bookmark sidebar with hierarchy controls, inline search, font sizing, double-click title editing, and undoable single-item deletion. The View panel recognizes numbered, localized, chapter-style, semantic, and optional typography-based headings across multiple languages, limits the hierarchy to levels 1–6, removes/restores false candidates directly in preview, appends or replaces outlines, and deletes all bookmarks as one undoable edit. Academic recognition normalizes PDF small caps, follows multi-column reading order, joins wrapped Roman-numeral headings, and rejects chart axes, formulas, years, and prose section references.
 - **Local-first and explicit password handling**: Parsing, rendering, editing, and export happen locally. Encrypted PDFs open read-only by default; a password is stored by the system secure store only when you explicitly choose to save it.
@@ -131,7 +132,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all five UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, and `npm run test:selection-chinese-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The final pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics are normalized and to compare heading/body selection bands against rendered Chinese glyph pixels in Electron. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
+The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all five UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
 `npm run test:bookmarks-ui` additionally verifies undoable single-bookmark deletion and removal/restoration of recognition-preview candidates. `npm run test:bookmark-recognition-papers` opens the real `m91474-li paper.pdf` and `Scheduling0826m.pdf` fixtures in Electron and checks their exact 6/9 Roman-numeral section sequences, Abstract/References entries, wrapped headings, and false-positive exclusion.
 
@@ -151,17 +152,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `1.21.10` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.3` before packaging:
 
 ```powershell
-npm run package:windows -- 1.21.10
+npm run package:windows -- 2.0.3
 ```
 
 ```sh
-npm run package:macos -- 1.21.10
+npm run package:macos -- 2.0.3
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.10` and `bash scripts/package-macos.sh 1.21.10`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.3` and `bash scripts/package-macos.sh 2.0.3`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -202,13 +203,13 @@ This creates the platform artifact but does not replace the full validation perf
 
 ### Add a New Interface Language
 
-All application copy is centralized in [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts). Chinese source phrases are stable catalogue keys; components must request them through `ui('源文案')`. Parameterized messages use `t('message.key', { value })`, and stored or dynamically assembled status text uses `translateUiText(...)`. Never translate PDF contents, file names, paths, user input, or model responses.
+All application copy is centralized in [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts). Each stable semantic code maps to one object containing every language, for example `messages['ui.openPdf'] = { zh, en, ja, ru, es }`. Components use `ui('ui.openPdf')`; parameterized copy uses `t('page.selected', { count })`; stored or dynamically assembled status text uses `translateUiText(...)`. Display text must never be used as a key. PDF contents, file names, paths, user input, and model responses are not interface copy and must not be translated.
 
 The following example uses French (`fr`). A language is complete only after every step passes; do not ship a selector option that relies on Chinese or English fallback text.
 
-1. In `src/shared/i18n-catalogue.ts`, add `fr` to `InterfaceLanguage`, `INTERFACE_LANGUAGES`, and `AdditionalInterfaceLanguage`. Add a complete `localePhrases.fr` map for every key in `englishPhrases`, add an `fr` value to every entry in `phraseTranslations`, and include French in the code that merges `phraseTranslations` into `localePhrases`. Also add all French entries to `statusTemplates.fr` and `parameterMessages.fr`. Preserve placeholders exactly: a source containing `{count}`, `{name}`, or `$1` must use the same placeholders in its translation.
+1. In `src/shared/i18n-catalogue.ts`, add `fr` to `InterfaceLanguage` and `INTERFACE_LANGUAGES`, then add an `fr` value to every entry in the single `messages` object. `LocalizedMessage` makes omissions a TypeScript error. Preserve placeholders exactly: if one language contains `{count}` or `{name}`, every language must contain the same placeholders.
 2. Wire the language through the application: extend the desktop API union in [`src/shared/contracts.ts`](src/shared/contracts.ts), accept `fr` in the main-process language validation in [`src/main/index.ts`](src/main/index.ts), add `<option value="fr">Français</option>` to [`src/renderer/src/components/ToolPanel.tsx`](src/renderer/src/components/ToolPanel.tsx), and add the correct BCP 47 date locale (for example, `fr-FR`) to the recent-file date map in [`src/renderer/src/components/Dialogs.tsx`](src/renderer/src/components/Dialogs.tsx).
-3. Extend the safeguards: add the locale to the language and catalogue maps in [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs), add a representative French UI case and persistence expectation to [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs), and update complete-language fixtures in [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) and any component test that enumerates every language. This search helps find fixed five-language lists that need review:
+3. Extend the safeguards: add the locale to the language list in [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs), add a representative French UI case and persistence expectation to [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs), and update complete-language fixtures in [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) and any component test that enumerates every language. This search helps find fixed five-language lists that need review:
 
    ```sh
    rg -n "zh.*en.*ja.*ru.*es|en.*ja.*ru.*es" src scripts
@@ -266,7 +267,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **从列表回到原文只需一次点击**：批注列表支持 `Ctrl/⌘` 多选、`Shift` 连续选择、批量删除、行内双击编辑、右键设置颜色与回复，以及单行/多行显示和 280–560 px 宽度调整。定位时自动滚动到页面中央，用紧贴每行文字的短暂轮廓提示目标。
 - **批注不会挡住阅读，也不会失去上下文**：侧栏可以收起为窄栏，保留数量提示；选中批注后页面只显示约 1 秒的“当前批注”聚焦框，既能确认位置，又不会留下永久遮罩。
 - **搜索结果是真正可用的定位结果**：支持大小写、模糊匹配和正则表达式，命中结果按页显示上下文，跳转后只高亮匹配文字而不是整页。
-- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区，复制时自动清掉 PDF 硬回行并修复常见英文断词。
+- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区。复制会按 Unicode 文字系统智能合并 PDF 硬回行：英文、俄文、韩文等使用分词空格的语言保留词界，中文、日文、泰文及中西文交界不再凭空插入空格，并修复常见多语言断词。
+- **超大图片页面不再长期白屏**：限制异常超宽图片解码后的驻留面积，文字提取不再等待图片操作表；首次画布渐进绘制期间显示多语言加载占位符，不再暴露突兀的白页或黑页。
 - **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
 - **中文输入不会再被快捷键或错误弹窗抢走**：文本框只在首次出现时聚焦；窗口切回、输入法组合输入和全局快捷键各自遵守焦点边界。快速重复删除同一条批注会被当作一次幂等操作，不再触发会让输入法脱离编辑器的系统原生错误框；其他错误改在应用内显示并在关闭后恢复原焦点。
@@ -365,7 +367,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 查看、编辑、批注、保存四个模式均默认支持字符级拖选，切换模块不会清空现有选区，因此在非批注模块框选后可直接进入批注实验室；
 - 单击文字可定位到字符间闪烁光标，`Shift+←/→` 可精确调整选区；
 - `Ctrl+C`、`Cmd+C` 或页面右键菜单中的“复制”均可复制；
-- 写入剪贴板前自动去除 PDF 硬回行，并避免在连续中文之间插入多余空格。
+- 写入剪贴板前按文字系统智能合并 PDF 硬回行：分词语言保留必要词界，连续书写语言及中西文交界去除多余空格，并修复常见拉丁、西里尔字母断词。
 
 ### 批注
 
@@ -395,7 +397,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 智能润色、全文评价和批注建议的 AI 回复都会安全渲染 GitHub 风格 Markdown（标题、列表、表格、引用和代码等）；复制和写入批注仍使用原始回复，复制时保留 Markdown 换行与标记。
 - 智能润色会根据框选文字的主要语言自动使用中文或英文提示词；切换中文、英文选区时会同步切换预置提示词，混合文本按字符占比判断。
 - 夜间模式默认使用浅蓝灰文档纸张底色，保证多栏正文和公式在深色界面中仍清晰可读；多栏跨栏选区按真实文字列分段绘制并支持高亮、替换、删除和下划线批注。
-- 多栏跨栏框选会根据页面文字覆盖和字号自适应识别栏沟，支持双栏、三栏及更多栏，也能处理小于 15pt 的紧凑栏间距；选区矩形不会穿过栏沟误选邻栏公式或文字。
+- 多栏跨栏框选会根据页面文字覆盖和字号自适应识别栏沟，只有在大多数视觉行持续留空的间隙才会成为栏界，避免矩阵、缩进公式的重复空白被误判为额外栏目；跨栏公式、图片说明和图表标题继续按独立视觉块处理。
+- 自动布局仍是默认且不显示额外控件；只有用户从页面右键菜单主动选择“校正本页栏边界”时，才会出现可拖动/增删的竖向栏界和用于框定跨栏公式或图片的上下横界。所有校正按 PDF 指纹与页码保存在本机，可随时恢复自动识别。
 - 图、表、长公式与正文混排时，跨栏视觉块会按页面几何顺序整体识别；多行图题、表注和跨栏公式不会因为 PDF 内部对象顺序而漏字、跳回正文或把相邻栏内容带入选区。
 - 模型设置支持 OpenAI（含中转）、Claude（含中转）、BigModel Plan、Doubao、DeepSeek、KIMI 与自定义 OpenAI 兼容接口；长回答默认请求服务端流式返回，让上游网关尽早收到响应数据，明确不支持流式的旧中转会安全回退一次，但 524、超时或结果不明的潜在计费请求绝不会盲目重放；524 与其他网关超时、临时服务故障、鉴权、模型路径、输入过大、额度和限流错误均有独立且可执行的友好提示；可自定义 5–3600 秒响应超时（默认 120 秒），密钥与模型设置仅保存在本机浏览器存储中。
 
@@ -443,9 +446,9 @@ npm test
 npm run build
 ```
 
-本版本的 `npm run test:ai-smoke` 会把真实 SSE 流式响应完整送过 Electron 主进程代理；单元测试还覆盖 OpenAI 与 Claude 流式事件、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类和五种界面语言。`npm run test:workflow-state-ui` 在真实 Electron 窗口覆盖无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议浮窗、智能润色快捷键同行布局和自定义超时持久化。`npm run test:lab-features-ui` 会启动本地模拟 AI 服务，真实验证无分隔线且与标准按钮一致的实验室排版、免责声明复选框几何与边距、全文评价倒计时、打开新 PDF 与手动往返切换时的按文档进度隔离和结果恢复、Markdown 渲染及原文复制、自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的多页手动上下文、请求载荷和两条批注写回链路，并输出视觉检查截图。`npm run test:bookmarks-ui` 会生成含标准层级书签和标题文字的 PDF，在真实 Electron 窗口验证边栏自动显示、搜索/字号/拖宽/折叠、窄窗口与批注栏兼容、双击改名、识别规则与深度、追加/覆盖/清空、撤销、“保存后关闭”和最终书签落盘。
+本版本的 `npm run test:ai-smoke` 会把真实 SSE 流式响应完整送过 Electron 主进程代理；单元测试还覆盖 OpenAI 与 Claude 流式事件、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类和五种界面语言。`npm run test:workflow-state-ui` 在真实 Electron 窗口覆盖无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议浮窗、智能润色快捷键同行布局和自定义超时持久化。`npm run test:lab-features-ui` 会启动本地模拟 AI 服务，真实验证无分隔线且与标准按钮一致的实验室排版、免责声明复选框几何与边距、全文评价倒计时、打开新 PDF 与手动往返切换时的按文档进度隔离和结果恢复、Markdown 渲染及原文复制、自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的多页手动上下文、请求载荷和两条批注写回链路，并输出视觉检查截图。`npm run test:bookmarks-ui` 会生成含标准层级书签和标题文字的 PDF，在真实 Electron 窗口验证边栏自动显示、搜索/字号/拖宽/折叠、窄窗口与批注栏兼容、双击改名、识别规则与深度、追加/覆盖/清空、撤销、“保存后关闭”和最终书签落盘。`npm run test:heavy-image-page-ui` 使用 `tmp/dawenjian.pdf` 第 2 页验证多语言加载占位符会出现并在完成后消失，同时限制首次绘制耗时，并校验黑白正文和彩色图示都已实际渲染。
 
-针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese` 和 `npm run test:selection-chinese-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；中间两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页，覆盖公式碎片保留、图表文字隔离、单双栏流域裁剪、反向拖拽、真实 Electron 选区矩形与剪贴板文字；最后两项使用 `tmp/7.申报书原件.pdf` 第 3 页，验证异常子集字体度量归一化，并在真实 Electron 中逐像素对比中文标题、正文与选区带的纵向中心。
+针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese`、`npm run test:selection-chinese-ui`、`npm run test:selection-bc` 和 `npm run test:selection-bc-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；随后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页覆盖公式碎片、图表文字、单双栏流域、反向拖拽和剪贴板文字；中文两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体度量。`bc.pdf` 两项固定覆盖第 7、12、13 页的伪公式栏沟、跨栏图注和大公式、同行/长距离同栏拖拽，并在真实 Electron 中验证默认隐藏的校正入口、竖向栏界、跨栏区域上下横界、按文档/页持久化和恢复自动识别。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
@@ -469,17 +472,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `1.21.10`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.3`，再开始打包：
 
 ```powershell
-npm run package:windows -- 1.21.10
+npm run package:windows -- 2.0.3
 ```
 
 ```sh
-npm run package:macos -- 1.21.10
+npm run package:macos -- 2.0.3
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 1.21.10` 和 `bash scripts/package-macos.sh 1.21.10`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.3` 和 `bash scripts/package-macos.sh 2.0.3`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 
@@ -520,13 +523,13 @@ npm run dist:mac
 
 ### 加入新的界面语言
 
-所有应用外显文案统一集中在 [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts)。中文源文案是稳定的词典键，组件必须通过 `ui('源文案')` 取值；带参数的消息使用 `t('message.key', { value })`，已存储或动态拼接的状态文字使用 `translateUiText(...)`。PDF 正文、文件名、路径、用户输入和模型回复都不属于界面文案，切勿翻译。
+所有应用外显文案统一集中在 [`src/shared/i18n-catalogue.ts`](src/shared/i18n-catalogue.ts)。每个稳定的语义代码只对应一个包含全部语言的对象，例如 `messages['ui.openPdf'] = { zh, en, ja, ru, es }`。组件使用 `ui('ui.openPdf')`，带参数的文案使用 `t('page.selected', { count })`，已存储或动态拼接的状态文字使用 `translateUiText(...)`；任何语言的显示文本都不得再充当键。PDF 正文、文件名、路径、用户输入和模型回复不属于界面文案，切勿翻译。
 
 下面以法语（`fr`）为例。只有全部步骤和测试都通过，才算真正支持一种语言；不要只增加下拉选项后依赖中文或英文回退。
 
-1. 在 `src/shared/i18n-catalogue.ts` 中，把 `fr` 加入 `InterfaceLanguage`、`INTERFACE_LANGUAGES` 和 `AdditionalInterfaceLanguage`；新增完整的 `localePhrases.fr`，覆盖 `englishPhrases` 的每个键；为 `phraseTranslations` 的每一项加入 `fr`，并在把 `phraseTranslations` 合并到 `localePhrases` 的代码中纳入法语；同时补齐 `statusTemplates.fr` 与 `parameterMessages.fr`。占位符必须原样保留：源文案中的 `{count}`、`{name}` 或 `$1` 等占位符，在译文中必须保持一致。
+1. 在 `src/shared/i18n-catalogue.ts` 中，把 `fr` 加入 `InterfaceLanguage` 和 `INTERFACE_LANGUAGES`，然后为唯一的 `messages` 对象中每个条目补上 `fr`。`LocalizedMessage` 会让遗漏直接成为 TypeScript 错误。占位符必须原样保留：任一语言含有的 `{count}`、`{name}` 等占位符，在所有语言中都必须一致。
 2. 打通应用链路：在 [`src/shared/contracts.ts`](src/shared/contracts.ts) 中扩展桌面 API 的语言联合类型；在 [`src/main/index.ts`](src/main/index.ts) 的主进程语言校验中允许 `fr`；在 [`src/renderer/src/components/ToolPanel.tsx`](src/renderer/src/components/ToolPanel.tsx) 中加入 `<option value="fr">Français</option>`；在 [`src/renderer/src/components/Dialogs.tsx`](src/renderer/src/components/Dialogs.tsx) 的最近文件日期映射中加入正确的 BCP 47 区域代码，例如 `fr-FR`。
-3. 扩展防遗漏检查：在 [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs) 中更新语言列表和词典映射；在 [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs) 中加入有代表性的法语界面断言和持久化预期；在 [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) 以及所有枚举完整语言集合的组件测试中加入新语言。可用下面的搜索命令查找仍固定为五种语言的列表：
+3. 扩展防遗漏检查：在 [`scripts/i18n-catalogue-audit.cjs`](scripts/i18n-catalogue-audit.cjs) 中更新语言列表；在 [`scripts/i18n-ui-smoke.cjs`](scripts/i18n-ui-smoke.cjs) 中加入有代表性的法语界面断言和持久化预期；在 [`src/renderer/src/lib/i18n.test.ts`](src/renderer/src/lib/i18n.test.ts) 以及所有枚举完整语言集合的组件测试中加入新语言。可用下面的搜索命令查找仍固定为五种语言的列表：
 
    ```sh
    rg -n "zh.*en.*ja.*ru.*es|en.*ja.*ru.*es" src scripts

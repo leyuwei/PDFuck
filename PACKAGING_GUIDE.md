@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 1.21.10
+.\scripts\package-windows.ps1 2.0.3
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 1.21.10
+bash scripts/package-macos.sh 2.0.3
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -94,9 +94,11 @@ npm run test:citations-scheduling-0826
 npm run test:reading-navigation-ui
 npm run test:selection-chinese
 npm run test:selection-chinese-ui
+npm run test:selection-bc
+npm run test:selection-bc-ui
 ```
 
-前两项使用 `tmp/Scheduling0821m.pdf`，验证内部对象顺序异常时当前行选区不会带入下一行项目符号。随后两项使用 `tmp/Scheduling0826m.pdf`，在第 5、10、11 页同时验证公式碎片保留、图表文字隔离、单双栏流域裁剪、正反向拖拽一致性，并在真实 Electron 窗口核对选区矩形与剪贴板文本。`test:selection-test2` 与 UI 版本固定复现 `tmp/test2.pdf` 第 6 页右栏跨行公式框选，要求所有选区矩形留在右栏且剪贴板不含左栏正文。`test:citations-scheduling-0826` 要求跨页参考文献覆盖 `[1]`–`[38]`；`test:reading-navigation-ui` 在 900×700 小窗口和高缩放下验证页内滚动优先、页边界继续滚动才翻页、搜索命中矩形进入可视区，以及真实引文面板显示 40 个正文引用位置。最后两项使用 `tmp/7.申报书原件.pdf` 第 3 页，验证异常子集字体的纵向度量归一化，并让真实 Electron 对中文标题、正文的选区矩形与渲染像素逐项比较。目标平台产物生成后，打包脚本还会用最终 `PDFuck` 可执行文件再次运行关键 UI 回归。缺少任一测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，在 900×700 窗口审计长文本始终位于自适应按钮/提示边框内，并验证重启后的语言持久化、平台自适应快捷键、搜索 PDF 的单行同款按钮布局、七项编辑图标、批注人浮窗拖动与唯一外显开关、姓名和外显偏好持久化、新批注作者写入、作者标签位于正文上方且列表无新增列，以及主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 PDFium、绑定系统默认设备，并让双面打印机驱动验证单面/短边/长边三个逐任务 DEVMODE 值，但不会发送纸张；非 Windows 平台安全跳过。`test:print-ui` 会在 900×760 的真实 Electron 窗口中核对系统设备名与双面能力，检查 25%–200% 缩放、五种语言、方向区域无溢出，并验证最终作业预览至少达到显示尺寸的两倍清晰度。两项测试都不会真正派发纸张，以免自动化误触实体打印机。
+前两项使用 `tmp/Scheduling0821m.pdf`，验证内部对象顺序异常时当前行选区不会带入下一行项目符号。随后两项使用 `tmp/Scheduling0826m.pdf`，在第 5、10、11 页同时验证公式碎片保留、图表文字隔离、单双栏流域裁剪、正反向拖拽一致性，并在真实 Electron 窗口核对选区矩形与剪贴板文本。`test:selection-test2` 与 UI 版本固定复现 `tmp/test2.pdf` 第 6 页右栏跨行公式框选。`test:selection-bc` 与 UI 版本固定覆盖 `tmp/bc.pdf` 第 7、12、13 页，验证持续空白栏沟判定不会把公式/矩阵缩进误当栏目，跨栏图注和大公式仍是独立视觉块，同行和长距离同栏拖拽不会溢出；同时验证默认隐藏的页面校正入口、可拖动/增删的竖向栏界、跨栏公式或图片的上下横界、按 PDF 指纹与页码持久化，以及恢复自动识别。`test:citations-scheduling-0826` 要求跨页参考文献覆盖 `[1]`–`[38]`；`test:reading-navigation-ui` 在 900×700 小窗口和高缩放下验证页内滚动优先、页边界继续滚动才翻页、搜索命中矩形进入可视区，以及真实引文面板显示 40 个正文引用位置。最后两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体的纵向度量归一化。目标平台产物生成后，打包脚本还会用最终 `PDFuck` 可执行文件再次运行关键 UI 回归。缺少任一测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和可外显错误的日语、俄语、西班牙语词条；`test:i18n-ui` 必须逐一切换五种界面语言，在 900×700 窗口审计长文本始终位于自适应按钮/提示边框内，并验证重启后的语言持久化、平台自适应快捷键、搜索 PDF 的单行同款按钮布局、七项编辑图标、批注人浮窗拖动与唯一外显开关、姓名和外显偏好持久化、新批注作者写入、作者标签位于正文上方且列表无新增列，以及主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件。Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 PDFium、绑定系统默认设备，并让双面打印机驱动验证单面/短边/长边三个逐任务 DEVMODE 值，但不会发送纸张；非 Windows 平台安全跳过。`test:print-ui` 会在 900×760 的真实 Electron 窗口中核对系统设备名与双面能力，检查 25%–200% 缩放、五种语言、方向区域无溢出，并验证最终作业预览至少达到显示尺寸的两倍清晰度。两项测试都不会真正派发纸张，以免自动化误触实体打印机。
 
 `test:workflow-state-ui` 使用真实 Electron 窗口验证无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议请求、智能润色快捷键同行布局与 5–3600 秒自定义超时持久化；发布脚本还会对最终可执行文件再次运行该项回归。Office 合并导入由单元测试分别模拟 Windows、macOS 与 Linux 的 LibreOffice 查找路径，以及 Windows/macOS 的 Microsoft Office 回退脚本；目标系统仍应至少用一个真实 DOCX 和 PPTX 做人工导入抽检。
 

@@ -71,7 +71,7 @@ export function visualHits(pages: Array<PageTextSnapshot & { imageCount?: number
       const key = caption.toLocaleLowerCase()
       if (seenCaptions.has(`figure:${key}`)) continue
       seenCaptions.add(`figure:${key}`)
-      const marker = caption.match(/^(?:figure|fig\.?|image|plate|图)\s*\d+[a-z]?/i)?.[0] || '图片'
+      const marker = caption.match(/^(?:figure|fig\.?|image|plate|图)\s*\d+[a-z]?/i)?.[0] || 'ui.image'
       hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption, rects: page.visualRects })
     }
     if ((page.imageCount || 0) > 0 && !figureMatches.length) {
@@ -82,13 +82,13 @@ export function visualHits(pages: Array<PageTextSnapshot & { imageCount?: number
       const key = caption.toLocaleLowerCase()
       if (seenCaptions.has(`table:${key}`)) continue
       seenCaptions.add(`table:${key}`)
-      const marker = caption.match(/^(?:table|tab\.?|表)\s*\d+[a-z]?/i)?.[0] || '表格'
+      const marker = caption.match(/^(?:table|tab\.?|表)\s*\d+[a-z]?/i)?.[0] || 'ui.table'
       hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption })
     }
     const tableSignal = text.match(/\|[^|]{1,}\|/) || text.match(/(?:^|\s)((?:n|mean|std\.?|median)\s*[:=]\s*[^.!?。！？]{0,80})/i)
     if (!tableMatches.length && tableSignal) {
       const anchor = (tableSignal[1] || tableSignal[0]).trim()
-      hits.push({ pageIndex: page.pageIndex, label: '疑似表格', context: `检测到表格列式文本或统计字段：${anchor}`, anchor })
+      hits.push({ pageIndex: page.pageIndex, label: "ui.possibleTable", context: `检测到表格列式文本或统计字段：${anchor}`, anchor })
     }
     return hits
   })
@@ -221,7 +221,7 @@ export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
       const anchor = duplicateMatch[0]
       const key = anchor.toLocaleLowerCase(), anchorOccurrence = duplicateOccurrences.get(key) || 0
       duplicateOccurrences.set(key, anchorOccurrence + 1)
-      issues.push({ pageIndex: page.pageIndex, label: '重复单词', term: duplicateMatch[1], replacement: duplicateMatch[1], anchor, anchorOccurrence, context: text.slice(Math.max(0, duplicateMatch.index - 45), duplicateMatch.index + anchor.length + 65) })
+      issues.push({ pageIndex: page.pageIndex, label: "ui.repeatedWord", term: duplicateMatch[1], replacement: duplicateMatch[1], anchor, anchorOccurrence, context: text.slice(Math.max(0, duplicateMatch.index - 45), duplicateMatch.index + anchor.length + 65) })
     }
     const agreementRules = [
       { pattern: /\b(he|she|it|this|that)\s+(are|were)\b/gi, replacement: (verb: string) => verb === 'are' ? 'is' : 'was' },
@@ -234,7 +234,7 @@ export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
         if ((sentence.match(/[A-Za-z]/g) || []).length < 8) continue
         const anchor = match[0]
         const verb = match[2]
-        issues.push({ pageIndex: page.pageIndex, label: '主谓一致', term: verb, replacement: replacement(verb.toLocaleLowerCase()), anchor, anchorOccurrence: 0, context: text.slice(Math.max(0, match.index - 45), match.index + anchor.length + 65) })
+        issues.push({ pageIndex: page.pageIndex, label: "ui.subjectVerbAgreement", term: verb, replacement: replacement(verb.toLocaleLowerCase()), anchor, anchorOccurrence: 0, context: text.slice(Math.max(0, match.index - 45), match.index + anchor.length + 65) })
       }
     })
   })

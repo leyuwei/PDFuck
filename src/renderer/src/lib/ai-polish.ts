@@ -1,4 +1,5 @@
 import type { AiResponse } from '../../../shared/contracts'
+import { translateMessage, type TranslationKey } from '../../../shared/i18n-catalogue'
 
 export type AiProvider = 'openai' | 'claude' | 'bigmodel' | 'doubao' | 'deepseek' | 'kimi' | 'custom'
 
@@ -8,8 +9,8 @@ export const MAX_AI_TIMEOUT_SECONDS = 3600
 
 export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number }
 export type AiLanguage = 'zh' | 'en' | 'ja' | 'ru' | 'es'
-export interface AiPromptPreset { id: string; label: string; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
-export interface LocalizedAiPromptPreset { id: string; label: string; prompts: Record<AiLanguage, string> }
+export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
+export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Record<AiLanguage, string> }
 export interface AiProviderPreset { baseUrl: string; model: string }
 
 export type FullReviewSendMode = 'text' | 'file'
@@ -18,17 +19,17 @@ export interface FullReviewDocument { name: string; bytes: Uint8Array; text?: st
 export const MAX_AI_PDF_BYTES = 40 * 1024 * 1024
 
 export const AI_PRESETS: AiPromptPreset[] = [
-  { id: 'plain', label: '通俗化解释', prompt: '请用通俗、准确且简洁的语言直接改写原文，保留关键事实。只返回改写后的文本，不要解释。', promptEn: 'Rewrite the text in clear, accurate, concise language while preserving key facts. Return only the rewritten text; do not explain.' },
-  { id: 'logic', label: '逻辑需优化', prompt: '请修正逻辑断裂、重复和衔接问题，直接返回简洁连贯的改写文本，不要分析或解释。', promptEn: 'Fix logical gaps, repetition, and transitions. Return only a concise, coherent rewrite; do not analyze or explain.' },
-  { id: 'grammar', label: '仅语法检查', prompt: '请仅修正语法、拼写、标点和明显格式错误，不改变原意与文风。只返回修正后的文本，不要解释。', promptEn: 'Correct only grammar, spelling, punctuation, and obvious formatting errors without changing meaning or style. Return only the corrected text; do not explain.' },
-  { id: 'human', label: '类人化表达', prompt: '请在保持原意的前提下改写得自然、专业、简洁，去除机械和空泛措辞。只返回改写后的文本，不要解释。', promptEn: 'Rewrite the text to sound natural, professional, and concise while preserving its meaning. Remove mechanical or vague wording. Return only the rewrite; do not explain.' },
-  { id: 'inconsistent', label: '前后不一致', prompt: '请统一原文中不一致的术语、事实、时态和指代，直接返回修正后的完整文本，不要逐项说明。', promptEn: 'Resolve inconsistent terminology, facts, tense, and references. Return only the complete corrected text; do not list or explain the changes.' },
-  { id: 'highlights', label: '要突出亮点', prompt: '请在不夸张、不新增事实的前提下突出核心贡献和结果，直接返回简洁有力的改写文本，不要解释。', promptEn: 'Highlight the core contribution and results without exaggeration or new facts. Return only a concise, compelling rewrite; do not explain.' }
+  { id: 'plain', label: "ui.plainLanguageExplanation", prompt: '请用通俗、准确且简洁的语言直接改写原文，保留关键事实。只返回改写后的文本，不要解释。', promptEn: 'Rewrite the text in clear, accurate, concise language while preserving key facts. Return only the rewritten text; do not explain.' },
+  { id: 'logic', label: "ui.improveLogic", prompt: '请修正逻辑断裂、重复和衔接问题，直接返回简洁连贯的改写文本，不要分析或解释。', promptEn: 'Fix logical gaps, repetition, and transitions. Return only a concise, coherent rewrite; do not analyze or explain.' },
+  { id: 'grammar', label: "ui.grammarOnly", prompt: '请仅修正语法、拼写、标点和明显格式错误，不改变原意与文风。只返回修正后的文本，不要解释。', promptEn: 'Correct only grammar, spelling, punctuation, and obvious formatting errors without changing meaning or style. Return only the corrected text; do not explain.' },
+  { id: 'human', label: "ui.naturalPhrasing", prompt: '请在保持原意的前提下改写得自然、专业、简洁，去除机械和空泛措辞。只返回改写后的文本，不要解释。', promptEn: 'Rewrite the text to sound natural, professional, and concise while preserving its meaning. Remove mechanical or vague wording. Return only the rewrite; do not explain.' },
+  { id: 'inconsistent', label: "ui.resolveInconsistencies", prompt: '请统一原文中不一致的术语、事实、时态和指代，直接返回修正后的完整文本，不要逐项说明。', promptEn: 'Resolve inconsistent terminology, facts, tense, and references. Return only the complete corrected text; do not list or explain the changes.' },
+  { id: 'highlights', label: "ui.highlightStrengths", prompt: '请在不夸张、不新增事实的前提下突出核心贡献和结果，直接返回简洁有力的改写文本，不要解释。', promptEn: 'Highlight the core contribution and results without exaggeration or new facts. Return only a concise, compelling rewrite; do not explain.' }
 ]
 
 export const FULL_REVIEW_PRESETS: LocalizedAiPromptPreset[] = [
   {
-    id: 'comprehensive', label: '综合审稿（推荐）', prompts: {
+    id: 'comprehensive', label: "ui.comprehensiveReviewRecommended", prompts: {
       zh: '请对整个文档进行严格、专业且基于证据的审稿。先用恰好三句话概括文档做了什么、采用了什么方法或结构、得到什么结论或目标。然后以分点清单罗列具体问题，每点注明所在章节、页码或可识别的原文片段（如果能够判断），并给出可执行的修改建议。至少检查：整体结构和论述是否通顺；章节标题和前后安排是否合理；错别字、语法、标点及格式；术语、事实、数据、指代和结论前后是否一致；是否存在上下文不搭、突兀或意义不明的句子；晦涩概念是否充分解释；亮点、贡献和核心结论是否突出明确；是否存在逻辑错误、论证漏洞或推导错误。不得虚构文档中没有的信息；无法判断时请明确说明。',
       en: 'Review the entire document rigorously, professionally, and with evidence. Begin with exactly three sentences summarizing what the document does, the method or structure it uses, and its conclusion or objective. Then list specific issues as bullets; when possible, identify the section, page, or recognizable excerpt and give an actionable revision. At minimum, assess overall structure and flow; section titles and ordering; typos, grammar, punctuation, and formatting; consistency of terms, facts, data, references, and conclusions; abrupt, irrelevant, or unclear sentences; unexplained difficult concepts; whether strengths, contributions, and conclusions are explicit; and logical, argumentative, or derivation errors. Do not invent information absent from the document; state clearly when something cannot be determined.',
       ja: '文書全体を、根拠に基づいて厳密かつ専門的に査読してください。まず、文書が何を行い、どの方法・構成を採用し、どの結論・目的に至るかを、ちょうど3文で要約してください。続いて具体的な問題を箇条書きにし、判断できる場合は章・ページ・識別可能な原文を示して、実行可能な修正案を提示してください。少なくとも、全体構成と論述の流れ、章見出しと順序、誤字・文法・句読点・書式、用語・事実・データ・指示語・結論の一貫性、文脈に合わない唐突または不明瞭な文、未説明の難解な概念、強み・貢献・主要結論の明確さ、論理・論証・導出の誤りを確認してください。文書にない情報を作らず、判断不能な点は明記してください。',
@@ -37,7 +38,7 @@ export const FULL_REVIEW_PRESETS: LocalizedAiPromptPreset[] = [
     }
   },
   {
-    id: 'structure', label: '结构与逻辑', prompts: {
+    id: 'structure', label: "ui.structureAndLogic", prompts: {
       zh: '请审查整个文档的结构和逻辑。先用恰好三句话概括文档内容，再按严重程度分点指出章节标题、章节顺序、论证衔接、前后矛盾、逻辑错误和推导漏洞，并给出明确的调整方案。引用可识别的章节、页码或原文，不要虚构。',
       en: 'Review the structure and logic of the entire document. Begin with exactly three summary sentences, then list issues by severity covering section titles, ordering, argumentative transitions, contradictions, logical errors, and derivation gaps, with concrete restructuring advice. Cite identifiable sections, pages, or excerpts and do not invent evidence.',
       ja: '文書全体の構成と論理を査読してください。最初にちょうど3文で要約し、その後、章見出し、章順、論証のつながり、矛盾、論理的誤り、導出の欠落を重大度順に列挙し、具体的な再構成案を示してください。識別可能な章・ページ・原文を引用し、根拠を作らないでください。',
@@ -46,7 +47,7 @@ export const FULL_REVIEW_PRESETS: LocalizedAiPromptPreset[] = [
     }
   },
   {
-    id: 'language', label: '语言与一致性', prompts: {
+    id: 'language', label: "ui.languageAndConsistency", prompts: {
       zh: '请审查整个文档的语言质量和一致性。先用恰好三句话概括文档，再分点指出错别字、语法、标点、格式、术语与数据不一致、上下文不搭、表达晦涩、概念解释不足以及亮点不明确的问题，并逐项给出可直接执行的修改建议。请标注位置或原文片段，不要虚构。',
       en: 'Review language quality and consistency throughout the document. Begin with exactly three summary sentences, then identify typos, grammar, punctuation, formatting, inconsistent terminology or data, context breaks, obscure wording, underexplained concepts, and unclear strengths, giving an actionable correction for each. Identify locations or excerpts and do not invent content.',
       ja: '文書全体の言語品質と一貫性を査読してください。最初にちょうど3文で要約し、その後、誤字、文法、句読点、書式、用語・データの不一致、文脈の断絶、難解な表現、説明不足の概念、強みの不明確さを指摘し、それぞれ実行可能な修正案を示してください。位置または原文を明示し、内容を作らないでください。',
@@ -58,7 +59,7 @@ export const FULL_REVIEW_PRESETS: LocalizedAiPromptPreset[] = [
 
 export const ANNOTATION_SUGGESTION_PRESETS: LocalizedAiPromptPreset[] = [
   {
-    id: 'professional', label: '专业修改建议', prompts: {
+    id: 'professional', label: "ui.professionalRevisionAdvice", prompts: {
       zh: '请结合批注要求和用户提供的全部上下文，给出专业、具体、可直接执行的修改建议。先准确解释批注希望解决的问题，再给出推荐改写或调整步骤；不得忽略批注，不得虚构上下文之外的事实。',
       en: 'Use the annotation request and all supplied context to give professional, specific, directly actionable revision advice. First explain precisely what the annotation asks to fix, then provide a recommended rewrite or concrete revision steps. Do not ignore the annotation or invent facts outside the context.',
       ja: '批注の要求と提示されたすべての文脈を組み合わせ、専門的で具体的、直ちに実行できる修正案を示してください。まず批注が解決を求める問題を正確に説明し、その後に推奨する書き換えまたは修正手順を提示してください。批注を無視したり、文脈外の事実を作ったりしないでください。',
@@ -67,7 +68,7 @@ export const ANNOTATION_SUGGESTION_PRESETS: LocalizedAiPromptPreset[] = [
     }
   },
   {
-    id: 'rewrite', label: '给出推荐改写', prompts: {
+    id: 'rewrite', label: "ui.provideARecommendedRewrite", prompts: {
       zh: '请根据批注要求和全部上下文，直接给出一版专业、准确、连贯的推荐改写，并用不超过三点简要说明关键修改。不得新增原文没有的事实。',
       en: 'Based on the annotation and all context, provide a professional, accurate, coherent recommended rewrite, followed by no more than three brief points explaining the key changes. Do not add facts absent from the source.',
       ja: '批注とすべての文脈に基づき、専門的で正確かつ一貫した推奨書き換えを提示し、主要な変更を3点以内で簡潔に説明してください。原文にない事実を追加しないでください。',
@@ -155,26 +156,26 @@ function parseJson(body: string): Record<string, unknown> {
   try { return JSON.parse(body) as Record<string, unknown> } catch { return {} }
 }
 
-const FRIENDLY_HTTP_ERRORS: Partial<Record<number, string>> = {
-  400: '请求参数或模型不兼容。请核对模型名称、接口地址和服务商的接口要求。',
-  401: '身份验证失败。请检查 API Key、账户权限和接口地址。',
-  403: '服务拒绝了请求。请检查 API Key 权限、账户状态和模型访问权限。',
-  404: '没有找到模型或接口路径。请核对模型名称，以及接口地址是否包含正确的 API 版本。',
-  408: 'AI 服务或中转网关响应超时。请缩短输入后重试；若反复发生，请检查接口地址或联系服务商。',
-  413: '发送内容超过了服务商限制。请缩短输入；全文评价可改用转换后的文档文字。',
-  422: '请求参数或模型不兼容。请核对模型名称、接口地址和服务商的接口要求。',
-  429: '请求过于频繁或账户额度不足。请稍后重试，并检查服务商的余额、配额和速率限制。',
-  500: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  502: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  503: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  504: 'AI 服务或中转网关响应超时。请缩短输入后重试；若反复发生，请检查接口地址或联系服务商。',
-  520: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  521: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  522: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  523: 'AI 服务或中转网关暂时不可用。请稍后重试，或检查服务商状态和接口地址。',
-  524: 'AI 服务或中转网关等待模型返回超时。这通常不是本软件的响应超时；请缩短输入、改用更快的模型、直连官方 API，或联系中转服务商。',
-  525: '中转网关无法与上游 AI 服务建立安全连接。请检查接口地址，或联系中转服务商处理证书问题。',
-  526: '中转网关无法与上游 AI 服务建立安全连接。请检查接口地址，或联系中转服务商处理证书问题。'
+const FRIENDLY_HTTP_ERRORS: Partial<Record<number, TranslationKey>> = {
+  400: "ui.theRequestParametersOrModelAreIncompatibleCheckTheModel",
+  401: "ui.authenticationFailedCheckTheApiKeyAccountPermissionsAndApi",
+  403: "ui.theServiceRejectedTheRequestCheckTheApiKeyPermissions",
+  404: "ui.theModelOrApiRouteWasNotFoundCheckThe",
+  408: "ui.theAiServiceOrRelayGatewayTimedOutShortenThe",
+  413: "ui.theContentExceedsTheProviderLimitShortenTheInputFor",
+  422: "ui.theRequestParametersOrModelAreIncompatibleCheckTheModel",
+  429: "ui.requestsAreTooFrequentOrTheAccountHasInsufficientQuota",
+  500: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  502: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  503: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  504: "ui.theAiServiceOrRelayGatewayTimedOutShortenThe",
+  520: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  521: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  522: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  523: "ui.theAiServiceOrRelayGatewayIsTemporarilyUnavailableTry",
+  524: "ui.theAiServiceOrRelayGatewayTimedOutWhileWaiting",
+  525: "ui.theRelayGatewayCouldNotEstablishASecureConnectionTo",
+  526: "ui.theRelayGatewayCouldNotEstablishASecureConnectionTo"
 }
 
 function responseDetail(response: Pick<AiResponse, 'statusText' | 'body'>): string {
@@ -192,7 +193,8 @@ function responseDetail(response: Pick<AiResponse, 'statusText' | 'body'>): stri
 }
 
 function responseError(response: Pick<AiResponse, 'status' | 'statusText' | 'body'>): Error {
-  return new Error(`请求失败（${response.status}）：${FRIENDLY_HTTP_ERRORS[response.status] || responseDetail(response)}`)
+  const key = FRIENDLY_HTTP_ERRORS[response.status]
+  return new Error(`请求失败（${response.status}）：${key ? translateMessage('zh', key) : responseDetail(response)}`)
 }
 
 async function sendRequest(url: string, headers: Record<string, string>, body: string, timeoutMs: number): Promise<AiResponse> {

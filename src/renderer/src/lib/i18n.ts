@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from 'react'
 import {
   INTERFACE_LANGUAGES,
-  translateCataloguePhrase,
   translateMessage,
   translateStoredUiText,
   type InterfaceLanguage,
   type TranslationKey
 } from '../../../shared/i18n-catalogue'
+export type { InterfaceLanguage, TranslationKey } from '../../../shared/i18n-catalogue'
 
 const KEY = 'pdfuck.interface-language.v1'
 
@@ -27,6 +27,5 @@ export function setInterfaceLanguage(language: InterfaceLanguage): void {
 export function interfaceLanguage(): InterfaceLanguage { return activeLanguage }
 export function useInterfaceLanguage(): InterfaceLanguage { return useSyncExternalStore((listener) => { listeners.add(listener); return () => listeners.delete(listener) }, interfaceLanguage, interfaceLanguage) }
 export function t(key: TranslationKey, values: Record<string, string | number> = {}): string { return translateMessage(activeLanguage, key, values) }
-export function translatePhrase(source: string): string { return translateCataloguePhrase(activeLanguage, source) }
-export function ui(source: string): string { return translatePhrase(source) }
+export function ui(key: TranslationKey): string { return translateMessage(activeLanguage, key) }
 export function translateUiText(value: string): string { return translateStoredUiText(activeLanguage, value) }

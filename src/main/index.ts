@@ -8,7 +8,7 @@ import { basename, delimiter, dirname, extname, join, parse, resolve } from 'nod
 import { pathToFileURL } from 'node:url'
 import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrinterDescriptor, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
-import { translateCataloguePhrase, type InterfaceLanguage } from '../shared/i18n-catalogue'
+import { translateMessage, type InterfaceLanguage, type TranslationKey } from '../shared/i18n-catalogue'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
 import { convertOfficeDocument, OfficeImportError, officeImportSourceFormat } from './office-import'
@@ -34,7 +34,7 @@ interface PendingDocumentTransfer {
   expiry: ReturnType<typeof setTimeout>
 }
 
-function nativeText(language: InterfaceLanguage, source: string): string { return translateCataloguePhrase(language, source) }
+function nativeText(language: InterfaceLanguage, key: TranslationKey): string { return translateMessage(language, key) }
 
 let mainSession: MainWindowSession | null = null
 const windowSessions = new Map<number, MainWindowSession>()
@@ -362,16 +362,16 @@ async function listPrinters(contents: WebContents): Promise<PrinterDescriptor[]>
 async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promise<PrintPdfResult> {
   if (!request.data?.length) throw new Error('当前 PDF 没有可打印的内容。')
   const language = requireWindowSession(parent.webContents).interfaceLanguage
-  if (!validPrintOptions(request.options)) throw new Error(nativeText(language, '打印设置无效。'))
-  if (typeof request.printerName !== 'string' || !request.printerName || request.printerName.length > 512 || request.printerName.includes('\0')) throw new Error(nativeText(language, '请选择可用的打印机。'))
-  if (nativePrintBusy || (printWindow && !printWindow.isDestroyed())) throw new Error(nativeText(language, '已有打印任务正在派发，请稍候。'))
+  if (!validPrintOptions(request.options)) throw new Error(nativeText(language, "ui.thePrintSettingsAreInvalid"))
+  if (typeof request.printerName !== 'string' || !request.printerName || request.printerName.length > 512 || request.printerName.includes('\0')) throw new Error(nativeText(language, "ui.selectAnAvailablePrinter"))
+  if (nativePrintBusy || (printWindow && !printWindow.isDestroyed())) throw new Error(nativeText(language, "ui.aPrintJobIsAlreadyBeingDispatchedPleaseWait"))
   const printers = await listPrinters(parent.webContents)
   const printer = printers.find((candidate) => candidate.name === request.printerName)
-  if (!printer) throw new Error(nativeText(language, '所选打印机不可用，请刷新后重试。'))
-  if (request.options.duplex !== 'simplex' && printer.supportsDuplex === false) throw new Error(nativeText(language, '所选打印机不支持双面打印。'))
+  if (!printer) throw new Error(nativeText(language, "ui.theSelectedPrinterIsUnavailableRefreshTheListAndTry"))
+  if (request.options.duplex !== 'simplex' && printer.supportsDuplex === false) throw new Error(nativeText(language, "ui.theSelectedPrinterDoesNotSupportDuplexPrinting"))
   const temporary = join(app.getPath('temp'), `PDFuck-print-${randomUUID()}.pdf`)
   if (process.platform === 'win32') {
-    if (nativePrintBusy) throw new Error(nativeText(language, '已有打印任务正在派发，请稍候。'))
+    if (nativePrintBusy) throw new Error(nativeText(language, "ui.aPrintJobIsAlreadyBeingDispatchedPleaseWait"))
     nativePrintBusy = true
     try {
       await writeFile(temporary, request.data)
@@ -379,7 +379,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
       return { status: 'printed' }
     } catch (error) {
       console.error('Native Windows print dispatch failed.', error)
-      throw new Error(nativeText(language, '原生打印任务派发失败，请检查打印机连接、纸张与双面打印设置。'))
+      throw new Error(nativeText(language, "ui.theNativePrintJobCouldNotBeDispatchedCheckThe"))
     } finally {
       nativePrintBusy = false
       await unlink(temporary).catch(() => undefined)
@@ -389,7 +389,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
   await writeFile(temporary, request.data)
   const window = new BrowserWindow({
     width: 900, height: 720, show: false, skipTaskbar: true, parent, autoHideMenuBar: true, paintWhenInitiallyHidden: true,
-    title: `${nativeText(language, '打印')} - ${basename(request.name || 'document.pdf')}`,
+    title: `${nativeText(language, "ui.print")} - ${basename(request.name || 'document.pdf')}`,
     webPreferences: { plugins: true, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
   })
   printWindow = window
@@ -400,11 +400,11 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
       async () => (await window.webContents.capturePage()).toPNG(),
       (milliseconds) => new Promise((resolveReady) => setTimeout(resolveReady, milliseconds))
     )
-    if (!ready) throw new Error(nativeText(language, '打印内容加载失败，请重试。'))
+    if (!ready) throw new Error(nativeText(language, "ui.thePrintContentCouldNotBeLoadedPleaseTryAgain"))
     return await new Promise<PrintPdfResult>((resolvePrint, rejectPrint) => {
       window.webContents.print(buildDirectPrintOptions(request.options, printer.name), (success, failureReason) => {
         if (success) resolvePrint({ status: 'printed' })
-        else rejectPrint(new Error(failureReason || nativeText(language, '打印机未能接收任务，请检查连接和纸张设置。')))
+        else rejectPrint(new Error(failureReason || nativeText(language, "ui.thePrinterCouldNotReceiveTheJobCheckItsConnection")))
       })
     })
   } finally {
@@ -547,7 +547,7 @@ app.whenReady().then(async () => {
   void refreshMacPdfAssociation()
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
-    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, '打开 PDF'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件'), extensions: ['pdf'] }] })
+    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, "ui.openPdf"), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, "ui.pdfFiles"), extensions: ['pdf'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -575,18 +575,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('pdf:choose-imports', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, {
-      title: nativeText(session.interfaceLanguage, '从文件合并 PDF'),
+      title: nativeText(session.interfaceLanguage, "ui.mergePdfFromFiles"),
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: nativeText(session.interfaceLanguage, '可导入的文件'), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps', 'doc', 'docx', 'ppt', 'pptx'] }]
+      filters: [{ name: nativeText(session.interfaceLanguage, "ui.importableFiles"), extensions: ['pdf', 'png', 'jpg', 'jpeg', 'eps', 'doc', 'docx', 'ppt', 'pptx'] }]
     })
     return result.canceled ? null : openPdfImports(result.filePaths)
   })
   ipcMain.handle('image:choose', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, {
-      title: nativeText(session.interfaceLanguage, '选择要添加的图片'),
+      title: nativeText(session.interfaceLanguage, "ui.chooseAnImageToAdd"),
       properties: ['openFile'],
-      filters: [{ name: nativeText(session.interfaceLanguage, '图片文件'), extensions: ['png', 'jpg', 'jpeg'] }]
+      filters: [{ name: nativeText(session.interfaceLanguage, "ui.imageFiles"), extensions: ['png', 'jpg', 'jpeg'] }]
     })
     return result.canceled ? null : openImageImport(result.filePaths[0])
   })
@@ -645,7 +645,7 @@ app.whenReady().then(async () => {
     const window = session.window
     let target = request.saveAs ? undefined : request.currentPath
     if (!target) {
-      const result = await dialog.showSaveDialog(window, { title: nativeText(session.interfaceLanguage, '保存 PDF'), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText(session.interfaceLanguage, 'PDF 文件'), extensions: ['pdf'] }] })
+      const result = await dialog.showSaveDialog(window, { title: nativeText(session.interfaceLanguage, "ui.savePdf"), defaultPath: request.currentPath || 'document.pdf', filters: [{ name: nativeText(session.interfaceLanguage, "ui.pdfFiles"), extensions: ['pdf'] }] })
       if (result.canceled || !result.filePath) return { status: 'canceled' as const }
       target = result.filePath
     }
@@ -666,7 +666,7 @@ app.whenReady().then(async () => {
     const window = session.window
     if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
     const stem = parse(request.sourceName || 'document').name
-    const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, '导出')} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
+    const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, "ui.export")} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null
     const selected = parse(result.filePath), many = request.pages.length > 1
     const outputs: string[] = []

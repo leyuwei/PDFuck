@@ -1,16 +1,17 @@
 import type { AnnotationKind, AnnotationReply, AnnotationReplyStatus } from '../types'
+import type { TranslationKey } from './i18n'
 
 export const DEEP_BLUE = '#173f7a'
 
 export const ANNOTATION_PALETTE = [
-  { color: '#ffd43b', label: '明黄' },
-  { color: DEEP_BLUE, label: '深蓝' },
-  { color: '#2f7de1', label: '亮蓝' },
-  { color: '#e24b4f', label: '珊瑚红' },
-  { color: '#23826b', label: '墨绿' },
-  { color: '#7c4dca', label: '紫色' },
-  { color: '#f08c24', label: '橙色' },
-  { color: '#20283a', label: '墨黑' }
+  { color: '#ffd43b', label: "ui.brightYellow" },
+  { color: DEEP_BLUE, label: "ui.deepBlue" },
+  { color: '#2f7de1', label: "ui.brightBlue" },
+  { color: '#e24b4f', label: "ui.coralRed" },
+  { color: '#23826b', label: "ui.deepGreen" },
+  { color: '#7c4dca', label: "ui.purple" },
+  { color: '#f08c24', label: "ui.orange" },
+  { color: '#20283a', label: "ui.inkBlack" }
 ] as const
 
 export const DEFAULT_ANNOTATION_COLOR: Record<AnnotationKind, string> = {
@@ -23,14 +24,14 @@ export const DEFAULT_ANNOTATION_COLOR: Record<AnnotationKind, string> = {
   ai_polish: '#7c4dca'
 }
 
-export const QUICK_REPLIES: Array<{ status: Exclude<AnnotationReplyStatus, 'custom'>; label: string; tint: string }> = [
-  { status: 'handled', label: '已处理', tint: '#e8f7ee' },
-  { status: 'thinking', label: '想一想', tint: '#fff6d8' },
-  { status: 'declined', label: '不做了', tint: '#fdebec' }
+export const QUICK_REPLIES: Array<{ status: Exclude<AnnotationReplyStatus, 'custom'>; label: TranslationKey; content: string; tint: string }> = [
+  { status: 'handled', label: "ui.resolved", content: '已处理', tint: '#e8f7ee' },
+  { status: 'thinking', label: "ui.reviewLater", content: '想一想', tint: '#fff6d8' },
+  { status: 'declined', label: "ui.wonTFix", content: '不做了', tint: '#fdebec' }
 ]
 
 export function quickReply(status: Exclude<AnnotationReplyStatus, 'custom'>): AnnotationReply {
-  return { status, content: QUICK_REPLIES.find((item) => item.status === status)?.label || '' }
+  return { status, content: QUICK_REPLIES.find((item) => item.status === status)?.content || '' }
 }
 
 export function normalizeHexColor(value: string | undefined, fallback: string): string {

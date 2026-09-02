@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnnotationMode, getDocument, OPS, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
@@ -22,6 +22,7 @@ import { shortcutLabel } from '../lib/platform-shortcuts'
 import { automaticPageContext, type AutomaticAnnotationContextRequest, type AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
 import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecognitionOptions, type RecognizedBookmark } from '../lib/bookmark-recognition'
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
+import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
 export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
@@ -166,12 +167,12 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const tools: Array<{ tool: Tool; label: string; kind: 'highlight' | 'replace' | 'delete_text' | 'underline' | 'note' | 'insert' }> = [
-    { tool: 'highlight', label: ui('文本高亮'), kind: 'highlight' }, { tool: 'replace', label: ui('文本替换'), kind: 'replace' }, { tool: 'delete_text', label: ui('文本删除'), kind: 'delete_text' }, { tool: 'underline', label: ui('加下划线'), kind: 'underline' }, { tool: 'note', label: ui('自由批注'), kind: 'note' }, { tool: 'insert', label: ui('插入文字'), kind: 'insert' }
+    { tool: 'highlight', label: ui("ui.highlightText"), kind: 'highlight' }, { tool: 'replace', label: ui("ui.replaceText"), kind: 'replace' }, { tool: 'delete_text', label: ui("ui.deleteText"), kind: 'delete_text' }, { tool: 'underline', label: ui("ui.underlineText"), kind: 'underline' }, { tool: 'note', label: ui("ui.note"), kind: 'note' }, { tool: 'insert', label: ui("ui.insertText"), kind: 'insert' }
   ]
   return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
-    <button type="button" className="selection-toolbar-grip" aria-label={ui('拖动批注快捷浮窗')} title={ui('拖动浮窗')} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
+    <button type="button" className="selection-toolbar-grip" aria-label={ui("ui.dragAnnotationToolbar")} title={ui("ui.dragToolbar")} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
-    <button type="button" className="selection-toolbar-button" aria-label={ui('智能润色')} title={`${ui('智能润色')} (${shortcutLabel('aiPolish', window.desktop.platform)})`} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
+    <button type="button" className="selection-toolbar-button" aria-label={ui("ui.aiPolish")} title={`${ui("ui.aiPolish")} (${shortcutLabel('aiPolish', window.desktop.platform)})`} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
   </div>
 }
 
@@ -203,17 +204,17 @@ function imageRectsForPage(page: PDFPageProxy, viewportTransform: PdfMatrix, ope
 }
 
 const REGEX_PRESETS = [
-  { label: '邮箱', value: '[\\w.+-]+@[\\w-]+\\.[A-Za-z]{2,}' },
-  { label: '网址', value: 'https?://[^\\s]+' },
-  { label: '中文手机号', value: '1[3-9]\\d{9}' },
-  { label: '日期', value: '(?:19|20)\\d{2}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?' },
-  { label: '数字', value: '\\b\\d+(?:\\.\\d+)?%?\\b' },
-  { label: '英文单词', value: '\\b[A-Za-z]{2,}\\b' },
-  { label: '引用编号', value: '\\[\\d+(?:[-,]\\d+)*\\]' },
-  { label: 'DOI', value: '10\\.\\d{4,9}/[-._;()/:A-Z0-9]+' },
-  { label: 'ISBN', value: 'ISBN(?:-1[03])?:?[-\\dXx ]{10,}' },
-  { label: '括号内容', value: '[（(][^）)]{1,80}[）)]' }
-]
+  { label: "ui.emailAddress", value: '[\\w.+-]+@[\\w-]+\\.[A-Za-z]{2,}' },
+  { label: "ui.website", value: 'https?://[^\\s]+' },
+  { label: "ui.chineseMobileNumber", value: '1[3-9]\\d{9}' },
+  { label: "ui.date", value: '(?:19|20)\\d{2}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?' },
+  { label: "ui.number", value: '\\b\\d+(?:\\.\\d+)?%?\\b' },
+  { label: "ui.englishWord", value: '\\b[A-Za-z]{2,}\\b' },
+  { label: "ui.citationNumber", value: '\\[\\d+(?:[-,]\\d+)*\\]' },
+  { label: 'ui.doi', value: '10\\.\\d{4,9}/[-._;()/:A-Z0-9]+' },
+  { label: 'ui.isbn', value: 'ISBN(?:-1[03])?:?[-\\dXx ]{10,}' },
+  { label: "ui.bracketedContent", value: '[（(][^）)]{1,80}[）)]' }
+] as const
 
 function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocumentProxy; onClose(): void; onFocusTarget(target: SearchFocusTarget): void }) {
   const [query, setQuery] = useState('')
@@ -284,14 +285,14 @@ function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocume
         }
       }
       setResults(next.slice(0, 200))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : ui("搜索表达式无效")) }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : ui("ui.invalidSearchExpression")) }
     finally { setBusy(false) }
   }
   return <div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
-    <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>{ui("搜索文档")}</b><button type="button" onClick={onClose} aria-label={ui("关闭搜索")} title={ui("关闭搜索")}>×</button></div>
-    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder={ui("输入文字或正则表达式")} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : ui("搜索")}</button></div>
-    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />{ui("匹配大小写")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />{ui("模糊匹配")}</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />{ui("正则表达式")}</label></div>
-    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">{ui("常用正则表达式")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
+    <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>{ui("ui.searchDocument")}</b><button type="button" onClick={onClose} aria-label={ui("ui.closeSearch")} title={ui("ui.closeSearch")}>×</button></div>
+    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder={ui("ui.enterTextOrARegularExpression")} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : ui("ui.search")}</button></div>
+    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />{ui("ui.matchCase")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />{ui("ui.fuzzyMatch")}</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />{ui("ui.regularExpression")}</label></div>
+    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">{ui("ui.commonRegularExpressions")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
     {error && <p className="pdf-search-error">{error}</p>}
     {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace })}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
   </div>
@@ -346,7 +347,7 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit, onDelet
   const movable = editable && !textObject.fixedToSource
   return <div className={`text-object${editable ? ' editable' : ''}${movable ? ' movable' : ' fixed'}${selected && editable ? ' selected' : ''}`} data-text={textObject.text} tabIndex={editable ? 0 : undefined} style={{
     left: rect.x * zoom + offset.x, top: rect.y * zoom + offset.y, width: rect.width * zoom, height: rect.height * zoom
-  }} title={editable ? textObject.fixedToSource ? ui('编辑文字') : ui("拖动调整位置，双击编辑文字和格式") : textObject.text}
+  }} title={editable ? textObject.fixedToSource ? ui("ui.editText") : ui("ui.dragToRepositionDoubleClickToEditTextAndFormatting") : textObject.text}
     onPointerDown={(event) => {
       if (!editable || event.button !== 0) return
       event.stopPropagation(); event.currentTarget.focus({ preventScroll: true }); setSelected(true)
@@ -368,8 +369,20 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit, onDelet
   >
     {textObject.sourceRects?.map((source, index) => <span key={index} className="text-object-source-mask" aria-hidden style={{ left: (source.x - rect.x) * zoom, top: (source.y - rect.y) * zoom, width: source.width * zoom, height: source.height * zoom, color: textObject.backgroundColor || '#ffffff', backgroundColor: textObject.backgroundColor || '#ffffff' }} />)}
     {rasterSource ? <img className="text-object-raster" src={rasterSource} alt="" draggable={false} /> : <span className="text-object-content" style={{ color: style.color, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight: style.lineHeight || 1.25, paddingTop: (style.paragraphBefore || 0) * zoom, paddingBottom: (style.paragraphAfter || 0) * zoom }}>{textObject.text}</span>}
-    {selected && editable && <button type="button" className="text-object-delete" aria-label={ui('文本删除')} title={ui('删除')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDelete(textObject.id) }}>×</button>}
+    {selected && editable && <button type="button" className="text-object-delete" aria-label={ui("ui.deleteText")} title={ui("ui.remove")} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDelete(textObject.id) }}>×</button>}
   </div>
+}
+
+function automaticBoundaryFractions(words: WordBox[], pageWidth: number): number[] {
+  const columns = [...new Set(words.flatMap((word) => word.column === undefined || word.columnAmbiguous ? [] : [word.column]))].sort((left, right) => left - right)
+  return columns.slice(0, -1).flatMap((column, index) => {
+    if (columns[index + 1] !== column + 1) return []
+    const left = words.filter((word) => word.column === column && !word.columnAmbiguous)
+    const right = words.filter((word) => word.column === column + 1 && !word.columnAmbiguous)
+    const leftEdge = Math.max(...left.map((word) => word.rect.x + word.rect.width))
+    const rightEdge = Math.min(...right.map((word) => word.rect.x))
+    return left.length && right.length && leftEdge < rightEdge ? [(leftEdge + rightEdge) / 2 / pageWidth] : []
+  })
 }
 
 function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObjectRecord; zoom: number; editable: boolean; onEdit(image: ImageObjectRecord): void }) {
@@ -381,7 +394,7 @@ function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObje
     setSource(url)
     return () => URL.revokeObjectURL(url)
   }, [image.data, image.format, image.id])
-  return <div className={`saved-image${editable ? ' editable' : ''}`} style={{ left: image.rect.x * zoom, top: image.rect.y * zoom, width: image.rect.width * zoom, height: image.rect.height * zoom, transform: `rotate(${image.rotation}deg)` }} title={editable ? ui('点击已添加图片重新编辑') : image.name}
+  return <div className={`saved-image${editable ? ' editable' : ''}`} style={{ left: image.rect.x * zoom, top: image.rect.y * zoom, width: image.rect.width * zoom, height: image.rect.height * zoom, transform: `rotate(${image.rotation}deg)` }} title={editable ? ui("ui.clickAnAddedImageToEditItAgain") : image.name}
     onPointerDown={(event) => { if (editable) event.stopPropagation() }} onClick={(event) => { if (!editable) return; event.stopPropagation(); onEdit(image) }}>
     {source && <img src={source} alt={image.name} draggable={false} />}
   </div>
@@ -422,20 +435,20 @@ function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel,
   const actionTop = actionBelow ? (displayed.y + displayed.height) * zoom + 8 : Math.max(4, displayed.y * zoom - 42)
   const handles: ImageResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
-    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui('拖动图片调整位置')}
+    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui("ui.dragImageToReposition")}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <img src={draft.source} alt={draft.name} draggable={false} />
-      <span className="image-draft-label">{draft.id ? ui('正在编辑已添加图片') : ui('待添加图片')}</span>
+      <span className="image-draft-label">{draft.id ? ui("ui.editingAddedImage") : ui("ui.imagePreview")}</span>
       <span className="image-rotate-stem" aria-hidden />
-      <span className="image-rotate-handle" aria-label={ui('拖动旋转控制点调整图片角度')} title={ui('拖动旋转控制点调整图片角度')} onPointerDown={(event) => begin('rotate', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
-      {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui('拖动控制点调整图片大小')} title={ui('拖动控制点调整图片大小')} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
+      <span className="image-rotate-handle" aria-label={ui("ui.dragRotationHandleToRotateImage")} title={ui("ui.dragRotationHandleToRotateImage")} onPointerDown={(event) => begin('rotate', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />
+      {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui("ui.dragHandleToResizeImage")} title={ui("ui.dragHandleToResizeImage")} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className={`image-draft-actions${draft.id ? ' has-delete' : ''}`} style={{ left: actionLeft, top: actionTop, minWidth: actionWidth }} onPointerDown={(event) => event.stopPropagation()}>
-      <span>{ui('拖动、缩放、旋转或切换比例锁后确认')}</span>
-      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui('已锁定原始比例') : ui('未锁定原始比例')} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui('比例已锁定') : ui('比例未锁定')}</button>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui('取消')}</button>
-      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui('删除图片')}</button>}
-      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui('确认更新图片') : ui('确认添加图片')}</button>
+      <span>{ui("ui.moveResizeRotateOrChangeTheAspectLockThenConfirm")}</span>
+      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui("ui.originalAspectRatioLocked") : ui("ui.originalAspectRatioUnlocked")} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui("ui.ratioLocked") : ui("ui.ratioUnlocked")}</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
+      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui("ui.deleteImage")}</button>}
+      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui("ui.confirmImageChanges") : ui("ui.confirmAddImage")}</button>
     </div>
   </>
 }
@@ -473,24 +486,24 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   }
   return <>
     <div className="page-text-edit-masks" aria-hidden>{region.sourceRects.map((rect, index) => <span key={index} style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom, color: backgroundColor, backgroundColor }} />)}</div>
-    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("编辑页面文字内容")} spellCheck={false} style={{ left: editorRect.x * zoom, top: editorRect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: paragraphBefore * zoom, paddingBottom: paragraphAfter * zoom, color: style.color, backgroundColor: 'transparent', fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape' && !saving) onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); void submit() } }} />
+    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("ui.editPageTextContent")} spellCheck={false} style={{ left: editorRect.x * zoom, top: editorRect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: paragraphBefore * zoom, paddingBottom: paragraphAfter * zoom, color: style.color, backgroundColor: 'transparent', fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape' && !saving) onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); void submit() } }} />
     <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop, width: toolbarWidth }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
-        <label title={ui("字体")}><select aria-label={ui("字体")} value={normalizeFontFamily(style.font)} disabled={saving} onChange={(event) => setStyle({ ...style, font: event.target.value, sourceFont: undefined })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label.endsWith('（原文字体）') ? `${option.label.slice(0, -6)} (${ui('原文字体')})` : translateUiText(option.label)}</option>)}</select></label>
-        <label className="format-size" title={ui("字号")}><input aria-label={ui("字号")} type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
-        <button type="button" disabled={saving} className={style.bold ? 'active' : ''} aria-label={ui("粗体")} title={ui("粗体")} onClick={() => setStyle({ ...style, bold: !style.bold, sourceFont: undefined })}><b>B</b></button>
-        <button type="button" disabled={saving} className={style.italic ? 'active' : ''} aria-label={ui("斜体")} title={ui("斜体")} onClick={() => setStyle({ ...style, italic: !style.italic, sourceFont: undefined })}><i>I</i></button>
-        <label className="format-color" title={ui("文字颜色")}><input aria-label={ui("文字颜色")} type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
-        <span className="toolbar-spacer" /><button type="button" disabled={saving} className="toolbar-cancel" onClick={onCancel}>{ui("取消")}</button><button type="button" disabled={saving} className="primary toolbar-apply" onClick={() => void submit()}>{ui("应用")}</button>
+        <label title={ui("ui.font")}><select aria-label={ui("ui.font")} value={normalizeFontFamily(style.font)} disabled={saving} onChange={(event) => setStyle({ ...style, font: event.target.value, sourceFont: undefined })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label.endsWith('（原文字体）') ? `${option.label.slice(0, -6)} (${ui("ui.originalFont")})` : translateUiText(option.label)}</option>)}</select></label>
+        <label className="format-size" title={ui("ui.fontSize")}><input aria-label={ui("ui.fontSize")} type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
+        <button type="button" disabled={saving} className={style.bold ? 'active' : ''} aria-label={ui("ui.bold")} title={ui("ui.bold")} onClick={() => setStyle({ ...style, bold: !style.bold, sourceFont: undefined })}><b>B</b></button>
+        <button type="button" disabled={saving} className={style.italic ? 'active' : ''} aria-label={ui("ui.italic")} title={ui("ui.italic")} onClick={() => setStyle({ ...style, italic: !style.italic, sourceFont: undefined })}><i>I</i></button>
+        <label className="format-color" title={ui("ui.textColor")}><input aria-label={ui("ui.textColor")} type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
+        <span className="toolbar-spacer" /><button type="button" disabled={saving} className="toolbar-cancel" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" disabled={saving} className="primary toolbar-apply" onClick={() => void submit()}>{ui("ui.apply")}</button>
       </div>
-      <div className="format-toolbar-row secondary"><span className="format-group-label">{ui("段落")}</span>
-        {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={align === 'left' ? ui("左对齐") : align === 'center' ? ui("居中") : ui("右对齐")} title={align === 'left' ? ui("左对齐") : align === 'center' ? ui("居中") : ui("右对齐")} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
-        <label className="format-line-height" title={ui("段落行距")}><select aria-label={ui("段落行距")} value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("紧凑")}</option><option value="1.25">{ui("正文")}</option><option value="1.5">{ui("宽松")}</option><option value="2">{ui("双倍")}</option></select></label>
-        <label className="format-number" title={ui("段前距")}><span>{ui("段前")}</span><input aria-label={ui("段前距")} type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
-        <label className="format-number" title={ui("段后距")}><span>{ui("段后")}</span><input aria-label={ui("段后距")} type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
-        <span className="toolbar-divider" /><span className="format-group-label">{ui("字符")}</span>
-        <label className="format-number" title={ui("字符间距")}><span>{ui("间距")}</span><input aria-label={ui("字符间距")} type="number" min="-5" max="20" step=".1" value={style.letterSpacing || 0} onChange={(event) => setStyle({ ...style, letterSpacing: Math.max(-5, Math.min(20, Number(event.target.value) || 0)) })} /></label>
-        <label className="format-number format-width" title={ui("文字宽度比例")}><span>{ui("宽度")}</span><input aria-label={ui("文字宽度")} type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
+      <div className="format-toolbar-row secondary"><span className="format-group-label">{ui("ui.paragraph")}</span>
+        {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={align === 'left' ? ui("ui.left") : align === 'center' ? ui("ui.center") : ui("ui.right")} title={align === 'left' ? ui("ui.left") : align === 'center' ? ui("ui.center") : ui("ui.right")} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
+        <label className="format-line-height" title={ui("ui.paragraphLineSpacing")}><select aria-label={ui("ui.paragraphLineSpacing")} value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label>
+        <label className="format-number" title={ui("ui.spaceBeforeParagraph")}><span>{ui("ui.before")}</span><input aria-label={ui("ui.spaceBeforeParagraph")} type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number" title={ui("ui.spaceAfterParagraph")}><span>{ui("ui.after")}</span><input aria-label={ui("ui.spaceAfterParagraph")} type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
+        <span className="toolbar-divider" /><span className="format-group-label">{ui("ui.character")}</span>
+        <label className="format-number" title={ui("ui.characterSpacing")}><span>{ui("ui.spacing")}</span><input aria-label={ui("ui.characterSpacing")} type="number" min="-5" max="20" step=".1" value={style.letterSpacing || 0} onChange={(event) => setStyle({ ...style, letterSpacing: Math.max(-5, Math.min(20, Number(event.target.value) || 0)) })} /></label>
+        <label className="format-number format-width" title={ui("ui.textWidthScale")}><span>{ui("ui.width")}</span><input aria-label={ui("ui.textWidth")} type="number" min="50" max="200" step="1" value={style.horizontalScale || 100} onChange={(event) => setStyle({ ...style, horizontalScale: Math.max(50, Math.min(200, Number(event.target.value) || 100)) })} /><em>%</em></label>
       </div>
     </div>
   </>
@@ -526,7 +539,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
       {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("取消")}</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
       <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
     </div>
   </>
@@ -536,11 +549,13 @@ interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; 
 
 function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, searchFocusPage, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
+  const documentKey = document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const preciseFocusRef = useRef<HTMLDivElement>(null)
   const visualFocusRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
+  const [rendered, setRendered] = useState(false)
   const [size, setSize] = useState({ width: 612, height: 792 })
   const [words, setWords] = useState<WordBox[]>([])
   const [textRegions, setTextRegions] = useState<EditableTextRegion[]>([])
@@ -555,6 +570,18 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [hoverInsert, setHoverInsert] = useState<PdfPoint>()
   const [citationPopup, setCitationPopup] = useState<{ key: string; hits: CitationLink[]; rect: PdfRect }>()
   const [copiedCitation, setCopiedCitation] = useState(false)
+  const [boundaryEditing, setBoundaryEditing] = useState(false)
+  const [automaticBoundaries, setAutomaticBoundaries] = useState<number[]>([])
+  const [layoutOverride, setLayoutOverride] = useState<PageLayoutOverride | undefined>(() => loadPageLayoutOverride(documentKey, pageIndex))
+  const [boundaryDraft, setBoundaryDraft] = useState<number[]>()
+  const [spanningRegionsDraft, setSpanningRegionsDraft] = useState<Array<[number, number]>>()
+  const [newSpanningRegion, setNewSpanningRegion] = useState<[number, number]>()
+  const [drawingSpanningRegion, setDrawingSpanningRegion] = useState(false)
+  const layoutOverrideRef = useRef(layoutOverride)
+  const rebuildTextMapRef = useRef<((override?: PageLayoutOverride) => void) | undefined>(undefined)
+  const boundaryDragRef = useRef<{ index: number; values: number[] } | undefined>(undefined)
+  const spanningDrawRef = useRef<{ start: number; current: number } | undefined>(undefined)
+  const spanningEdgeDragRef = useRef<{ index: number; edge: 0 | 1; values: Array<[number, number]> } | undefined>(undefined)
   const [renderEligible, setRenderEligible] = useState(pageIndex < 2)
   const [textRequested, setTextRequested] = useState(pageIndex < 2)
   const textLoadedRef = useRef(false)
@@ -576,13 +603,15 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 
   useEffect(() => {
     let cancelled = false
+    setRendered(false)
+    canvasRef.current?.removeAttribute('data-rendered')
     document.getPage(pageIndex + 1).then((value) => {
       if (cancelled) return
       setPage(value)
       const viewport = value.getViewport({ scale: 1 })
       const next = { width: viewport.width, height: viewport.height }
       setSize(next); onSize(pageIndex, next)
-    }).catch((error) => { if (!cancelled) onError(error instanceof Error ? error : new Error(String(error))) })
+    }).catch((error) => { if (!cancelled) { setRendered(true); onError(error instanceof Error ? error : new Error(String(error))) } })
     return () => { cancelled = true }
   }, [document, pageIndex, onError, onSize])
 
@@ -591,7 +620,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     textLoadedRef.current = true
     let cancelled = false
     const viewport = page.getViewport({ scale: 1 })
-    Promise.all([page.getTextContent(), page.getOperatorList()]).then(([content]) => {
+    page.getTextContent().then((content) => {
       if (cancelled) return
       const items = content.items.filter((item): item is TextItem => 'str' in item)
       const fontDetails: Record<string, PdfFontDetails> = {}
@@ -601,12 +630,25 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
           if (font) fontDetails[fontName] = { name: font.name, loadedName: font.loadedName, bold: font.bold, italic: font.italic }
         } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
       }
-      const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
-      setWords(nextWords); onTextMap(pageIndex, nextWords)
+      const rebuild = (override?: PageLayoutOverride) => {
+        const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, override ? {
+          ...(override.columnBoundaries === undefined ? {} : { columnBoundaries: override.columnBoundaries.map((value) => value * viewport.width) }),
+          ...(override.spanningRegions?.length ? { spanningRegions: override.spanningRegions.map(([top, bottom]) => ({ top: top * viewport.height, bottom: bottom * viewport.height })) } : {})
+        } : undefined)
+        setWords(nextWords); onTextMap(pageIndex, nextWords)
+        if (override?.columnBoundaries === undefined) setAutomaticBoundaries(automaticBoundaryFractions(nextWords, viewport.width))
+      }
+      rebuildTextMapRef.current = rebuild
+      rebuild(layoutOverrideRef.current)
       setTextRegions(textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
     }).catch((error) => { if (!cancelled) { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) } })
     return () => { cancelled = true }
   }, [page, pageIndex, textRequested, onError, onTextMap])
+
+  useEffect(() => {
+    layoutOverrideRef.current = layoutOverride
+    rebuildTextMapRef.current?.(layoutOverride)
+  }, [layoutOverride])
 
   useEffect(() => {
     if (externalSelection) setSelection(externalSelection)
@@ -631,32 +673,36 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     let cancelled = false
     const viewport = page.getViewport({ scale: renderZoom })
     const outputScale = canvasOutputScale(viewport.width, viewport.height, window.devicePixelRatio || 1)
-    const buffer = window.document.createElement('canvas')
-    buffer.width = Math.max(1, Math.floor(viewport.width * outputScale))
-    buffer.height = Math.max(1, Math.floor(viewport.height * outputScale))
-    const context = buffer.getContext('2d', { alpha: false })
+    const canvas = canvasRef.current
+    const target = canvas.dataset.rendered ? window.document.createElement('canvas') : canvas
+    target.width = Math.max(1, Math.floor(viewport.width * outputScale))
+    target.height = Math.max(1, Math.floor(viewport.height * outputScale))
+    const context = target.getContext('2d', { alpha: false })
     if (!context) return
     // PDFuck renders its own annotation overlays from PdfDocumentModel. Letting
     // PDF.js paint the same PDF annotations into the canvas creates a second,
     // non-interactive copy that remains visible after the overlay is deleted.
-    const task = page.render({ canvas: buffer, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.DISABLE })
+    const task = page.render({ canvas: target, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.DISABLE })
     task.promise.then(() => {
-      const canvas = canvasRef.current
-      if (cancelled || !canvas) return
-      canvas.width = buffer.width; canvas.height = buffer.height
-      canvas.getContext('2d', { alpha: false })?.drawImage(buffer, 0, 0)
-    }).catch((error) => { if (!cancelled && error?.name !== 'RenderingCancelledException') onError(error) })
+      if (cancelled || !canvasRef.current) return
+      if (target !== canvas) {
+        canvas.width = target.width; canvas.height = target.height
+        canvas.getContext('2d', { alpha: false })?.drawImage(target, 0, 0)
+      }
+      canvas.dataset.rendered = 'true'
+      setRendered(true)
+    }).catch((error) => { if (!cancelled && error?.name !== 'RenderingCancelledException') { setRendered(true); onError(error) } })
     return () => { cancelled = true; task.cancel() }
   }, [page, renderEligible, renderZoom, onError])
 
-  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined) }, [tool])
+  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }, [tool])
   useEffect(() => { if (!activePage) setPageTextEditor(undefined) }, [activePage])
 
   const pointFor = (event: React.PointerEvent | React.MouseEvent): PdfPoint => {
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const canSelectText = !['crop', 'add_text', 'note', 'insert'].includes(tool)
+  const canSelectText = !boundaryEditing && !['crop', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -734,8 +780,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   }
   const handleContext = (event: React.MouseEvent) => {
     event.preventDefault()
+    if (boundaryEditing) return
     const point = pointFor(event)
-    if (!activeSelection?.text && !annotationMode) { setMenu(undefined); return }
     if (activeSelection?.text) { setTextCaret(undefined); setSelectionAnchor(undefined) }
     const bounds = pageRef.current!.getBoundingClientRect()
     setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, point })
@@ -772,6 +818,112 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     setMenu((current) => current?.annotation ? { ...current, annotation: { ...current.annotation, reply } } : current)
   }
   const copyMenuSelection = () => { if (activeSelection?.text) onCopyText(activeSelection.text); setMenu(undefined) }
+  const visibleBoundaries = boundaryDraft || layoutOverride?.columnBoundaries || automaticBoundaries
+  const visibleSpanningRegions = spanningRegionsDraft || layoutOverride?.spanningRegions || []
+  const commitLayoutOverride = (value?: PageLayoutOverride) => {
+    setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setLayoutOverride(value); savePageLayoutOverride(documentKey, pageIndex, value)
+    setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined)
+  }
+  const commitColumnBoundaries = (values: number[]) => commitLayoutOverride({ ...layoutOverride, columnBoundaries: values })
+  const commitSpanningRegions = (values: Array<[number, number]>) => {
+    const next = { ...layoutOverride }
+    if (values.length) next.spanningRegions = [...values].sort((left, right) => left[0] - right[0])
+    else delete next.spanningRegions
+    commitLayoutOverride(next.columnBoundaries !== undefined || next.spanningRegions?.length ? next : undefined)
+  }
+  const addBoundary = (value?: number) => {
+    const current = [...visibleBoundaries]
+    const stops = [0.02, ...current, 0.98]
+    const gap = stops.slice(1).map((right, index) => ({ left: stops[index], right })).sort((left, right) => right.right - right.left - (left.right - left.left))[0]
+    const next = value ?? (gap.left + gap.right) / 2
+    if (!Number.isFinite(next) || current.some((boundary) => Math.abs(boundary - next) < 0.02)) return
+    commitColumnBoundaries([...current, Math.max(0.02, Math.min(0.98, next))].sort((left, right) => left - right))
+  }
+  const removeBoundary = (index: number) => commitColumnBoundaries(visibleBoundaries.filter((_boundary, boundaryIndex) => boundaryIndex !== index))
+  const moveBoundary = (index: number, value: number) => {
+    const next = [...visibleBoundaries]
+    next[index] = Math.max(next[index - 1] === undefined ? 0.02 : next[index - 1] + 0.02, Math.min(next[index + 1] === undefined ? 0.98 : next[index + 1] - 0.02, value))
+    commitColumnBoundaries(next)
+  }
+  const beginBoundaryDrag = (index: number, event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault(); event.stopPropagation()
+    boundaryDragRef.current = { index, values: [...visibleBoundaries] }; setBoundaryDraft([...visibleBoundaries])
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const dragBoundary = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = boundaryDragRef.current
+    if (!active || !pageRef.current) return
+    event.preventDefault(); event.stopPropagation()
+    const bounds = pageRef.current.getBoundingClientRect()
+    const previous = active.values[active.index - 1] ?? 0
+    const following = active.values[active.index + 1] ?? 1
+    active.values[active.index] = Math.max(previous + 0.02, Math.min(following - 0.02, (event.clientX - bounds.left) / bounds.width))
+    setBoundaryDraft([...active.values])
+  }
+  const finishBoundaryDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = boundaryDragRef.current
+    if (!active) return
+    event.preventDefault(); event.stopPropagation(); boundaryDragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    commitColumnBoundaries(active.values)
+  }
+  const beginLayoutEditorPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation()
+    if (event.button !== 0 || event.target !== event.currentTarget || !pageRef.current) return
+    const bounds = pageRef.current.getBoundingClientRect()
+    if (!drawingSpanningRegion) { addBoundary((event.clientX - bounds.left) / bounds.width); return }
+    const start = Math.max(0.01, Math.min(0.99, (event.clientY - bounds.top) / bounds.height))
+    spanningDrawRef.current = { start, current: start }; setNewSpanningRegion([start, start])
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const drawSpanningRegion = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = spanningDrawRef.current
+    if (!active || !pageRef.current) return
+    event.preventDefault(); event.stopPropagation()
+    const bounds = pageRef.current.getBoundingClientRect()
+    active.current = Math.max(0.01, Math.min(0.99, (event.clientY - bounds.top) / bounds.height))
+    setNewSpanningRegion([Math.min(active.start, active.current), Math.max(active.start, active.current)])
+  }
+  const finishSpanningRegion = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = spanningDrawRef.current
+    if (!active) return
+    event.preventDefault(); event.stopPropagation(); spanningDrawRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const region: [number, number] = [Math.min(active.start, active.current), Math.max(active.start, active.current)]
+    setNewSpanningRegion(undefined); setDrawingSpanningRegion(false)
+    if (region[1] - region[0] >= 0.01) commitSpanningRegions([...visibleSpanningRegions, region])
+  }
+  const removeSpanningRegion = (index: number) => commitSpanningRegions(visibleSpanningRegions.filter((_region, regionIndex) => regionIndex !== index))
+  const moveSpanningEdge = (index: number, edge: 0 | 1, value: number) => {
+    const next = visibleSpanningRegions.map((region) => [...region] as [number, number])
+    next[index][edge] = edge === 0 ? Math.max(0.01, Math.min(next[index][1] - 0.01, value)) : Math.min(0.99, Math.max(next[index][0] + 0.01, value))
+    commitSpanningRegions(next)
+  }
+  const beginSpanningEdgeDrag = (index: number, edge: 0 | 1, event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault(); event.stopPropagation()
+    spanningEdgeDragRef.current = { index, edge, values: visibleSpanningRegions.map((region) => [...region] as [number, number]) }
+    setSpanningRegionsDraft(visibleSpanningRegions.map((region) => [...region] as [number, number]))
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const dragSpanningEdge = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = spanningEdgeDragRef.current
+    if (!active || !pageRef.current) return
+    event.preventDefault(); event.stopPropagation()
+    const bounds = pageRef.current.getBoundingClientRect()
+    const value = (event.clientY - bounds.top) / bounds.height
+    const region = active.values[active.index]
+    region[active.edge] = active.edge === 0 ? Math.max(0.01, Math.min(region[1] - 0.01, value)) : Math.min(0.99, Math.max(region[0] + 0.01, value))
+    setSpanningRegionsDraft(active.values.map((item) => [...item] as [number, number]))
+  }
+  const finishSpanningEdgeDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const active = spanningEdgeDragRef.current
+    if (!active) return
+    event.preventDefault(); event.stopPropagation(); spanningEdgeDragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    commitSpanningRegions(active.values)
+  }
   const chooseQuickAnnotation = (selectedTool: Tool) => {
     if (!actionSelection) return
     if (['highlight', 'replace', 'delete_text', 'underline'].includes(selectedTool)) onAction({ pageIndex, tool: selectedTool, selection: actionSelection })
@@ -788,6 +940,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     setPageTextEditor({ region, foreground: colors.foreground, background: colors.background, caretOffset: pageTextCaretOffsetAt(region, point) })
   }
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (boundaryEditing && event.key === 'Escape') { event.preventDefault(); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false); return }
     if (!canSelectText || !textCaret) return
     if (event.key === 'Escape') {
       event.preventDefault(); setSelection(undefined); onSelectionChange(undefined)
@@ -828,23 +981,41 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu ? 100 : undefined }}
+  return <div className={`pdf-page tool-${tool}${searchFocusPage === pageIndex ? ' search-focused' : ''}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
+    {!rendered && <div className="pdf-page-loading" role="status" aria-live="polite"><i aria-hidden="true" /><span>{ui('ui.loadingPage')}</span></div>}
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
-    {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`${ui("查看引文：")}${labels}`} title={`${ui("查看参考文献：")}${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
-    {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title={ui("语法或拼写检查结果")} />)}
-    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`${ui("编辑文字：")}${region.text.slice(0, 40)}`} title={ui("点击直接编辑这段文字")} style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} />)}
+    {boundaryEditing && <div className={`column-boundary-editor${drawingSpanningRegion ? ' drawing-spanning-region' : ''}`} onPointerDown={beginLayoutEditorPointer} onPointerMove={drawSpanningRegion} onPointerUp={finishSpanningRegion} onPointerCancel={finishSpanningRegion} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}>
+      <div className="column-boundary-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+        <div><strong>{ui(layoutOverride === undefined ? 'ui.automaticBoundaries' : 'ui.customBoundariesSaved')}</strong><span>{ui('ui.columnBoundaryEditorHint')}</span></div>
+        <button type="button" onClick={() => addBoundary()}>{ui('ui.addColumnBoundary')}</button>
+        <button type="button" className={drawingSpanningRegion ? 'active mark-spanning-region' : 'mark-spanning-region'} aria-pressed={drawingSpanningRegion} onClick={() => { setDrawingSpanningRegion((value) => !value); setNewSpanningRegion(undefined) }}>{ui('ui.markCrossColumnRegion')}</button>
+        <button type="button" className="restore-automatic-boundaries" disabled={layoutOverride === undefined && boundaryDraft === undefined && spanningRegionsDraft === undefined} onClick={() => commitLayoutOverride(undefined)}>{ui('ui.restoreAutomaticBoundaries')}</button>
+        <button type="button" className="primary" onClick={() => { setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }}>{ui('ui.done')}</button>
+      </div>
+      {visibleBoundaries.map((boundary, index) => <div key={index} className="column-boundary-guide" role="separator" aria-orientation="vertical" aria-valuemin={2} aria-valuemax={98} aria-valuenow={Math.round(boundary * 100)} tabIndex={0} style={{ left: `${boundary * 100}%` }} onPointerDown={(event) => beginBoundaryDrag(index, event)} onPointerMove={dragBoundary} onPointerUp={finishBoundaryDrag} onPointerCancel={finishBoundaryDrag} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); moveBoundary(index, boundary + (event.key === 'ArrowLeft' ? -0.005 : 0.005)) } else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeBoundary(index) } }}>
+        <button type="button" aria-label={`${ui('ui.removeColumnBoundary')} ${index + 1}`} title={ui('ui.removeColumnBoundary')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); removeBoundary(index) }}>×</button>
+      </div>)}
+      {visibleSpanningRegions.map((region, index) => <div key={index} className="cross-column-region" style={{ top: `${region[0] * 100}%`, height: `${(region[1] - region[0]) * 100}%` }}>
+        {([0, 1] as const).map((edge) => <div key={edge} className={`cross-column-region-edge ${edge ? 'bottom' : 'top'}`} role="separator" aria-orientation="horizontal" aria-valuemin={1} aria-valuemax={99} aria-valuenow={Math.round(region[edge] * 100)} aria-label={`${ui('ui.crossColumnRegion')} ${index + 1}`} tabIndex={0} onPointerDown={(event) => beginSpanningEdgeDrag(index, edge, event)} onPointerMove={dragSpanningEdge} onPointerUp={finishSpanningEdgeDrag} onPointerCancel={finishSpanningEdgeDrag} onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); moveSpanningEdge(index, edge, region[edge] + (event.key === 'ArrowUp' ? -0.005 : 0.005)) } else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSpanningRegion(index) } }} />)}
+        <span>{ui('ui.crossColumnRegion')}</span><button type="button" aria-label={`${ui('ui.removeCrossColumnRegion')} ${index + 1}`} title={ui('ui.removeCrossColumnRegion')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); removeSpanningRegion(index) }}>×</button>
+      </div>)}
+      {newSpanningRegion && <div className="cross-column-region draft" style={{ top: `${newSpanningRegion[0] * 100}%`, height: `${(newSpanningRegion[1] - newSpanningRegion[0]) * 100}%` }}><span>{ui('ui.crossColumnRegion')}</span></div>}
+    </div>}
+    {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`${ui("ui.viewCitation")}${labels}`} title={`${ui("ui.viewReference")}${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
+    {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title={ui("ui.grammarOrSpellingResults")} />)}
+    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`${ui("ui.editText2")}${region.text.slice(0, 40)}`} title={ui("ui.clickToEditThisText")} style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} />)}
     {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} initialCaret={pageTextEditor.caretOffset} onCancel={() => setPageTextEditor(undefined)} onSave={async (text, style) => { await onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
     {activeSelection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textFocus?.text && textFocus.token > 0 && textFocus.text && preciseFocus?.rects.map((rect, index) => <div ref={index === 0 ? preciseFocusRef : undefined} key={`precise-focus-${textFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus?.rects?.map((rect, index) => <div ref={index === 0 ? visualFocusRef : undefined} key={`visual-focus-${visualFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus && !visualFocus.rects?.length && <div ref={visualFocusRef} key={`visual-page-focus-${visualFocus.token}`} className="annotation-focus-ring insight-focus-ring insight-page-focus-ring" style={{ left: 10, top: 10, width: Math.max(6, size.width * zoom - 20), height: Math.max(6, size.height * zoom - 20) }} />}
     {citationPopup && <aside className="citation-popover" style={{ left: Math.max(8, Math.min(size.width * zoom - 306, (citationPopup.rect.x + citationPopup.rect.width) * zoom + 9)), top: Math.max(8, Math.min(size.height * zoom - 170, citationPopup.rect.y * zoom - 8)) }} onPointerDown={(event) => event.stopPropagation()}>
-      <header><div><small>{ui("关联引文")}</small><b>{[...new Set(citationPopup.hits.map((hit) => hit.citation))].map((value) => `[${value}]`).join(' ')}</b></div><button type="button" aria-label={ui("关闭引文信息")} title={ui("关闭")} onClick={() => setCitationPopup(undefined)}>×</button></header>
+      <header><div><small>{ui("ui.linkCitations")}</small><b>{[...new Set(citationPopup.hits.map((hit) => hit.citation))].map((value) => `[${value}]`).join(' ')}</b></div><button type="button" aria-label={ui("ui.closeCitationDetails")} title={ui("ui.close")} onClick={() => setCitationPopup(undefined)}>×</button></header>
       <div className="citation-reference-list">{citationPopup.hits.map((hit, index) => <p key={`${hit.citation}-${index}`}>{hit.reference}</p>)}</div>
-      <button type="button" className="citation-copy" onClick={() => { onCopyText(citationPopup.hits.map((hit) => hit.reference).join('\n')); setCopiedCitation(true) }}><span aria-hidden="true">▣</span>{copiedCitation ? ui("已复制参考文献") : citationPopup.hits.length > 1 ? ui("复制全部参考文献") : ui("复制参考文献")}</button>
+      <button type="button" className="citation-copy" onClick={() => { onCopyText(citationPopup.hits.map((hit) => hit.reference).join('\n')); setCopiedCitation(true) }}><span aria-hidden="true">▣</span>{copiedCitation ? ui("ui.referenceCopied") : citationPopup.hits.length > 1 ? ui("ui.copyAllReferences") : ui("ui.copyReference")}</button>
     </aside>}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
@@ -857,14 +1028,15 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}
     {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       {menu.annotation ? <>
-        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui('编辑批注内容…')}</span></button>
+        <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui("ui.editAnnotation2")}</span></button>
         <div className="annotation-context-controls"><AnnotationColorPicker compact color={menu.annotation.color} onChange={colorMenuAnnotation} /><AnnotationReplyPicker compact reply={menu.annotation.reply} onChange={replyMenuAnnotation} onQuickReply={() => setMenu(undefined)} /></div>
-        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>{ui('删除这条批注')}</span></button>
+        <i /><button className="danger-item" onClick={deleteMenuAnnotation}><span className="menu-delete-icon">×</span><span>{ui("ui.deleteThisAnnotation")}</span></button>
       </> : <>
-        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui('复制')}</span><kbd>{shortcutLabel('copy', window.desktop.platform)}</kbd></button>}
-        {annotationMode && <>{selection?.text && <><i /><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui('文本高亮')}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui('文本替换')}</span></button>
-          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui('文本删除')}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui('加下划线')}</span></button></>}
-          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui('自由批注')}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui('插入文字')}</span></button></>}
+        {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui("ui.copy")}</span><kbd>{shortcutLabel('copy', window.desktop.platform)}</kbd></button>}
+        {selection?.text && <i />}<button className="column-boundary-item" onClick={() => { setMenu(undefined); setBoundaryEditing(true) }}><span className="menu-column-boundary-icon" aria-hidden="true">╎</span><span>{ui('ui.correctColumnBoundaries')}</span></button>
+        {annotationMode && <><i />{selection?.text && <><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui("ui.highlightText")}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui("ui.replaceText")}</span></button>
+          <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui("ui.deleteText")}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui("ui.underlineText")}</span></button></>}
+          {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui("ui.note")}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui("ui.insertText")}</span></button></>}
       </>}
     </div>}
   </div>
@@ -1024,7 +1196,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     // user confirms a new image on the same page.
     setDocument(undefined); setSizes({})
     let active = true
-    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
+    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, ...(password === undefined ? {} : { password }) })
     task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])

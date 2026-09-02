@@ -146,6 +146,29 @@ describe('PDF text layout', () => {
     expect(words.map((word) => word.text)).toEqual(['L1', 'L2', 'L3', 'R1', 'R2', 'R3'])
   })
 
+  it('uses an explicit page boundary correction and allows forcing one column', () => {
+    const item = (str: string, x: number, baseline: number) => ({ str, width: 24, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const items = [item('L1', 40, 700), item('R1', 230, 700), item('L2', 40, 684), item('R2', 230, 684)]
+    const corrected = textItemsToWordBoxes(items, styles, [1, 0, 0, -1, 0, 792], {}, { columnBoundaries: [150] })
+    const singleColumn = textItemsToWordBoxes(items, styles, [1, 0, 0, -1, 0, 792], {}, { columnBoundaries: [] })
+    expect([...new Set(corrected.map((word) => word.column))]).toEqual([0, 1])
+    expect([...new Set(singleColumn.map((word) => word.column))]).toEqual([0])
+  })
+
+  it('marks a corrected horizontal band as one cross-column visual block', () => {
+    const item = (str: string, x: number, baseline: number) => ({ str, width: 30, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('left', 40, 700), item('right', 230, 700), item('formula-left', 100, 650), item('formula-right', 190, 650), item('below-left', 40, 600), item('below-right', 230, 600)
+    ], styles, [1, 0, 0, -1, 0, 792], {}, { columnBoundaries: [150], spanningRegions: [{ top: 130, bottom: 155 }] })
+    const formula = words.filter((word) => word.text.startsWith('formula'))
+    expect(formula).toHaveLength(2)
+    expect(formula[0].visualBlock).toBe(formula[1].visualBlock)
+    expect(words.find((word) => word.text === 'left')?.visualBlock).toBeUndefined()
+    expect(words.find((word) => word.text === 'below-left')?.visualBlock).toBeUndefined()
+  })
+
   it('keeps formula fragments attached to the visual run column', () => {
     const item = (str: string, x: number, baseline: number, width: number, fontName = 'body') => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName }) as TextItem
     const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Times New Roman' } as TextStyle }

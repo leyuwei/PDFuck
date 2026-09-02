@@ -15,9 +15,10 @@ import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, pageNumberRect, validat
 import type { PdfImportFile } from '../../../shared/contracts'
 import { normalizeAnnotationAuthor } from './annotation-author'
 import { appendPdfBookmarks, deletePdfBookmark, readPdfBookmarks, remapPdfBookmarks, renamePdfBookmark, replacePdfBookmarks } from './pdf-bookmarks'
+import { translateMessage, type TranslationKey } from '../../../shared/i18n-catalogue'
 
-const KIND_LABEL: Record<AnnotationKind, string> = {
-  highlight: '文本高亮', note: '自由批注', replace: '文本替换', insert: '插入文字', delete: '文本删除', underline: '加下划线', ai_polish: '智能润色'
+const KIND_LABEL: Record<AnnotationKind, TranslationKey> = {
+  highlight: "ui.highlightText", note: "ui.note", replace: "ui.replaceText", insert: "ui.insertText", delete: "ui.deleteText", underline: "ui.underlineText", ai_polish: "ui.aiPolish"
 }
 
 const MAX_HISTORY_ENTRIES = 40
@@ -884,7 +885,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('PDFuckColor'), pdfString(colorHex))
     dictionary.set(PDFName.of('CA'), PDFNumber.of(kind === 'highlight' ? 0.35 : 1))
     dictionary.set(PDFName.of('F'), PDFNumber.of(4))
-    dictionary.set(PDFName.of('Subj'), pdfString(KIND_LABEL[kind]))
+    dictionary.set(PDFName.of('Subj'), pdfString(translateMessage('zh', KIND_LABEL[kind])))
     if (!['note', 'insert'].includes(kind)) dictionary.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(normalized, geometry)))
     if (kind === 'insert') dictionary.set(PDFName.of('Sy'), PDFName.of('P'))
     if (kind === 'insert') this.setAnnotationColor(dictionary, colorHex)

@@ -7,6 +7,7 @@ export interface WordBox { text: string; rect: PdfRect; order: number; boundarie
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
+export interface TextLayoutOverride { columnBoundaries?: number[]; spanningRegions?: Array<{ top: number; bottom: number }> }
 export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
 
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
@@ -502,7 +503,7 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
   return natural.map((value) => Math.max(0, value) * scale)
 }
 
-export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}): WordBox[] {
+export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride): WordBox[] {
   const words: WordBox[] = []
   let order = 0
   for (const [textRun, item] of items.entries()) {
@@ -656,10 +657,17 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       } else gutterClusters.push({ center, count: 1, rows: new Set([lineIndex]), maxGap: gap })
     }
   })
-  const columnBoundaries = gutterClusters
+  const gutterCorridor = Math.max(1.5, minimumGutter * 0.45)
+  const automaticColumnBoundaries = gutterClusters
     .filter((cluster) => cluster.rows.size >= Math.max(3, Math.ceil(visualRows.length * 0.2)))
+    // A real column gutter stays empty down the page. Indented equations and
+    // matrices repeat large internal gaps, but ordinary prose crosses them.
+    .filter((cluster) => visualRows.filter((row) => row.some((word) => word.rect.x < cluster.center + gutterCorridor && word.rect.x + word.rect.width > cluster.center - gutterCorridor)).length <= visualRows.length * 0.25)
     .sort((left, right) => left.center - right.center)
     .map((cluster) => cluster.center)
+  const columnBoundaries = override?.columnBoundaries === undefined
+    ? automaticColumnBoundaries
+    : [...new Set(override.columnBoundaries.filter(Number.isFinite))].sort((left, right) => left - right)
   interface VisualRun { words: WordBox[]; left: number; right: number; baselineY: number; column?: number }
   const runs: VisualRun[] = []
   // Split a visual row at the gutter between newspaper columns. Ordinary
@@ -742,6 +750,13 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     }).flatMap((run) => run.words)
     if (!blockWords.length) continue
     blockWords.forEach((word) => { word.visualBlock = nextVisualBlock })
+    nextVisualBlock += 1
+  }
+  for (const region of override?.spanningRegions || []) {
+    if (!Number.isFinite(region.top) || !Number.isFinite(region.bottom) || region.bottom <= region.top) continue
+    const regionWords = words.filter((word) => word.rect.y < region.bottom && word.rect.y + word.rect.height > region.top)
+    if (!regionWords.length) continue
+    regionWords.forEach((word) => { word.visualBlock = nextVisualBlock })
     nextVisualBlock += 1
   }
   const ordered = columns.flatMap((column) => column.runs

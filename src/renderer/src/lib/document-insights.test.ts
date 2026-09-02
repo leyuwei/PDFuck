@@ -18,7 +18,7 @@ describe('document insights', () => {
 
   it('gives suspected tables a precise text anchor', () => {
     const [hit] = visualHits([{ pageIndex: 3, text: 'Results Mean: 15.2 median: 12.8' }])
-    expect(hit).toEqual(expect.objectContaining({ pageIndex: 3, label: '疑似表格', anchor: 'Mean: 15' }))
+    expect(hit).toEqual(expect.objectContaining({ pageIndex: 3, label: "ui.possibleTable", anchor: 'Mean: 15' }))
   })
 
   it('links numbered citations to the references section', () => {
@@ -51,9 +51,9 @@ describe('document insights', () => {
     expect(grammarIssues([{ pageIndex: 1, text: 'The result is tested and the input was received.' }])).toEqual([])
     const issues = grammarIssues([{ pageIndex: 1, text: 'It are tested. They was repeated repeated.' }])
     expect(issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: '主谓一致', term: 'are', replacement: 'is', anchor: 'It are' }),
-      expect.objectContaining({ label: '主谓一致', term: 'was', replacement: 'were', anchor: 'They was' }),
-      expect.objectContaining({ label: '重复单词', term: 'repeated', anchor: 'repeated repeated' })
+      expect.objectContaining({ label: "ui.subjectVerbAgreement", term: 'are', replacement: 'is', anchor: 'It are' }),
+      expect.objectContaining({ label: "ui.subjectVerbAgreement", term: 'was', replacement: 'were', anchor: 'They was' }),
+      expect.objectContaining({ label: "ui.repeatedWord", term: 'repeated', anchor: 'repeated repeated' })
     ]))
   })
 

@@ -56,24 +56,24 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
     if (!target) return
     event.preventDefault(); onReorder(id, target.id)
   }
-  return <section className="window-manager-bar" aria-label={ui('PDF 文档标签管理')}>
-    <div className="window-manager-heading"><span className="windows-glyph" />{ui('文档标签')}<em>{snapshot.documents.length}</em></div>
+  return <section className="window-manager-bar" aria-label={ui("ui.pdfDocumentTabs")}>
+    <div className="window-manager-heading"><span className="windows-glyph" />{ui("ui.documentTabs")}<em>{snapshot.documents.length}</em></div>
     <div className="window-tabs" ref={tabsRef} onDragOver={(event) => event.preventDefault()}>
       {snapshot.documents.map((document) => {
         const current = document.id === snapshot.currentId
         const directory = fileDirectory(document.filePath)
-        const status = document.dirty ? ui('未保存') : document.hasDocument ? ui('已保存') : ui('未打开')
+        const status = document.dirty ? ui("ui.unsaved2") : document.hasDocument ? ui("ui.saved") : ui("ui.notOpen")
         const title = translateUiText(document.title)
         return <div key={document.id} draggable className={`window-tab${current ? ' current' : ''}${dragging === document.id ? ' dragging' : ''}`} role="button" tabIndex={0}
-          title={`${title}\n${ui('目录：')}${directory || ui('未保存到磁盘')}\n${ui('状态：')}${status}\n${ui('拖动标签可调整顺序；拖到另一个 PDFuck 窗口可移回标签页；拖出标签栏可在新窗口打开')}`}
-          aria-label={ui('拖动标签可调整顺序、移回另一个 PDFuck 窗口或拖出标签栏打开新窗口：') + title}
+          title={`${title}\n${ui("ui.folder")}${directory || ui("ui.notSavedToDisk")}\n${ui("ui.status2")}${status}\n${ui("ui.dragToReorderDragToAnotherPdfuckWindowToMove")}`}
+          aria-label={ui("ui.dragToReorderMoveToAnotherPdfuckWindowOrDrag") + title}
           onClick={() => onFocus(document.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFocus(document.id); else reorderFromKeyboard(event, document.id) }}
           onDragStart={(event) => startDrag(event, document.id)} onDragEnter={(event) => { event.preventDefault(); const sourceId = draggingId.current; if (sourceId !== undefined && sourceId !== document.id && lastReorderTarget.current !== document.id) { lastReorderTarget.current = document.id; onReorder(sourceId, document.id) } }} onDrop={(event) => event.preventDefault()} onDragEnd={finishDrag}>
           <span className="window-tab-icon" style={{ '--tab-pdf-color': stablePathColor(document.filePath) } as React.CSSProperties}>PDF</span>
           <span className="window-tab-name">{title}</span>
-          {document.encrypted && <span className="window-encrypted-badge" title={ui('密码保护的只读文档')}>{ui('加密')}</span>}
-          {document.dirty && <span className="window-dirty-dot" title={ui('有未保存修改')} />}
-          <button type="button" className="window-tab-close" aria-label={`${ui('关闭')} ${title}`} title={ui('关闭文档标签')}
+          {document.encrypted && <span className="window-encrypted-badge" title={ui("ui.passwordProtectedReadOnlyDocument")}>{ui("ui.encrypted")}</span>}
+          {document.dirty && <span className="window-dirty-dot" title={ui("ui.hasUnsavedChanges")} />}
+          <button type="button" className="window-tab-close" aria-label={`${ui("ui.close")} ${title}`} title={ui("ui.closeDocumentTab")}
             onClick={(event) => { event.stopPropagation(); onClose(document.id) }}>×</button>
         </div>
       })}

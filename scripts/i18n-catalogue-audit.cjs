@@ -6,7 +6,6 @@ const root = path.resolve(__dirname, '..')
 const cataloguePath = path.join(root, 'src/shared/i18n-catalogue.ts')
 const rendererRoot = path.join(root, 'src/renderer/src')
 const languages = ['zh', 'en', 'ja', 'ru', 'es']
-const translatedLanguages = ['en', 'ja', 'ru', 'es']
 const failures = []
 
 function fail(message) { failures.push(message) }
@@ -60,6 +59,7 @@ function nestedRecord(object, context) {
       fail(`Invalid locale object in ${context}`)
       continue
     }
+    if (result.has(key)) fail(`Duplicate message code in ${context}: ${key}`)
     result.set(key, literalRecord(property.initializer, `${context}.${key}`))
   }
   return result
@@ -67,46 +67,27 @@ function nestedRecord(object, context) {
 function placeholders(value) { return [...value.matchAll(/\{([A-Za-z0-9_]+)\}/gu)].map((match) => match[1]).sort().join(',') }
 
 const catalogueSource = sourceFile(cataloguePath)
-const english = literalRecord(findObject(catalogueSource, 'englishPhrases'), 'englishPhrases')
-const localeBase = nestedRecord(findObject(catalogueSource, 'localePhrases'), 'localePhrases')
-const additions = nestedRecord(findObject(catalogueSource, 'phraseTranslations'), 'phraseTranslations')
-const parameterMessages = nestedRecord(findObject(catalogueSource, 'parameterMessages'), 'parameterMessages')
-const catalogue = { en: new Map(english), ja: new Map(localeBase.get('ja')), ru: new Map(localeBase.get('ru')), es: new Map(localeBase.get('es')) }
-
-for (const [source, variants] of additions) {
-  for (const language of translatedLanguages) {
-    const value = variants.get(language)
-    if (!value?.trim()) fail(`Missing ${language} translation in phraseTranslations: ${source}`)
-    else catalogue[language].set(source, value)
+const messages = nestedRecord(findObject(catalogueSource, 'messages'), 'messages')
+const messageKeys = new Set(messages.keys())
+const chineseValues = new Set()
+for (const [key, translations] of messages) {
+  if (!/^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+$/u.test(key)) fail(`Message key is not a semantic code: ${key}`)
+  const sourceValue = translations.get('zh') || ''
+  chineseValues.add(sourceValue)
+  for (const language of languages) {
+    const translated = translations.get(language)
+    if (!translated?.trim()) fail(`Missing ${language} translation in messages.${key}`)
+    else if (placeholders(sourceValue) !== placeholders(translated)) fail(`Placeholder mismatch in ${key}.${language}: expected {${placeholders(sourceValue)}}; received {${placeholders(translated)}}`)
   }
-  for (const language of variants.keys()) if (!translatedLanguages.includes(language)) fail(`Unknown phraseTranslations locale ${language}: ${source}`)
+  for (const language of translations.keys()) if (!languages.includes(language)) fail(`Unexpected locale in messages.${key}: ${language}`)
 }
 
-const allCatalogueKeys = new Set(translatedLanguages.flatMap((language) => [...catalogue[language].keys()]))
-for (const source of allCatalogueKeys) {
-  for (const language of translatedLanguages) if (!catalogue[language].get(source)?.trim()) fail(`Catalogue key lacks ${language}: ${source}`)
-}
-for (const language of localeBase.keys()) if (!['ja', 'ru', 'es'].includes(language)) fail(`Unexpected localePhrases language: ${language}`)
-
-const expectedParameterKeys = new Set(parameterMessages.get('zh')?.keys() || [])
-for (const language of languages) {
-  const messages = parameterMessages.get(language)
-  if (!messages) { fail(`Missing parameterMessages locale: ${language}`); continue }
-  for (const key of expectedParameterKeys) {
-    const sourceValue = parameterMessages.get('zh').get(key)
-    const translated = messages.get(key)
-    if (!translated?.trim()) fail(`Missing parameter message ${language}.${key}`)
-    else if (placeholders(sourceValue) !== placeholders(translated)) fail(`Placeholder mismatch in ${language}.${key}: expected {${placeholders(sourceValue)}}; received {${placeholders(translated)}}`)
-  }
-  for (const key of messages.keys()) if (!expectedParameterKeys.has(key)) fail(`Extra parameter message ${language}.${key}`)
-}
-for (const language of parameterMessages.keys()) if (!languages.includes(language)) fail(`Unexpected parameterMessages language: ${language}`)
-
-function requireCatalogue(value, where) {
-  if (!allCatalogueKeys.has(value)) fail(`Text is not in the shared catalogue: ${JSON.stringify(value)} (${where})`)
-}
 function requireMessageKey(value, where) {
-  if (!expectedParameterKeys.has(value) && !allCatalogueKeys.has(value)) fail(`Unknown i18n key: ${JSON.stringify(value)} (${where})`)
+  if (!messageKeys.has(value)) fail(`Unknown i18n message code: ${JSON.stringify(value)} (${where})`)
+  else if (/[^\x00-\x7f]/u.test(value)) fail(`Display text used as an i18n key: ${JSON.stringify(value)} (${where})`)
+}
+function requireChineseValue(value, where) {
+  if (!chineseValues.has(value)) fail(`Visible text is not a complete five-language message value: ${JSON.stringify(value)} (${where})`)
 }
 
 const invariantVisibleCopy = new Set([
@@ -159,52 +140,47 @@ for (const file of auditedFiles) {
     const nextInsideFunction = insideFunction || ts.isFunctionLike(node)
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text
-      let argument
-      if (name === 'ui' || name === 'translatePhrase') argument = node.arguments[0]
-      else if (name === 'nativeText' || name === 'translateCataloguePhrase') argument = node.arguments[1]
+      const index = name === 'ui' || name === 't' ? 0 : name === 'nativeText' || name === 'translateMessage' ? 1 : -1
+      const argument = index >= 0 ? node.arguments[index] : undefined
       if (argument) {
-        uiCalls += 1
-        if (ts.isStringLiteralLike(argument)) requireCatalogue(argument.text, location(file, source, argument))
+        if (name === 'ui' || name === 'nativeText') uiCalls += 1
+        else parameterCalls += 1
+        if (ts.isStringLiteralLike(argument)) requireMessageKey(argument.text, location(file, source, argument))
         else dynamicUiCalls += 1
-        if (name === 'ui' && node.arguments.length !== 1) fail(`ui() accepts exactly one shared-catalogue key (${location(file, source, node)})`)
-        if ((name === 'ui' || name === 'translatePhrase') && !insideFunction) fail(`Locale-sensitive translation runs at module scope (${location(file, source, node)})`)
-      }
-      if ((name === 't' || name === 'translateMessage') && ts.isStringLiteralLike(node.arguments[name === 't' ? 0 : 1])) {
-        const key = node.arguments[name === 't' ? 0 : 1]
-        parameterCalls += 1
-        requireMessageKey(key.text, location(file, source, key))
+        if (name === 'ui' && node.arguments.length !== 1) fail(`ui() accepts exactly one message code (${location(file, source, node)})`)
+        if ((name === 'ui' || name === 't') && !insideFunction) fail(`Locale-sensitive translation runs at module scope (${location(file, source, node)})`)
       }
     }
     if (ts.isPropertyAssignment(node) && ['label', 'name'].includes(propertyName(node)) && ts.isStringLiteralLike(node.initializer) && /[\u3400-\u9fff]/u.test(node.initializer.text)) {
       rawDataPhrases += 1
-      requireCatalogue(node.initializer.text, location(file, source, node.initializer))
+      requireChineseValue(node.initializer.text, location(file, source, node.initializer))
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === 'THEME_COLORS' && ts.isArrayLiteralExpression(node.initializer)) {
       for (const entry of node.initializer.elements) {
         const label = ts.isArrayLiteralExpression(entry) ? entry.elements[0] : undefined
-        if (label && ts.isStringLiteralLike(label)) { rawDataPhrases += 1; requireCatalogue(label.text, location(file, source, label)) }
+        if (label && ts.isStringLiteralLike(label)) requireMessageKey(label.text, location(file, source, label))
       }
     }
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Error' && node.arguments?.[0]) {
       const message = node.arguments[0]
       if (ts.isStringLiteralLike(message) && /[\u3400-\u9fff]/u.test(message.text)) {
         userFacingErrors += 1
-        requireCatalogue(message.text, location(file, source, message))
+        requireChineseValue(message.text, location(file, source, message))
       } else if (ts.isTemplateExpression(message) && /[\u3400-\u9fff]/u.test(message.getText(source))) {
         userFacingErrors += 1
         const shape = message.head.text + message.templateSpans.map((span) => '${}' + span.literal.text).join('')
         if (!allowedDynamicErrorShapes.has(shape)) fail(`Unaudited dynamic user-facing error ${JSON.stringify(shape)} (${location(file, source, message)})`)
         for (const span of message.templateSpans) {
           function checkExpressionText(child) {
-            if (ts.isStringLiteralLike(child) && /[\u3400-\u9fff]/u.test(child.text)) requireCatalogue(child.text, location(file, source, child))
+            if (ts.isStringLiteralLike(child) && /[\u3400-\u9fff]/u.test(child.text)) requireChineseValue(child.text, location(file, source, child))
             ts.forEachChild(child, checkExpressionText)
           }
           checkExpressionText(span.expression)
         }
       }
     }
-    if (file.endsWith(`${path.sep}App.tsx`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireCatalogue(node.text, location(file, source, node))
-    if (file.includes(`${path.sep}src${path.sep}main${path.sep}`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireCatalogue(node.text, location(file, source, node))
+    if (file.endsWith(`${path.sep}App.tsx`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireChineseValue(node.text, location(file, source, node))
+    if (file.includes(`${path.sep}src${path.sep}main${path.sep}`) && ts.isStringLiteralLike(node) && /[\u3400-\u9fff]/u.test(node.text)) requireChineseValue(node.text, location(file, source, node))
     if (ts.isJsxText(node)) checkRawVisible(node.text, location(file, source, node))
     if (ts.isJsxAttribute(node) && ['title', 'placeholder', 'alt', 'aria-label', 'aria-description'].includes(node.name.text)) {
       if (node.initializer && ts.isStringLiteral(node.initializer)) checkRawVisible(node.initializer.text, location(file, source, node.initializer))
@@ -216,6 +192,10 @@ for (const file of auditedFiles) {
   visit(source)
 }
 
+const catalogueText = fs.readFileSync(cataloguePath, 'utf8')
+for (const legacy of ['englishPhrases', 'localePhrases', 'phraseTranslations', 'parameterMessages', 'translateCataloguePhrase']) {
+  if (catalogueText.includes(legacy)) fail(`Legacy i18n structure remains: ${legacy}`)
+}
 for (const relative of ['src/renderer/src/components/InterfaceLanguageBridge.tsx', 'src/renderer/src/lib/i18n-locales.ts']) {
   if (fs.existsSync(path.join(root, relative))) fail(`Legacy i18n source still exists: ${relative}`)
 }
@@ -231,9 +211,9 @@ if (failures.length) {
 
 console.log(JSON.stringify({
   localeAudit: 'passed',
+  structure: 'semantic-code-to-all-languages',
   languages,
-  sharedCatalogueKeys: allCatalogueKeys.size,
-  parameterMessageKeys: expectedParameterKeys.size,
+  messageKeys: messageKeys.size,
   rendererFiles: rendererFiles.length,
   mainFiles: mainFiles.length,
   uiCalls,
