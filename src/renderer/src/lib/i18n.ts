@@ -1,26 +1,36 @@
 import { useSyncExternalStore } from 'react'
 import {
-  INTERFACE_LANGUAGES,
+  isInterfaceLanguage,
   translateMessage,
   translateStoredUiText,
   type InterfaceLanguage,
   type TranslationKey
 } from '../../../shared/i18n-catalogue'
 export type { InterfaceLanguage, TranslationKey } from '../../../shared/i18n-catalogue'
+export { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
 const KEY = 'pdfuck.interface-language.v1'
 
 function savedLanguage(): InterfaceLanguage {
   const value = typeof localStorage === 'undefined' ? null : localStorage.getItem(KEY)
-  return INTERFACE_LANGUAGES.includes(value as InterfaceLanguage) ? value as InterfaceLanguage : 'zh'
+  return isInterfaceLanguage(value) ? value : 'zh'
 }
 
 let activeLanguage: InterfaceLanguage = savedLanguage()
 const listeners = new Set<() => void>()
 
+function applyDocumentLanguage(language: InterfaceLanguage): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = language
+  document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+}
+
+applyDocumentLanguage(activeLanguage)
+
 export function setInterfaceLanguage(language: InterfaceLanguage): void {
   activeLanguage = language
   localStorage.setItem(KEY, language)
+  applyDocumentLanguage(language)
   listeners.forEach((listener) => listener())
 }
 

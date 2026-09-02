@@ -1,5 +1,5 @@
 import type { AiResponse } from '../../../shared/contracts'
-import { translateMessage, type TranslationKey } from '../../../shared/i18n-catalogue'
+import { translateMessage, type InterfaceLanguage, type TranslationKey } from '../../../shared/i18n-catalogue'
 
 export type AiProvider = 'openai' | 'claude' | 'bigmodel' | 'doubao' | 'deepseek' | 'kimi' | 'custom'
 
@@ -8,9 +8,9 @@ export const MIN_AI_TIMEOUT_SECONDS = 5
 export const MAX_AI_TIMEOUT_SECONDS = 3600
 
 export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number }
-export type AiLanguage = 'zh' | 'en' | 'ja' | 'ru' | 'es'
+export type AiLanguage = InterfaceLanguage
 export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
-export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Record<AiLanguage, string> }
+export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Partial<Record<AiLanguage, string>> & Record<'zh' | 'en' | 'ja' | 'ru' | 'es', string> }
 export interface AiProviderPreset { baseUrl: string; model: string }
 
 export type FullReviewSendMode = 'text' | 'file'
@@ -79,22 +79,34 @@ export const ANNOTATION_SUGGESTION_PRESETS: LocalizedAiPromptPreset[] = [
 ]
 
 export function detectAiLanguage(text: string, fallback: AiLanguage = 'en'): AiLanguage {
+  if (/[\uac00-\ud7af]/u.test(text)) return 'ko'
+  if (/[\u0600-\u06ff]/u.test(text)) return 'ar'
   if (/[\u3040-\u30ff]/u.test(text)) return 'ja'
   if (/[\u0400-\u04ff]/u.test(text)) return 'ru'
+  if (/[äöüß]/iu.test(text)) return 'de'
+  if (/[ãõ]/iu.test(text)) return 'pt'
+  if (/[àâæçèêëîïôœùûÿ]/iu.test(text)) return 'fr'
   if (/[áéíóúüñ¿¡]/iu.test(text)) return 'es'
   if (/[\u3400-\u9fff\uf900-\ufaff]/u.test(text)) return 'zh'
-  if (/[A-Za-z]/u.test(text)) return 'en'
+  if (/[A-Za-z]/u.test(text)) return fallback === 'fr' || fallback === 'de' || fallback === 'pt' ? fallback : 'en'
   return fallback
 }
 
-export function promptForLanguage(preset: AiPromptPreset, language: AiLanguage): string {
-  if (language === 'ja') return preset.promptJa || preset.promptEn
-  if (language === 'ru') return preset.promptRu || preset.promptEn
-  if (language === 'es') return preset.promptEs || preset.promptEn
-  return language === 'en' ? preset.promptEn : preset.prompt
+function responseLanguageInstruction(language: AiLanguage): string {
+  return {
+    zh: '请用中文回答。', en: 'Respond in English.', ja: '日本語で回答してください。', ru: 'Отвечайте на русском языке.', es: 'Responda en español.',
+    fr: 'Répondez en français.', de: 'Antworten Sie auf Deutsch.', pt: 'Responda em português.', ko: '한국어로 답변하세요.', ar: 'أجب باللغة العربية.'
+  }[language]
 }
 
-export function localizedPrompt(preset: LocalizedAiPromptPreset, language: AiLanguage): string { return preset.prompts[language] }
+export function promptForLanguage(preset: AiPromptPreset, language: AiLanguage): string {
+  const prompt = language === 'zh' ? preset.prompt : language === 'ja' ? preset.promptJa : language === 'ru' ? preset.promptRu : language === 'es' ? preset.promptEs : preset.promptEn
+  return `${prompt || preset.promptEn}\n\n${responseLanguageInstruction(language)}`
+}
+
+export function localizedPrompt(preset: LocalizedAiPromptPreset, language: AiLanguage): string {
+  return `${preset.prompts[language] || preset.prompts.en}\n\n${responseLanguageInstruction(language)}`
+}
 
 export const PROVIDER_PRESETS: Record<Exclude<AiProvider, 'custom'>, AiProviderPreset> = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -273,14 +285,14 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
 }
 
 function systemInstruction(language: AiLanguage): string {
-  const messages: Record<AiLanguage, string> = {
+  const messages: Partial<Record<AiLanguage, string>> & Record<'zh' | 'en' | 'ja' | 'ru' | 'es', string> = {
     zh: '你是严谨的写作、学术表达与文档审稿助手。必须依据用户提供的文档和上下文回答，不得虚构内容。',
     en: 'You are a rigorous writing, academic editing, and document-review assistant. Base every answer on the supplied document and context; never invent content.',
     ja: 'あなたは厳密な文章・学術表現・文書査読アシスタントです。提供された文書と文脈だけに基づいて回答し、内容を作らないでください。',
     ru: 'Вы — строгий помощник по письму, академическому редактированию и рецензированию документов. Основывайте ответы только на предоставленном документе и контексте и не выдумывайте содержание.',
     es: 'Es un asistente riguroso de redacción, edición académica y revisión documental. Base cada respuesta únicamente en el documento y el contexto proporcionados; no invente contenido.'
   }
-  return messages[language]
+  return `${messages[language] || messages.en} ${responseLanguageInstruction(language)}`
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -333,7 +345,9 @@ export async function suggestForAnnotation(settings: AiSettings, instruction: st
   const { model, claude, headers } = requestCredentials(settings)
   const labels: Record<AiLanguage, { annotation: string; contexts: string }> = {
     zh: { annotation: '批注要求', contexts: '正文上下文' }, en: { annotation: 'Annotation request', contexts: 'Document context' },
-    ja: { annotation: '批注の要求', contexts: '本文の文脈' }, ru: { annotation: 'Требование аннотации', contexts: 'Контекст документа' }, es: { annotation: 'Requisito de la anotación', contexts: 'Contexto del documento' }
+    ja: { annotation: '批注の要求', contexts: '本文の文脈' }, ru: { annotation: 'Требование аннотации', contexts: 'Контекст документа' }, es: { annotation: 'Requisito de la anotación', contexts: 'Contexto del documento' },
+    fr: { annotation: "Demande d'annotation", contexts: 'Contexte du document' }, de: { annotation: 'Anmerkungsanforderung', contexts: 'Dokumentkontext' },
+    pt: { annotation: 'Solicitação da anotação', contexts: 'Contexto do documento' }, ko: { annotation: '주석 요청', contexts: '문서 문맥' }, ar: { annotation: 'طلب التعليق', contexts: 'سياق المستند' }
   }
   const label = labels[language]
   const input = `${instruction}\n\n${label.annotation}：\n${normalizedAnnotation}\n\n${normalizedContexts.map((context, index) => `${label.contexts} ${index + 1}：\n${context}`).join('\n\n')}`

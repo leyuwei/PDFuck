@@ -1,5 +1,5 @@
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { atomicWrite } from './atomic-write'
 
 export interface PasswordCipher {
   isEncryptionAvailable(): boolean
@@ -17,18 +17,6 @@ const encryptedValuePattern = /^[A-Za-z0-9+/]+={0,2}$/
 
 function emptyPasswordFile(): PasswordFile {
   return { version: 1, entries: {} }
-}
-
-async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
-  await mkdir(dirname(target), { recursive: true })
-  const temporary = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`)
-  await writeFile(temporary, data)
-  try {
-    await rename(temporary, target)
-  } catch {
-    await copyFile(temporary, target)
-    await unlink(temporary).catch(() => undefined)
-  }
 }
 
 export function validPdfCredentialKey(value: string): boolean {

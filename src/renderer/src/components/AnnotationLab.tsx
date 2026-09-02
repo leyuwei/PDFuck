@@ -60,7 +60,7 @@ function contextPageLabel(context: AnnotationSuggestionContext): string {
 }
 
 export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, getAutomaticContext, onAdd, onAddFullReview, onAddSuggestion, onCopy }: Props) {
-  const interfaceLanguage = useInterfaceLanguage() as AiLanguage
+  const interfaceLanguage = useInterfaceLanguage()
   const t = ui
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
   const [settingsOpen, setSettingsOpen] = useState(false)

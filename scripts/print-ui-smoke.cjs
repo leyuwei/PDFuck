@@ -40,7 +40,7 @@ async function main() {
     }, language)
     const results = []
     const printerResults = []
-    for (const language of ['zh', 'en', 'ja', 'ru', 'es']) {
+    for (const language of ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar']) {
       if (language !== 'zh') {
         await page.locator('.print-dialog-heading > button').click()
         await page.locator('.nav-rail button').nth(0).click()

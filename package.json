@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -123,7 +123,12 @@
         "en_US",
         "ja_JP",
         "ru_RU",
-        "es_ES"
+        "es_ES",
+        "fr_FR",
+        "de_DE",
+        "pt_BR",
+        "ko_KR",
+        "ar_SA"
       ],
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",

@@ -19,7 +19,7 @@ async function assertNoChineseControls(page, scope) {
   // Operating-system printer names are external device data and must be
   // displayed and dispatched verbatim, even when they contain CJK text.
   const printerNames = await page.locator('.print-printer-select option').allInnerTexts()
-  let visible = copy.join('\n').replace(/简体中文|日本語|Русский|Español/g, '')
+  let visible = copy.join('\n').replace(/简体中文|English|日本語|Русский|Español|Français|Deutsch|Português|한국어|العربية/g, '')
   for (const printerName of printerNames) visible = visible.split(printerName).join('')
   assert.ok(!/[\u3400-\u9fff]/u.test(visible), `untranslated Chinese UI text in ${scope}: ${copy.join(' | ')}`)
 }
@@ -60,17 +60,24 @@ async function main() {
       { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
       { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
       { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
-      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true }
+      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true },
+      { value: 'fr', view: 'Affichage', recent: 'Fichiers récents', modules: ['Modifier', 'Annoter', 'Enregistrer'], timeout: 'Délai de réponse', transferPrompt: 'Déposez pour replacer dans les onglets de document', cjkFree: true },
+      { value: 'de', view: 'Ansicht', recent: 'Zuletzt verwendete Dateien', modules: ['Bearbeiten', 'Anmerkungen hinzufügen', 'Speichern'], timeout: 'Antwort-Timeout', transferPrompt: 'Zum Verschieben in die Dokumentregisterkarten ziehen', cjkFree: true },
+      { value: 'pt', view: 'Visualizar', recent: 'Arquivos recentes', modules: ['Editar', 'Anotar', 'Salvar'], timeout: 'Tempo limite de resposta', transferPrompt: 'Solte para mover para as guias do documento', cjkFree: true },
+      { value: 'ko', view: '보기', recent: '최근 파일', modules: ['편집', '주석 달기', '저장'], timeout: '응답 시간 초과', transferPrompt: '드롭하여 문서 탭으로 이동', cjkFree: true },
+      { value: 'ar', view: 'عرض', recent: 'الملفات الأخيرة', modules: ['تحرير', 'إضافة تعليق', 'حفظ'], timeout: 'مهلة الاستجابة', transferPrompt: 'اسحب وأفلت للنقل إلى علامات تبويب المستند', cjkFree: true, dir: 'rtl' }
     ]
     const languageSelect = page.locator('.language-select select')
     await languageSelect.waitFor()
     assert.equal(await languageSelect.count(), 1, 'language control must be a single dropdown')
+    assert.equal(await languageSelect.locator('option').count(), 10, 'language dropdown must expose all ten interface languages')
     assert.equal(await page.locator('.language-segmented').count(), 0, 'language options must not be shown as buttons')
     assert.equal(await page.locator('.language-select').evaluate((element) => Boolean(element.closest('.theme-setting'))), false, 'language dropdown must not be nested in a display-language card')
     assert.equal(await page.getByText('显示语言', { exact: true }).count(), 0, 'language dropdown must not repeat the section heading')
     for (const language of languages) {
       await languageSelect.selectOption(language.value)
       assert.equal(await languageSelect.inputValue(), language.value)
+      assert.deepEqual(await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang: language.value, dir: language.dir || 'ltr' }, `${language.value} document locale metadata`)
       await page.getByRole('heading', { name: language.view, exact: true }).waitFor()
       await page.getByRole('heading', { name: language.recent, exact: true }).waitFor()
       for (const module of language.modules) {
@@ -106,10 +113,14 @@ async function main() {
   const restarted = await launch()
   try {
     const page = await restarted.firstWindow()
-    await page.getByRole('heading', { name: 'Ver', exact: true }).waitFor()
-    await page.getByText('No hay documento abierto', { exact: true }).first().waitFor()
+    await page.getByRole('heading', { name: 'عرض', exact: true }).waitFor()
+    await page.getByText('لا يوجد مستند مفتوح', { exact: true }).first().waitFor()
+    assert.deepEqual(await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang: 'ar', dir: 'rtl' }, 'stored Arabic direction was not restored')
     assert.equal(await page.getByText('准备就绪', { exact: true }).count(), 0, 'stored initial status was not localized after restart')
-    console.log(JSON.stringify({ languages: ['zh', 'en', 'ja', 'ru', 'es'], persisted: 'es', adaptiveSmallWindow: [900, 700], domObserver: false }, null, 2))
+    console.log(JSON.stringify({ languages: ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar'], persisted: 'ar', adaptiveSmallWindow: [900, 700], domObserver: false }, null, 2))
+    // Keep the established document-flow assertions below in their Spanish fixture.
+    await page.locator('.language-select select').selectOption('es')
+    await page.getByRole('heading', { name: 'Ver', exact: true }).waitFor()
   } finally {
     await restarted.close()
   }

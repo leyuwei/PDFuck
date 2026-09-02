@@ -5,7 +5,6 @@ const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
 const cataloguePath = path.join(root, 'src/shared/i18n-catalogue.ts')
 const rendererRoot = path.join(root, 'src/renderer/src')
-const languages = ['zh', 'en', 'ja', 'ru', 'es']
 const failures = []
 
 function fail(message) { failures.push(message) }
@@ -37,6 +36,20 @@ function findObject(source, name) {
   if (!object) throw new Error(`Missing object declaration: ${name}`)
   return object
 }
+function findStringArray(source, name) {
+  let array
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+      let initializer = node.initializer
+      while (initializer && (ts.isAsExpression(initializer) || ts.isSatisfiesExpression(initializer) || ts.isParenthesizedExpression(initializer))) initializer = initializer.expression
+      if (initializer && ts.isArrayLiteralExpression(initializer)) array = initializer
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  if (!array || array.elements.some((element) => !ts.isStringLiteralLike(element))) throw new Error(`Missing string array declaration: ${name}`)
+  return array.elements.map((element) => element.text)
+}
 function literalRecord(object, context) {
   const result = new Map()
   for (const property of object.properties) {
@@ -67,6 +80,7 @@ function nestedRecord(object, context) {
 function placeholders(value) { return [...value.matchAll(/\{([A-Za-z0-9_]+)\}/gu)].map((match) => match[1]).sort().join(',') }
 
 const catalogueSource = sourceFile(cataloguePath)
+const languages = findStringArray(catalogueSource, 'INTERFACE_LANGUAGES')
 const messages = nestedRecord(findObject(catalogueSource, 'messages'), 'messages')
 const messageKeys = new Set(messages.keys())
 const chineseValues = new Set()
@@ -87,7 +101,7 @@ function requireMessageKey(value, where) {
   else if (/[^\x00-\x7f]/u.test(value)) fail(`Display text used as an i18n key: ${JSON.stringify(value)} (${where})`)
 }
 function requireChineseValue(value, where) {
-  if (!chineseValues.has(value)) fail(`Visible text is not a complete five-language message value: ${JSON.stringify(value)} (${where})`)
+  if (!chineseValues.has(value)) fail(`Visible text is not a complete multilingual message value: ${JSON.stringify(value)} (${where})`)
 }
 
 const invariantVisibleCopy = new Set([
@@ -95,7 +109,7 @@ const invariantVisibleCopy = new Set([
   'BigModel Plan', 'Doubao', 'DeepSeek', 'KIMI',
   'A−', 'A＋', 'Aa', 'B', 'I',
   'A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid',
-  '简体中文', 'English', '日本語', 'Русский', 'Español',
+  '简体中文', 'English', '日本語', 'Русский', 'Español', 'Français', 'Deutsch', 'Português', '한국어', 'العربية',
   'Ctrl+F', 'Ctrl+C', 'PNG', 'JPG', 'EPS', 'DPI'
 ])
 function normalizedVisible(value) { return value.replace(/\s+/gu, ' ').trim() }

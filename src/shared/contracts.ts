@@ -1,3 +1,5 @@
+import type { InterfaceLanguage } from './i18n-catalogue'
+
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
 export type RasterExportFormat = Exclude<ExportFormat, 'pdf'>
 
@@ -201,7 +203,7 @@ export interface DesktopApi {
   setReadingPosition(path: string, position: ReadingPosition): Promise<void>
   flushReadingPosition(path: string, position: ReadingPosition): void
   updateWindowDocument(state: WindowDocumentState): void
-  setInterfaceLanguage(language: 'zh' | 'en' | 'ja' | 'ru' | 'es'): void
+  setInterfaceLanguage(language: InterfaceLanguage): void
   windowMinimize(): void
   windowToggleMaximize(): void
   windowClose(): void

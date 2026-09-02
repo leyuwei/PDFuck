@@ -1,16 +1,17 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrinterDescriptor, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
-import { translateMessage, type InterfaceLanguage, type TranslationKey } from '../shared/i18n-catalogue'
+import { isInterfaceLanguage, translateMessage, type InterfaceLanguage, type TranslationKey } from '../shared/i18n-catalogue'
 import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
+import { atomicWrite } from './atomic-write'
 import { convertOfficeDocument, OfficeImportError, officeImportSourceFormat } from './office-import'
 import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
@@ -245,18 +246,6 @@ async function openPdfAt(path: string) {
   const credentialKey = createHash('sha256').update(data).digest('hex')
   await rememberRecentPdf(absolute).catch(() => undefined)
   return { path: absolute, name: basename(absolute), data: new Uint8Array(data), credentialKey }
-}
-
-async function atomicWrite(target: string, data: Uint8Array): Promise<void> {
-  await mkdir(dirname(target), { recursive: true })
-  const temporary = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`)
-  await writeFile(temporary, data)
-  try {
-    await rename(temporary, target)
-  } catch {
-    await copyFile(temporary, target)
-    await unlink(temporary).catch(() => undefined)
-  }
 }
 
 function recentPdfsPath(): string { return join(app.getPath('userData'), 'recent-pdfs.json') }
@@ -609,7 +598,7 @@ app.whenReady().then(async () => {
     rememberDocumentTransfer(transferId, source, event.sender.id, document)
   })
   ipcMain.handle('window:claim-document-transfer', (event, transferId: unknown) => {
-    const target = requireWindowSession(event.sender)
+    requireWindowSession(event.sender)
     if (typeof transferId !== 'string' || !transferIdPattern.test(transferId)) return null
     const transfer = documentTransfers.get(transferId)
     if (!transfer || transfer.sourceWebContentsId === event.sender.id || transfer.source.window.isDestroyed() || (transfer.claimedBy !== undefined && transfer.claimedBy !== event.sender.id)) return null
@@ -696,7 +685,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.on('app:set-interface-language', (event, language: unknown) => {
     const session = requireWindowSession(event.sender)
-    session.interfaceLanguage = language === 'en' || language === 'ja' || language === 'ru' || language === 'es' ? language : 'zh'
+    session.interfaceLanguage = isInterfaceLanguage(language) ? language : 'zh'
     session.window.setTitle(nativeWindowTitle(session, session.interfaceLanguage))
   })
   ipcMain.on('window:update-document', (event, state: WindowDocumentState) => {

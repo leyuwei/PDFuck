@@ -85,7 +85,7 @@ describe('AnnotationDialog focus', () => {
 
   it('localizes the in-app error surface', async () => {
     const root = createRoot(container)
-    const titles = { zh: '操作失败', en: 'Action failed', ja: '操作に失敗しました', ru: 'Сбой операции', es: 'Error de operación' } as const
+    const titles = { zh: '操作失败', en: 'Action failed', ja: '操作に失敗しました', ru: 'Сбой операции', es: 'Error de operación', fr: "L'action a échoué", de: 'Aktion fehlgeschlagen', pt: 'Ação falhou', ko: '작업 실패', ar: 'فشل الإجراء' } as const
     for (const [language, title] of Object.entries(titles)) {
       setInterfaceLanguage(language as keyof typeof titles)
       await act(async () => root.render(<ErrorDialog key={language} message="Regression" onClose={() => undefined} />))
@@ -340,17 +340,17 @@ describe('AnnotationDialog focus', () => {
     await act(async () => root.unmount())
   })
 
-  it('renders every page-manager control in all five interface languages', async () => {
+  it('renders every page-manager control in all ten interface languages', async () => {
     const root = createRoot(container)
     await act(async () => root.render(<PageManagerDialog data={Uint8Array.of(1)} pageCount={6} currentPage={0} onCancel={() => undefined} onSubmit={() => undefined} />))
-    const titles = { zh: '页面管理', en: 'Manage Pages', ja: 'ページを管理', ru: 'Управление страницами', es: 'Gestionar páginas' } as const
-    const rotateRight = { zh: '向右旋转 90°', en: 'Rotate right 90°', ja: '右へ 90°回転', ru: 'Повернуть вправо на 90°', es: 'Girar 90° a la derecha' } as const
+    const titles = { zh: '页面管理', en: 'Manage Pages', ja: 'ページを管理', ru: 'Управление страницами', es: 'Gestionar páginas', fr: 'Gérer les pages', de: 'Seiten verwalten', pt: 'Gerenciar Páginas', ko: '페이지 관리', ar: 'إدارة الصفحات' } as const
+    const rotateRight = { zh: '向右旋转 90°', en: 'Rotate right 90°', ja: '右へ 90°回転', ru: 'Повернуть вправо на 90°', es: 'Girar 90° a la derecha', fr: 'Rotation à droite de 90°', de: 'Um 90° nach rechts drehen', pt: 'Girar 90° para a direita', ko: '오른쪽으로 90° 회전', ar: 'تدوير لليمين 90°' } as const
     for (const [language, title] of Object.entries(titles)) {
       await act(async () => setInterfaceLanguage(language as keyof typeof titles))
       expect(container.querySelector('#page-manager-title')?.textContent).toBe(title)
       expect(container.querySelector(`[aria-label="${rotateRight[language as keyof typeof rotateRight]}"]`)).not.toBeNull()
       expect(container.querySelector('.page-manager-footer-actions')?.textContent).not.toMatch(/\{\w+\}/)
-      if (language === 'en' || language === 'ru' || language === 'es') expect(container.querySelector('.page-manager-dialog')?.textContent).not.toMatch(/[\u3400-\u9fff]/u)
+      if (language !== 'zh' && language !== 'ja') expect(container.querySelector('.page-manager-dialog')?.textContent).not.toMatch(/[\u3400-\u9fff]/u)
     }
     await act(async () => root.unmount())
   })

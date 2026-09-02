@@ -1,11 +1,11 @@
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
-  StandardFonts, degrees, rgb, type PDFFont, type PDFPage
+  StandardFonts, degrees, type PDFFont, type PDFPage
 } from 'pdf-lib'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
-  applyMatrix, displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
+  displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
   type PageGeometry
 } from './page-coordinates'
 import { fontCategory, normalizeFontFamily } from './text-fonts'

@@ -13,7 +13,7 @@ function keyForChinese(value: string): TranslationKey {
 }
 
 describe('interface translations', () => {
-  it('resolves every semantic message code in all five supported languages', () => {
+  it('resolves every semantic message code in all ten supported languages', () => {
     for (const [key, translations] of Object.entries(messages) as Array<[TranslationKey, (typeof messages)[TranslationKey]]>) {
       expect(key).toMatch(/^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+$/)
       for (const language of INTERFACE_LANGUAGES) expect(translateMessage(language, key).trim()).not.toBe('')
@@ -33,7 +33,7 @@ describe('interface translations', () => {
     const failure = '无法连接模型服务，请检查接口地址、网络或证书。'
     const localTimeout = '已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。'
     const gatewayTimeout = 'AI 服务或中转网关等待模型返回超时。这通常不是本软件的响应超时；请缩短输入、改用更快的模型、直连官方 API，或联系中转服务商。'
-    for (const language of ['en', 'ja', 'ru', 'es'] as const) {
+    for (const language of INTERFACE_LANGUAGES.filter((language) => language !== 'zh')) {
       setInterfaceLanguage(language)
       expect(translateUiText(failure)).toBe(messages[keyForChinese(failure)][language])
       expect(translateUiText(localTimeout)).toBe(messages[keyForChinese(localTimeout)][language])
@@ -53,7 +53,7 @@ describe('interface translations', () => {
       '已回复：已处理',
       '标记删除'
     ]
-    for (const language of ['en', 'ja', 'ru', 'es'] as const) {
+    for (const language of INTERFACE_LANGUAGES.filter((language) => language !== 'zh')) {
       setInterfaceLanguage(language)
       for (const message of messages) {
         expect(translateUiText(message)).not.toContain('文本高亮')
@@ -77,12 +77,21 @@ describe('interface translations', () => {
       '检测到表格列式文本或统计字段：Mean: 5',
       '拼写：recieve'
     ]
-    for (const language of ['en', 'ja', 'ru', 'es'] as const) {
+    for (const language of INTERFACE_LANGUAGES.filter((language) => language !== 'zh')) {
       setInterfaceLanguage(language)
       for (const message of generatedMessages) expect(translateUiText(message)).not.toBe(message)
     }
     setInterfaceLanguage('en')
     expect(translateUiText(generatedMessages[0])).toBe('Copied 12 characters · line breaks joined intelligently')
     expect(translateUiText(generatedMessages[1])).toBe('2 images')
+  })
+
+  it('updates the document language and writing direction', () => {
+    setInterfaceLanguage('ar')
+    expect(document.documentElement.lang).toBe('ar')
+    expect(document.documentElement.dir).toBe('rtl')
+    setInterfaceLanguage('de')
+    expect(document.documentElement.lang).toBe('de')
+    expect(document.documentElement.dir).toBe('ltr')
   })
 })

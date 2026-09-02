@@ -4,6 +4,7 @@ import {
   FULL_REVIEW_PRESETS, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiTimeoutSeconds, polishText,
   promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation
 } from './ai-polish'
+import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -14,18 +15,25 @@ describe('AI prompt language', () => {
     expect(detectAiLanguage('この文章を修正してください。')).toBe('ja')
     expect(detectAiLanguage('Исправьте этот абзац.')).toBe('ru')
     expect(detectAiLanguage('Revise la redacción, por favor.')).toBe('es')
+    expect(detectAiLanguage('Überarbeiten Sie diesen Absatz.')).toBe('de')
+    expect(detectAiLanguage('Revise esta seção.')).toBe('pt')
+    expect(detectAiLanguage('이 문단을 수정해 주세요.')).toBe('ko')
+    expect(detectAiLanguage('يرجى مراجعة هذه الفقرة.')).toBe('ar')
+    expect(detectAiLanguage('Revoir ce paragraphe.', 'fr')).toBe('fr')
     expect(promptForLanguage(AI_PRESETS[0], 'en')).toMatch(/^Rewrite the text/)
     expect(promptForLanguage(AI_PRESETS[0], 'zh')).toMatch(/^请用通俗/)
   })
 
   it('provides native prompts for every supported language in both new Lab features', () => {
     for (const preset of [...FULL_REVIEW_PRESETS, ...ANNOTATION_SUGGESTION_PRESETS]) {
-      for (const language of ['zh', 'en', 'ja', 'ru', 'es'] as const) {
+      for (const language of INTERFACE_LANGUAGES) {
         expect(localizedPrompt(preset, language).trim().length).toBeGreaterThan(40)
       }
     }
     expect(localizedPrompt(FULL_REVIEW_PRESETS[0], 'en')).toContain('exactly three sentences')
     expect(localizedPrompt(FULL_REVIEW_PRESETS[0], 'zh')).toContain('恰好三句话')
+    expect(localizedPrompt(FULL_REVIEW_PRESETS[0], 'fr')).toContain('Répondez en français')
+    expect(localizedPrompt(FULL_REVIEW_PRESETS[0], 'ar')).toContain('أجب باللغة العربية')
   })
 })
 

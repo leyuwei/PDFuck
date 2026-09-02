@@ -635,7 +635,7 @@ export function OpenPdfDialog({ recent, onCancel, onOpen, onBrowse }: { recent: 
   const language = useInterfaceLanguage()
   const recentTime = (value: string) => {
     const date = new Date(value)
-    const locale = { zh: 'zh-CN', en: 'en-US', ja: 'ja-JP', ru: 'ru-RU', es: 'es-ES' }[language]
+    const locale = { zh: 'zh-CN', en: 'en-US', ja: 'ja-JP', ru: 'ru-RU', es: 'es-ES', fr: 'fr-FR', de: 'de-DE', pt: 'pt-BR', ko: 'ko-KR', ar: 'ar-SA' }[language]
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
   return <div className="modal-backdrop"><div className="modal open-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="open-pdf-title"><h2 id="open-pdf-title">{ui("ui.openPdf")}</h2><p>{ui("ui.continueWithARecentFileOrBrowseFilesOnThis")}</p><div className="open-pdf-recent recent-list">{recent.length ? recent.map((item) => <button key={item.path} type="button" className="recent-item open-pdf-recent-item" title={item.path} onClick={() => onOpen(item.path)}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty open-pdf-empty"><span>⌁</span><b>{ui("ui.noRecentlyOpenedPdfsYet")}</b></div>}</div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" onClick={onBrowse}>{ui("ui.browsePdfFiles")}</button></div></div></div>
