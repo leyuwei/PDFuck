@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { ModuleKey, Tool, ViewMode } from '../types'
 import type { PageTextSelection } from '../lib/page-text-selection'
@@ -8,6 +8,7 @@ import { AnnotationLab, type AnnotationSuggestionRequest, type LabDocumentPayloa
 import type { FullReviewSendMode } from '../lib/ai-polish'
 import type { AutomaticAnnotationContextRequest, AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
 import { EditIcon } from './EditIcon'
+import { ShapeCreator, ShapeToolIcon } from './ShapeCreator'
 import { INTERFACE_LANGUAGES, setInterfaceLanguage, t, ui, useInterfaceLanguage, type InterfaceLanguage } from '../lib/i18n'
 import { isMacPlatform, shortcutLabel } from '../lib/platform-shortcuts'
 import { parseExportDpiInput } from '../lib/export-dpi'
@@ -28,6 +29,7 @@ interface Props {
   onDeletePages(): void
   onMergeFiles(): void
   onAddImage?(): void
+  onAddShape?(data: Uint8Array): void | Promise<void>
   onPageNumbers?(): void
   onSave(saveAs?: boolean): void
   onPrint(): void
@@ -134,17 +136,19 @@ export function ToolPanel(props: Props) {
   const platform = props.platform || 'win32'
   const mac = isMacPlatform(platform)
   const [exportDpiInput, setExportDpiInput] = useState(() => String(props.exportDpi))
+  const [shapeCreatorOpen, setShapeCreatorOpen] = useState(false)
   const exportDpiEditing = useRef(false)
   const parsedExportDpi = parseExportDpiInput(exportDpiInput)
   useEffect(() => {
     if (!exportDpiEditing.current) setExportDpiInput(String(props.exportDpi))
   }, [props.exportDpi])
+  useEffect(() => { setShapeCreatorOpen(false) }, [props.labDocumentKey])
   const updateExportDpi = (value: string) => {
     setExportDpiInput(value)
     const dpi = parseExportDpiInput(value)
     if (dpi !== undefined) props.onExportDpi(dpi)
   }
-  return <aside className="tool-panel">
+  return <><aside className="tool-panel">
     {module === 'view' && <section><h2>{ui("ui.view")}</h2><p className="subtitle">{ui("ui.chooseAPageLayoutForYourReadingFlow")}</p><h3>{ui("ui.pageLayout")}</h3>
       <div className="segmented"><button disabled={!hasDocument} className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>{ui("ui.continuous")}</button><button disabled={!hasDocument} className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>{ui("ui.singlePage")}</button></div>
       <h3>{ui("ui.theme")}</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>{ui("ui.bright")}</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>{ui("ui.dark")}</button></div><div className="theme-settings"><div className="theme-setting"><div className="theme-setting-copy"><b>{ui("ui.appAccent")}</b><small>{ui("ui.buttonsAndHighlights")}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui("ui.appAccent")} value={props.accent} theme={props.theme} onChange={props.onAccent} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title={ui("ui.restoreDefaultAppAccent")} aria-label={ui("ui.restoreDefaultAppAccent")}>↺</button></div></div><div className="theme-setting"><div className="theme-setting-copy"><b>{ui("ui.pdfPaperBackground")}</b><small>{ui("ui.currentPdfOnly")}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui("ui.pdfPaperBackground")} value={props.documentBackground} theme={props.theme} disabled={!hasDocument} onChange={props.onDocumentBackground} /><button type="button" className="color-reset" disabled={!hasDocument || !props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title={ui("ui.restoreDefaultPdfPaperBackground")} aria-label={ui("ui.restoreDefaultPdfPaperBackground")}>↺</button></div></div></div><p className="hint theme-settings-hint">{ui("ui.thePaperBackgroundIsStoredLocallyForThisPdfOnly")}</p>
@@ -159,6 +163,7 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="edit_text" />} hint={ui("ui.showTextBlocksOnThisPageAndClickOneTo")}>{ui("ui.editPageText")}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="add_text" />} hint={ui("ui.dragOutATextBoxThenSetItsContentAnd")}>{ui("ui.addTextToPage")}</ToolButton>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>
+      <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorOpen(true)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction></section>}
     {module === 'annotate' && <section><h2>{ui("ui.annotate")}</h2><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui("ui.selectText")}>{ui("ui.highlightText")}</ToolButton>
@@ -174,5 +179,5 @@ export function ToolPanel(props: Props) {
       {props.exportFormat === 'pdf' && <><span className="export-mode-label">{ui("ui.pdfOutput")}</span><div className="segmented export-mode"><button disabled={documentDisabled} className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>{ui("ui.combineIntoOnePdf")}</button><button disabled={documentDisabled} className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>{ui("ui.onePdfPerPage")}</button></div></>}
       {props.exportFormat !== 'pdf' && <label>{ui("ui.outputResolution")}<div className="input-suffix"><input disabled={documentDisabled} type="text" inputMode="decimal" value={exportDpiInput} aria-invalid={parsedExportDpi === undefined} onFocus={() => { exportDpiEditing.current = true }} onBlur={() => { exportDpiEditing.current = false }} onChange={(event) => updateExportDpi(event.target.value)} /><span>DPI</span></div><small className={`export-dpi-hint${parsedExportDpi === undefined ? ' invalid' : ''}`}>{parsedExportDpi === undefined ? t('export.dpiInvalid') : t('export.dpiHint')}</small></label>}</div></section>}
     {props.annotationLabHost || <AnnotationLab visible={module === 'annotate'} platform={platform} disabled={documentDisabled} selection={props.selection} selectionKey={props.selectionKey} documentKey={props.labDocumentKey} annotationSuggestionsEnabled={props.annotationSuggestionsEnabled} suggestionRequest={props.suggestionRequest} onSuggestionRequestConsumed={props.onAnnotationSuggestionRequestConsumed} onAnnotationSuggestionsEnabledChange={props.onAnnotationSuggestionsEnabledChange} getDocument={props.getLabDocument} getAutomaticContext={props.getAutomaticContext} onAdd={props.onAddAiAnnotation} onAddFullReview={props.onAddFullReview} onAddSuggestion={props.onAddAnnotationSuggestion} onCopy={props.onCopy} />}
-  </aside>
+  </aside>{shapeCreatorOpen && createPortal(<div className={props.theme === 'dark' ? 'theme-dark' : undefined} style={{ '--app-accent': props.accent, '--theme-accent': props.accent } as CSSProperties}><ShapeCreator labels={{ title: ui("ui.addShapeToPage"), description: ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles"), preview: ui("ui.preview"), shapeType: ui("ui.shapeType"), arrow: ui("ui.arrow"), ellipse: ui("ui.ellipse"), rectangle: ui("ui.rectangle"), outline: ui("ui.outlineColor"), fill: ui("ui.fillColor"), transparent: ui("ui.transparent"), lineWidth: ui("ui.lineWidth"), lineStyle: ui("ui.lineStyle"), solid: ui("ui.solid"), dashed: ui("ui.dashed"), dotted: ui("ui.dotted"), arrowSize: ui("ui.arrowSize"), arrowStyle: ui("ui.arrowStyle"), openArrow: ui("ui.openArrow"), triangleArrow: ui("ui.triangleArrow"), diamondArrow: ui("ui.diamondArrow"), nothingVisible: ui("ui.atLeastOneVisibleColor"), cancel: ui("ui.cancel"), addToPage: ui("ui.addToCurrentPage"), encoding: ui("ui.generating"), encodeFailed: ui("ui.unableToGenerateShape") }} onCancel={() => setShapeCreatorOpen(false)} onCreate={async (png) => { await props.onAddShape?.(png); setShapeCreatorOpen(false) }} /></div>, document.body)}</>
 }

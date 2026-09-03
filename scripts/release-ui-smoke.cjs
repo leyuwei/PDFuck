@@ -31,6 +31,73 @@ async function main() {
     assert.match(await page.locator('.brand').innerText(), new RegExp(`v${version.replace(/\./gu, '\\.')}$`), 'packaged UI version does not match package.json')
     await page.locator('.pdf-page').first().waitFor()
 
+    const actualUserData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))
+    assert.equal(path.resolve(actualUserData).toLowerCase(), path.resolve(userData).toLowerCase(), 'release smoke must keep recent-file writes inside its isolated user-data directory')
+    await page.locator('.temporary-document-warning').waitFor()
+
+    const shellBounds = async () => page.locator('.titlebar-tools').evaluate((toolbar) => {
+      const titlebar = toolbar.closest('.titlebar').getBoundingClientRect()
+      const tools = toolbar.getBoundingClientRect()
+      return { titlebarCenter: titlebar.left + titlebar.width / 2, toolsCenter: tools.left + tools.width / 2, toolsLeft: tools.left }
+    })
+    const initialShell = await shellBounds()
+    assert.ok(Math.abs(initialShell.titlebarCenter - initialShell.toolsCenter) <= 1, `titlebar tools are not centered: ${JSON.stringify(initialShell)}`)
+    const originalWindowBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
+    const resizedWidth = originalWindowBounds.width >= 1300 ? originalWindowBounds.width - 180 : originalWindowBounds.width + 180
+    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 800), resizedWidth)
+    await page.waitForFunction((width) => Math.abs(window.innerWidth - width) < 4, resizedWidth)
+    const resizedShell = await shellBounds()
+    assert.ok(Math.abs(resizedShell.titlebarCenter - resizedShell.toolsCenter) <= 1, `resized titlebar tools are not centered: ${JSON.stringify(resizedShell)}`)
+    assert.ok(Math.abs(resizedShell.toolsLeft - initialShell.toolsLeft) >= 40, 'titlebar tools stayed anchored after the window width changed')
+    await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), originalWindowBounds)
+
+    const lightLogoColor = await page.locator('.brand span').evaluate((element) => getComputedStyle(element).color)
+    await page.getByRole('button', { name: '夜间', exact: true }).click()
+    await page.locator('.app-shell.theme-dark').waitFor()
+    const darkLogoColor = await page.locator('.brand span').evaluate((element) => getComputedStyle(element).color)
+    assert.notEqual(darkLogoColor, lightLogoColor, 'the “uck” logo color must follow the active theme')
+    await page.getByRole('button', { name: '明快', exact: true }).click()
+
+    const platform = await page.evaluate(() => window.desktop.platform)
+    if (platform === 'win32') {
+      const controls = page.locator('.window-controls button')
+      assert.equal(await controls.count(), 3, 'Windows must expose three window controls')
+      assert.equal(await controls.locator('svg').count(), 3, 'Windows window controls must use stable vector icons')
+      assert.deepEqual(await controls.allTextContents(), ['', '', ''], 'Windows window controls must not fall back to font glyphs')
+      await page.locator('.window-maximize').click()
+      await page.locator('.window-restore svg path').waitFor()
+      await page.locator('.window-restore').click()
+      await page.locator('.window-maximize svg rect').waitFor()
+    }
+
+    const recentFixtureDirectory = path.join(userData, 'recent-fixtures')
+    fs.mkdirSync(recentFixtureDirectory, { recursive: true })
+    const recentFixtures = Array.from({ length: 55 }, (_, index) => path.join(recentFixtureDirectory, `recent-${String(index).padStart(2, '0')}.pdf`))
+    for (const recentFixture of recentFixtures) fs.writeFileSync(recentFixture, '')
+    await page.evaluate(async ({ paths, current }) => {
+      for (const recentPath of paths) await window.desktop.readPdf(recentPath)
+      await window.desktop.readPdf(current)
+    }, { paths: recentFixtures, current: fixture })
+
+    await page.locator('.window-tab.current .window-tab-close').click()
+    await page.locator('.welcome-layout').waitFor()
+    assert.equal(await page.locator('.temporary-document-warning').count(), 0, 'temporary-folder warning must disappear with the closed document')
+    await page.reload()
+    await page.locator('.welcome-layout').waitFor()
+    const storedRecent = JSON.parse(fs.readFileSync(path.join(actualUserData, 'recent-pdfs.json'), 'utf8'))
+    assert.equal(storedRecent.length, 50, 'recent-file storage must retain exactly the newest 50 entries')
+    assert.equal(await page.locator('.recent-panel .recent-item').count(), 50, 'welcome screen must render all 50 recent files')
+    const welcomeRecentMetrics = await page.locator('.recent-panel .recent-list').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, gutter: getComputedStyle(element).scrollbarGutter }))
+    assert.ok(welcomeRecentMetrics.scrollHeight > welcomeRecentMetrics.clientHeight, `welcome recent list must scroll: ${JSON.stringify(welcomeRecentMetrics)}`)
+    assert.match(welcomeRecentMetrics.gutter, /stable/u, 'welcome recent list must reserve a stable scrollbar gutter')
+    await page.locator('.open-button').click()
+    assert.equal(await page.locator('.open-pdf-recent .recent-item').count(), 50, 'open dialog must render all 50 recent files')
+    const dialogRecentMetrics = await page.locator('.open-pdf-recent').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }))
+    assert.ok(dialogRecentMetrics.scrollHeight > dialogRecentMetrics.clientHeight, `open-dialog recent list must scroll: ${JSON.stringify(dialogRecentMetrics)}`)
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await page.locator('.recent-panel .recent-item').first().click()
+    await page.locator('.pdf-page').first().waitFor()
+
     await page.locator('.nav-rail').getByRole('button', { name: '编辑', exact: true }).click()
     await page.getByRole('button', { name: /在页面上添加文字/u }).click()
     const pdfPage = page.locator('.pdf-page').first()
@@ -69,7 +136,7 @@ async function main() {
     const closeEvent = page.waitForEvent('close')
     await page.getByRole('button', { name: '不保存并关闭', exact: true }).click()
     await closeEvent
-    console.log(JSON.stringify({ releaseUiSmoke: 'passed', version, executable, unsavedClose: { saveAndClose: true, discardColor: dangerBackground, cancelAnimation: animationName, cancelDefaultFocus: true } }, null, 2))
+    console.log(JSON.stringify({ releaseUiSmoke: 'passed', version, executable, shell: { temporaryWarningLifecycle: true, adaptiveLogo: true, recentFiles: storedRecent.length, recentScrolling: true, responsiveToolbarCenter: true, windowsVectorControls: platform === 'win32' }, unsavedClose: { saveAndClose: true, discardColor: dangerBackground, cancelAnimation: animationName, cancelDefaultFocus: true } }, null, 2))
   } finally {
     await app.close().catch(() => undefined)
     for (let attempt = 0; attempt < 8; attempt += 1) {

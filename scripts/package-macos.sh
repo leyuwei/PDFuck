@@ -40,6 +40,7 @@ npm run build
 npm run test:i18n-ui
 node scripts/workflow-state-ui-smoke.cjs
 node scripts/lab-features-ui-smoke.cjs
+node scripts/creative-tools-ui-smoke.cjs
 npm run test:print-native
 npm run test:print-ui
 npm run test:window-tabs
@@ -124,6 +125,7 @@ release_executable="$repo_root/$app_bundle/Contents/MacOS/PDFuck"
 PDFUCK_RELEASE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/release-ui-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/workflow-state-ui-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/lab-features-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/creative-tools-ui-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/print-ui-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/window-tabs-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/bookmark-ui-smoke.cjs
@@ -146,7 +148,7 @@ if [[ "${REQUIRE_NOTARIZATION:-0}" == '1' && "$notarization" != 'accepted by Gat
 fi
 
 manifest="release/PDFuck-$version-macOS-release.json"
-node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],tests:['typecheck','unit','i18n-catalogue','i18n-ui','workflow-state-ui','lab-features-ui','print-native-cjs','print-ui','window-tabs','bookmarks-ui','bookmark-recognition-papers','page-text-edit-ui','page-manager-input-ui','selection-scheduling','selection-scheduling-ui','selection-scheduling-0826','selection-scheduling-0826-ui','selection-test2','selection-test2-ui','citations-scheduling-0826','reading-navigation-ui','selection-chinese','selection-chinese-ui','selection-bc','selection-bc-ui','heavy-image-page-ui','packaged-release-ui','packaged-workflow-state-ui','packaged-lab-features-ui','packaged-print-ui','packaged-window-tabs','packaged-bookmarks-ui','packaged-bookmark-recognition-papers','packaged-page-manager-input-ui','packaged-selection-scheduling-0826-ui','packaged-selection-test2-ui','packaged-reading-navigation-ui','packaged-selection-chinese-ui','packaged-selection-bc-ui','packaged-heavy-image-page-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
+node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],tests:['typecheck','unit','i18n-catalogue','i18n-ui','workflow-state-ui','lab-features-ui','creative-tools-ui','print-native-cjs','print-ui','window-tabs','bookmarks-ui','bookmark-recognition-papers','page-text-edit-ui','page-manager-input-ui','selection-scheduling','selection-scheduling-ui','selection-scheduling-0826','selection-scheduling-0826-ui','selection-test2','selection-test2-ui','citations-scheduling-0826','reading-navigation-ui','selection-chinese','selection-chinese-ui','selection-bc','selection-bc-ui','heavy-image-page-ui','packaged-release-ui','packaged-workflow-state-ui','packaged-lab-features-ui','packaged-creative-tools-ui','packaged-print-ui','packaged-window-tabs','packaged-bookmarks-ui','packaged-bookmark-recognition-papers','packaged-page-manager-input-ui','packaged-selection-scheduling-0826-ui','packaged-selection-test2-ui','packaged-reading-navigation-ui','packaged-selection-chinese-ui','packaged-selection-bc-ui','packaged-heavy-image-page-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
 
 echo 'macOS release passed build, regression, bundle, DMG layout, packaged-app, version and hash checks.'
 echo "App:      $repo_root/$app_bundle"

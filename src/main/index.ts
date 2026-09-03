@@ -43,6 +43,7 @@ const documentTransfers = new Map<string, PendingDocumentTransfer>()
 const pendingPaths: string[] = []
 let printWindow: BrowserWindow | null = null
 let nativePrintBusy = false
+const RECENT_PDF_LIMIT = 50
 let recentWriteQueue: Promise<void> = Promise.resolve()
 let readingPositionWriteQueue: Promise<void> = Promise.resolve()
 let passwordStore: PdfPasswordStore | undefined
@@ -300,7 +301,7 @@ async function readRecentPdfs(): Promise<RecentPdf[]> {
       const entry = value as Partial<RecentPdf>
       if (typeof entry.path !== 'string' || !isPdf(entry.path) || !existsSync(entry.path)) return []
       return [{ path: resolve(entry.path), name: typeof entry.name === 'string' ? entry.name : basename(entry.path), lastOpened: typeof entry.lastOpened === 'string' ? entry.lastOpened : new Date(0).toISOString() }]
-    }).slice(0, 8)
+    }).slice(0, RECENT_PDF_LIMIT)
   } catch { return [] }
 }
 
@@ -308,7 +309,7 @@ async function rememberRecentPdf(path: string): Promise<void> {
   recentWriteQueue = recentWriteQueue.catch(() => undefined).then(async () => {
     const absolute = resolve(path)
     const current = await readRecentPdfs()
-    const next: RecentPdf[] = [{ path: absolute, name: basename(absolute), lastOpened: new Date().toISOString() }, ...current.filter((entry) => entry.path.toLowerCase() !== absolute.toLowerCase())].slice(0, 8)
+    const next: RecentPdf[] = [{ path: absolute, name: basename(absolute), lastOpened: new Date().toISOString() }, ...current.filter((entry) => entry.path.toLowerCase() !== absolute.toLowerCase())].slice(0, RECENT_PDF_LIMIT)
     await atomicWrite(recentPdfsPath(), new TextEncoder().encode(JSON.stringify(next, null, 2)))
   })
   return recentWriteQueue

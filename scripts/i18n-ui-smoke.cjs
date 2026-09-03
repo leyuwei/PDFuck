@@ -56,16 +56,16 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 700))
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const languages = [
-      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], timeout: '响应超时时间', transferPrompt: '释放以移回文档标签页', cjkFree: false },
-      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
-      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
-      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
-      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true },
-      { value: 'fr', view: 'Affichage', recent: 'Fichiers récents', modules: ['Modifier', 'Annoter', 'Enregistrer'], timeout: 'Délai de réponse', transferPrompt: 'Déposez pour replacer dans les onglets de document', cjkFree: true },
-      { value: 'de', view: 'Ansicht', recent: 'Zuletzt verwendete Dateien', modules: ['Bearbeiten', 'Anmerkungen hinzufügen', 'Speichern'], timeout: 'Antwort-Timeout', transferPrompt: 'Zum Verschieben in die Dokumentregisterkarten ziehen', cjkFree: true },
-      { value: 'pt', view: 'Visualizar', recent: 'Arquivos recentes', modules: ['Editar', 'Anotar', 'Salvar'], timeout: 'Tempo limite de resposta', transferPrompt: 'Solte para mover para as guias do documento', cjkFree: true },
-      { value: 'ko', view: '보기', recent: '최근 파일', modules: ['편집', '주석 달기', '저장'], timeout: '응답 시간 초과', transferPrompt: '드롭하여 문서 탭으로 이동', cjkFree: true },
-      { value: 'ar', view: 'عرض', recent: 'الملفات الأخيرة', modules: ['تحرير', 'إضافة تعليق', 'حفظ'], timeout: 'مهلة الاستجابة', transferPrompt: 'اسحب وأفلت للنقل إلى علامات تبويب المستند', cjkFree: true, dir: 'rtl' }
+      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], shape: '在页面上添加图形…', drawing: '自由画板', timeout: '响应超时时间', transferPrompt: '释放以移回文档标签页', cjkFree: false },
+      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], shape: 'Add Shape to Page…', drawing: 'Free Drawing Board', timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
+      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], shape: 'ページに図形を追加…', drawing: 'フリードローイングボード', timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
+      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], shape: 'Добавить фигуру на страницу…', drawing: 'Свободная доска', timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
+      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], shape: 'Añadir forma a la página…', drawing: 'Pizarra de dibujo libre', timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true },
+      { value: 'fr', view: 'Affichage', recent: 'Fichiers récents', modules: ['Modifier', 'Annoter', 'Enregistrer'], shape: 'Ajouter une forme à la page…', drawing: 'Tableau de dessin libre', timeout: 'Délai de réponse', transferPrompt: 'Déposez pour replacer dans les onglets de document', cjkFree: true },
+      { value: 'de', view: 'Ansicht', recent: 'Zuletzt verwendete Dateien', modules: ['Bearbeiten', 'Anmerkungen hinzufügen', 'Speichern'], shape: 'Form zur Seite hinzufügen…', drawing: 'Freie Zeichenfläche', timeout: 'Antwort-Timeout', transferPrompt: 'Zum Verschieben in die Dokumentregisterkarten ziehen', cjkFree: true },
+      { value: 'pt', view: 'Visualizar', recent: 'Arquivos recentes', modules: ['Editar', 'Anotar', 'Salvar'], shape: 'Adicionar forma à página…', drawing: 'Quadro de desenho livre', timeout: 'Tempo limite de resposta', transferPrompt: 'Solte para mover para as guias do documento', cjkFree: true },
+      { value: 'ko', view: '보기', recent: '최근 파일', modules: ['편집', '주석 달기', '저장'], shape: '페이지에 도형 추가…', drawing: '자유 그리기 보드', timeout: '응답 시간 초과', transferPrompt: '드롭하여 문서 탭으로 이동', cjkFree: true },
+      { value: 'ar', view: 'عرض', recent: 'الملفات الأخيرة', modules: ['تحرير', 'إضافة تعليق', 'حفظ'], shape: 'إضافة شكل إلى الصفحة…', drawing: 'لوحة رسم حرة', timeout: 'مهلة الاستجابة', transferPrompt: 'اسحب وأفلت للنقل إلى علامات تبويب المستند', cjkFree: true, dir: 'rtl' }
     ]
     const languageSelect = page.locator('.language-select select')
     await languageSelect.waitFor()
@@ -85,7 +85,10 @@ async function main() {
         await page.getByRole('heading', { name: module, exact: true }).waitFor()
         await assertAdaptiveToolPanel(page, language.value, module)
       }
+      await page.locator('.nav-rail').getByRole('button', { name: language.modules[0], exact: true }).click()
+      await page.getByText(language.shape, { exact: true }).waitFor()
       await page.locator('.nav-rail').getByRole('button', { name: language.modules[1], exact: true }).click()
+      await page.getByText(language.drawing, { exact: true }).waitFor()
       await page.locator('.annotation-lab-settings-trigger').click()
       await page.locator('.annotation-lab-settings label').filter({ hasText: language.timeout }).waitFor()
       assert.equal(await page.locator('.ai-timeout-input input').inputValue(), '120', `${language.value} timeout default must be 120 seconds`)
@@ -158,7 +161,7 @@ async function main() {
     fs.mkdirSync(screenshotDirectory, { recursive: true })
     await page.screenshot({ path: path.join(screenshotDirectory, `reading-tools-${packageVersion}.png`) })
     await page.locator('.nav-rail').getByRole('button', { name: 'Editar', exact: true }).click()
-    assert.equal(await page.locator('.edit-tool-icon').count(), 7, 'all seven edit actions must use the shared line-icon system')
+    assert.equal(await page.locator('.edit-tool-icon').count(), 8, 'all eight edit actions must use the shared line-icon system')
     await page.getByText('Añadir números de página', { exact: true }).click()
     await page.getByRole('heading', { name: 'Añadir números de página', exact: true }).waitFor()
     await page.getByText('Página + total', { exact: true }).waitFor()

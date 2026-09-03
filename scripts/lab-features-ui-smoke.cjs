@@ -86,7 +86,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     })
     assert.ok(headingLayout.gearLeft >= headingLayout.titleRight, 'Shared model settings must be to the right of the Lab title')
     assert.ok(Math.abs(headingLayout.gearCenter - headingLayout.titleCenter) < 8, 'Shared model settings must align with the Lab title')
-    assert.equal(await page.locator('.annotation-lab-tools > button').count(), 3)
+    assert.equal(await page.locator('.annotation-lab-tools > button').count(), 4)
     assert.equal(await page.locator('.annotation-lab-tools kbd').count(), 1, 'Only AI Polish should display a shortcut')
     const typography = await page.evaluate(() => {
       const standard = document.querySelector('.tool-panel section > .tool-button')

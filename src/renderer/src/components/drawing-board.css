@@ -1,0 +1,87 @@
+.tool-panel .drawing-board-window {
+  position: fixed;
+  z-index: 190;
+  width: min(720px, calc(100vw - 32px));
+  height: min(560px, calc(100vh - 44px));
+  min-width: 360px;
+  min-height: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  resize: both;
+  border: 1px solid #cbd5e7;
+  border-radius: 12px;
+  background: #fff;
+  color: #263247;
+  box-shadow: 0 20px 58px #17233d55;
+}
+
+.drawing-board-window > header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid #e2e7ef;
+  background: linear-gradient(180deg, #fbfcff, #f6f8fc);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.drawing-board-window > header span { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 750; }
+.drawing-board-window > header .drawing-board-icon { color: var(--theme-accent, #5575de); }
+.drawing-board-window > header button { width: 30px; min-width: 30px; height: 30px; padding: 0; border: 0; background: transparent; color: #7f8a9d; font-size: 21px; }
+
+.drawing-board-toolbar {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e5eaf2;
+  background: #fafbfe;
+}
+
+.drawing-board-toolbar label { width: auto; display: flex; align-items: center; gap: 8px; margin: 0; color: #606d83; font-size: 10px; font-weight: 650; }
+.drawing-board-toolbar label:first-child { flex: 1; }
+.drawing-board-toolbar input[type="range"] { min-width: 90px; max-width: 240px; height: 18px; flex: 1; padding: 0; accent-color: var(--theme-accent, #5575de); }
+.drawing-board-toolbar output { min-width: 22px; text-align: center; color: var(--theme-accent-strong, #3157d5); font-size: 10px; font-weight: 750; }
+.drawing-board-toolbar .drawing-board-color input { width: 34px; height: 30px; padding: 3px; }
+.drawing-board-toolbar > button { min-height: 30px; padding: 4px 10px; font-size: 10px; }
+
+.drawing-board-surface {
+  min-width: 0;
+  min-height: 0;
+  margin: 12px;
+  overflow: hidden;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  background-color: #fff;
+  background-image: linear-gradient(45deg, #edf0f5 25%, transparent 25%), linear-gradient(-45deg, #edf0f5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #edf0f5 75%), linear-gradient(-45deg, transparent 75%, #edf0f5 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.drawing-board-surface canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.drawing-board-surface canvas:focus-visible { outline: 2px solid var(--theme-accent, #5575de); outline-offset: -2px; }
+
+.drawing-board-window > footer { min-height: 52px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 12px; border-top: 1px solid #e2e7ef; background: #fafbfc; }
+.drawing-board-window > footer span { min-width: 0; flex: 1; overflow: hidden; color: #c04450; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.drawing-board-window > footer button { min-height: 34px; padding: 6px 12px; font-size: 10px; }
+
+.theme-dark .drawing-board-window { border-color: #475a73; background: #1c2738; color: #e7eef9; }
+.theme-dark .drawing-board-window > header, .theme-dark .drawing-board-window > footer { border-color: #40516a; background: #202d40; }
+.theme-dark .drawing-board-toolbar { border-color: #40516a; background: #202c3e; }
+.theme-dark .drawing-board-toolbar label { color: #c0ccdc; }
+.theme-dark .drawing-board-surface { border-color: #52627a; background-color: #f8fafc; }
+
+@media (max-width: 560px) {
+  .drawing-board-window { min-width: 300px; }
+  .drawing-board-toolbar { flex-wrap: wrap; gap: 7px; }
+  .drawing-board-toolbar label:first-child { flex-basis: 100%; }
+}
