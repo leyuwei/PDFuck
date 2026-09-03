@@ -12,7 +12,7 @@ const artifactDir = path.join(root, 'output', 'playwright')
 
 async function main() {
   assert.ok(fs.existsSync(pdfPath), `missing regression PDF: ${pdfPath}`)
-  fs.rmSync(userData, { recursive: true, force: true })
+  fs.rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   fs.mkdirSync(artifactDir, { recursive: true })
   const executable = process.env.PDFUCK_SMOKE_EXECUTABLE
   const app = await electron.launch({
