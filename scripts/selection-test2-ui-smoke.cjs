@@ -49,6 +49,8 @@ async function main() {
     await page.bringToFront()
     const flowFrom = { x: points.start.x + 1, y: points.start.y + points.start.height / 2 }
     const flowTo = { x: points.end.x + points.end.width - 1, y: points.end.y + points.end.height / 2 }
+    const flowPageBox = await documentPage.boundingBox()
+    assert.ok(flowPageBox, 'page 6 bounding box unavailable')
     await page.mouse.move(flowFrom.x, flowFrom.y)
     await page.mouse.down()
     const flowFrames = await traceSelectionMove(page, documentPage, flowFrom, flowTo)
@@ -66,7 +68,8 @@ async function main() {
     }
     const firstLiveFlowIndex = flowFrames.findIndex((frame) => frame.count)
     assert.ok(firstLiveFlowIndex >= 0 && flowFrames.slice(firstLiveFlowIndex).every((frame) => frame.count), 'page 6 live selection disappeared during drag')
-    assert.ok(firstLiveFlowIndex <= 6, `page 6 live selection started late: frame ${firstLiveFlowIndex}`)
+    const firstLiveFlowDistance = Math.hypot(liveFlowFrames[0].pointerX - (flowFrom.x - flowPageBox.x), liveFlowFrames[0].pointerY - (flowFrom.y - flowPageBox.y))
+    assert.ok(firstLiveFlowDistance <= Math.max(16, points.start.height * 1.5), `page 6 live selection started after excessive pointer travel: ${firstLiveFlowDistance}`)
     await page.waitForFunction(() => document.querySelectorAll('.pdf-page[data-page="5"] .text-selection').length > 0)
     const geometry = await documentPage.evaluate((element) => {
       const pageBox = element.getBoundingClientRect()
@@ -137,8 +140,10 @@ async function main() {
         const firstLiveIndex = captionFrames.findIndex((frame) => frame.count)
         assert.ok(firstLiveIndex >= 0 && captionFrames.slice(firstLiveIndex).every((frame) => frame.count), 'page 9 live caption selection disappeared during drag')
         // This reverse case starts 20 px beyond the final glyph to cover
-        // line-end overshoot; no range exists until the pointer re-enters it.
-        assert.ok(firstLiveIndex <= 25, `page 9 live caption selection started late: frame ${firstLiveIndex}`)
+        // line-end overshoot; measure pointer travel rather than scheduler-
+        // dependent animation-frame counts while it re-enters the range.
+        const firstLiveDistance = Math.hypot(liveFrames[0].pointerX - (captionFrom.x - pageBox.x), liveFrames[0].pointerY - (captionFrom.y - pageBox.y))
+        assert.ok(firstLiveDistance <= Math.max(40, from.height * 3), `page 9 live caption selection started after excessive pointer travel: ${firstLiveDistance}`)
       }
       await page.waitForFunction(() => document.querySelectorAll('.pdf-page[data-page="8"] .text-selection').length > 0)
       const captionGeometry = await captionPage.evaluate((element) => {
@@ -171,7 +176,7 @@ async function main() {
     await page.locator('.zoom-value').click()
     await page.waitForFunction((value) => document.querySelector('.zoom-value')?.textContent !== value, zoomBefore)
     captionReports.push(await dragCaption(true, true))
-    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, page6: { temporalFrames: liveFlowFrames.length, geometry, copiedPreview: copied.slice(0, 180), screenshot }, page9: captionReports }, null, 2))
+    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, page6: { temporalFrames: liveFlowFrames.length, firstLivePointerDistance: firstLiveFlowDistance, geometry, copiedPreview: copied.slice(0, 180), screenshot }, page9: captionReports }, null, 2))
   } finally {
     await app.close()
   }
