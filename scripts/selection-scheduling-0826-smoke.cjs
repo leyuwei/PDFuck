@@ -46,6 +46,30 @@ async function main() {
   const { textItemsToWordBoxes, textSelectionBetween } = loadTextLayout()
   const document = await getDocument({ data: new Uint8Array(fs.readFileSync(pdfPath)), disableWorker: true }).promise
 
+  const captionPage = await document.getPage(3)
+  const captionContent = await captionPage.getTextContent()
+  const captionItems = captionContent.items.filter((item) => 'str' in item)
+  const captionTransform = captionPage.getViewport({ scale: 1 }).transform
+  const expectedCaptionWords = textItemsToWordBoxes(captionItems, captionContent.styles, captionTransform)
+  const expectedCaption = select(expectedCaptionWords,
+    (word) => word.text === 'Figure' && word.rect.x < 80 && word.rect.y > 280 && word.rect.y < 300,
+    (word) => word.text === 'O-RAN.' && word.rect.x < 220 && word.rect.y > 280 && word.rect.y < 300,
+    textSelectionBetween,
+    'page 3 figure caption')
+  assert.match(expectedCaption.text, /^Figure 1\. BC-PFS over multi-operator O-RAN\.$/u)
+  assert.ok(expectedCaption.rects.every((rect) => rect.x + rect.width < 210 && rect.y + rect.height < 305), `page 3 caption escaped its visual row: ${JSON.stringify(expectedCaption.rects)}`)
+  const captionBoundaries = Array.from({ length: 191 }, (_value, index) => index + 40)
+  for (const boundary of captionBoundaries) {
+    const words = textItemsToWordBoxes(captionItems, captionContent.styles, captionTransform, {}, { columnBoundaries: [boundary] })
+    const caption = select(words,
+      (word) => word.text === 'Figure' && word.rect.x < 80 && word.rect.y > 280 && word.rect.y < 300,
+      (word) => word.text === 'O-RAN.' && word.rect.x < 220 && word.rect.y > 280 && word.rect.y < 300,
+      textSelectionBetween,
+      `page 3 figure caption boundary ${boundary}`)
+    assert.equal(caption.text, expectedCaption.text, `page 3: manual boundary ${boundary} corrupted the figure caption`)
+    assert.ok(caption.rects.every((rect) => rect.x + rect.width < 210 && rect.y + rect.height < 305), `page 3: manual boundary ${boundary} leaked outside the figure caption`)
+  }
+
   const formulaWords = await pageWords(document, 5, textItemsToWordBoxes)
   const formula = select(formulaWords,
     (word) => word.text === 'The' && word.rect.y > 360 && word.rect.y < 380,
@@ -81,6 +105,7 @@ async function main() {
   console.log(JSON.stringify({
     fixture: path.basename(pdfPath),
     checks: [
+      { page: 3, kind: 'figure-caption-boundary-sweep', boundaries: captionBoundaries.length, rects: expectedCaption.rects.length },
       { page: 5, kind: 'formula-flow', rects: formula.rects.length, bounds: [Math.min(...formula.rects.map((rect) => rect.x)), Math.max(...formula.rects.map((rect) => rect.x + rect.width))] },
       { page: 10, kind: 'mixed-layout-right-flow', rects: mixed.rects.length, bounds: [Math.min(...mixed.rects.map((rect) => rect.x)), Math.max(...mixed.rects.map((rect) => rect.x + rect.width))] },
       { page: 11, kind: 'two-column-left-flow', rects: columns.rects.length, bounds: [Math.min(...columns.rects.map((rect) => rect.x)), Math.max(...columns.rects.map((rect) => rect.x + rect.width))] }

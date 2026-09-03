@@ -29,12 +29,14 @@ export function caretForTextPosition(words: WordBox[], position: TextPosition): 
 
 export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
   let nearestIndex = -1
-  let nearestDistance = Number.POSITIVE_INFINITY
+  let nearestVerticalDistance = Number.POSITIVE_INFINITY
+  let nearestHorizontalDistance = Number.POSITIVE_INFINITY
   words.forEach((word, index) => {
     const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
-    const distance = dx * dx + dy * dy
-    if (distance < nearestDistance) { nearestIndex = index; nearestDistance = distance }
+    if (dy < nearestVerticalDistance || (dy === nearestVerticalDistance && dx < nearestHorizontalDistance)) {
+      nearestIndex = index; nearestVerticalDistance = dy; nearestHorizontalDistance = dx
+    }
   })
   if (nearestIndex < 0) return undefined
   const nearest = words[nearestIndex], count = characterCount(nearest)
@@ -166,10 +168,15 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   })
   const fallbackVisualBlock = blockId === undefined && startWord.columnAmbiguous && endWord.columnAmbiguous && [...fallbackRows.values()].every((row) => row.some((word) => word.columnAmbiguous))
   const useVisualBlock = blockId !== undefined || fallbackVisualBlock
+  const sameVisualRow = endpointHeight > 0 && endpointYGap <= endpointHeight * 0.55
+  const sourceOrderLow = Math.min(startWord.order, endWord.order), sourceOrderHigh = Math.max(startWord.order, endWord.order)
+  const sourceRangeStaysInBand = sameVisualRow && words.every((word) => word.order < sourceOrderLow || word.order > sourceOrderHigh || (word.rect.y >= minY && word.rect.y <= maxY))
+  const hasStructuralEndpoint = startWord.columnAmbiguous || endWord.columnAmbiguous || startWord.visualBlock !== undefined || endWord.visualBlock !== undefined
   // A wide heading/author endpoint can belong to a different visual block from
   // its other endpoint. The word list is column-major, so an index range would
-  // otherwise absorb the intervening body column; use the endpoint band instead.
-  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && (startWord.columnAmbiguous || endWord.columnAmbiguous) && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
+  // otherwise absorb the intervening body column. The same applies when a
+  // detected column boundary splits one source row into separate runs.
+  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && ((startWord.columnAmbiguous || endWord.columnAmbiguous) && endpointYGap > endpointHeight * 0.45 || sameVisualRow && (hasStructuralEndpoint || sourceRangeStaysInBand))
   const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
   const flowBounds = useStructuralBand ? undefined : textFlowBounds(words, startWord, endWord)
   const selectionBandTop = Math.min(startWord.rect.y, endWord.rect.y) - 0.5

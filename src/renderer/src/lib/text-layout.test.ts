@@ -199,6 +199,20 @@ describe('PDF text layout', () => {
     expect(moveTextPosition(words, { wordIndex: 1, offset: 0 }, -1)).toEqual({ wordIndex: 0, offset: 3 })
   })
 
+  it('keeps a caret on its visual row when the pointer extends past the line end', () => {
+    const words = [
+      { text: 'Fig.', order: 0, rect: { x: 10, y: 20, width: 24, height: 10 } },
+      { text: 'caption', order: 1, rect: { x: 38, y: 20, width: 42, height: 10 } },
+      { text: 'end.', order: 2, rect: { x: 84, y: 20, width: 24, height: 10 } },
+      { text: 'left-body', order: 3, rect: { x: 10, y: 40, width: 52, height: 10 } },
+      { text: 'right-body', order: 4, rect: { x: 125, y: 40, width: 54, height: 10 } }
+    ]
+    const start = textCaretAtPoint(words, { x: 10, y: 25 })!
+    const overshotEnd = textCaretAtPoint(words, { x: 145, y: 29.5 })!
+    expect(overshotEnd).toMatchObject({ wordIndex: 2, offset: 4 })
+    expect(textSelectionBetween(words, start, overshotEnd)?.text).toBe('Fig. caption end.')
+  })
+
   it('creates tight partial-word rectangles in forward and reverse selections', () => {
     const words = [
       { text: 'alpha', order: 0, rect: { x: 10, y: 20, width: 50, height: 12 } },
@@ -263,6 +277,31 @@ describe('PDF text layout', () => {
     expect(forward?.text).toBe('Wide title Alice Zhou')
     expect(forward?.text).not.toMatch(/Abstract|body/u)
     expect(reverse).toEqual(forward)
+  })
+
+  it('orders a same-row selection geometrically when column metadata splits the row', () => {
+    const metadataCases = [
+      { start: { column: 0 }, end: { column: 1 }, bodyOrders: [4, 5], endOrders: [2, 3] },
+      { start: { column: 0, visualBlock: 4 }, end: { column: 1 }, bodyOrders: [2, 3], endOrders: [4, 5] },
+      { start: { column: 0, visualBlock: 4 }, end: { column: 1, visualBlock: 5 }, bodyOrders: [2, 3], endOrders: [4, 5] },
+      { start: { column: 0, columnAmbiguous: true }, end: { column: 1 }, bodyOrders: [2, 3], endOrders: [4, 5] }
+    ]
+    for (const { start: startMetadata, end: endMetadata, bodyOrders, endOrders } of metadataCases) {
+      const words = [
+        { text: 'Fig.', order: 0, ...startMetadata, rect: { x: 10, y: 20, width: 24, height: 10 } },
+        { text: '4.', order: 1, ...startMetadata, rect: { x: 38, y: 20, width: 14, height: 10 } },
+        { text: 'left-body', order: bodyOrders[0], column: 0, rect: { x: 10, y: 40, width: 52, height: 10 } },
+        { text: 'left-tail', order: bodyOrders[1], column: 0, rect: { x: 10, y: 60, width: 44, height: 10 } },
+        { text: 'caption', order: endOrders[0], ...endMetadata, rect: { x: 56, y: 20, width: 42, height: 10 } },
+        { text: 'end.', order: endOrders[1], ...endMetadata, rect: { x: 102, y: 20, width: 24, height: 10 } },
+        { text: 'right-body', order: 6, column: 1, rect: { x: 70, y: 40, width: 54, height: 10 } }
+      ]
+      const forward = textSelectionBetween(words, { wordIndex: 0, offset: 1 }, { wordIndex: 5, offset: 3 })
+      const reverse = textSelectionBetween(words, { wordIndex: 5, offset: 3 }, { wordIndex: 0, offset: 1 })
+      expect(forward?.text).toBe('ig. 4. caption end')
+      expect(forward?.text).not.toMatch(/body|tail/u)
+      expect(reverse).toEqual(forward)
+    }
   })
 
   it('does not include another column when both drag endpoints are in one column', () => {

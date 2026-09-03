@@ -48,13 +48,36 @@ async function main() {
   assert.match(forward.text, /where[\s\S]*requirements\./u)
   assert.doesNotMatch(forward.text, /For example|wireless data transmission|channel power gain|bit error rate/u)
   assert.ok(forward.rects.every((rect) => rect.x >= 306), `right-column selection leaked left of the gutter: ${JSON.stringify(forward.rects)}`)
+
+  const captionPage = await document.getPage(9)
+  const captionContent = await captionPage.getTextContent()
+  const captionItems = captionContent.items.filter((item) => 'str' in item)
+  const captionTransform = captionPage.getViewport({ scale: 1 }).transform
+  const captionBoundaries = Array.from({ length: 531 }, (_value, index) => index + 40)
+  let expectedCaption
+  for (const boundary of [undefined, ...captionBoundaries]) {
+    const captionWords = textItemsToWordBoxes(captionItems, captionContent.styles, captionTransform, {}, boundary === undefined ? undefined : { columnBoundaries: [boundary] })
+    const captionStart = captionWords.findIndex((word) => word.text === 'Fig.' && word.rect.y > 290 && word.rect.y < 315)
+    const captionEnd = captionWords.findIndex((word) => word.text === 'xApps.' && word.rect.y > 290 && word.rect.y < 315)
+    assert.ok(captionStart >= 0 && captionEnd >= 0, `page 9 caption boundary ${boundary ?? 'automatic'}: anchors unavailable`)
+    const caption = textSelectionBetween(captionWords, { wordIndex: captionStart, offset: 0 }, { wordIndex: captionEnd, offset: captionWords[captionEnd].text.length })
+    const reverseCaption = textSelectionBetween(captionWords, { wordIndex: captionEnd, offset: captionWords[captionEnd].text.length }, { wordIndex: captionStart, offset: 0 })
+    assert.ok(caption, `page 9 caption boundary ${boundary ?? 'automatic'}: selection missing`)
+    assert.deepEqual(reverseCaption, caption, `page 9 caption boundary ${boundary ?? 'automatic'}: reverse drag changed the selection`)
+    assert.match(caption.text, /^Fig\. 3\. Topology[\s\S]*monitoring xApps\.$/u)
+    assert.doesNotMatch(caption.text, /of the i-th evaluator|Let H/u)
+    assert.ok(caption.rects.every((rect) => rect.y + rect.height < 315), `page 9 caption boundary ${boundary ?? 'automatic'} leaked below its visual row`)
+    if (expectedCaption === undefined) expectedCaption = caption.text
+    else assert.equal(caption.text, expectedCaption, `page 9: manual boundary ${boundary} corrupted the figure caption`)
+  }
   console.log(JSON.stringify({
     fixture: path.basename(pdfPath),
-    page: 6,
+    pages: [6, 9],
     anchors: { start: words[start], end: words[end] },
     rectCount: forward.rects.length,
     bounds: [Math.min(...forward.rects.map((rect) => rect.x)), Math.max(...forward.rects.map((rect) => rect.x + rect.width))],
     copiedPreview: forward.text.slice(0, 180),
+    captionBoundarySweep: captionBoundaries.length,
     reverseDragStable: true
   }, null, 2))
 }

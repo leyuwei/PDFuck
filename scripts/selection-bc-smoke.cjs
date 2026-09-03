@@ -67,7 +67,16 @@ async function main() {
       const caption = select(words, { word: captionWords[0], wordIndex: words.indexOf(captionWords[0]) }, { word: captionWords.at(-1), wordIndex: words.indexOf(captionWords.at(-1)) }, textSelectionBetween)
       assert.match(caption.text, /^Fig\. 4\.[\s\S]*3 SPs\.$/u)
       assert.doesNotMatch(caption.text, /blockchain|closed-form/u)
-      reports.push({ page: pageNumber, columns: 2, paragraphRects: paragraph.rects.length, crossColumnCaption: true })
+      const expectedCaption = caption.text
+      const manualBoundaries = Array.from({ length: 531 }, (_value, index) => index + 40)
+      for (const boundary of manualBoundaries) {
+        const correctedWords = textItemsToWordBoxes(content.items.filter((item) => 'str' in item), content.styles, page.getViewport({ scale: 1 }).transform, {}, { columnBoundaries: [boundary] })
+        const correctedCaptionWords = correctedWords.filter((word) => word.rect.y > 480 && word.rect.y < 491).sort((left, right) => left.rect.x - right.rect.x)
+        const correctedCaption = select(correctedWords, { word: correctedCaptionWords[0], wordIndex: correctedWords.indexOf(correctedCaptionWords[0]) }, { word: correctedCaptionWords.at(-1), wordIndex: correctedWords.indexOf(correctedCaptionWords.at(-1)) }, textSelectionBetween)
+        assert.equal(correctedCaption.text, expectedCaption, `page 7: manual boundary ${boundary} corrupted the caption selection`)
+        assert.ok(correctedCaption.rects.every((rect) => rect.y + rect.height < 500), `page 7: manual boundary ${boundary} leaked into body text`)
+      }
+      reports.push({ page: pageNumber, columns: 2, paragraphRects: paragraph.rects.length, crossColumnCaption: true, manualBoundarySweep: manualBoundaries.length })
     }
 
     if (pageNumber === 12) {

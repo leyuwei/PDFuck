@@ -26,11 +26,11 @@ Copyright © 2026 github@leyuwei
 - **Annotations built for review**: Highlight, replace, delete, underline, note, and insert annotations can carry explanations, colors, replies, and positions that persist in the saved PDF.
 - **Reviewer identities without list clutter**: A movable Annotation Author window stores the local reviewer name for future PDF annotations. Its single visibility switch can place compact, stable-color author badges above the annotation body, preserving the full content-column width without adding another list column.
 - **Platform-native shortcut guidance**: Functional buttons use one consistent keycap style and automatically show Windows or macOS conventions. The seven Edit actions also use matching compact line icons for faster scanning.
-- **Character-level selection**: Select partial words, half-lines, mixed Chinese and English text, and cross-line ranges precisely. Replacement lines and insertion arrows snap to actual character boundaries.
+- **Character-level selection**: Select partial words, half-lines, mixed Chinese and English text, and cross-line ranges precisely. Dragging past the end of a caption stays on that visual row instead of snapping into nearby column text; replacement lines and insertion arrows still snap to actual character boundaries.
 - **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
-- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Stable page gutters must remain empty through most visual rows, preventing repeated equation or matrix indentation from becoming false columns; captions, wide formulas, and other spanning content remain independent visual blocks. If automatic layout detection is wrong, the page context menu exposes an opt-in correction editor for draggable vertical column boundaries and top/bottom boundaries around spanning formulas or images, persisted locally by PDF fingerprint and page. `Shift` + arrow keys adjust the range. Copying joins hard PDF line breaks with Unicode script awareness: spaces remain between words in languages that use them, while Chinese, Japanese, Thai, and mixed CJK/Latin boundaries do not gain artificial spaces; common multilingual word splits are repaired.
+- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Stable page gutters must remain empty through most visual rows, preventing repeated equation or matrix indentation from becoming false columns; captions, wide formulas, and other spanning content remain independent visual blocks. A detected or corrected gutter may split one caption into separate runs, but source-row continuity keeps that selection in geometric order instead of absorbing a body column. If automatic layout detection is wrong, the page context menu exposes an opt-in correction editor for draggable vertical column boundaries and top/bottom boundaries around spanning formulas or images, persisted locally by PDF fingerprint and page. `Shift` + arrow keys adjust the range. Copying joins hard PDF line breaks with Unicode script awareness: spaces remain between words in languages that use them, while Chinese, Japanese, Thai, and mixed CJK/Latin boundaries do not gain artificial spaces; common multilingual word splits are repaired.
 - **Responsive heavy-image pages**: Oversized PDF image strips are downsampled to a bounded decode surface, text extraction no longer waits for image operators, and a localized loading placeholder covers the first progressive canvas paint instead of exposing a blank page.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes. Closing dirty work offers **Save and Close**, **Close Without Saving**, and a pulsing **Cancel** action; multi-document windows can save every dirty tab before closing.
 - **Standard PDF bookmarks and recognition**: Documents with outlines automatically open a collapsible, resizable bookmark sidebar with hierarchy controls, inline search, font sizing, double-click title editing, and undoable single-item deletion. The View panel recognizes numbered, localized, chapter-style, semantic, and optional typography-based headings across multiple languages, limits the hierarchy to levels 1–6, removes/restores false candidates directly in preview, appends or replaces outlines, and deletes all bookmarks as one undoable edit. Academic recognition normalizes PDF small caps, follows multi-column reading order, joins wrapped Roman-numeral headings, and rejects chart axes, formulas, years, and prose section references.
@@ -134,6 +134,8 @@ npm run build
 
 The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers the page 1 reverse drag from the final author to the full-width title as well as pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
+The 2.0.6 caption matrix also runs `test:selection-test2` and its UI counterpart. Across `bc.pdf`, `Scheduling0826m.pdf`, and `test2.pdf`, it exercises 1,253 corrected gutter positions plus forward/reverse real mouse drags, line-end overshoot, normal zoom, and Fit Width while checking both copied text and highlight geometry.
+
 `npm run test:bookmarks-ui` additionally verifies undoable single-bookmark deletion and removal/restoration of recognition-preview candidates. `npm run test:bookmark-recognition-papers` opens the real `m91474-li paper.pdf` and `Scheduling0826m.pdf` fixtures in Electron and checks their exact 6/9 Roman-numeral section sequences, Abstract/References entries, wrapped headings, and false-positive exclusion.
 
 ### Package a Release with One Command
@@ -152,17 +154,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.5` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.6` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.5
+npm run package:windows -- 2.0.6
 ```
 
 ```sh
-npm run package:macos -- 2.0.5
+npm run package:macos -- 2.0.6
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.5` and `bash scripts/package-macos.sh 2.0.5`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.6` and `bash scripts/package-macos.sh 2.0.6`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -365,7 +367,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ### 全局文字选择与复制
 
 - 查看、编辑、批注、保存四个模式均默认支持字符级拖选，切换模块不会清空现有选区，因此在非批注模块框选后可直接进入批注实验室；
-- 单击文字可定位到字符间闪烁光标，`Shift+←/→` 可精确调整选区；
+- 单击文字可定位到字符间闪烁光标，拖到图题行尾空白处仍会锁定当前视觉行，不再吸附到邻栏正文；`Shift+←/→` 可精确调整选区；
 - `Ctrl+C`、`Cmd+C` 或页面右键菜单中的“复制”均可复制；
 - 写入剪贴板前按文字系统智能合并 PDF 硬回行：分词语言保留必要词界，连续书写语言及中西文交界去除多余空格，并修复常见拉丁、西里尔字母断词。
 
@@ -399,7 +401,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 夜间模式默认使用浅蓝灰文档纸张底色，保证多栏正文和公式在深色界面中仍清晰可读；多栏跨栏选区按真实文字列分段绘制并支持高亮、替换、删除和下划线批注。
 - 多栏跨栏框选会根据页面文字覆盖和字号自适应识别栏沟，只有在大多数视觉行持续留空的间隙才会成为栏界，避免矩阵、缩进公式的重复空白被误判为额外栏目；跨栏公式、图片说明和图表标题继续按独立视觉块处理。
 - 自动布局仍是默认且不显示额外控件；只有用户从页面右键菜单主动选择“校正本页栏边界”时，才会出现可拖动/增删的竖向栏界和用于框定跨栏公式或图片的上下横界。所有校正按 PDF 指纹与页码保存在本机，可随时恢复自动识别。
-- 图、表、长公式与正文混排时，跨栏视觉块会按页面几何顺序整体识别；多行图题、表注和跨栏公式不会因为 PDF 内部对象顺序而漏字、跳回正文或把相邻栏内容带入选区。
+- 图、表、长公式与正文混排时，跨栏视觉块会按页面几何顺序整体识别；即使自动或手工栏界恰好从图题词间穿过，也会依据原始同行连续性重建几何顺序，多行图题、表注和跨栏公式不会因此漏字、跳回正文或把相邻栏内容带入选区。
 - 模型设置支持 OpenAI（含中转）、Claude（含中转）、BigModel Plan、Doubao、DeepSeek、KIMI 与自定义 OpenAI 兼容接口；长回答默认请求服务端流式返回，让上游网关尽早收到响应数据，明确不支持流式的旧中转会安全回退一次，但 524、超时或结果不明的潜在计费请求绝不会盲目重放；524 与其他网关超时、临时服务故障、鉴权、模型路径、输入过大、额度和限流错误均有独立且可执行的友好提示；可自定义 5–3600 秒响应超时（默认 120 秒），密钥与模型设置仅保存在本机浏览器存储中。
 
 ### 保存、打印与导出
@@ -450,6 +452,8 @@ npm run build
 
 针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese`、`npm run test:selection-chinese-ui`、`npm run test:selection-bc` 和 `npm run test:selection-bc-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；随后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页覆盖公式碎片、图表文字、单双栏流域、反向拖拽和剪贴板文字；中文两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体度量。`bc.pdf` 两项固定覆盖第 1 页“末位作者→跨栏标题”反向拖选，以及第 7、12、13 页的伪公式栏沟、跨栏图注和大公式、同行/长距离同栏拖拽，并在真实 Electron 中验证默认隐藏的校正入口、竖向栏界、跨栏区域上下横界、按文档/页持久化和恢复自动识别。
 
+2.0.6 另将 `test:selection-test2` 及其 UI 版本纳入图题矩阵：`bc.pdf`、`Scheduling0826m.pdf`、`test2.pdf` 三份不同论文合计穷举 1,253 个校正栏界位置，并用真实鼠标覆盖正反向、行尾越界、普通缩放与适合宽度，同时核对剪贴板文本和高亮几何。
+
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
 页面方向、DPI 与输入法回归使用 `npm run test:page-manager-input-ui`。它会先在真实 Electron 窗口对同一批注连续派发两次删除，确认没有原生/应用错误弹窗，再立即新建批注验证普通文字、中文 composition 和窗口失焦再聚焦后的输入；同时验证三种逐页方向变换及保存结果，以及 DPI 草稿不被纠正。
@@ -472,17 +476,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.5`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.6`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.5
+npm run package:windows -- 2.0.6
 ```
 
 ```sh
-npm run package:macos -- 2.0.5
+npm run package:macos -- 2.0.6
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.5` 和 `bash scripts/package-macos.sh 2.0.5`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.6` 和 `bash scripts/package-macos.sh 2.0.6`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 
