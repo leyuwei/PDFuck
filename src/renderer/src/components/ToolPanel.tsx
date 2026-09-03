@@ -57,6 +57,7 @@ interface Props {
   selection?: PageTextSelection
   selectionKey?: string
   labDocumentKey?: string
+  documentSessionKey?: number
   annotationSuggestionsEnabled?: boolean
   suggestionRequest?: AnnotationSuggestionRequest
   annotationLabHost?: React.ReactNode
@@ -136,13 +137,14 @@ export function ToolPanel(props: Props) {
   const platform = props.platform || 'win32'
   const mac = isMacPlatform(platform)
   const [exportDpiInput, setExportDpiInput] = useState(() => String(props.exportDpi))
-  const [shapeCreatorOpen, setShapeCreatorOpen] = useState(false)
+  const [shapeCreatorDocumentId, setShapeCreatorDocumentId] = useState<number | null>(null)
+  const documentSessionKey = props.documentSessionKey ?? 0
   const exportDpiEditing = useRef(false)
   const parsedExportDpi = parseExportDpiInput(exportDpiInput)
   useEffect(() => {
     if (!exportDpiEditing.current) setExportDpiInput(String(props.exportDpi))
   }, [props.exportDpi])
-  useEffect(() => { setShapeCreatorOpen(false) }, [props.labDocumentKey])
+  useEffect(() => { setShapeCreatorDocumentId(null) }, [documentSessionKey])
   const updateExportDpi = (value: string) => {
     setExportDpiInput(value)
     const dpi = parseExportDpiInput(value)
@@ -163,7 +165,7 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="edit_text" />} hint={ui("ui.showTextBlocksOnThisPageAndClickOneTo")}>{ui("ui.editPageText")}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="add_text" />} hint={ui("ui.dragOutATextBoxThenSetItsContentAnd")}>{ui("ui.addTextToPage")}</ToolButton>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>
-      <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorOpen(true)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
+      <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorDocumentId(documentSessionKey)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction></section>}
     {module === 'annotate' && <section><h2>{ui("ui.annotate")}</h2><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui("ui.selectText")}>{ui("ui.highlightText")}</ToolButton>
@@ -179,5 +181,5 @@ export function ToolPanel(props: Props) {
       {props.exportFormat === 'pdf' && <><span className="export-mode-label">{ui("ui.pdfOutput")}</span><div className="segmented export-mode"><button disabled={documentDisabled} className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>{ui("ui.combineIntoOnePdf")}</button><button disabled={documentDisabled} className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>{ui("ui.onePdfPerPage")}</button></div></>}
       {props.exportFormat !== 'pdf' && <label>{ui("ui.outputResolution")}<div className="input-suffix"><input disabled={documentDisabled} type="text" inputMode="decimal" value={exportDpiInput} aria-invalid={parsedExportDpi === undefined} onFocus={() => { exportDpiEditing.current = true }} onBlur={() => { exportDpiEditing.current = false }} onChange={(event) => updateExportDpi(event.target.value)} /><span>DPI</span></div><small className={`export-dpi-hint${parsedExportDpi === undefined ? ' invalid' : ''}`}>{parsedExportDpi === undefined ? t('export.dpiInvalid') : t('export.dpiHint')}</small></label>}</div></section>}
     {props.annotationLabHost || <AnnotationLab visible={module === 'annotate'} platform={platform} disabled={documentDisabled} selection={props.selection} selectionKey={props.selectionKey} documentKey={props.labDocumentKey} annotationSuggestionsEnabled={props.annotationSuggestionsEnabled} suggestionRequest={props.suggestionRequest} onSuggestionRequestConsumed={props.onAnnotationSuggestionRequestConsumed} onAnnotationSuggestionsEnabledChange={props.onAnnotationSuggestionsEnabledChange} getDocument={props.getLabDocument} getAutomaticContext={props.getAutomaticContext} onAdd={props.onAddAiAnnotation} onAddFullReview={props.onAddFullReview} onAddSuggestion={props.onAddAnnotationSuggestion} onCopy={props.onCopy} />}
-  </aside>{shapeCreatorOpen && createPortal(<div className={props.theme === 'dark' ? 'theme-dark' : undefined} style={{ '--app-accent': props.accent, '--theme-accent': props.accent } as CSSProperties}><ShapeCreator labels={{ title: ui("ui.addShapeToPage"), description: ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles"), preview: ui("ui.preview"), shapeType: ui("ui.shapeType"), arrow: ui("ui.arrow"), ellipse: ui("ui.ellipse"), rectangle: ui("ui.rectangle"), outline: ui("ui.outlineColor"), fill: ui("ui.fillColor"), transparent: ui("ui.transparent"), lineWidth: ui("ui.lineWidth"), lineStyle: ui("ui.lineStyle"), solid: ui("ui.solid"), dashed: ui("ui.dashed"), dotted: ui("ui.dotted"), arrowSize: ui("ui.arrowSize"), arrowStyle: ui("ui.arrowStyle"), openArrow: ui("ui.openArrow"), triangleArrow: ui("ui.triangleArrow"), diamondArrow: ui("ui.diamondArrow"), nothingVisible: ui("ui.atLeastOneVisibleColor"), cancel: ui("ui.cancel"), addToPage: ui("ui.addToCurrentPage"), encoding: ui("ui.generating"), encodeFailed: ui("ui.unableToGenerateShape") }} onCancel={() => setShapeCreatorOpen(false)} onCreate={async (png) => { await props.onAddShape?.(png); setShapeCreatorOpen(false) }} /></div>, document.body)}</>
+  </aside>{shapeCreatorDocumentId === documentSessionKey && createPortal(<div className={props.theme === 'dark' ? 'theme-dark' : undefined} style={{ '--app-accent': props.accent, '--theme-accent': props.accent } as CSSProperties}><ShapeCreator labels={{ title: ui("ui.addShapeToPage"), description: ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles"), preview: ui("ui.preview"), shapeType: ui("ui.shapeType"), arrow: ui("ui.arrow"), ellipse: ui("ui.ellipse"), rectangle: ui("ui.rectangle"), outline: ui("ui.outlineColor"), fill: ui("ui.fillColor"), transparent: ui("ui.transparent"), lineWidth: ui("ui.lineWidth"), lineStyle: ui("ui.lineStyle"), solid: ui("ui.solid"), dashed: ui("ui.dashed"), dotted: ui("ui.dotted"), arrowSize: ui("ui.arrowSize"), arrowStyle: ui("ui.arrowStyle"), openArrow: ui("ui.openArrow"), triangleArrow: ui("ui.triangleArrow"), diamondArrow: ui("ui.diamondArrow"), nothingVisible: ui("ui.atLeastOneVisibleColor"), cancel: ui("ui.cancel"), addToPage: ui("ui.addToCurrentPage"), encoding: ui("ui.generating"), encodeFailed: ui("ui.unableToGenerateShape") }} onCancel={() => setShapeCreatorDocumentId(null)} onCreate={async (png) => { await props.onAddShape?.(png); setShapeCreatorDocumentId(null) }} /></div>, document.body)}</>
 }

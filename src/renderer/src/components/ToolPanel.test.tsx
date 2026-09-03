@@ -61,7 +61,7 @@ describe('ToolPanel theme colours', () => {
   it('uses the same action-card system for edit and save tools', async () => {
     const root = createRoot(container)
     const onAddImage = vi.fn(), onAddShape = vi.fn(), onPageNumbers = vi.fn()
-    const common = { platform: 'win32', activeTool: 'none' as const, mode: 'continuous' as const, hasDocument: true, dirty: true, readOnly: false, exportFormat: 'pdf' as const, exportDpi: 144, pdfExportMode: 'combined' as const, onTool: () => undefined, onMode: () => undefined, onDeletePages: () => undefined, onMergeFiles: () => undefined, onAddImage, onAddShape, onPageNumbers, onSave: () => undefined, onPrint: () => undefined, printing: false, onExport: () => undefined, onExportFormat: () => undefined, onExportDpi: () => undefined, onPdfExportMode: () => undefined, onSearch: () => undefined, onVisuals: () => undefined, onCitations: () => undefined, citationsEnabled: false, onGrammar: () => undefined, theme: 'light' as const, accent: '#5575de', hasCustomAccent: false, documentBackground: '#ffffff', onTheme: () => undefined, onAccent: () => undefined, onClearAccent: () => undefined, onDocumentBackground: () => undefined, hasCustomDocumentBackground: false, onClearDocumentBackground: () => undefined, onAddAiAnnotation: () => undefined, onCopy: () => undefined }
+    const common = { platform: 'win32', activeTool: 'none' as const, mode: 'continuous' as const, hasDocument: true, dirty: true, readOnly: false, exportFormat: 'pdf' as const, exportDpi: 144, pdfExportMode: 'combined' as const, onTool: () => undefined, onMode: () => undefined, onDeletePages: () => undefined, onMergeFiles: () => undefined, onAddImage, onAddShape, onPageNumbers, onSave: () => undefined, onPrint: () => undefined, printing: false, onExport: () => undefined, onExportFormat: () => undefined, onExportDpi: () => undefined, onPdfExportMode: () => undefined, onSearch: () => undefined, onVisuals: () => undefined, onCitations: () => undefined, citationsEnabled: false, onGrammar: () => undefined, theme: 'light' as const, accent: '#5575de', hasCustomAccent: false, documentBackground: '#ffffff', onTheme: () => undefined, onAccent: () => undefined, onClearAccent: () => undefined, onDocumentBackground: () => undefined, hasCustomDocumentBackground: false, onClearDocumentBackground: () => undefined, onAddAiAnnotation: () => undefined, onCopy: () => undefined, documentSessionKey: 1 }
     await act(async () => root.render(<ToolPanel {...common} module="edit" />))
     expect(container.querySelectorAll('.tool-panel-action')).toHaveLength(5)
     expect(container.querySelectorAll('.edit-tool-icon')).toHaveLength(8)
@@ -70,6 +70,12 @@ describe('ToolPanel theme colours', () => {
     expect(onAddImage).toHaveBeenCalledOnce()
     await act(async () => { [...container.querySelectorAll<HTMLButtonElement>('.tool-panel-action')].find((button) => button.textContent?.includes('增加页码'))?.click() })
     expect(onPageNumbers).toHaveBeenCalledOnce()
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    await act(async () => { [...container.querySelectorAll<HTMLButtonElement>('.tool-panel-action')].find((button) => button.textContent?.includes('添加图形'))?.click() })
+    expect(document.body.querySelector('.shape-creator-modal')).not.toBeNull()
+    await act(async () => root.render(<ToolPanel {...common} documentSessionKey={2} module="edit" />))
+    expect(document.body.querySelector('.shape-creator-modal')).toBeNull()
+    canvasContext.mockRestore()
     await act(async () => root.render(<ToolPanel {...common} module="save" />))
     expect(container.querySelectorAll('.tool-panel-action')).toHaveLength(4)
     expect(container.querySelector('.tool-control-card')).not.toBeNull()

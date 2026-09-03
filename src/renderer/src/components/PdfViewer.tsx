@@ -37,6 +37,7 @@ interface ViewerProps {
   textObjects: TextObjectRecord[]
   imageObjects: ImageObjectRecord[]
   imageDraft?: ImageDraft
+  imageDraftBusy?: boolean
   editableTextObjects: boolean
   annotationMode: boolean
   zoom: number
@@ -82,6 +83,7 @@ interface PageProps {
   textObjects: TextObjectRecord[]
   imageObjects: ImageObjectRecord[]
   imageDraft?: ImageDraft
+  imageDraftBusy?: boolean
   editableTextObjects: boolean
   activePage: boolean
   annotationMode: boolean
@@ -400,11 +402,11 @@ function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObje
   </div>
 }
 
-function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel, onDelete }: { draft: ImageDraft; zoom: number; bounds: { width: number; height: number }; onChange(draft: ImageDraft): void; onConfirm(): void; onCancel(): void; onDelete(): void }) {
+function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConfirm, onCancel, onDelete }: { draft: ImageDraft; zoom: number; bounds: { width: number; height: number }; busy?: boolean; onChange(draft: ImageDraft): void; onConfirm(): void; onCancel(): void; onDelete(): void }) {
   useInterfaceLanguage()
   const interaction = useRef<{ kind: 'move' | 'resize' | 'rotate'; handle?: ImageResizeHandle; x: number; y: number; initial: ImageDraft } | undefined>(undefined)
   const begin = (kind: 'move' | 'resize' | 'rotate', event: React.PointerEvent, handle?: ImageResizeHandle) => {
-    if (event.button !== 0) return
+    if (event.button !== 0 || busy) return
     event.preventDefault(); event.stopPropagation()
     interaction.current = { kind, handle, x: event.clientX, y: event.clientY, initial: draft }
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -435,7 +437,7 @@ function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel,
   const actionTop = actionBelow ? (displayed.y + displayed.height) * zoom + 8 : Math.max(4, displayed.y * zoom - 42)
   const handles: ImageResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
-    <div className="image-draft" style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui("ui.dragImageToReposition")}
+    <div className={`image-draft${busy ? ' busy' : ''}`} aria-busy={busy} style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui("ui.dragImageToReposition")}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <img src={draft.source} alt={draft.name} draggable={false} />
       <span className="image-draft-label">{draft.id ? ui("ui.editingAddedImage") : ui("ui.imagePreview")}</span>
@@ -445,10 +447,10 @@ function ImageDraftOverlay({ draft, zoom, bounds, onChange, onConfirm, onCancel,
     </div>
     <div className={`image-draft-actions${draft.id ? ' has-delete' : ''}`} style={{ left: actionLeft, top: actionTop, minWidth: actionWidth }} onPointerDown={(event) => event.stopPropagation()}>
       <span>{ui("ui.moveResizeRotateOrChangeTheAspectLockThenConfirm")}</span>
-      <button type="button" className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui("ui.originalAspectRatioLocked") : ui("ui.originalAspectRatioUnlocked")} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui("ui.ratioLocked") : ui("ui.ratioUnlocked")}</button>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
-      {draft.id && <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui("ui.deleteImage")}</button>}
-      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui("ui.confirmImageChanges") : ui("ui.confirmAddImage")}</button>
+      <button type="button" disabled={busy} className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui("ui.originalAspectRatioLocked") : ui("ui.originalAspectRatioUnlocked")} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui("ui.ratioLocked") : ui("ui.ratioUnlocked")}</button>
+      <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
+      {draft.id && <button type="button" disabled={busy} className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui("ui.deleteImage")}</button>}
+      <button type="button" disabled={busy} className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{draft.id ? ui("ui.confirmImageChanges") : ui("ui.confirmAddImage")}</button>
     </div>
   </>
 }
@@ -547,7 +549,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1023,7 +1025,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
     {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
     {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
-    {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} />}
+    {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
@@ -1045,7 +1047,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -1492,7 +1494,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
-      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
+      textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>

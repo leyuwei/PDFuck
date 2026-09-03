@@ -45,4 +45,20 @@ describe('WindowManagerBar', () => {
     expect(container.querySelector<HTMLDivElement>('.window-tab.current')?.getAttribute('aria-label')).toContain('Drag to reorder')
     await act(async () => root.unmount())
   })
+
+  it('does not publish a transfer while the document is still being written', async () => {
+    const root = createRoot(container)
+    const onTabDragStateChange = vi.fn()
+    await act(async () => {
+      root.render(<WindowManagerBar snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => false} onTabDragStateChange={onTabDragStateChange} />)
+    })
+    const dataTransfer = { setData: vi.fn(), effectAllowed: 'none' }
+    const event = new Event('dragstart', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+    await act(async () => container.querySelector<HTMLDivElement>('.window-tab')!.dispatchEvent(event))
+    expect(event.defaultPrevented).toBe(true)
+    expect(dataTransfer.setData).not.toHaveBeenCalled()
+    expect(onTabDragStateChange).toHaveBeenLastCalledWith(false)
+    await act(async () => root.unmount())
+  })
 })

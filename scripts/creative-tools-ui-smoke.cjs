@@ -337,15 +337,54 @@ async function verifyShapeCreator(page) {
   }
 }
 
+async function verifyCrossDocumentCommit(app, page, secondaryFixture) {
+  await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), secondaryFixture)
+  await page.locator('.window-tab').nth(1).waitFor({ timeout: 60000 })
+  const firstTab = page.locator('.window-tab').filter({ hasText: 'creative-tools.pdf' })
+  const secondTab = page.locator('.window-tab').filter({ hasText: 'creative-tools-secondary.pdf' })
+  await secondTab.waitFor()
+
+  await page.locator('.nav-rail button').nth(1).click()
+  const shapeButton = page.locator('.tool-panel .tool-panel-action').filter({ has: page.locator('svg.shape-tool-icon') })
+  await shapeButton.click()
+  const staleDialog = page.locator('.shape-creator-modal[role="dialog"]')
+  await staleDialog.waitFor()
+  await firstTab.evaluate((tab) => tab.click())
+  await staleDialog.waitFor({ state: 'detached' })
+
+  if (!await page.locator('.nav-rail button').nth(1).evaluate((button) => button.classList.contains('active'))) await page.locator('.nav-rail button').nth(1).click()
+  await shapeButton.click()
+  const dialog = page.locator('.shape-creator-modal[role="dialog"]')
+  await dialog.waitFor()
+  await dialog.locator('> footer button.primary').click()
+  await dialog.waitFor({ state: 'detached' })
+  await page.locator('.pdf-page[data-page="0"] .image-draft').waitFor()
+
+  await page.evaluate(() => {
+    const confirm = document.querySelector('.pdf-page[data-page="0"] .image-draft-actions button.primary')
+    const save = document.querySelector('.quick-save')
+    const target = [...document.querySelectorAll('.window-tab')].find((tab) => tab.textContent?.includes('creative-tools-secondary.pdf'))
+    if (!(confirm instanceof HTMLButtonElement) || !(save instanceof HTMLButtonElement) || !(target instanceof HTMLElement)) throw new Error('Cross-document controls are unavailable')
+    confirm.click()
+    save.click()
+    target.click()
+  })
+  await secondTab.evaluate((tab) => { if (!tab.classList.contains('current')) throw new Error('Second document did not become active') })
+  assert.equal(await page.locator('.saved-image').count(), 0, 'The generated image must not leak into the newly active document')
+  await firstTab.click()
+  await waitUntilEqual(() => page.locator('.pdf-page[data-page="0"] .saved-image').count(), 3, 'The asynchronous image commit was lost after switching documents', 60000)
+  await waitUntilEqual(() => page.locator('.quick-save').isDisabled(), true, 'Save did not wait for the pending image commit', 60000)
+  assert.equal(await persistedImageCount(path.join(path.dirname(secondaryFixture), 'creative-tools.pdf')), 3, 'The queued save omitted the pending image commit')
+  return { staleShapeDialogClosed: true, sourceCommitPreserved: true, queuedSavePreserved: true, targetImages: 0 }
+}
+
 async function saveAndCopy(page, fixture) {
   const save = page.locator('.quick-save')
-  await waitUntilEqual(() => save.isEnabled(), true, 'Save button did not become enabled')
-  await save.click()
-  await waitUntilEqual(() => save.isDisabled(), true, 'Save button did not return to a clean state')
+  await waitUntilEqual(() => save.isDisabled(), true, 'The queued save did not leave the source document clean')
   await page.locator('.window-dirty-dot').waitFor({ state: 'detached' })
-  assert.equal(await persistedImageCount(fixture), 2, 'Saved PDF must contain both generated image annotations')
+  assert.equal(await persistedImageCount(fixture), 3, 'Saved PDF must contain all generated image annotations')
   fs.copyFileSync(fixture, artifacts.modifiedPdf)
-  assert.equal(await persistedImageCount(artifacts.modifiedPdf), 2, 'Copied smoke artifact must contain both generated images')
+  assert.equal(await persistedImageCount(artifacts.modifiedPdf), 3, 'Copied smoke artifact must contain all generated images')
 }
 
 async function verifyRestart(userData) {
@@ -353,10 +392,10 @@ async function verifyRestart(userData) {
   try {
     const page = await preparePage(app)
     const savedImages = page.locator('.pdf-page[data-page="0"] .saved-image')
-    await waitUntilEqual(() => savedImages.count(), 2, 'Restart did not restore both saved images', 60000)
+    await waitUntilEqual(() => savedImages.count(), 3, 'Restart did not restore every saved image', 60000)
     await page.waitForFunction(() => {
       const images = [...document.querySelectorAll('.pdf-page[data-page="0"] .saved-image img')]
-      return images.length === 2 && images.every((image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0)
+      return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0)
     })
     assert.equal(await page.locator('.image-draft').count(), 0, 'Restart must restore saved images, not an unfinished draft')
     assert.equal(await page.locator('.quick-save').isDisabled(), true, 'A freshly reopened saved PDF must be clean')
@@ -371,12 +410,15 @@ async function main() {
   const temporaryDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pdfuck-creative-tools-'))
   const userData = path.join(temporaryDirectory, 'user-data')
   const fixture = await createFixture(temporaryDirectory)
+  const secondaryFixture = path.join(temporaryDirectory, 'creative-tools-secondary.pdf')
+  fs.copyFileSync(fixture, secondaryFixture)
   let app
   try {
     app = await launch(userData, fixture)
     const page = await preparePage(app)
     const drawing = await verifyDrawingBoard(app, page)
     const shapes = await verifyShapeCreator(page)
+    const crossDocument = await verifyCrossDocumentCommit(app, page, secondaryFixture)
     await saveAndCopy(page, fixture)
     await closeApp(app)
     app = undefined
@@ -387,6 +429,7 @@ async function main() {
       mode: process.env.PDFUCK_SMOKE_EXECUTABLE ? 'packaged' : 'source',
       drawing,
       shapes,
+      crossDocument,
       restoredImages,
       modifiedPdf: artifacts.modifiedPdf,
       exportedPng: artifacts.drawingExport,

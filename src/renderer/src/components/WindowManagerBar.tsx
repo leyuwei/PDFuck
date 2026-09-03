@@ -12,7 +12,7 @@ interface Props {
   onClose(id: number): void
   onReorder(sourceId: number, targetId: number): void
   onDetach(id: number, position: DetachPosition): void
-  onBeginTransfer(id: number, transferId: string): void
+  onBeginTransfer(id: number, transferId: string): void | boolean
   onTabDragStateChange(dragging: boolean): void
 }
 
@@ -38,8 +38,8 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
     if (event.target instanceof HTMLButtonElement) { event.preventDefault(); return }
     const transferId = crypto.randomUUID()
     draggingId.current = id; lastReorderTarget.current = undefined; setDragging(id); onTabDragStateChange(true)
+    if (onBeginTransfer(id, transferId) === false) { event.preventDefault(); draggingId.current = undefined; setDragging(undefined); onTabDragStateChange(false); return }
     writeDocumentTransfer(event.dataTransfer, transferId)
-    onBeginTransfer(id, transferId)
   }
   const finishDrag = (event: React.DragEvent<HTMLDivElement>) => {
     const id = draggingId.current

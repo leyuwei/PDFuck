@@ -230,6 +230,10 @@ export default function App() {
   const bookmarkAutoCollapsedRef = useRef(false)
   const deletingAnnotationIds = useRef(new Set<string>())
   const allowWindowCloseRef = useRef(false)
+  const pendingDocumentOperationsRef = useRef(new Map<number, Promise<void>>())
+  const pendingImageDocumentsRef = useRef(new Set<number>())
+  const documentLifecycleLocksRef = useRef(new Set<number>())
+  const windowClosingRef = useRef(false)
   const [data, setData] = useState<Uint8Array>()
   const [module, setModule] = useState<ModuleKey>('view')
   const [tool, setTool] = useState<Tool>('none')
@@ -244,6 +248,7 @@ export default function App() {
   const [imageObjects, setImageObjects] = useState<ImageObjectRecord[]>([])
   const [bookmarks, setBookmarks] = useState<PdfBookmark[]>([])
   const [imageDraft, setImageDraft] = useState<ImageDraft>()
+  const [imagePlacementBusy, setImagePlacementBusy] = useState(false)
   const [selectedAnnotation, setSelectedAnnotation] = useState<string>()
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([])
   const [focusedAnnotation, setFocusedAnnotation] = useState<string>()
@@ -301,12 +306,55 @@ export default function App() {
   liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, fitPageRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, imageObjects, bookmarks, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
   sessionsRef.current.set(activeDocumentId, liveSessionRef.current)
 
-  const syncModel = useCallback((message: string, refreshDocument = true) => {
-    const model = modelRef.current
+  const syncModel = useCallback((message: string, refreshDocument = true, model = modelRef.current, documentId = activeDocumentIdRef.current) => {
     if (!model) return
-    if (refreshDocument) setData(model.bytes)
-    setAnnotations(model.annotations()); setTextObjects(viewerTextObjects(model)); setImageObjects(model.images()); setBookmarks(model.bookmarks()); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty
-    setPageCount(model.pageCount); setCurrentPage((value) => Math.min(value, model.pageCount - 1)); setStatus(message)
+    const active = documentId === activeDocumentIdRef.current && model === modelRef.current
+    const session = active ? liveSessionRef.current : sessionsRef.current.get(documentId)
+    if (!session || !active && session.model !== model) return
+    const nextData = refreshDocument ? model.bytes : session.data
+    const nextSession: DocumentSession = {
+      ...session,
+      model,
+      data: nextData,
+      filePath: model.filePath,
+      pageCount: model.pageCount,
+      currentPage: Math.min(session.currentPage, model.pageCount - 1),
+      annotations: model.annotations(),
+      textObjects: viewerTextObjects(model),
+      imageObjects: model.images(),
+      bookmarks: model.bookmarks(),
+      dirty: model.dirty,
+      canUndo: model.canUndo,
+      canRedo: model.canRedo,
+      documentName: model.fileName,
+      status: message
+    }
+    sessionsRef.current.set(documentId, nextSession)
+    const current = tabsSnapshotRef.current
+    const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(nextSession) : item) }
+    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+    if (!active) return
+    liveSessionRef.current = nextSession
+    if (refreshDocument) setData(nextData)
+    setAnnotations(nextSession.annotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty
+    setPageCount(model.pageCount); setCurrentPage(nextSession.currentPage); setDocumentName(model.fileName); setStatus(message)
+  }, [])
+  const runDocumentOperation = useCallback(async <T,>(documentId: number, operation: () => Promise<T>, allowLifecycleLock = false): Promise<T> => {
+    if (!allowLifecycleLock && (windowClosingRef.current || documentLifecycleLocksRef.current.has(documentId))) throw new Error('ui.waitForTheDocumentToFinishClosingOrMoving')
+    const previous = pendingDocumentOperationsRef.current.get(documentId) || Promise.resolve()
+    const pending = previous.then(operation)
+    const settled = pending.then(() => undefined, () => undefined)
+    pendingDocumentOperationsRef.current.set(documentId, settled)
+    try { return await pending } finally { if (pendingDocumentOperationsRef.current.get(documentId) === settled) pendingDocumentOperationsRef.current.delete(documentId) }
+  }, [])
+  const waitForDocumentOperations = useCallback(async (documentId?: number) => {
+    while (true) {
+      const pending = documentId === undefined
+        ? [...pendingDocumentOperationsRef.current.values()]
+        : [pendingDocumentOperationsRef.current.get(documentId)].filter((operation): operation is Promise<void> => Boolean(operation))
+      if (!pending.length) return
+      await Promise.allSettled(pending)
+    }
   }, [])
   const showError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
@@ -318,53 +366,72 @@ export default function App() {
   }, [])
   const askConfirmation = useCallback((message: string, options?: { title?: string; confirmLabel?: string }): Promise<boolean> => new Promise((resolve) => { confirmResolve.current = resolve; setDialog({ type: 'confirm', message, title: options?.title, confirmLabel: options?.confirmLabel, destructive: true }) }), [])
   const askUnsavedClose = useCallback((message: string, options?: { title?: string; discardLabel?: string; saveLabel?: string }): Promise<UnsavedCloseDecision> => new Promise((resolve) => { closeDecisionResolve.current = resolve; setDialog({ type: 'unsaved_close', message, title: options?.title, discardLabel: options?.discardLabel, saveLabel: options?.saveLabel }) }), [])
-  const saveSession = useCallback(async (session: DocumentSession, saveAs = false, automaticSaveAs = false): Promise<boolean> => {
+  const saveSession = useCallback(async (session: DocumentSession, saveAs = false, automaticSaveAs = false, allowLifecycleLock = false): Promise<boolean> => {
     const model = session.model
     if (!model) return false
-    if (!saveAs && !model.dirty) return true
-    try {
-      let result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs })
-      if (result.status === 'save-as-required' && automaticSaveAs) result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs: true })
-      if (result.status === 'canceled') return false
-      if (result.status === 'save-as-required') { setStatus('无法直接保存：请选择其他位置另存'); setDialog({ type: 'save_as_required', target: result.target }); return false }
-      model.markSaved(result.path)
-      session.filePath = model.filePath; session.documentName = model.fileName; session.data = model.bytes; session.dirty = false; session.status = `已保存 · ${result.path}`
-      sessionsRef.current.set(session.id, session)
-      const current = tabsSnapshotRef.current
-      const snapshot = { ...current, documents: current.documents.map((item) => item.id === session.id ? sessionSummary(session) : item) }
-      tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
-      if (session.id === activeDocumentIdRef.current) { setDirty(false); dirtyRef.current = false; setDocumentName(model.fileName); setStatus(session.status) }
-      return true
-    } catch (error) { showError(error); return false }
-  }, [showError])
-  const saveDirtySessions = useCallback(async (): Promise<boolean> => {
+    try { return await runDocumentOperation(session.id, async () => {
+      if (!saveAs && !model.dirty) return true
+      try {
+        let result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs })
+        if (result.status === 'save-as-required' && automaticSaveAs) result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs: true })
+        if (result.status === 'canceled') return false
+        if (result.status === 'save-as-required') { setStatus('无法直接保存：请选择其他位置另存'); setDialog({ type: 'save_as_required', target: result.target }); return false }
+        model.markSaved(result.path)
+        const latest = session.id === activeDocumentIdRef.current && modelRef.current === model ? liveSessionRef.current : sessionsRef.current.get(session.id)
+        if (!latest || latest.model !== model) return false
+        const nextSession = { ...latest, filePath: model.filePath, documentName: model.fileName, data: model.bytes, dirty: false, status: `已保存 · ${result.path}` }
+        sessionsRef.current.set(session.id, nextSession)
+        const current = tabsSnapshotRef.current
+        const snapshot = { ...current, documents: current.documents.map((item) => item.id === session.id ? sessionSummary(nextSession) : item) }
+        tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+        if (session.id === activeDocumentIdRef.current && modelRef.current === model) { liveSessionRef.current = nextSession; setDirty(false); dirtyRef.current = false; setDocumentName(model.fileName); setStatus(nextSession.status) }
+        return true
+      } catch (error) { showError(error); return false }
+    }, allowLifecycleLock) } catch (error) { showError(error); return false }
+  }, [runDocumentOperation, showError])
+  const saveDirtySessions = useCallback(async (allowLifecycleLock = false): Promise<boolean> => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const sessions = [...sessionsRef.current.values()].filter((session) => session.dirty).sort((left, right) => Number(right.id === activeDocumentIdRef.current) - Number(left.id === activeDocumentIdRef.current))
-    for (const session of sessions) if (!await saveSession(session, false, true)) return false
+    for (const session of sessions) if (!await saveSession(session, false, true, allowLifecycleLock)) return false
     return true
   }, [saveSession])
   const closeCurrentWindow = useCallback(async () => {
-    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
-    const dirtyCount = [...sessionsRef.current.values()].filter((session) => session.dirty).length
-    const documentCount = tabsSnapshotRef.current.documents.filter((document) => document.hasDocument).length
-    if (dirtyCount) {
-      const decision = await askUnsavedClose(documentCount > 1 ? t('close.multipleDirty', { count: documentCount, dirty: dirtyCount }) : t('close.app', { count: dirtyCount }), documentCount > 1 ? { title: ui("ui.closeMultipleDocuments"), discardLabel: ui("ui.closeAllWithoutSaving"), saveLabel: ui("ui.saveAllAndClose") } : undefined)
-      if (decision === 'cancel' || decision === 'save' && !await saveDirtySessions()) return
-    } else if (documentCount > 1 && !await askConfirmation(t('close.multiple', { count: documentCount }), { title: ui("ui.closeMultipleDocuments"), confirmLabel: ui("ui.closeAll") })) return
-    allowWindowCloseRef.current = true; dirtyRef.current = false; window.desktop.windowClose()
-    window.setTimeout(() => { allowWindowCloseRef.current = false }, 1500)
-  }, [askConfirmation, askUnsavedClose, saveDirtySessions])
+    if (windowClosingRef.current || documentLifecycleLocksRef.current.size) { showError(new Error('ui.waitForTheDocumentToFinishClosingOrMoving')); return }
+    windowClosingRef.current = true
+    let closing = false
+    try {
+      await waitForDocumentOperations()
+      sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+      const dirtyCount = [...sessionsRef.current.values()].filter((session) => session.dirty).length
+      const documentCount = tabsSnapshotRef.current.documents.filter((document) => document.hasDocument).length
+      if (dirtyCount) {
+        const decision = await askUnsavedClose(documentCount > 1 ? t('close.multipleDirty', { count: documentCount, dirty: dirtyCount }) : t('close.app', { count: dirtyCount }), documentCount > 1 ? { title: ui("ui.closeMultipleDocuments"), discardLabel: ui("ui.closeAllWithoutSaving"), saveLabel: ui("ui.saveAllAndClose") } : undefined)
+        if (decision === 'cancel') return
+        if (decision === 'save') {
+          do {
+            if (!await saveDirtySessions(true)) return
+            await waitForDocumentOperations()
+            sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+          } while ([...sessionsRef.current.values()].some((session) => session.dirty))
+        } else await waitForDocumentOperations()
+      } else if (documentCount > 1 && !await askConfirmation(t('close.multiple', { count: documentCount }), { title: ui("ui.closeMultipleDocuments"), confirmLabel: ui("ui.closeAll") })) return
+      allowWindowCloseRef.current = true; dirtyRef.current = false; closing = true
+      window.setTimeout(() => { allowWindowCloseRef.current = false; windowClosingRef.current = false }, 1500)
+      window.desktop.windowClose()
+    } finally { if (!closing) windowClosingRef.current = false }
+  }, [askConfirmation, askUnsavedClose, saveDirtySessions, showError, waitForDocumentOperations])
   const activateSession = useCallback((session: DocumentSession) => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
-    const pendingAnnotation = annotationResolve.current, pendingText = textResolve.current
-    annotationResolve.current = undefined; textResolve.current = undefined
-    pendingAnnotation?.(null); pendingText?.(null)
+    const pendingAnnotation = annotationResolve.current, pendingText = textResolve.current, pendingPassword = passwordResolve.current, pendingSecureStorage = secureStorageResolve.current, pendingConfirmation = confirmResolve.current, pendingCloseDecision = closeDecisionResolve.current
+    annotationResolve.current = undefined; textResolve.current = undefined; passwordResolve.current = undefined; secureStorageResolve.current = undefined; confirmResolve.current = undefined; closeDecisionResolve.current = undefined
+    pendingAnnotation?.(null); pendingText?.(null); pendingPassword?.(null); pendingSecureStorage?.(false); pendingConfirmation?.(false); pendingCloseDecision?.('cancel')
     annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); liveSessionRef.current = session; activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty; readingPositionRef.current = session.readingPosition
-    setActiveDocumentId(session.id); setData(session.data); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
+    setActiveDocumentId(session.id); setData(session.data); setImageDraft(undefined); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects); setBookmarks(session.bookmarks)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
+    setImagePlacementBusy(pendingImageDocumentsRef.current.has(session.id))
     setInsight(undefined)
     setCitationsEnabled(false)
   }, [])
@@ -483,14 +550,16 @@ export default function App() {
     tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); if (session.bookmarks.length) { setBookmarkPanelCollapsed(false); bookmarkAutoCollapsedRef.current = false }; activateSession(session)
   }, [activateSession])
   const beginDocumentTransfer = useCallback((id: number, transferId: string) => {
+    if (pendingDocumentOperationsRef.current.has(id)) return false
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const session = sessionsRef.current.get(id)
-    if (!session) return
+    if (!session) return false
     outboundDocumentTransfers.current.set(transferId, id)
     void window.desktop.beginDocumentTransfer(transferId, detachedDocument(session)).catch((error) => {
       outboundDocumentTransfers.current.delete(transferId)
       showError(error)
     })
+    return true
   }, [showError])
   const receiveDocumentTransfer = useCallback(async (transferId: string) => {
     try {
@@ -546,30 +615,43 @@ export default function App() {
     activateSession(session)
   }, [activateSession])
   const closeDocument = useCallback(async (id: number) => {
-    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
-    const session = sessionsRef.current.get(id)
-    if (!session) return
-    if (session.dirty) {
-      const decision = await askUnsavedClose(t('close.document', { name: session.documentName }))
-      if (decision === 'cancel' || decision === 'save' && !await saveSession(session, false, true)) return
-    }
-    const current = tabsSnapshotRef.current
-    const closedIndex = current.documents.findIndex((item) => item.id === id)
-    const remaining = current.documents.filter((item) => item.id !== id)
-    sessionsRef.current.delete(id)
-    if (id !== activeDocumentIdRef.current) {
-      const snapshot = { ...current, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); return
-    }
-    let next: DocumentSession
-    if (remaining.length) {
-      const nextSummary = remaining[Math.min(Math.max(0, closedIndex), remaining.length - 1)]
-      next = sessionsRef.current.get(nextSummary.id)!
-    } else {
-      next = emptySession(nextDocumentId.current++)
-      sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
-    }
-    const snapshot = { currentId: next.id, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
-  }, [activateSession, askUnsavedClose, saveSession])
+    if (windowClosingRef.current || documentLifecycleLocksRef.current.has(id)) return
+    documentLifecycleLocksRef.current.add(id)
+    try {
+      await waitForDocumentOperations(id)
+      sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+      let session = sessionsRef.current.get(id)
+      if (!session) return
+      if (session.dirty) {
+        const decision = await askUnsavedClose(t('close.document', { name: session.documentName }))
+        if (decision === 'cancel') return
+        if (decision === 'save') {
+          do {
+            if (!await saveSession(session, false, true, true)) return
+            await waitForDocumentOperations(id)
+            session = sessionsRef.current.get(id)
+            if (!session) return
+          } while (session.dirty)
+        } else await waitForDocumentOperations(id)
+      }
+      const current = tabsSnapshotRef.current
+      const closedIndex = current.documents.findIndex((item) => item.id === id)
+      const remaining = current.documents.filter((item) => item.id !== id)
+      sessionsRef.current.delete(id)
+      if (id !== activeDocumentIdRef.current) {
+        const snapshot = { ...current, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); return
+      }
+      let next: DocumentSession
+      if (remaining.length) {
+        const nextSummary = remaining[Math.min(Math.max(0, closedIndex), remaining.length - 1)]
+        next = sessionsRef.current.get(nextSummary.id)!
+      } else {
+        next = emptySession(nextDocumentId.current++)
+        sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
+      }
+      const snapshot = { currentId: next.id, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
+    } finally { documentLifecycleLocksRef.current.delete(id) }
+  }, [activateSession, askUnsavedClose, saveSession, waitForDocumentOperations])
   const reorderDocuments = useCallback((sourceId: number, targetId: number) => {
     setDocumentTabs((current) => {
       const snapshot = reorderDocumentTabs(current, sourceId, targetId)
@@ -578,35 +660,36 @@ export default function App() {
     })
   }, [])
   const detachDocument = useCallback(async (id: number, position: { x: number; y: number }) => {
-    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
-    const session = sessionsRef.current.get(id)
-    if (!session) return
+    if (windowClosingRef.current || documentLifecycleLocksRef.current.has(id)) return
+    documentLifecycleLocksRef.current.add(id)
     try {
+      await waitForDocumentOperations(id)
+      sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
+      const session = sessionsRef.current.get(id)
+      if (!session) return
       await window.desktop.detachDocument(detachedDocument(session), position)
-    } catch (error) {
-      showError(error)
-      return
-    }
-    const current = tabsSnapshotRef.current
-    const closedIndex = current.documents.findIndex((item) => item.id === id)
-    const remaining = current.documents.filter((item) => item.id !== id)
-    sessionsRef.current.delete(id)
-    if (id !== activeDocumentIdRef.current) {
-      const snapshot = { ...current, documents: remaining }
-      tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
-      return
-    }
-    let next: DocumentSession
-    if (remaining.length) {
-      const nextSummary = remaining[Math.min(Math.max(0, closedIndex), remaining.length - 1)]
-      next = sessionsRef.current.get(nextSummary.id)!
-    } else {
-      next = emptySession(nextDocumentId.current++)
-      sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
-    }
-    const snapshot = { currentId: next.id, documents: remaining }
-    tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
-  }, [activateSession, showError])
+      const current = tabsSnapshotRef.current
+      const closedIndex = current.documents.findIndex((item) => item.id === id)
+      const remaining = current.documents.filter((item) => item.id !== id)
+      sessionsRef.current.delete(id)
+      if (id !== activeDocumentIdRef.current) {
+        const snapshot = { ...current, documents: remaining }
+        tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+        return
+      }
+      let next: DocumentSession
+      if (remaining.length) {
+        const nextSummary = remaining[Math.min(Math.max(0, closedIndex), remaining.length - 1)]
+        next = sessionsRef.current.get(nextSummary.id)!
+      } else {
+        next = emptySession(nextDocumentId.current++)
+        sessionsRef.current.set(next.id, next); remaining.push(sessionSummary(next))
+      }
+      const snapshot = { currentId: next.id, documents: remaining }
+      tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(next)
+    } catch (error) { showError(error) }
+    finally { documentLifecycleLocksRef.current.delete(id) }
+  }, [activateSession, showError, waitForDocumentOperations])
 
   useEffect(() => {
     window.desktop.windowIsMaximized().then(setMaximized)
@@ -745,9 +828,9 @@ export default function App() {
   })
   const askText = (initial?: TextDialogValue): Promise<TextDialogValue | null> => new Promise((resolve) => { textResolve.current = resolve; setDialog({ type: 'text', initial, edit: Boolean(initial) }) })
   const mutate = useCallback(async (operation: (model: PdfDocumentModel) => Promise<unknown>, message: string, refreshDocument = true) => {
-    const model = modelRef.current; if (!model) return false
-    try { await operation(model); syncModel(message, refreshDocument); return true } catch (error) { showError(error); return false }
-  }, [showError, syncModel])
+    const model = modelRef.current, documentId = activeDocumentIdRef.current; if (!model) return false
+    try { return await runDocumentOperation(documentId, async () => { await operation(model); syncModel(message, refreshDocument, model, documentId); return true }) } catch (error) { showError(error); return false }
+  }, [runDocumentOperation, showError, syncModel])
   const mergeFiles = useCallback(async () => {
     try {
       const files = await window.desktop.choosePdfImports()
@@ -758,22 +841,26 @@ export default function App() {
   }, [showError])
   const confirmMergeFiles = useCallback(async (files: PdfImportFile[], insertion?: MergeInsertion) => {
     try {
+      const documentId = activeDocumentIdRef.current
       const existing = modelRef.current
       const creating = !existing
       const model = existing || await PdfDocumentModel.create(ui("ui.mergedDocumentPdf"))
-      if (existing && modelRef.current !== existing) return
+      if (activeDocumentIdRef.current !== documentId || modelRef.current !== existing) return
       if (creating) {
         modelRef.current = model
+        liveSessionRef.current = { ...liveSessionRef.current, model }
         setDocumentName(model.fileName)
         setEncrypted(false)
         setDocumentPassword(undefined)
         setModule('edit')
       }
       const insertionIndex = creating || !insertion ? 0 : insertion.position === 'start' ? 0 : insertion.position === 'end' ? model.pageCount : insertion.position === 'before' ? (insertion.page || 1) - 1 : insertion.page || model.pageCount
-      await model.importFiles(files, insertionIndex)
-      syncModel(creating ? `已创建合并文档，已导入 ${files.length} 个文件` : `已合并 ${files.length} 个文件`)
+      await runDocumentOperation(documentId, async () => {
+        await model.importFiles(files, insertionIndex)
+        syncModel(creating ? `已创建合并文档，已导入 ${files.length} 个文件` : `已合并 ${files.length} 个文件`, true, model, documentId)
+      })
     } catch (error) { showError(error) }
-  }, [showError, syncModel])
+  }, [runDocumentOperation, showError, syncModel])
   const previewRecognizedBookmarks = useCallback(async (options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]> => viewerRef.current?.recognizeBookmarks(options) || [], [])
   const writeRecognizedBookmarks = useCallback(async (items: PdfBookmark[], mode: BookmarkWriteMode) => {
     const written = await mutate((model) => mode === 'append' ? model.appendBookmarks(items) : model.replaceBookmarks(items), mode === 'append' ? '已识别并追加书签；可双击书签修改文字' : '已识别并写入书签；可双击书签修改文字', false)
@@ -832,19 +919,23 @@ export default function App() {
     setStatus(outputs?.length ? t('status.exportedFiles', { count: 1, path: outputs[0] }) : 'ui.exportCanceled')
   }, [])
   const confirmImagePlacement = useCallback(async () => {
-    const draft = imageDraft, model = modelRef.current
-    if (!draft || !model) return
+    const draft = imageDraft, model = modelRef.current, documentId = activeDocumentIdRef.current
+    if (!draft || !model || pendingImageDocumentsRef.current.has(documentId)) return
+    pendingImageDocumentsRef.current.add(documentId)
+    setImagePlacementBusy(true)
     try {
-      if (draft.id) {
-        await model.updateImage(draft.id, draft.rect, draft.rotation, draft.aspectRatio, draft.lockAspectRatio)
-        syncModel('图片已更新；可保存 PDF 以保留修改')
-      } else {
-        await model.addImage(draft.pageIndex, draft.data, draft.format, draft.rect, draft.rotation, draft.name, draft.aspectRatio, draft.lockAspectRatio)
-        syncModel('图片已添加到当前页面；可保存 PDF 以保留修改')
-      }
-      setImageDraft(undefined)
-    } catch (error) { showError(error) }
-  }, [imageDraft, showError, syncModel])
+      await runDocumentOperation(documentId, async () => {
+        if (draft.id) {
+          await model.updateImage(draft.id, draft.rect, draft.rotation, draft.aspectRatio, draft.lockAspectRatio)
+          syncModel('ui.imageUpdatedSaveThePdfToKeepTheChange', true, model, documentId)
+        } else {
+          await model.addImage(draft.pageIndex, draft.data, draft.format, draft.rect, draft.rotation, draft.name, draft.aspectRatio, draft.lockAspectRatio)
+          syncModel('ui.imageAddedToTheCurrentPageSaveThePdfTo', true, model, documentId)
+        }
+        setImageDraft((current) => current?.source === draft.source ? undefined : current)
+      })
+    } catch (error) { showError(error) } finally { pendingImageDocumentsRef.current.delete(documentId); if (activeDocumentIdRef.current === documentId) setImagePlacementBusy(false) }
+  }, [imageDraft, runDocumentOperation, showError, syncModel])
   const beginImageEdit = useCallback(async (image: ImageObjectRecord) => {
     const model = modelRef.current
     if (!model || imageDraft) return
@@ -859,16 +950,20 @@ export default function App() {
     } catch (error) { showError(error) }
   }, [imageDraft, showError])
   const deleteImagePlacement = useCallback(async () => {
-    const draft = imageDraft, model = modelRef.current
-    if (!draft?.id || !model) return
+    const draft = imageDraft, model = modelRef.current, documentId = activeDocumentIdRef.current
+    if (!draft?.id || !model || pendingImageDocumentsRef.current.has(documentId)) return
+    pendingImageDocumentsRef.current.add(documentId)
+    setImagePlacementBusy(true)
     try {
-      await model.deleteImage(draft.id)
-      syncModel('图片已删除；可按 Ctrl/⌘Z 撤销')
-      setImageDraft(undefined)
-    } catch (error) { showError(error) }
-  }, [imageDraft, showError, syncModel])
+      await runDocumentOperation(documentId, async () => {
+        await model.deleteImage(draft.id!)
+        syncModel('ui.imageDeletedPressCtrlZToUndo', true, model, documentId)
+        setImageDraft((current) => current?.source === draft.source ? undefined : current)
+      })
+    } catch (error) { showError(error) } finally { pendingImageDocumentsRef.current.delete(documentId); if (activeDocumentIdRef.current === documentId) setImagePlacementBusy(false) }
+  }, [imageDraft, runDocumentOperation, showError, syncModel])
   const cancelImagePlacement = useCallback(() => {
-    if (!imageDraft) return
+    if (!imageDraft || pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) return
     setImageDraft(undefined)
     setStatus('已取消添加图片')
   }, [imageDraft])
@@ -889,12 +984,14 @@ export default function App() {
     } else if (action.tool === 'add_text' && action.rect) {
       const value = await askText(); if (!value || !originIsActive()) return
       const image = await styledTextRaster(value.text, action.rect, value)
+      if (!originIsActive()) return
       await mutate((modelValue) => modelValue.addText(action.pageIndex, action.rect!, value.text, value.style, image), '文字已添加；可拖动位置，双击重新编辑', false)
     } else if (action.tool === 'edit_text' && action.pageTextEdit) {
       const edit = action.pageTextEdit
       const replacementRect = replacementTextRect(edit.region.rect, edit.text, edit.style, model.getPageSize(action.pageIndex))
       const value: TextDialogValue = { text: edit.text, style: edit.style }
       const image = await styledTextRaster(edit.text, replacementRect, value, true)
+      if (!originIsActive()) return
       await mutate((modelValue) => modelValue.replacePageText(action.pageIndex, edit.region.sourceRects, edit.text, edit.style, image, replacementRect, edit.backgroundColor), '页面文字已更新；可继续点击当前页其他文本块')
     } else if (action.tool === 'highlight' && action.selection) {
       const annotation = await askAnnotation({ kind: 'highlight', optional: true }); if (annotation === null || !originIsActive()) return
@@ -943,12 +1040,14 @@ export default function App() {
     return viewerRef.current?.automaticAnnotationContext(request, level) || { issue: 'no-text' }
   }, [])
   const addFullReviewAnnotation = useCallback(async (content: string) => {
-    const model = modelRef.current
+    const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model) throw new Error('请先打开 PDF 文档。')
-    const size = model.getPageSize(0)
-    await model.addAnnotation(0, 'note', [], content, { x: Math.max(24, size.width - 42), y: 42 }, undefined, undefined, preferences.annotationAuthor)
-    syncModel('全文评价已作为第一页便笺添加到批注列表', false)
-  }, [preferences.annotationAuthor, syncModel])
+    await runDocumentOperation(documentId, async () => {
+      const size = model.getPageSize(0)
+      await model.addAnnotation(0, 'note', [], content, { x: Math.max(24, size.width - 42), y: 42 }, undefined, undefined, preferences.annotationAuthor)
+      syncModel('全文评价已作为第一页便笺添加到批注列表', false, model, documentId)
+    })
+  }, [preferences.annotationAuthor, runDocumentOperation, syncModel])
   const addAnnotationSuggestion = useCallback(async (documentIdOrAnnotationId: number | string, annotationIdOrContent: string, suggestionContent?: string) => {
     const documentId = typeof documentIdOrAnnotationId === 'number' ? documentIdOrAnnotationId : activeDocumentIdRef.current
     const annotationId = typeof documentIdOrAnnotationId === 'number' ? annotationIdOrContent : documentIdOrAnnotationId
@@ -959,47 +1058,50 @@ export default function App() {
     const target = model.annotations().find((annotation) => annotation.id === annotationId)
     if (!target) throw new Error('目标批注已不存在，请重新选择。')
 
-    await model.updateAnnotationReply(annotationId, { status: 'custom', content })
-    const nextAnnotations = model.annotations()
-    const writtenAnnotations = target.groupId
-      ? nextAnnotations.filter((annotation) => annotation.groupId === target.groupId)
-      : nextAnnotations.filter((annotation) => annotation.id === annotationId)
-    if (!writtenAnnotations.length || writtenAnnotations.some((annotation) => annotation.reply?.status !== 'custom' || annotation.reply.content !== content.trim())) {
-      throw new Error('AI 修改建议写入失败，请重试。')
-    }
+    await runDocumentOperation(documentId, async () => {
+      await model.updateAnnotationReply(annotationId, { status: 'custom', content })
+      const nextAnnotations = model.annotations()
+      const writtenAnnotations = target.groupId
+        ? nextAnnotations.filter((annotation) => annotation.groupId === target.groupId)
+        : nextAnnotations.filter((annotation) => annotation.id === annotationId)
+      if (!writtenAnnotations.length || writtenAnnotations.some((annotation) => annotation.reply?.status !== 'custom' || annotation.reply.content !== content.trim())) {
+        throw new Error('AI 修改建议写入失败，请重试。')
+      }
 
-    const successMessage = 'AI 修改建议已写入批注回复'
-    const latestSession = documentId === activeDocumentIdRef.current && modelRef.current === model
-      ? liveSessionRef.current
-      : sessionsRef.current.get(documentId)
-    if (!latestSession || latestSession.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
-    const nextSession: DocumentSession = {
-      ...latestSession,
-      model,
-      annotations: nextAnnotations,
-      textObjects: viewerTextObjects(model),
-      imageObjects: model.images(),
-      bookmarks: model.bookmarks(),
-      selectedAnnotation: annotationId,
-      dirty: model.dirty,
-      canUndo: model.canUndo,
-      canRedo: model.canRedo,
-      status: successMessage
-    }
-    sessionsRef.current.set(documentId, nextSession)
-    setDocumentTabs((current) => {
-      const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(nextSession) : item) }
-      tabsSnapshotRef.current = snapshot
-      return snapshot
+      const successMessage = 'AI 修改建议已写入批注回复'
+      const latestSession = documentId === activeDocumentIdRef.current && modelRef.current === model
+        ? liveSessionRef.current
+        : sessionsRef.current.get(documentId)
+      if (!latestSession || latestSession.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
+      const nextSession: DocumentSession = {
+        ...latestSession,
+        model,
+        annotations: nextAnnotations,
+        textObjects: viewerTextObjects(model),
+        imageObjects: model.images(),
+        bookmarks: model.bookmarks(),
+        selectedAnnotation: annotationId,
+        dirty: model.dirty,
+        canUndo: model.canUndo,
+        canRedo: model.canRedo,
+        status: successMessage
+      }
+      sessionsRef.current.set(documentId, nextSession)
+      setDocumentTabs((current) => {
+        const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(nextSession) : item) }
+        tabsSnapshotRef.current = snapshot
+        return snapshot
+      })
+
+      if (documentId === activeDocumentIdRef.current && modelRef.current === model) {
+        liveSessionRef.current = nextSession
+        setAnnotations(nextAnnotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks)
+        setSelectedAnnotation(annotationId); setSelectedAnnotationIds(writtenAnnotations.map((annotation) => annotation.id)); setCurrentPage(target.pageIndex)
+        setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty; setStatus(successMessage)
+        viewerRef.current?.focusAnnotation(annotationId, target.pageIndex)
+      }
     })
-
-    if (documentId === activeDocumentIdRef.current && modelRef.current === model) {
-      setAnnotations(nextAnnotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks)
-      setSelectedAnnotation(annotationId); setSelectedAnnotationIds(writtenAnnotations.map((annotation) => annotation.id)); setCurrentPage(target.pageIndex)
-      setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty; setStatus(successMessage)
-      viewerRef.current?.focusAnnotation(annotationId, target.pageIndex)
-    }
-  }, [])
+  }, [runDocumentOperation])
   const toggleAnnotationSuggestions = useCallback((enabled: boolean) => {
     setAnnotationSuggestionsEnabled(enabled); saveAnnotationSuggestionsEnabled(enabled)
     if (!enabled) setAnnotationSuggestionRequest(undefined)
@@ -1027,16 +1129,18 @@ export default function App() {
     if (!model) { trackedIds.forEach((id) => pending.delete(id)); return }
     void (async () => {
       try {
-        let deleted = 0
-        for (const id of representatives) if (await model.deleteAnnotation(id)) deleted += 1
-        if (deleted && modelRef.current === model && activeDocumentIdRef.current === documentId) syncModel(successMessage(deleted), false)
+        await runDocumentOperation(documentId, async () => {
+          let deleted = 0
+          for (const id of representatives) if (await model.deleteAnnotation(id)) deleted += 1
+          if (deleted) syncModel(successMessage(deleted), false, model, documentId)
+        })
       } catch (error) {
         showError(error)
       } finally {
         trackedIds.forEach((id) => pending.delete(id))
       }
     })()
-  }, [showError, syncModel])
+  }, [runDocumentOperation, showError, syncModel])
   const deleteAnnotation = useCallback((annotation: AnnotationRecord) => {
     const groupedIds = new Set(annotations.filter((candidate) => annotation.groupId ? candidate.groupId === annotation.groupId : candidate.id === annotation.id).map((candidate) => candidate.id))
     if (!groupedIds.size) groupedIds.add(annotation.id)
@@ -1056,9 +1160,9 @@ export default function App() {
     performAnnotationDeletion(selectedGroups.map((group) => group.representative), selectedGroups.flatMap((group) => group.trackedIds), (deleted) => `已删除 ${deleted} 条批注，可按 Ctrl/⌘Z 撤销`)
   }, [annotations, performAnnotationDeletion])
   const inlineEditAnnotation = useCallback(async (id: string, content: string) => {
-    const model = modelRef.current; if (!model) return
-    await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false)
-  }, [syncModel])
+    const model = modelRef.current, documentId = activeDocumentIdRef.current; if (!model) return
+    try { await runDocumentOperation(documentId, async () => { await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false, model, documentId) }) } catch (error) { showError(error) }
+  }, [runDocumentOperation, showError, syncModel])
   const recolorAnnotation = useCallback(async (id: string, color: string) => {
     await mutate((model) => model.updateAnnotationColor(id, color), '批注颜色已更新', false)
   }, [mutate])
@@ -1098,8 +1202,11 @@ export default function App() {
     revealAnnotation(annotation.id)
   }, [annotations, revealAnnotation])
   const editTextObject = useCallback(async (textObject: TextObjectRecord) => {
+    const model = modelRef.current, documentId = activeDocumentIdRef.current
     const value = await askText({ text: textObject.text, style: textObject.style }); if (!value) return
+    if (modelRef.current !== model || activeDocumentIdRef.current !== documentId) return
     const image = await styledTextRaster(value.text, textObject.rect, value, Boolean(textObject.fixedToSource))
+    if (modelRef.current !== model || activeDocumentIdRef.current !== documentId) return
     await mutate((model) => model.updateTextObject(textObject.id, value.text, value.style, image), '文字内容和格式已更新', false)
   }, [mutate])
   const deleteTextObject = useCallback(async (id: string) => {
@@ -1107,20 +1214,23 @@ export default function App() {
   }, [mutate])
 
   const savePdf = useCallback(async (saveAs = false): Promise<boolean> => {
-    sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
-    return saveSession(liveSessionRef.current, saveAs, false)
+    const documentId = activeDocumentIdRef.current
+    const session = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
+    if (!session) return false
+    sessionsRef.current.set(documentId, session)
+    return saveSession(session, saveAs, false)
   }, [saveSession])
 
   const undoDocument = useCallback(async () => {
-    const model = modelRef.current
+    const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model?.canUndo) return
-    try { await model.undo(); setSelection(undefined); syncModel('已撤销上一步操作') } catch (error) { showError(error) }
-  }, [showError, syncModel])
+    try { await runDocumentOperation(documentId, async () => { await model.undo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已撤销上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
+  }, [runDocumentOperation, showError, syncModel])
   const redoDocument = useCallback(async () => {
-    const model = modelRef.current
+    const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model?.canRedo) return
-    try { await model.redo(); setSelection(undefined); syncModel('已重做上一步操作') } catch (error) { showError(error) }
-  }, [showError, syncModel])
+    try { await runDocumentOperation(documentId, async () => { await model.redo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已重做上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
+  }, [runDocumentOperation, showError, syncModel])
 
   const copyText = useCallback(async (value: string) => {
     const normalized = normalizeCopiedText(value)
@@ -1276,9 +1386,9 @@ export default function App() {
       <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui("ui.save")}</button></div>{!isMac && <div className="window-controls"><button className="window-minimize" aria-label={ui("ui.minimizeWindow")} title={ui("ui.minimizeWindow")} onClick={window.desktop.windowMinimize}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5h9" /></svg></button><button className={maximized ? 'window-restore' : 'window-maximize'} aria-label={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} title={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} onClick={window.desktop.windowToggleMaximize}>{maximized ? <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 1.5h7v7M1.5 3.5h7v7h-7z" /></svg> : <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" /></svg>}</button><button className="close window-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={closeCurrentWindow}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2 2 10" /></svg></button></div>}</header>
     <WindowManagerBar snapshot={documentTabs} onFocus={switchDocument} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} />{moduleName(key)}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
-      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
+      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
       {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={setImageDraft} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} imageDraftBusy={imagePlacementBusy} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={(draft) => { if (!pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) setImageDraft(draft) }} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} aiSuggestionsEnabled={annotationSuggestionsEnabled} onAiSuggestion={requestAnnotationSuggestion} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui("ui.dropToOpenPdf")}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
