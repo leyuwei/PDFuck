@@ -43,11 +43,19 @@ async function main() {
   const { textItemsToWordBoxes, textSelectionBetween } = loadTextLayout()
   const document = await getDocument({ data: new Uint8Array(fs.readFileSync(pdfPath)), disableWorker: true }).promise
   const reports = []
-  for (const pageNumber of [7, 12, 13]) {
+  for (const pageNumber of [1, 7, 12, 13]) {
     const page = await document.getPage(pageNumber)
     const content = await page.getTextContent()
     const words = textItemsToWordBoxes(content.items.filter((item) => 'str' in item), content.styles, page.getViewport({ scale: 1 }).transform)
     assert.deepEqual([...new Set(words.map((word) => word.column))], [0, 1], `page ${pageNumber}: formula/image gaps became false columns`)
+
+    if (pageNumber === 1) {
+      const heading = select(words, find(words, 'Blockchain-Enabled', (word) => word.rect.y < 100), find(words, 'Zhou', (word) => word.rect.x > 300 && word.rect.y < 150), textSelectionBetween)
+      assert.match(heading.text, /^Blockchain-Enabled[\s\S]*Networks:[\s\S]*Xintong Ling[\s\S]*Xiaoyang Zhou$/u)
+      assert.doesNotMatch(heading.text, /Abstract|Received|INTRODUCTION/u)
+      assert.ok(heading.rects.every((rect) => rect.y + rect.height < 150), `page 1: title/author selection reached body text: ${JSON.stringify(heading.rects)}`)
+      reports.push({ page: pageNumber, columns: 2, titleAuthorBand: true, reverseDragStable: true })
+    }
 
     if (pageNumber === 7) {
       const paragraph = select(words, find(words, 'where', (word) => word.rect.x < 300 && word.rect.y > 560), find(words, 'SSESSMENT', (word) => word.rect.x < 300), textSelectionBetween)

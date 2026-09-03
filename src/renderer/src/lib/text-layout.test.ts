@@ -248,6 +248,23 @@ describe('PDF text layout', () => {
     expect(selection?.rects.every((rect) => rect.x + rect.width <= 30 || rect.x >= 60)).toBe(true)
   })
 
+  it('selects a full-width title and author band without absorbing the first body column', () => {
+    const words = [
+      { text: 'Wide', order: 0, column: 0, columnAmbiguous: true, visualBlock: 1, rect: { x: 10, y: 10, width: 80, height: 20 } },
+      { text: 'title', order: 1, column: 0, columnAmbiguous: true, visualBlock: 2, rect: { x: 25, y: 34, width: 50, height: 20 } },
+      { text: 'Alice', order: 2, column: 0, columnAmbiguous: true, visualBlock: 2, rect: { x: 30, y: 60, width: 35, height: 10 } },
+      { text: 'Abstract', order: 3, column: 0, columnAmbiguous: true, visualBlock: 3, rect: { x: 10, y: 82, width: 42, height: 10 } },
+      { text: 'left-body', order: 4, column: 0, rect: { x: 10, y: 96, width: 55, height: 10 } },
+      { text: 'Zhou', order: 5, column: 1, visualBlock: 3, rect: { x: 70, y: 72, width: 25, height: 10 } },
+      { text: 'right-body', order: 6, column: 1, visualBlock: 3, rect: { x: 70, y: 82, width: 60, height: 10 } }
+    ]
+    const forward = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 5, offset: 4 })
+    const reverse = textSelectionBetween(words, { wordIndex: 5, offset: 4 }, { wordIndex: 0, offset: 0 })
+    expect(forward?.text).toBe('Wide title Alice Zhou')
+    expect(forward?.text).not.toMatch(/Abstract|body/u)
+    expect(reverse).toEqual(forward)
+  })
+
   it('does not include another column when both drag endpoints are in one column', () => {
     const words = [
       { text: 'left', order: 0, column: 0, rect: { x: 10, y: 20, width: 32, height: 12 } },

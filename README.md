@@ -132,7 +132,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
+The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers the page 1 reverse drag from the final author to the full-width title as well as pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
 `npm run test:bookmarks-ui` additionally verifies undoable single-bookmark deletion and removal/restoration of recognition-preview candidates. `npm run test:bookmark-recognition-papers` opens the real `m91474-li paper.pdf` and `Scheduling0826m.pdf` fixtures in Electron and checks their exact 6/9 Roman-numeral section sequences, Abstract/References entries, wrapped headings, and false-positive exclusion.
 
@@ -152,17 +152,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.4` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.5` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.4
+npm run package:windows -- 2.0.5
 ```
 
 ```sh
-npm run package:macos -- 2.0.4
+npm run package:macos -- 2.0.5
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.4` and `bash scripts/package-macos.sh 2.0.4`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.5` and `bash scripts/package-macos.sh 2.0.5`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -448,7 +448,7 @@ npm run build
 
 本版本的 `npm run test:ai-smoke` 会把真实 SSE 流式响应完整送过 Electron 主进程代理；单元测试还覆盖 OpenAI 与 Claude 流式事件、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类和十种界面语言。`npm run test:workflow-state-ui` 在真实 Electron 窗口覆盖无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议浮窗、智能润色快捷键同行布局和自定义超时持久化。`npm run test:lab-features-ui` 会启动本地模拟 AI 服务，真实验证无分隔线且与标准按钮一致的实验室排版、免责声明复选框几何与边距、全文评价倒计时、打开新 PDF 与手动往返切换时的按文档进度隔离和结果恢复、Markdown 渲染及原文复制、自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的多页手动上下文、请求载荷和两条批注写回链路，并输出视觉检查截图。`npm run test:bookmarks-ui` 会生成含标准层级书签和标题文字的 PDF，在真实 Electron 窗口验证边栏自动显示、搜索/字号/拖宽/折叠、窄窗口与批注栏兼容、双击改名、识别规则与深度、追加/覆盖/清空、撤销、“保存后关闭”和最终书签落盘。`npm run test:heavy-image-page-ui` 使用 `tmp/dawenjian.pdf` 第 2 页验证多语言加载占位符会出现并在完成后消失，同时限制首次绘制耗时，并校验黑白正文和彩色图示都已实际渲染。
 
-针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese`、`npm run test:selection-chinese-ui`、`npm run test:selection-bc` 和 `npm run test:selection-bc-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；随后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页覆盖公式碎片、图表文字、单双栏流域、反向拖拽和剪贴板文字；中文两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体度量。`bc.pdf` 两项固定覆盖第 7、12、13 页的伪公式栏沟、跨栏图注和大公式、同行/长距离同栏拖拽，并在真实 Electron 中验证默认隐藏的校正入口、竖向栏界、跨栏区域上下横界、按文档/页持久化和恢复自动识别。
+针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese`、`npm run test:selection-chinese-ui`、`npm run test:selection-bc` 和 `npm run test:selection-bc-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；随后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页覆盖公式碎片、图表文字、单双栏流域、反向拖拽和剪贴板文字；中文两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体度量。`bc.pdf` 两项固定覆盖第 1 页“末位作者→跨栏标题”反向拖选，以及第 7、12、13 页的伪公式栏沟、跨栏图注和大公式、同行/长距离同栏拖拽，并在真实 Electron 中验证默认隐藏的校正入口、竖向栏界、跨栏区域上下横界、按文档/页持久化和恢复自动识别。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
@@ -472,17 +472,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.4`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.5`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.4
+npm run package:windows -- 2.0.5
 ```
 
 ```sh
-npm run package:macos -- 2.0.4
+npm run package:macos -- 2.0.5
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.4` 和 `bash scripts/package-macos.sh 2.0.4`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.5` 和 `bash scripts/package-macos.sh 2.0.5`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

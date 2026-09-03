@@ -23,7 +23,7 @@ async function main() {
     const window = await app.firstWindow()
     await window.waitForSelector('.pdf-page', { timeout: 60_000 })
 
-    const drag = async ({ pageIndex, startText, endText, startBand, endBand, side, include, exclude, maxBottom = 1, sideLimit }) => {
+    const drag = async ({ pageIndex, startText, endText, startBand, endBand, side, include, exclude, maxBottom = 1, sideLimit, reverse = false }) => {
       const page = window.locator(`.pdf-page[data-page="${pageIndex}"]`)
       await page.evaluate((element) => element.scrollIntoView({ block: 'center' }))
       await page.locator('.text-map span').first().waitFor({ timeout: 60_000 })
@@ -37,9 +37,9 @@ async function main() {
         return { start: words.find((word) => match(word, options.startText, options.startBand)), end: words.find((word) => match(word, options.endText, options.endBand)) }
       }, { startText, endText, startBand, endBand })
       assert.ok(points.start && points.end, `page ${pageIndex + 1}: drag anchors unavailable: ${JSON.stringify(points)}`)
-      await window.mouse.move(points.start.x + 1, points.start.y + points.start.height / 2)
+      await window.mouse.move(points.start.x + (reverse ? points.start.width - 1 : 1), points.start.y + points.start.height / 2)
       await window.mouse.down()
-      await window.mouse.move(points.end.x + points.end.width - 1, points.end.y + points.end.height / 2, { steps: 30 })
+      await window.mouse.move(points.end.x + (reverse ? 1 : points.end.width - 1), points.end.y + points.end.height / 2, { steps: 30 })
       await window.mouse.up()
       await window.waitForFunction((index) => document.querySelectorAll(`.pdf-page[data-page="${index}"] .text-selection`).length > 0, pageIndex)
       const geometry = await page.evaluate((element) => {
@@ -51,7 +51,7 @@ async function main() {
         return { count: rects.length, minLeft: Math.min(...rects.map((rect) => rect.left)), maxRight: Math.max(...rects.map((rect) => rect.right)), minTop: Math.min(...rects.map((rect) => rect.top)), maxBottom: Math.max(...rects.map((rect) => rect.bottom)) }
       })
       if (side === 'left') assert.ok(geometry.maxRight <= (sideLimit ?? 0.496), `page ${pageIndex + 1}: selection reached the right column: ${JSON.stringify(geometry)}`)
-      else assert.ok(geometry.minLeft >= (sideLimit ?? 0.504), `page ${pageIndex + 1}: selection reached the left column: ${JSON.stringify(geometry)}`)
+      else if (side === 'right') assert.ok(geometry.minLeft >= (sideLimit ?? 0.504), `page ${pageIndex + 1}: selection reached the left column: ${JSON.stringify(geometry)}`)
       assert.ok(geometry.maxBottom <= maxBottom, `page ${pageIndex + 1}: selection overflowed vertically: ${JSON.stringify(geometry)}`)
 
       let copied = ''
@@ -80,6 +80,7 @@ async function main() {
     }
 
     const reports = []
+    reports.push(await drag({ pageIndex: 0, startText: 'Zhou', endText: 'Blockchain-Enabled', startBand: [.65, .75, .14, .19], endBand: [.1, .5, .06, .11], include: /^Blockchain-Enabled[\s\S]*Networks:[\s\S]*Xintong Ling[\s\S]*Xiaoyang Zhou$/u, exclude: /Abstract|Received|INTRODUCTION/u, maxBottom: .2, reverse: true }))
     reports.push(await drag({ pageIndex: 6, startText: 'where', endText: 'SSESSMENT', startBand: [0, .5, .69, .75], endBand: [0, .5, .83, .88], side: 'left', include: /where[\s\S]*stability conditions[\s\S]*SSESSMENT/u, exclude: /matrix is easier|birth-death process/u, maxBottom: .89 }))
     reports.push(await drag({ pageIndex: 11, startText: 'The', endText: 'by', startBand: [.5, 1, .06, .1], endBand: [.5, 1, .06, .1], side: 'right', include: /^The derivative of E[\s\S]*is given by$/u, exclude: /where|Since|Authorized/u, maxBottom: .11 }))
     reports.push(await drag({ pageIndex: 11, startText: 'max', endText: 'obtain:', startBand: [0, .5, .24, .31], endBand: [0, .5, .42, .48], side: 'left', include: /max[\s\S]*Hence, we finally obtain:/u, exclude: /where E|We further take/u, maxBottom: .48 }))

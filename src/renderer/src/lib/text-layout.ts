@@ -166,7 +166,12 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   })
   const fallbackVisualBlock = blockId === undefined && startWord.columnAmbiguous && endWord.columnAmbiguous && [...fallbackRows.values()].every((row) => row.some((word) => word.columnAmbiguous))
   const useVisualBlock = blockId !== undefined || fallbackVisualBlock
-  const flowBounds = useVisualBlock ? undefined : textFlowBounds(words, startWord, endWord)
+  // A wide heading/author endpoint can belong to a different visual block from
+  // its other endpoint. The word list is column-major, so an index range would
+  // otherwise absorb the intervening body column; use the endpoint band instead.
+  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && (startWord.columnAmbiguous || endWord.columnAmbiguous) && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
+  const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
+  const flowBounds = useStructuralBand ? undefined : textFlowBounds(words, startWord, endWord)
   const selectionBandTop = Math.min(startWord.rect.y, endWord.rect.y) - 0.5
   const selectionBandBottom = Math.max(startWord.rect.y + startWord.rect.height, endWord.rect.y + endWord.rect.height) + 0.5
   const hasOutOfBandIntermediate = sameColumnBand && words.slice(start.wordIndex + 1, end.wordIndex).some((word) => word.column === anchorColumn && (word.rect.y + word.rect.height < selectionBandTop || word.rect.y > selectionBandBottom))
@@ -177,8 +182,12 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // geometric reading order for the whole range so an adjacent line cannot
   // leak into an otherwise complete line selection. Compact stacked formulas
   // remain in their PDF reading order because their fragments share the band.
-  const visualBandIndices = useVisualBlock
-    ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined ? word.visualBlock === blockId : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
+  const visualBandIndices = useStructuralBand
+    ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined
+      ? word.visualBlock === blockId
+      : useCrossColumnStructuralBand
+        ? word.rect.y >= minY && word.rect.y <= maxY
+        : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
     // Once a same-column drag crosses a visual row, selection must use page
     // geometry rather than the PDF object stream. Equations can emit their
     // small superscripts before the surrounding base characters; those items
