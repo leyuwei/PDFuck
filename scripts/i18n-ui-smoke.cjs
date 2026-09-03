@@ -241,6 +241,16 @@ async function main() {
     const compactAuthorBottom = await authoredRow.locator('.annotation-author-meta').evaluate((element) => element.getBoundingClientRect().bottom)
     const compactValueTop = await authoredRow.locator('.annotation-content-value').evaluate((element) => element.getBoundingClientRect().top)
     assert.ok(compactAuthorBottom <= compactValueTop + 0.5, 'single-line mode must keep the author above the annotation body')
+    await page.locator('.drawing-board-launch').click()
+    const drawingBoard = page.locator('.drawing-board-window')
+    for (const label of ['Dibuje en un lienzo redimensionable y expórtelo o colóquelo en la página actual.', 'Acciones del lienzo', 'Limpiar lienzo', 'Área de dibujo', 'Empiece a dibujar aquí', 'Mantenga pulsado y arrastre con el ratón o lápiz para dibujar.']) {
+      await drawingBoard.getByText(label, { exact: true }).waitFor()
+    }
+    assert.equal((await drawingBoard.locator('.drawing-board-surface-heading span').innerText()).replace('↘', '').trim(), 'Arrastre la barra de título para mover el tablero y una esquina de la ventana para cambiar su tamaño.')
+    assert.ok(await drawingBoard.locator('.drawing-board-toolbar').evaluate((element) => element.scrollWidth <= element.clientWidth + 1), 'localized drawing controls must not overflow')
+    await assertNoChineseControls(page, '.drawing-board-window')
+    await page.screenshot({ path: path.join(screenshotDirectory, `drawing-board-es-${packageVersion}.png`) })
+    await drawingBoard.getByRole('button', { name: 'Cerrar', exact: true }).click()
     await page.locator('.annotation-lab-launch.has-shortcut').click()
     for (const label of ['Explicación sencilla', 'Mejorar la lógica', 'Solo gramática', 'Redacción natural', 'Resolver incoherencias', 'Destacar puntos fuertes']) {
       await page.locator('.ai-polish-window').getByText(label, { exact: true }).waitFor()

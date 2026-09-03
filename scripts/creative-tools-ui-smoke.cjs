@@ -11,6 +11,7 @@ const entry = path.join(root, 'out', 'main', 'index.js')
 const releaseVersion = process.env.PDFUCK_RELEASE_VERSION || require(path.join(root, 'package.json')).version
 const artifactDirectory = path.join(root, 'output', 'playwright')
 const artifacts = {
+  drawingLayoutScreenshot: path.join(artifactDirectory, `creative-tools-drawing-layout-${releaseVersion}.png`),
   drawingScreenshot: path.join(artifactDirectory, `creative-tools-drawing-${releaseVersion}.png`),
   shapeScreenshot: path.join(artifactDirectory, `creative-tools-shape-${releaseVersion}.png`),
   restoredScreenshot: path.join(artifactDirectory, `creative-tools-restored-${releaseVersion}.png`),
@@ -167,6 +168,39 @@ async function verifyDrawingBoard(app, page) {
   const drawingWindow = page.locator('.drawing-board-window')
   await drawingWindow.waitFor()
   assert.equal(await drawingWindow.evaluate((element) => getComputedStyle(element).resize), 'both')
+  const wideLayout = await drawingWindow.evaluate((element) => {
+    const rect = (target) => {
+      const box = target.getBoundingClientRect()
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height }
+    }
+    const toolbar = element.querySelector('.drawing-board-toolbar')
+    const controls = [...element.querySelectorAll('.drawing-board-control')]
+    const lowerControls = [
+      element.querySelector('.drawing-board-brush > input'),
+      element.querySelector('.drawing-board-color > input'),
+      element.querySelector('.drawing-board-actions > button')
+    ]
+    return {
+      display: getComputedStyle(toolbar).display,
+      toolbar: rect(toolbar),
+      controls: controls.map(rect),
+      lowerControls: lowerControls.map(rect),
+      overflow: toolbar.scrollWidth - toolbar.clientWidth,
+      description: element.querySelector('.drawing-board-heading p')?.textContent?.trim(),
+      surfaceTitle: element.querySelector('.drawing-board-surface-heading b')?.textContent?.trim(),
+      emptyTitle: element.querySelector('.drawing-board-empty b')?.textContent?.trim(),
+      emptyHint: element.querySelector('.drawing-board-empty small')?.textContent?.trim()
+    }
+  })
+  assert.equal(wideLayout.display, 'grid', 'Drawing controls must use the isolated grid layout')
+  assert.equal(wideLayout.controls.length, 3, 'Drawing toolbar must expose three labelled control groups')
+  assert.ok(wideLayout.description && wideLayout.surfaceTitle && wideLayout.emptyTitle && wideLayout.emptyHint, 'Drawing instructions must be visible')
+  assert.ok(wideLayout.toolbar.height < 110, `Drawing toolbar is unexpectedly tall: ${JSON.stringify(wideLayout)}`)
+  assert.ok(wideLayout.overflow <= 1, `Drawing toolbar overflows: ${JSON.stringify(wideLayout)}`)
+  assert.ok(Math.max(...wideLayout.controls.map((box) => box.top)) - Math.min(...wideLayout.controls.map((box) => box.top)) <= 2, `Drawing control groups are not top-aligned: ${JSON.stringify(wideLayout)}`)
+  assert.ok(Math.max(...wideLayout.lowerControls.map((box) => box.top)) - Math.min(...wideLayout.lowerControls.map((box) => box.top)) <= 2, `Drawing inputs and action are not aligned: ${JSON.stringify(wideLayout)}`)
+  for (const control of wideLayout.controls) assert.ok(control.left >= wideLayout.toolbar.left && control.right <= wideLayout.toolbar.right, `Drawing control escaped its toolbar: ${JSON.stringify(wideLayout)}`)
+  await page.screenshot({ path: artifacts.drawingLayoutScreenshot })
 
   const beforeDrag = await drawingWindow.boundingBox()
   const header = await drawingWindow.locator('> header').boundingBox()
@@ -197,13 +231,29 @@ async function verifyDrawingBoard(app, page) {
   assert.ok(afterResize.width > afterDrag.width + 25, `Drawing board width was not resized: ${JSON.stringify({ afterDrag, afterResize })}`)
   assert.ok(afterResize.height > afterDrag.height + 12, `Drawing board height was not resized: ${JSON.stringify({ afterDrag, afterResize })}`)
 
+  await drawingWindow.evaluate((element) => { element.style.width = '460px' })
+  await page.waitForTimeout(100)
+  const narrowLayout = await drawingWindow.evaluate((element) => {
+    const controls = [...element.querySelectorAll('.drawing-board-control')].map((target) => {
+      const box = target.getBoundingClientRect()
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+    })
+    const toolbar = element.querySelector('.drawing-board-toolbar')
+    return { controls, overflow: toolbar.scrollWidth - toolbar.clientWidth }
+  })
+  assert.ok(narrowLayout.controls[1].top > narrowLayout.controls[0].top + 10, `Narrow drawing toolbar did not wrap by window width: ${JSON.stringify(narrowLayout)}`)
+  assert.ok(Math.abs(narrowLayout.controls[1].top - narrowLayout.controls[2].top) <= 2, `Narrow color and action controls are not aligned: ${JSON.stringify(narrowLayout)}`)
+  assert.ok(narrowLayout.overflow <= 1, `Narrow drawing toolbar overflows: ${JSON.stringify(narrowLayout)}`)
+  await drawingWindow.evaluate((element, width) => { element.style.width = `${width}px` }, afterResize.width)
+  await page.waitForTimeout(100)
+
   const brush = drawingWindow.locator('.drawing-board-toolbar input[type="range"]')
   const color = drawingWindow.locator('.drawing-board-toolbar input[type="color"]')
   await setInputValue(brush, '18')
   await setInputValue(color, '#c12f55')
   await waitUntilEqual(() => brush.inputValue(), '18', 'Brush size did not update')
   await waitUntilEqual(() => color.inputValue(), '#c12f55', 'Brush color did not update')
-  assert.equal(await drawingWindow.locator('.drawing-board-toolbar output').textContent(), '18')
+  assert.equal(await drawingWindow.locator('.drawing-board-toolbar output').textContent(), '18px')
 
   const canvas = drawingWindow.locator('.drawing-board-surface canvas')
   const canvasBox = await canvas.boundingBox()
@@ -433,7 +483,7 @@ async function main() {
       restoredImages,
       modifiedPdf: artifacts.modifiedPdf,
       exportedPng: artifacts.drawingExport,
-      screenshots: [artifacts.drawingScreenshot, artifacts.shapeScreenshot, artifacts.restoredScreenshot]
+      screenshots: [artifacts.drawingLayoutScreenshot, artifacts.drawingScreenshot, artifacts.shapeScreenshot, artifacts.restoredScreenshot]
     }, null, 2))
   } finally {
     await closeApp(app)

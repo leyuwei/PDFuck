@@ -8,11 +8,13 @@ import { DrawingBoard, type DrawingBoardLabels } from './DrawingBoard'
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const labels: DrawingBoardLabels = {
-  title: 'Drawing board', brushSize: 'Brush size', color: 'Color', clear: 'Clear', drawingArea: 'Drawing area',
+  title: 'Drawing board', description: 'Draw, export, or add to the page', brushSize: 'Brush size', color: 'Color',
+  canvasActions: 'Canvas actions', clearCanvas: 'Clear canvas', drawingArea: 'Drawing area',
+  moveResizeHint: 'Drag the title and a corner', startDrawingHere: 'Start drawing here', drawingHint: 'Press and drag to draw',
   exportPng: 'Export PNG', addToPage: 'Add to page', close: 'Close', encodingFailed: 'Encoding failed', actionFailed: 'Action failed'
 }
 
-function pointer(target: Element, type: string, x: number, y: number) {
+function pointer(target: EventTarget, type: string, x: number, y: number) {
   const event = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 7 }, clientX: { value: x }, clientY: { value: y } })
   target.dispatchEvent(event)
@@ -76,10 +78,27 @@ describe('DrawingBoard', () => {
     await act(async () => root.render(<DrawingBoard labels={labels} onClose={() => undefined} onAddPng={() => undefined} onExportPng={() => undefined} />))
     const actions = [...container.querySelectorAll<HTMLButtonElement>('footer button')]
     expect(actions.every((button) => button.disabled)).toBe(true)
-    expect(container.querySelector<HTMLElement>('.drawing-board-window')!.style.resize).toBe('both')
+    const dialog = container.querySelector<HTMLElement>('.drawing-board-window')!
+    expect(dialog.style.resize).toBe('both')
+    expect(dialog.getAttribute('aria-labelledby')).toBe(container.querySelector('h2')?.id)
+    expect(container.querySelector('.drawing-board-heading p')?.textContent).toBe(labels.description)
+    expect(container.querySelector('.drawing-board-surface-heading b')?.textContent).toBe(labels.drawingArea)
+    expect(container.querySelector('.drawing-board-surface-heading span')?.textContent).toContain(labels.moveResizeHint)
+    expect(container.querySelector('.drawing-board-empty b')?.textContent).toBe(labels.startDrawingHere)
+    expect(container.querySelector('.drawing-board-empty small')?.textContent).toBe(labels.drawingHint)
+    expect(container.querySelectorAll('.drawing-board-control')).toHaveLength(3)
+    const initialPosition = { left: Number.parseFloat(dialog.style.left), top: Number.parseFloat(dialog.style.top) }
+    await act(async () => {
+      pointer(container.querySelector('.drawing-board-window > header')!, 'pointerdown', 500, 300)
+      pointer(window, 'pointermove', 450, 270)
+      pointer(window, 'pointerup', 450, 270)
+    })
+    expect(Number.parseFloat(dialog.style.left)).toBe(initialPosition.left - 50)
+    expect(Number.parseFloat(dialog.style.top)).toBe(initialPosition.top - 30)
     const canvas = container.querySelector('canvas')!
     await act(async () => pointer(canvas, 'pointerdown', 10, 10))
-    const clear = [...container.querySelectorAll<HTMLButtonElement>('.drawing-board-toolbar button')].find((button) => button.textContent === labels.clear)!
+    expect(container.querySelector('.drawing-board-surface')?.classList.contains('has-ink')).toBe(true)
+    const clear = [...container.querySelectorAll<HTMLButtonElement>('.drawing-board-toolbar button')].find((button) => button.textContent === labels.clearCanvas)!
     await act(async () => clear.click())
     expect(context.clearRect).toHaveBeenCalledWith(0, 0, 960, 640)
     expect(actions.every((button) => button.disabled)).toBe(true)

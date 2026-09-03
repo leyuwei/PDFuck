@@ -110,7 +110,7 @@ const invariantVisibleCopy = new Set([
   'A−', 'A＋', 'Aa', 'B', 'I',
   'A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid',
   '简体中文', 'English', '日本語', 'Русский', 'Español', 'Français', 'Deutsch', 'Português', '한국어', 'العربية',
-  'Ctrl+F', 'Ctrl+C', 'PNG', 'JPG', 'EPS', 'DPI'
+  'Ctrl+F', 'Ctrl+C', 'PNG', 'JPG', 'EPS', 'DPI', 'px'
 ])
 function normalizedVisible(value) { return value.replace(/\s+/gu, ' ').trim() }
 function checkRawVisible(value, where) {

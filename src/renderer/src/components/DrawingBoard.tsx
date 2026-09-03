@@ -1,12 +1,17 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import './drawing-board.css'
 
 export interface DrawingBoardLabels {
   title: string
+  description: string
   brushSize: string
   color: string
-  clear: string
+  canvasActions: string
+  clearCanvas: string
   drawingArea: string
+  moveResizeHint: string
+  startDrawingHere: string
+  drawingHint: string
   exportPng: string
   addToPage: string
   close: string
@@ -61,17 +66,26 @@ export function DrawingBoardIcon({ size = 22 }: { size?: number }) {
   return <svg className="annotation-icon drawing-board-icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18.5c3.5-1 3.2-4.8 6.1-5.1 2.7-.3 2 3.8 4.6 3.2 2.4-.5 1.5-3.6 5.3-4.6" /><path className="accent" d="m14.5 12.5 5-7 2 2-7 5zM18.9 6.1l2 2" /></svg>
 }
 
+function ClearCanvasIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 4 11.2 11.2-4.5 4.5H9.8L4.3 14.2 14.5 4z" /><path d="m6.8 11.7 6.5 6.5M4 20h16" /></svg>
+}
+
 export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const canvasHintId = useId()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const windowRef = useRef<HTMLElement>(null)
   const stroke = useRef<{ pointerId: number } | undefined>(undefined)
-  const drag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | undefined>(undefined)
+  const stopWindowDrag = useRef<() => void>(() => undefined)
   const [brushSize, setBrushSize] = useState(6)
   const [color, setColor] = useState('#263247')
   const [hasInk, setHasInk] = useState(false)
   const [busy, setBusy] = useState<'add' | 'export'>()
   const [error, setError] = useState('')
   const [position, setPosition] = useState(() => ({ left: Math.max(12, (window.innerWidth - 720) / 2), top: Math.max(12, (window.innerHeight - 560) / 2) }))
+
+  useEffect(() => () => stopWindowDrag.current(), [])
 
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!
@@ -143,33 +157,40 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
   const beginDrag = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
     event.preventDefault()
-    drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...position }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-  const moveDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (drag.current?.pointerId !== event.pointerId) return
-    const bounds = windowRef.current?.getBoundingClientRect()
-    const width = bounds?.width || 720
-    const height = bounds?.height || 560
-    setPosition({
-      left: Math.max(8, Math.min(window.innerWidth - width - 8, drag.current.left + event.clientX - drag.current.x)),
-      top: Math.max(8, Math.min(window.innerHeight - height - 8, drag.current.top + event.clientY - drag.current.y))
-    })
-  }
-  const endDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (drag.current?.pointerId !== event.pointerId) return
-    drag.current = undefined
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    stopWindowDrag.current()
+    const origin = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...position }
+    const move = (next: PointerEvent) => {
+      if (next.pointerId !== origin.pointerId) return
+      const bounds = windowRef.current?.getBoundingClientRect()
+      const width = bounds?.width || 720
+      const height = bounds?.height || 560
+      setPosition({
+        left: Math.max(8, Math.min(window.innerWidth - width - 8, origin.left + next.clientX - origin.x)),
+        top: Math.max(8, Math.min(window.innerHeight - height - 8, origin.top + next.clientY - origin.y))
+      })
+    }
+    const stop = (next?: PointerEvent) => {
+      if (next && next.pointerId !== origin.pointerId) return
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      stopWindowDrag.current = () => undefined
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    stopWindowDrag.current = stop
   }
 
-  return <section ref={windowRef} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-label={labels.title}>
-    <header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}><span><DrawingBoardIcon />{labels.title}</span><button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
+  return <section ref={windowRef} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
+    <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div><button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
-      <label><span>{labels.brushSize}</span><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /><output>{brushSize}</output></label>
-      <label className="drawing-board-color"><span>{labels.color}</span><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></label>
-      <button type="button" disabled={!hasInk || Boolean(busy)} onClick={clear}>{labels.clear}</button>
+      <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
+      <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code>{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>
+      <div className="drawing-board-control drawing-board-actions" role="group" aria-label={labels.canvasActions}><div className="drawing-board-control-heading"><span>{labels.canvasActions}</span></div><button type="button" disabled={!hasInk || Boolean(busy)} onClick={clear}><ClearCanvasIcon />{labels.clearCanvas}</button></div>
     </div>
-    <div className="drawing-board-surface"><canvas ref={canvasRef} width={INITIAL_WIDTH} height={INITIAL_HEIGHT} tabIndex={0} aria-label={labels.drawingArea} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={endStroke} onPointerCancel={endStroke} onLostPointerCapture={endStroke} /></div>
+    <div className="drawing-board-surface-heading"><b>{labels.drawingArea}</b><span><i aria-hidden="true">↘</i>{labels.moveResizeHint}</span></div>
+    <div className={`drawing-board-surface${hasInk ? ' has-ink' : ''}`}><canvas ref={canvasRef} width={INITIAL_WIDTH} height={INITIAL_HEIGHT} tabIndex={0} aria-label={labels.drawingArea} aria-describedby={!hasInk ? canvasHintId : undefined} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={endStroke} onPointerCancel={endStroke} onLostPointerCapture={endStroke} /><div id={canvasHintId} className="drawing-board-empty"><DrawingBoardIcon size={30} /><b>{labels.startDrawingHere}</b><small>{labels.drawingHint}</small></div></div>
     <footer><span role="alert">{error}</span><button type="button" disabled={!hasInk || Boolean(busy)} onClick={() => void run('export')}>{labels.exportPng}</button><button type="button" className="primary" disabled={!hasInk || Boolean(busy)} onClick={() => void run('add')}>{labels.addToPage}</button></footer>
   </section>
 }
