@@ -12,7 +12,7 @@ const version = require(path.join(root, 'package.json')).version
 
 async function main() {
   assert.ok(fs.existsSync(pdfPath), `missing regression PDF: ${pdfPath}`)
-  fs.rmSync(userData, { recursive: true, force: true })
+  fs.rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   fs.mkdirSync(artifactDir, { recursive: true })
   const executable = process.env.PDFUCK_SMOKE_EXECUTABLE
   const app = await electron.launch({
@@ -28,14 +28,26 @@ async function main() {
       const page = window.locator(`.pdf-page[data-page="${pageIndex}"]`)
       await page.evaluate((element) => element.scrollIntoView({ block: 'center' }))
       await page.locator('.text-map span').first().waitFor({ timeout: 60_000 })
-      const points = await page.evaluate((element, options) => {
-        const pageBox = element.getBoundingClientRect()
-        const words = [...element.querySelectorAll('.text-map span')].map((span) => {
-          const box = span.getBoundingClientRect()
-          return { text: span.textContent || '', x: box.x, y: box.y, width: box.width, height: box.height, relativeX: (box.x - pageBox.left) / pageBox.width, relativeY: (box.y - pageBox.top) / pageBox.height }
-        })
-        const match = (word, text, band) => word.text === text && word.relativeX >= band[0] && word.relativeX <= band[1] && word.relativeY >= band[2] && word.relativeY <= band[3]
-        return { start: words.find((word) => match(word, options.startText, options.startBand)), end: words.find((word) => match(word, options.endText, options.endBand)) }
+      const points = await page.evaluate(async (element, options) => {
+        const locate = () => {
+          const pageBox = element.getBoundingClientRect()
+          const words = [...element.querySelectorAll('.text-map span')].map((span) => {
+            const box = span.getBoundingClientRect()
+            return { text: span.textContent || '', x: box.x, y: box.y, width: box.width, height: box.height, relativeX: (box.x - pageBox.left) / pageBox.width, relativeY: (box.y - pageBox.top) / pageBox.height }
+          })
+          const match = (word, text, band) => word.text === text && word.relativeX >= band[0] && word.relativeX <= band[1] && word.relativeY >= band[2] && word.relativeY <= band[3]
+          return { start: words.find((word) => match(word, options.startText, options.startBand)), end: words.find((word) => match(word, options.endText, options.endBand)) }
+        }
+        let points = locate()
+        const viewer = element.closest('.viewer')
+        if (viewer && points.start && points.end) {
+          const viewerBox = viewer.getBoundingClientRect()
+          const anchorMiddle = (points.start.y + points.start.height / 2 + points.end.y + points.end.height / 2) / 2
+          viewer.scrollTop += anchorMiddle - viewerBox.top - viewerBox.height / 2
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+          points = locate()
+        }
+        return points
       }, { startText, endText, startBand, endBand })
       assert.ok(points.start && points.end, `page ${pageIndex + 1}: drag anchors unavailable: ${JSON.stringify(points)}`)
       const from = { x: points.start.x + (reverse ? points.start.width - 1 : 1) + startOffsetX, y: points.start.y + points.start.height / 2 }
@@ -60,7 +72,8 @@ async function main() {
         }
         const firstLiveIndex = temporalSamples.findIndex((frame) => frame.count)
         assert.ok(firstLiveIndex >= 0 && temporalSamples.slice(firstLiveIndex).every((frame) => frame.count), `page ${pageIndex + 1}: live caption selection disappeared during drag`)
-        assert.ok(firstLiveIndex <= 6, `page ${pageIndex + 1}: live caption selection started late: frame ${firstLiveIndex}`)
+        const firstLiveDistance = Math.hypot(liveFrames[0].pointerX - (from.x - pageBox.x), liveFrames[0].pointerY - (from.y - pageBox.y))
+        assert.ok(firstLiveDistance <= Math.max(16, points.start.height * 1.5), `page ${pageIndex + 1}: live caption selection started after excessive pointer travel: ${firstLiveDistance}`)
       }
       await window.waitForFunction((index) => document.querySelectorAll(`.pdf-page[data-page="${index}"] .text-selection`).length > 0, pageIndex)
       const geometry = await page.evaluate((element) => {

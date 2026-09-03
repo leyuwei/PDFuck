@@ -30,7 +30,11 @@ async function traceSelectionMove(page, documentPage, from, to) {
     window.__selectionTemporalTrace = { state, onPointerMove }
     requestAnimationFrame(sample)
   })
-  await page.mouse.move(to.x, to.y, { steps })
+  for (let step = 1; step <= steps; step += 1) {
+    const progress = step / steps
+    await page.mouse.move(from.x + (to.x - from.x) * progress, from.y + (to.y - from.y) * progress)
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+  }
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   return documentPage.evaluate((element) => {
     const trace = window.__selectionTemporalTrace
