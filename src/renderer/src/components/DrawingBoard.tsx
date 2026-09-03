@@ -158,6 +158,8 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
     if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
     event.preventDefault()
     stopWindowDrag.current()
+    const dragHandle = event.currentTarget
+    dragHandle.setPointerCapture(event.pointerId)
     const origin = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...position }
     const move = (next: PointerEvent) => {
       if (next.pointerId !== origin.pointerId) return
@@ -174,22 +176,26 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
       window.removeEventListener('pointercancel', stop)
+      window.removeEventListener('blur', blur)
+      if (dragHandle.hasPointerCapture(origin.pointerId)) dragHandle.releasePointerCapture(origin.pointerId)
       stopWindowDrag.current = () => undefined
     }
+    const blur = () => stop()
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
     window.addEventListener('pointercancel', stop)
+    window.addEventListener('blur', blur)
     stopWindowDrag.current = stop
   }
 
   return <section ref={windowRef} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
     <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div><button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
-      <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
-      <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code>{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>
+      <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output dir="ltr" aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
+      <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code dir="ltr">{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>
       <div className="drawing-board-control drawing-board-actions" role="group" aria-label={labels.canvasActions}><div className="drawing-board-control-heading"><span>{labels.canvasActions}</span></div><button type="button" disabled={!hasInk || Boolean(busy)} onClick={clear}><ClearCanvasIcon />{labels.clearCanvas}</button></div>
     </div>
-    <div className="drawing-board-surface-heading"><b>{labels.drawingArea}</b><span><i aria-hidden="true">↘</i>{labels.moveResizeHint}</span></div>
+    <div className="drawing-board-surface-heading"><b>{labels.drawingArea}</b><span><i aria-hidden="true">⤢</i>{labels.moveResizeHint}</span></div>
     <div className={`drawing-board-surface${hasInk ? ' has-ink' : ''}`}><canvas ref={canvasRef} width={INITIAL_WIDTH} height={INITIAL_HEIGHT} tabIndex={0} aria-label={labels.drawingArea} aria-describedby={!hasInk ? canvasHintId : undefined} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={endStroke} onPointerCancel={endStroke} onLostPointerCapture={endStroke} /><div id={canvasHintId} className="drawing-board-empty"><DrawingBoardIcon size={30} /><b>{labels.startDrawingHere}</b><small>{labels.drawingHint}</small></div></div>
     <footer><span role="alert">{error}</span><button type="button" disabled={!hasInk || Boolean(busy)} onClick={() => void run('export')}>{labels.exportPng}</button><button type="button" className="primary" disabled={!hasInk || Boolean(busy)} onClick={() => void run('add')}>{labels.addToPage}</button></footer>
   </section>

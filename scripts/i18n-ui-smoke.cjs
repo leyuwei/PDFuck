@@ -246,11 +246,47 @@ async function main() {
     for (const label of ['Dibuje en un lienzo redimensionable y expórtelo o colóquelo en la página actual.', 'Acciones del lienzo', 'Limpiar lienzo', 'Área de dibujo', 'Empiece a dibujar aquí', 'Mantenga pulsado y arrastre con el ratón o lápiz para dibujar.']) {
       await drawingBoard.getByText(label, { exact: true }).waitFor()
     }
-    assert.equal((await drawingBoard.locator('.drawing-board-surface-heading span').innerText()).replace('↘', '').trim(), 'Arrastre la barra de título para mover el tablero y una esquina de la ventana para cambiar su tamaño.')
+    assert.equal((await drawingBoard.locator('.drawing-board-surface-heading span').innerText()).replace('⤢', '').trim(), 'Arrastre la barra de título para mover el tablero y una esquina de la ventana para cambiar su tamaño.')
     assert.ok(await drawingBoard.locator('.drawing-board-toolbar').evaluate((element) => element.scrollWidth <= element.clientWidth + 1), 'localized drawing controls must not overflow')
     await assertNoChineseControls(page, '.drawing-board-window')
     await page.screenshot({ path: path.join(screenshotDirectory, `drawing-board-es-${packageVersion}.png`) })
     await drawingBoard.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await page.locator('.nav-rail').getByRole('button', { name: 'Ver', exact: true }).click()
+    await page.getByRole('button', { name: 'Oscuro', exact: true }).click()
+    const drawingLanguage = page.locator('.language-select select')
+    await drawingLanguage.selectOption('ar')
+    await page.getByRole('heading', { name: 'عرض', exact: true }).waitFor()
+    await page.locator('.nav-rail').getByRole('button', { name: 'إضافة تعليق', exact: true }).click()
+    await page.locator('.drawing-board-launch').click()
+    const rtlDrawingBoard = page.locator('.drawing-board-window')
+    await rtlDrawingBoard.getByText('لوحة رسم حرة', { exact: true }).waitFor()
+    await rtlDrawingBoard.evaluate((element) => { element.style.width = '460px'; element.style.height = '440px' })
+    const rtlDrawingLayout = await rtlDrawingBoard.evaluate((element) => {
+      const surface = element.querySelector('.drawing-board-surface').getBoundingClientRect()
+      const footer = element.querySelector('footer').getBoundingClientRect()
+      const dialog = element.getBoundingClientRect()
+      return {
+        dir: document.documentElement.dir,
+        dark: Boolean(element.closest('.theme-dark')),
+        overflow: element.querySelector('.drawing-board-toolbar').scrollWidth - element.querySelector('.drawing-board-toolbar').clientWidth,
+        surfaceHeight: surface.height,
+        footerInside: footer.bottom <= dialog.bottom + 1,
+        output: [element.querySelector('output').dir, element.querySelector('output').textContent],
+        code: [element.querySelector('code').dir, element.querySelector('code').textContent]
+      }
+    })
+    assert.deepEqual(rtlDrawingLayout.output, ['ltr', '6px'], `Arabic brush value direction is unstable: ${JSON.stringify(rtlDrawingLayout)}`)
+    assert.deepEqual(rtlDrawingLayout.code, ['ltr', '#263247'], `Arabic color value direction is unstable: ${JSON.stringify(rtlDrawingLayout)}`)
+    assert.equal(rtlDrawingLayout.dir, 'rtl', 'Arabic drawing board must inherit RTL direction')
+    assert.equal(rtlDrawingLayout.dark, true, 'Arabic drawing board must inherit the dark theme')
+    assert.ok(rtlDrawingLayout.overflow <= 1 && rtlDrawingLayout.surfaceHeight > 100 && rtlDrawingLayout.footerInside, `Arabic narrow drawing board overflowed or collapsed: ${JSON.stringify(rtlDrawingLayout)}`)
+    await page.screenshot({ path: path.join(screenshotDirectory, `drawing-board-ar-dark-${packageVersion}.png`) })
+    await rtlDrawingBoard.getByRole('button', { name: 'إغلاق', exact: true }).click()
+    await page.locator('.nav-rail').getByRole('button', { name: 'عرض', exact: true }).click()
+    await drawingLanguage.selectOption('es')
+    await page.getByRole('heading', { name: 'Ver', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Brillante', exact: true }).click()
+    await page.locator('.nav-rail').getByRole('button', { name: 'Anotar', exact: true }).click()
     await page.locator('.annotation-lab-launch.has-shortcut').click()
     for (const label of ['Explicación sencilla', 'Mejorar la lógica', 'Solo gramática', 'Redacción natural', 'Resolver incoherencias', 'Destacar puntos fuertes']) {
       await page.locator('.ai-polish-window').getByText(label, { exact: true }).waitFor()

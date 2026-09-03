@@ -231,20 +231,24 @@ async function verifyDrawingBoard(app, page) {
   assert.ok(afterResize.width > afterDrag.width + 25, `Drawing board width was not resized: ${JSON.stringify({ afterDrag, afterResize })}`)
   assert.ok(afterResize.height > afterDrag.height + 12, `Drawing board height was not resized: ${JSON.stringify({ afterDrag, afterResize })}`)
 
-  await drawingWindow.evaluate((element) => { element.style.width = '460px' })
+  await drawingWindow.evaluate((element) => { element.style.width = '460px'; element.style.height = '440px' })
   await page.waitForTimeout(100)
   const narrowLayout = await drawingWindow.evaluate((element) => {
+    const rect = (target) => { const box = target.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, height: box.height } }
     const controls = [...element.querySelectorAll('.drawing-board-control')].map((target) => {
       const box = target.getBoundingClientRect()
       return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
     })
     const toolbar = element.querySelector('.drawing-board-toolbar')
-    return { controls, overflow: toolbar.scrollWidth - toolbar.clientWidth }
+    const dialog = rect(element), surface = rect(element.querySelector('.drawing-board-surface')), footer = rect(element.querySelector('footer'))
+    return { controls, dialog, surface, footer, overflow: toolbar.scrollWidth - toolbar.clientWidth }
   })
   assert.ok(narrowLayout.controls[1].top > narrowLayout.controls[0].top + 10, `Narrow drawing toolbar did not wrap by window width: ${JSON.stringify(narrowLayout)}`)
   assert.ok(Math.abs(narrowLayout.controls[1].top - narrowLayout.controls[2].top) <= 2, `Narrow color and action controls are not aligned: ${JSON.stringify(narrowLayout)}`)
   assert.ok(narrowLayout.overflow <= 1, `Narrow drawing toolbar overflows: ${JSON.stringify(narrowLayout)}`)
-  await drawingWindow.evaluate((element, width) => { element.style.width = `${width}px` }, afterResize.width)
+  assert.ok(narrowLayout.surface.height > 100, `Narrow drawing canvas collapsed: ${JSON.stringify(narrowLayout)}`)
+  assert.ok(narrowLayout.footer.bottom <= narrowLayout.dialog.bottom + 1, `Narrow drawing footer escaped the window: ${JSON.stringify(narrowLayout)}`)
+  await drawingWindow.evaluate((element, size) => { element.style.width = `${size.width}px`; element.style.height = `${size.height}px` }, { width: afterResize.width, height: afterResize.height })
   await page.waitForTimeout(100)
 
   const brush = drawingWindow.locator('.drawing-board-toolbar input[type="range"]')

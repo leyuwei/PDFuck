@@ -87,6 +87,8 @@ describe('DrawingBoard', () => {
     expect(container.querySelector('.drawing-board-empty b')?.textContent).toBe(labels.startDrawingHere)
     expect(container.querySelector('.drawing-board-empty small')?.textContent).toBe(labels.drawingHint)
     expect(container.querySelectorAll('.drawing-board-control')).toHaveLength(3)
+    expect(container.querySelector('.drawing-board-control-heading output')?.getAttribute('dir')).toBe('ltr')
+    expect(container.querySelector('.drawing-board-control-heading code')?.getAttribute('dir')).toBe('ltr')
     const initialPosition = { left: Number.parseFloat(dialog.style.left), top: Number.parseFloat(dialog.style.top) }
     await act(async () => {
       pointer(container.querySelector('.drawing-board-window > header')!, 'pointerdown', 500, 300)
@@ -95,6 +97,13 @@ describe('DrawingBoard', () => {
     })
     expect(Number.parseFloat(dialog.style.left)).toBe(initialPosition.left - 50)
     expect(Number.parseFloat(dialog.style.top)).toBe(initialPosition.top - 30)
+    const positionAfterDrag = { left: dialog.style.left, top: dialog.style.top }
+    await act(async () => {
+      pointer(container.querySelector('.drawing-board-window > header')!, 'pointerdown', 450, 270)
+      window.dispatchEvent(new Event('blur'))
+      pointer(window, 'pointermove', 380, 210)
+    })
+    expect({ left: dialog.style.left, top: dialog.style.top }).toEqual(positionAfterDrag)
     const canvas = container.querySelector('canvas')!
     await act(async () => pointer(canvas, 'pointerdown', 10, 10))
     expect(container.querySelector('.drawing-board-surface')?.classList.contains('has-ink')).toBe(true)
