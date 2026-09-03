@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PrintPdfOptions } from '../shared/contracts'
-import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
+import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview, windowsPrinterPreferencesArguments } from './print-settings'
 
-const options: PrintPdfOptions = { pageSize: 'A4', orientation: 'portrait', duplex: 'simplex', multiPage: false, rows: 2, columns: 2, scale: 100, frame: false }
+const options: PrintPdfOptions = { pageSize: 'A4', orientation: 'portrait', duplex: 'simplex', copies: 1, quality: 600, multiPage: false, rows: 2, columns: 2, scale: 100, frame: false }
 
 describe('direct printer settings', () => {
   it('dispatches silently to the exact system printer with explicit simplex and portrait', () => {
     expect(buildDirectPrintOptions(options, 'OFFICE-PRINTER-01')).toEqual({
       silent: true, deviceName: 'OFFICE-PRINTER-01', printBackground: true,
-      pageSize: 'A4', duplexMode: 'simplex', pagesPerSheet: 1, margins: { marginType: 'none' }, landscape: false
+      pageSize: 'A4', duplexMode: 'simplex', copies: 1, collate: false, dpi: { horizontal: 600, vertical: 600 }, pagesPerSheet: 1, margins: { marginType: 'none' }, landscape: false
     })
   })
 
@@ -21,6 +21,15 @@ describe('direct printer settings', () => {
     const result = buildDirectPrintOptions({ ...options, orientation: 'auto', duplex: 'longEdge' }, 'Printer')
     expect(result).toMatchObject({ pageSize: 'A4', duplexMode: 'longEdge' })
     expect(result).not.toHaveProperty('landscape')
+  })
+
+  it('passes copies, collation, and raster quality to Electron printing', () => {
+    expect(buildDirectPrintOptions({ ...options, copies: 3, quality: 300 }, 'Printer'))
+      .toMatchObject({ copies: 3, collate: true, dpi: { horizontal: 300, vertical: 300 } })
+  })
+
+  it('keeps a printer name with shell characters in one preferences argument', () => {
+    expect(windowsPrinterPreferencesArguments('Office & Lab Printer')).toEqual(['printui.dll,PrintUIEntry', '/e', '/n', 'Office & Lab Printer'])
   })
 
   it('sanitizes, labels and sorts printer data without exposing driver options', () => {
@@ -43,6 +52,12 @@ describe('direct printer settings', () => {
     expect(validPrintOptions({ ...options, scale: 25 })).toBe(true)
     expect(validPrintOptions({ ...options, scale: 200 })).toBe(true)
     expect(validPrintOptions({ ...options, scale: 201 })).toBe(false)
+    expect(validPrintOptions({ ...options, copies: 99, quality: 150 })).toBe(true)
+    expect(validPrintOptions({ ...options, copies: 0 })).toBe(false)
+    expect(validPrintOptions({ ...options, copies: 1.5 })).toBe(false)
+    expect(validPrintOptions({ ...options, copies: 100 })).toBe(false)
+    expect(validPrintOptions({ ...options, quality: 450 })).toBe(false)
+    expect(validPrintOptions({ ...options, quality: '300' })).toBe(false)
   })
 
   it('waits until PDF preview captures have visibly stabilized', async () => {

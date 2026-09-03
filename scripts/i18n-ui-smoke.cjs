@@ -35,11 +35,22 @@ async function assertAdaptiveToolPanel(page, language, module) {
     const horizontal = element.scrollWidth - element.clientWidth
     const vertical = element.scrollHeight - element.clientHeight
     const descendants = [...element.querySelectorAll('span, strong, small, kbd')].filter((child) => child instanceof HTMLElement)
-    const childEscapes = descendants.some((child) => { const box = child.getBoundingClientRect(); return box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1 || child.scrollWidth > child.clientWidth + 1 || child.scrollHeight > child.clientHeight + 1 })
+    const childEscapes = descendants.some((child) => {
+      const box = child.getBoundingClientRect()
+      const clampedHint = child.tagName === 'SMALL' && getComputedStyle(child).webkitLineClamp === '2'
+      return box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1 || (!clampedHint && (child.scrollWidth > child.clientWidth + 1 || child.scrollHeight > child.clientHeight + 1))
+    })
     const escaped = vertical > 1 || (element.tagName !== 'BUTTON' && horizontal > 1) || childEscapes
     return escaped ? [{ tag: element.tagName, className: element.className, text: (element.innerText || '').replace(/\s+/g, ' ').slice(0, 120), client: [element.clientWidth, element.clientHeight], scroll: [element.scrollWidth, element.scrollHeight], children: descendants.map((child) => { const box = child.getBoundingClientRect(); return { tag: child.tagName, className: child.className, left: box.left, right: box.right, width: box.width, client: [child.clientWidth, child.clientHeight], scroll: [child.scrollWidth, child.scrollHeight] } }) }] : []
   }))
   assert.deepEqual(violations, [], `${language}/${module} tool-panel copy escaped its adaptive border`)
+  const overlongHints = await page.locator('.tool-panel .tool-panel-action small, .tool-panel .tool-button small').evaluateAll((elements) => elements.flatMap((element) => {
+    if (!(element instanceof HTMLElement) || !element.offsetParent) return []
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight)
+    const lines = lineHeight > 0 ? element.getBoundingClientRect().height / lineHeight : 0
+    return lines > 2.05 ? [{ text: element.innerText, lines }] : []
+  }))
+  assert.deepEqual(overlongHints, [], `${language}/${module} tool-card hints must use at most two lines`)
 }
 
 async function main() {
@@ -56,16 +67,16 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 700))
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     const languages = [
-      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], shape: '在页面上添加图形…', drawing: '自由画板', timeout: '响应超时时间', transferPrompt: '释放以移回文档标签页', cjkFree: false },
-      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], shape: 'Add Shape to Page…', drawing: 'Free Drawing Board', timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
-      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], shape: 'ページに図形を追加…', drawing: 'フリードローイングボード', timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
-      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], shape: 'Добавить фигуру на страницу…', drawing: 'Свободная доска', timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
-      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], shape: 'Añadir forma a la página…', drawing: 'Pizarra de dibujo libre', timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true },
-      { value: 'fr', view: 'Affichage', recent: 'Fichiers récents', modules: ['Modifier', 'Annoter', 'Enregistrer'], shape: 'Ajouter une forme à la page…', drawing: 'Tableau de dessin libre', timeout: 'Délai de réponse', transferPrompt: 'Déposez pour replacer dans les onglets de document', cjkFree: true },
-      { value: 'de', view: 'Ansicht', recent: 'Zuletzt verwendete Dateien', modules: ['Bearbeiten', 'Anmerkungen hinzufügen', 'Speichern'], shape: 'Form zur Seite hinzufügen…', drawing: 'Freie Zeichenfläche', timeout: 'Antwort-Timeout', transferPrompt: 'Zum Verschieben in die Dokumentregisterkarten ziehen', cjkFree: true },
-      { value: 'pt', view: 'Visualizar', recent: 'Arquivos recentes', modules: ['Editar', 'Anotar', 'Salvar'], shape: 'Adicionar forma à página…', drawing: 'Quadro de desenho livre', timeout: 'Tempo limite de resposta', transferPrompt: 'Solte para mover para as guias do documento', cjkFree: true },
-      { value: 'ko', view: '보기', recent: '최근 파일', modules: ['편집', '주석 달기', '저장'], shape: '페이지에 도형 추가…', drawing: '자유 그리기 보드', timeout: '응답 시간 초과', transferPrompt: '드롭하여 문서 탭으로 이동', cjkFree: true },
-      { value: 'ar', view: 'عرض', recent: 'الملفات الأخيرة', modules: ['تحرير', 'إضافة تعليق', 'حفظ'], shape: 'إضافة شكل إلى الصفحة…', drawing: 'لوحة رسم حرة', timeout: 'مهلة الاستجابة', transferPrompt: 'اسحب وأفلت للنقل إلى علامات تبويب المستند', cjkFree: true, dir: 'rtl' }
+      { value: 'zh', view: '查看', recent: '最近打开', modules: ['编辑', '批注', '保存'], shape: '在页面上添加图形…', drawing: '自由画板', noteHint: '点击页面放置', insertHint: '点击文字间隙插入', timeout: '响应超时时间', transferPrompt: '释放以移回文档标签页', cjkFree: false },
+      { value: 'en', view: 'View', recent: 'Recent Files', modules: ['Edit', 'Annotate', 'Save'], shape: 'Add Shape to Page…', drawing: 'Free Drawing Board', noteHint: 'Click the page to place', insertHint: 'Click a text gap to insert', timeout: 'Response timeout', transferPrompt: 'Drop to Move into Document Tabs', cjkFree: true },
+      { value: 'ja', view: '表示', recent: '最近開いたファイル', modules: ['編集', '注釈', '保存'], shape: 'ページに図形を追加…', drawing: 'フリードローイングボード', noteHint: 'ページをクリックして配置', insertHint: '文字の間をクリックして挿入', timeout: '応答タイムアウト', transferPrompt: 'ドロップして文書タブに戻す', cjkFree: false },
+      { value: 'ru', view: 'Просмотр', recent: 'Недавние файлы', modules: ['Редактирование', 'Аннотации', 'Сохранить'], shape: 'Добавить фигуру на страницу…', drawing: 'Свободная доска', noteHint: 'Щёлкните страницу, чтобы разместить', insertHint: 'Щёлкните между символами для вставки', timeout: 'Тайм-аут ответа', transferPrompt: 'Отпустите, чтобы вернуть во вкладки документов', cjkFree: true },
+      { value: 'es', view: 'Ver', recent: 'Archivos recientes', modules: ['Editar', 'Anotar', 'Guardar'], shape: 'Añadir forma a la página…', drawing: 'Pizarra de dibujo libre', noteHint: 'Haga clic en la página para colocarlo', insertHint: 'Haga clic en un espacio del texto para insertar', timeout: 'Tiempo de espera de respuesta', transferPrompt: 'Suelte para mover a las pestañas del documento', cjkFree: true },
+      { value: 'fr', view: 'Affichage', recent: 'Fichiers récents', modules: ['Modifier', 'Annoter', 'Enregistrer'], shape: 'Ajouter une forme à la page…', drawing: 'Tableau de dessin libre', noteHint: 'Cliquez sur la page pour placer', insertHint: 'Cliquez dans un espace du texte pour insérer', timeout: 'Délai de réponse', transferPrompt: 'Déposez pour replacer dans les onglets de document', cjkFree: true },
+      { value: 'de', view: 'Ansicht', recent: 'Zuletzt verwendete Dateien', modules: ['Bearbeiten', 'Anmerkungen hinzufügen', 'Speichern'], shape: 'Form zur Seite hinzufügen…', drawing: 'Freie Zeichenfläche', noteHint: 'Zum Platzieren auf die Seite klicken', insertHint: 'Zum Einfügen in eine Textlücke klicken', timeout: 'Antwort-Timeout', transferPrompt: 'Zum Verschieben in die Dokumentregisterkarten ziehen', cjkFree: true },
+      { value: 'pt', view: 'Visualizar', recent: 'Arquivos recentes', modules: ['Editar', 'Anotar', 'Salvar'], shape: 'Adicionar forma à página…', drawing: 'Quadro de desenho livre', noteHint: 'Clique na página para posicionar', insertHint: 'Clique em um espaço do texto para inserir', timeout: 'Tempo limite de resposta', transferPrompt: 'Solte para mover para as guias do documento', cjkFree: true },
+      { value: 'ko', view: '보기', recent: '최근 파일', modules: ['편집', '주석 달기', '저장'], shape: '페이지에 도형 추가…', drawing: '자유 그리기 보드', noteHint: '페이지를 클릭해 배치', insertHint: '텍스트 사이를 클릭해 삽입', timeout: '응답 시간 초과', transferPrompt: '드롭하여 문서 탭으로 이동', cjkFree: true },
+      { value: 'ar', view: 'عرض', recent: 'الملفات الأخيرة', modules: ['تحرير', 'إضافة تعليق', 'حفظ'], shape: 'إضافة شكل إلى الصفحة…', drawing: 'لوحة رسم حرة', noteHint: 'انقر على الصفحة لوضعها', insertHint: 'انقر في فجوة نصية للإدراج', timeout: 'مهلة الاستجابة', transferPrompt: 'اسحب وأفلت للنقل إلى علامات تبويب المستند', cjkFree: true, dir: 'rtl' }
     ]
     const languageSelect = page.locator('.language-select select')
     await languageSelect.waitFor()
@@ -80,10 +91,16 @@ async function main() {
       assert.deepEqual(await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang: language.value, dir: language.dir || 'ltr' }, `${language.value} document locale metadata`)
       await page.getByRole('heading', { name: language.view, exact: true }).waitFor()
       await page.getByRole('heading', { name: language.recent, exact: true }).waitFor()
+      assert.equal(await page.locator('.recent-empty b').innerText(), await page.locator('.recent-heading > span').innerText(), `${language.value}: recent empty title must reuse the no-recent-files copy`)
+      assert.ok((await page.locator('.recent-empty small').innerText()).trim(), `${language.value}: recent empty state needs a concise explanation`)
       for (const module of language.modules) {
         await page.locator('.nav-rail').getByRole('button', { name: module, exact: true }).click()
         await page.getByRole('heading', { name: module, exact: true }).waitFor()
         await assertAdaptiveToolPanel(page, language.value, module)
+        if (module === language.modules[1]) {
+          assert.equal(await page.locator('.tool-panel .annotation-icon.note').locator('..').locator('small').innerText(), language.noteHint, `${language.value}: note hint must describe page placement`)
+          assert.equal(await page.locator('.tool-panel .annotation-icon.insert').locator('..').locator('small').innerText(), language.insertHint, `${language.value}: insert hint must describe a text gap`)
+        }
       }
       await page.locator('.nav-rail').getByRole('button', { name: language.modules[0], exact: true }).click()
       await page.getByText(language.shape, { exact: true }).waitFor()
@@ -243,7 +260,7 @@ async function main() {
     assert.ok(compactAuthorBottom <= compactValueTop + 0.5, 'single-line mode must keep the author above the annotation body')
     await page.locator('.drawing-board-launch').click()
     const drawingBoard = page.locator('.drawing-board-window')
-    for (const label of ['Dibuje en un lienzo redimensionable y expórtelo o colóquelo en la página actual.', 'Acciones del lienzo', 'Limpiar lienzo', 'Área de dibujo', 'Empiece a dibujar aquí', 'Mantenga pulsado y arrastre con el ratón o lápiz para dibujar.']) {
+    for (const label of ['Dibuje, exporte o coloque en la página', 'Acciones del lienzo', 'Limpiar lienzo', 'Área de dibujo', 'Empiece a dibujar aquí', 'Mantenga pulsado y arrastre con el ratón o lápiz para dibujar.']) {
       await drawingBoard.getByText(label, { exact: true }).waitFor()
     }
     assert.equal((await drawingBoard.locator('.drawing-board-surface-heading span').innerText()).replace('⤢', '').trim(), 'Arrastre la barra de título para mover el tablero y una esquina de la ventana para cambiar su tamaño.')
@@ -295,7 +312,7 @@ async function main() {
     await page.locator('.ai-polish-window').getByRole('button', { name: 'Cerrar', exact: true }).click()
     const temporaryWarning = page.locator('.temporary-document-warning')
     if (await temporaryWarning.count()) {
-      await temporaryWarning.getByText('Este archivo puede estar en una carpeta temporal. Guárdelo en otro lugar para no perderlo.', { exact: true }).waitFor()
+      await temporaryWarning.getByText('El archivo puede ser temporal. Guarde una copia en otro lugar.', { exact: true }).waitFor()
     }
     await page.locator('.nav-rail').getByRole('button', { name: 'Guardar', exact: true }).click()
     await page.getByText('Seleccionar páginas e imprimir…', { exact: true }).click()

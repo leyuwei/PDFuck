@@ -117,15 +117,25 @@ export function buildNativePrintJobOptions(options: PrintPdfOptions): NativePrin
   // meaning intact instead of interpreting these constants as page direction.
   const duplex = { simplex: 1, longEdge: 2, shortEdge: 3 }[options.duplex]
   return {
-    copies: 1,
-    collate: false,
+    copies: options.copies,
+    collate: options.copies > 1,
     paperSize,
     duplex,
     // Automatic jobs are normalized to portrait media by the renderer while
     // retaining each sheet's optimal visible orientation.
     orientation: options.orientation === 'landscape' ? 2 : 1,
-    quality: 600
+    quality: options.quality
   }
+}
+
+/**
+ * The native module repeats pages inside one GDI document. Keep hardware-duplex
+ * copies in separate jobs so an odd-page document cannot pair two copies on one sheet.
+ */
+export function buildNativePrintJobs(options: PrintPdfOptions): NativePrintJobOptions[] {
+  const job = buildNativePrintJobOptions(options)
+  if (options.duplex === 'simplex' || options.copies === 1) return [job]
+  return Array.from({ length: options.copies }, () => ({ ...job, copies: 1, collate: false }))
 }
 
 export async function printPdfWithWindowsDriver(
@@ -137,9 +147,9 @@ export async function printPdfWithWindowsDriver(
   const native = await loadNativeModule()
   await preparePdfium(paths)
   const printer = new native.PDFPrinter(printerName)
-  // A long document at 600 DPI should retain only the current raster page.
+  // A long document should retain only the current raster page at the selected DPI.
   printer.setCacheEnabled(false)
-  await printer.print(pdfPath, buildNativePrintJobOptions(options))
+  for (const job of buildNativePrintJobs(options)) await printer.print(pdfPath, job)
 }
 
 /** Package smoke test: load DLLs and bind a real device without creating a print job. */

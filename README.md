@@ -38,15 +38,14 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.8
+## What's New in 2.0.9
 
-- Temporary-directory warnings now belong to the document that triggered them and disappear as soon as that document closes.
-- The `uck` part of the PDFuck wordmark automatically switches contrast with the light or dark theme.
-- Both recent-file surfaces retain up to 50 PDFs and use a compact, scrollable list when the window cannot show them all.
-- The main title-bar tools remain geometrically centered as the window is resized, while redesigned Windows minimize, maximize/restore, and close icons stay crisp at native title-bar scale.
-- Annotation Lab now includes a movable, resizable free drawing board with brush width and color controls. A drawing can be exported as PNG or placed on the current PDF page through the existing editable-image workflow.
-- Edit > Content now includes arrows, ellipses, and rectangles with configurable line width, outline/fill transparency and colors, line style, and arrowhead size and style. Shapes are placed through that same proven editable-image workflow.
-- Every new label, status, error, and control is present in all ten interface languages.
+- Helper text is shorter and follows one consistent two-line layout across all ten interface languages. Note and text-insertion tools now show distinct, task-specific guidance.
+- Printing now supports 1–99 copies and selectable 150, 300, or 600 DPI PDF rasterization quality on both the native Windows path and the cross-platform Electron path.
+- Printer preferences open for the selected Windows device, with the system printer page as a safe fallback for driver-specific media, color, and finishing options.
+- Printers without automatic duplex support get an odd-pages / flip-and-reinsert / even-pages guide, optional reverse output order, and one-click pass selection. Manual passes force one page per sheet and one copy to preserve page parity.
+- Multi-copy hardware-duplex jobs are separated at copy boundaries on Windows, preventing an odd-page document from sharing a sheet between adjacent copies.
+- Print UI and native-driver smoke tests use generated fixtures and intercepted jobs; automated validation never consumes paper.
 
 ## Download and Install
 
@@ -105,9 +104,11 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 ### Save, Print, and Export
 
 - Save or Save As PDF, including unsaved in-memory changes. The normal Save action is disabled until the document actually has unsaved changes; Save As remains available for an open clean document. Closing a dirty tab or window offers Save and Close, while a dirty multi-document window saves all modified tabs in sequence and stops safely if any Save As dialog is canceled.
-- PDFuck discovers the printers installed in the operating system and selects one directly inside the unified page-selection, settings, and preview window. On Windows, jobs use the native GDI/DEVMODE path and query each driver's duplex capability; simplex, long-edge binding (`DMDUP_VERTICAL`), and short-edge binding (`DMDUP_HORIZONTAL`) are written correctly into that individual job instead of inheriting the printer default. macOS and other supported Electron platforms keep the same physical long-/short-edge meaning.
+- PDFuck discovers the printers installed in the operating system and selects one directly inside the unified page-selection, settings, and preview window. On Windows, jobs use the native GDI/DEVMODE path and query each driver's duplex capability; simplex, long-edge binding (`DMDUP_VERTICAL`), and short-edge binding (`DMDUP_HORIZONTAL`) are written correctly into that individual job instead of inheriting the printer default. Multi-copy hardware-duplex jobs keep each copy in a separate native job so odd page counts cannot cross copy boundaries. macOS and other supported Electron platforms keep the same physical long-/short-edge meaning.
 - Select all, current, odd, even, or arbitrary non-contiguous pages. Printing supports paper size, multi-page layouts, optional page frames, and an independent 25%-200% scale for both one-page and multi-page printing. The preview and controls each occupy half of the dialog body, and multi-page layout uses one accessible switch without a duplicate checkbox. Values above 100% deliberately allow edge cropping.
-- The preview is rendered at high pixel density from the same imposed PDF that is dispatched to the printer, including scale, orientation, margins, multi-page placement, and frames. Windows output uses a 600-DPI PDFium raster passed to the selected driver for clearer physical output.
+- Set 1–99 copies and choose 150, 300, or 600 DPI PDF rasterization quality. Driver-specific media, color, and finishing controls remain available through the selected printer's system preferences shortcut.
+- When automatic duplex is unavailable or unreported, the dialog explains the odd-page and even-page passes, can reverse output order for printers with a different feed direction, and prepares each pass as one page per sheet and one copy.
+- The preview is rendered at high pixel density from the same imposed PDF that is dispatched to the printer, including scale, orientation, margins, multi-page placement, and frames. Windows output passes the selected PDFium rasterization DPI to the chosen driver.
 - Print orientation can be forced to portrait or landscape, or left on the default per-sheet Auto mode. Auto evaluates the actual pages placed on each sheet, so mixed portrait/landscape documents keep the matching orientation in both the application preview and the imposed PDF dispatched to the printer.
 - Export selected pages as one combined PDF, one PDF per page, PNG, JPG, or EPS. PNG/JPG/EPS accept any positive DPI entered by the user without live correction and preserve original page-number suffixes such as `_001` and `_003`; unsafe canvas sizes are rejected with a localized explanation.
 
@@ -170,17 +171,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.8` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.9` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.8
+npm run package:windows -- 2.0.9
 ```
 
 ```sh
-npm run package:macos -- 2.0.8
+npm run package:macos -- 2.0.9
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.8` and `bash scripts/package-macos.sh 2.0.8`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.9` and `bash scripts/package-macos.sh 2.0.9`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -293,15 +294,14 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.8 新增与完善
+## 2.0.9 新增与完善
 
-- 临时目录黄色提示现在只属于触发它的文档，关闭该文档后会立即消失。
-- PDFuck 字标中的 `uck` 会随浅色/深色主题自动切换对比色。
-- 欢迎页与“打开文件”弹出列表均保留最近 50 份 PDF；内容超出窗口时使用紧凑、易操作的滚动列表。
-- 主标题栏工具组会随窗口宽度始终保持几何居中；Windows 最小化、最大化/还原和关闭图标也按原生标题栏比例重新绘制。
-- 批注实验室新增可移动、可缩放的自由画板；画笔、颜色和画布操作采用等高对齐分组，并明确显示绘制、移动和缩放提示，浮窗变窄时控件会按画板自身宽度重排。画稿既可导出 PNG，也可复用现有图片编辑链直接加入当前 PDF 页。
-- “编辑 > 内容”新增箭头、椭圆和方框，可设置线宽、边框/填充颜色与透明状态、线型，以及箭头大小和样式；生成图形复用同一套可编辑图片放置链。
-- 上述全部按钮、状态、错误与操作提示均完整覆盖十种界面语言。
+- 十种界面语言的操作提示均已简化并统一为两行以内；便签与插入文字不再共用含义不符的提示。
+- 打印份数支持 1–99 份，Windows 原生链路与跨平台 Electron 链路均可选择 150、300 或 600 DPI 的 PDF 栅格化质量。
+- Windows 可直接打开当前所选打印机的首选项；若驱动入口不可用，则安全转到系统打印机页面，便于调整纸张、颜色和装订等驱动专属选项。
+- 不支持自动双面的打印机将显示“奇数页—翻面并重新放纸—偶数页”步骤、反向输出选项和两次打印入口；手动双面会强制每张纸一页、一次一份，避免页码奇偶错位。
+- Windows 自动双面的多份作业按份拆开提交，奇数页文档不会让相邻两份共用一张纸。
+- 打印界面和原生驱动冒烟测试改用自动生成样本与拦截作业，自动化测试不会实际出纸。
 
 ## Windows 下载与安装
 
@@ -435,9 +435,11 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 ### 保存、打印与导出
 
 - 保存或另存为 PDF；关闭有未保存修改的标签或窗口时可直接“保存后关闭”，多文档保存会在任一另存为被取消时安全停止关闭；
-- 软件会直接识别操作系统中已安装的打印机，并在统一打印浮窗内完成设备选择、页码选择、设置和预览；Windows 会走原生 GDI/DEVMODE 通道，读取每台驱动的双面能力，严格按长边装订 `DMDUP_VERTICAL`、短边装订 `DMDUP_HORIZONTAL` 写入当前作业；macOS 等平台保持相同的物理翻边语义；
+- 软件会直接识别操作系统中已安装的打印机，并在统一打印浮窗内完成设备选择、页码选择、设置和预览；Windows 会走原生 GDI/DEVMODE 通道，读取每台驱动的双面能力，严格按长边装订 `DMDUP_VERTICAL`、短边装订 `DMDUP_HORIZONTAL` 写入当前作业；自动双面的多份作业会按份拆开提交，避免奇数页跨份共纸；macOS 等平台保持相同的物理翻边语义；
 - 可选择全部、当前、奇数、偶数或任意不连续页面，并设置纸张、每张纸多页拼版、25%–200% 独立缩放和页面边框；打印设置区与预览区各占浮窗主体一半，多页拼版只保留一个可访问开关，不再重复显示复选框；单页与多页拼版都支持缩放，超过 100% 时允许按预览裁切边缘；默认不添加页面边框，只有主动勾选时才会写入分隔线；
-- 预览不再使用近似缩略图，而是以高像素密度直接渲染即将派发的最终拼版 PDF，缩放、方向、页边距、多页位置和边框与作业保持同源；Windows 物理输出使用 600 DPI PDFium 栅格交给所选驱动；
+- 份数支持 1–99 份，PDF 栅格化质量可选择 150、300 或 600 DPI；打印机专属的纸张、颜色和后处理设置可通过当前设备的系统首选项调整；
+- 无自动双面能力或能力未知时，会给出奇偶页两次打印、翻面重新放纸和反向输出说明；两次手动作业固定为每张纸一页、一次一份，避免奇偶页错位；
+- 预览不再使用近似缩略图，而是以高像素密度直接渲染即将派发的最终拼版 PDF，缩放、方向、页边距、多页位置和边框与作业保持同源；Windows 会按所选 DPI 将 PDFium 栅格交给所选驱动；
 - 打印方向支持自动、纵向和横向；默认自动模式会针对每一张输出纸上的实际页面独立选择方向，横纵页面混排文档的应用预览和最终提交给系统的打印 PDF 保持一致；
 - 输入 `1-3, 5, 8-10` 即可快速指定页码，错误范围会即时提示；
 - 把指定页面导出为新 PDF，或导出 PNG、JPG、EPS；
@@ -508,17 +510,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.8`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.9`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.8
+npm run package:windows -- 2.0.9
 ```
 
 ```sh
-npm run package:macos -- 2.0.8
+npm run package:macos -- 2.0.9
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.8` 和 `bash scripts/package-macos.sh 2.0.8`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.9` 和 `bash scripts/package-macos.sh 2.0.9`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

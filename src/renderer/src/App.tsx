@@ -158,7 +158,7 @@ function RecentWelcome({ recent, onOpen, onChoose }: { recent: RecentPdf[]; onOp
   return <div className="welcome-layout">
     <section className="welcome-hero"><div className="welcome-icon"><span>PDF</span></div><h1>{ui("ui.openAPdfToGetStarted")}</h1><p>{ui("ui.readEditAnnotateAndExportInOneFocusedWorkspace")}</p><button className="primary" onClick={onChoose}>{ui("ui.choosePdfFile")}</button><small>{ui("ui.youCanAlsoDragAPdfFileIntoThisWindow")}</small></section>
     <section className="recent-panel"><div className="recent-heading"><div><small>{ui("ui.quickOpen")}</small><h2>{ui("ui.recentFiles")}</h2></div><span>{recent.length ? `${recent.length} ${ui("ui.files")}` : ui("ui.noRecentFiles")}</span></div>
-      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>{ui("ui.recentlyOpenedPdfsAppearHere")}</b><small>{ui("ui.resumeReadingAnyPreviousFileInOneClick")}</small></div>}</div>
+      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>{ui("ui.noRecentFiles")}</b><small>{ui("ui.recentlyOpenedPdfsAppearHere")}</small></div>}</div>
     </section>
   </div>
 }
@@ -1261,11 +1261,11 @@ export default function App() {
   const printPdf = useCallback(async (pages: number[], options: PrintPdfOptions, printerName: string) => {
     const model = modelRef.current
     if (!model || printingRef.current) return
-    printingRef.current = true; setPrinting(true); setStatus(`正在准备打印 ${pages.length} 页…`)
+    printingRef.current = true; setPrinting(true); setStatus(t('status.preparingPrint', { count: pages.length }))
     try {
       const bytes = await imposePdfForPrint(model.bytes, pages, options)
       const result = await window.desktop.printPdf({ data: bytes, name: model.fileName, printerName, options })
-      setStatus(result.status === 'printed' ? `已发送 ${pages.length} 页到打印机` : '已取消打印')
+      setStatus(result.status === 'printed' ? t('status.sentPrint', { count: pages.length }) : ui("ui.printingCanceled"))
     } catch (error) { showError(error) }
     finally { printingRef.current = false; setPrinting(false) }
   }, [showError])
@@ -1407,7 +1407,7 @@ export default function App() {
     {dialog?.type === 'crop_confirm' && <ConfirmDialog message={ui("ui.cropTheCurrentPageToTheSelectedArea")} onCancel={() => setDialog(null)} onConfirm={() => { const crop = dialog; setDialog(null); void mutate((value) => value.cropPage(crop.pageIndex, crop.rect), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”'); setTool('none') }} />}
     {dialog?.type === 'confirm' && <ConfirmDialog message={dialog.message} title={dialog.title} confirmLabel={dialog.confirmLabel} destructive={dialog.destructive} onCancel={() => { setDialog(null); confirmResolve.current?.(false); confirmResolve.current = undefined }} onConfirm={() => { setDialog(null); confirmResolve.current?.(true); confirmResolve.current = undefined }} />}
     {dialog?.type === 'unsaved_close' && <UnsavedCloseDialog message={dialog.message} title={dialog.title} discardLabel={dialog.discardLabel} saveLabel={dialog.saveLabel} onDecision={(decision) => { setDialog(null); closeDecisionResolve.current?.(decision); closeDecisionResolve.current = undefined }} />}
-    {dialog?.type === 'print' && data && <PrintDialog data={data} pageCount={pageCount} currentPage={currentPage} printers={printers} printersLoading={printersLoading} printerError={printerError} onRefreshPrinters={() => void refreshPrinters()} onCancel={() => setDialog(null)} onSubmit={(pages, options, printerName) => { setDialog(null); void printPdf(pages, options, printerName) }} />}
+    {dialog?.type === 'print' && data && <PrintDialog data={data} pageCount={pageCount} currentPage={currentPage} printers={printers} printersLoading={printersLoading} printerError={printerError} onRefreshPrinters={() => void refreshPrinters()} onOpenPrinterSettings={window.desktop.platform === 'win32' ? (printerName) => window.desktop.openPrinterSettings(printerName) : undefined} onCancel={() => setDialog(null)} onSubmit={(pages, options, printerName) => { setDialog(null); void printPdf(pages, options, printerName) }} />}
     {errorMessage && <ErrorDialog message={errorMessage} onClose={() => setErrorMessage(undefined)} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />

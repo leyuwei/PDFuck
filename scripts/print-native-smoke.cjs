@@ -5,7 +5,12 @@ async function main() {
     console.log(JSON.stringify({ nativePrintSmoke: 'skipped', reason: 'Windows-only backend' }))
     return
   }
-  const { PDFPrinter, PrinterManager } = await import('windows-pdf-printer-native')
+  const { PDFPrinter, PrinterManager, PrintQuality } = await import('windows-pdf-printer-native')
+  assert.deepEqual(
+    [PrintQuality.LOW, PrintQuality.MEDIUM, PrintQuality.HIGH],
+    [150, 300, 600],
+    'the native backend print-quality constants changed'
+  )
   const printers = await PrinterManager.getAvailablePrinters()
   assert.ok(printers.length > 0, 'the native backend did not discover any installed printer')
   assert.ok(printers.every((printer) => typeof printer.name === 'string' && printer.name.length > 0), 'native backend returned an invalid device name')
@@ -13,7 +18,8 @@ async function main() {
   for (const printer of printers) {
     const result = await PrinterManager.getPrinterCapabilities(printer.name)
     assert.equal(typeof result.supportsDuplex, 'boolean', `${printer.name}: duplex capability was not reported`)
-    capabilities.push({ name: printer.name, isDefault: printer.isDefault === true, supportsDuplex: result.supportsDuplex })
+    assert.ok(Number.isInteger(result.maxCopies) && result.maxCopies >= 1, `${printer.name}: invalid maximum copy count ${result.maxCopies}`)
+    capabilities.push({ name: printer.name, isDefault: printer.isDefault === true, supportsDuplex: result.supportsDuplex, maxCopies: result.maxCopies })
   }
   assert.ok(capabilities.some((printer) => printer.isDefault), 'native backend did not identify the Windows default printer')
   const defaultPrinter = capabilities.find((printer) => printer.isDefault)

@@ -498,7 +498,7 @@ interface ImposedPrintPreview {
 function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): ImposedPrintPreview {
   const [preview, setPreview] = useState<ImposedPrintPreview>({ loading: pageIndices.length > 0, failed: false, pixelWidth: 0, pixelHeight: 0 })
   const pageKey = pageIndices.join(',')
-  const optionsKey = JSON.stringify(options)
+  const optionsKey = [options.pageSize, options.orientation, options.multiPage, options.rows, options.columns, options.scale, options.frame].join('|')
   useEffect(() => {
     let active = true
     let task: ReturnType<typeof getDocument> | undefined
@@ -536,7 +536,7 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
   return preview
 }
 
-export function PrintDialog({ data, pageCount, currentPage, printers, printersLoading, printerError, onRefreshPrinters, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; printers: PrinterDescriptor[]; printersLoading: boolean; printerError?: string; onRefreshPrinters(): void; onCancel(): void; onSubmit(pages: number[], options: PrintPdfOptions, printerName: string): void }) {
+export function PrintDialog({ data, pageCount, currentPage, printers, printersLoading, printerError, onRefreshPrinters, onOpenPrinterSettings, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; printers: PrinterDescriptor[]; printersLoading: boolean; printerError?: string; onRefreshPrinters(): void; onOpenPrinterSettings?(printerName: string): Promise<void>; onCancel(): void; onSubmit(pages: number[], options: PrintPdfOptions, printerName: string): void }) {
   const allPages = allPageIndices(pageCount)
   const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
   const [manual, setManual] = useState(() => compactPageSelection(allPages))
@@ -544,6 +544,8 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
   const [pageSize, setPageSize] = useState<PrintPdfOptions['pageSize']>(DEFAULT_PRINT_PDF_OPTIONS.pageSize)
   const [orientation, setOrientation] = useState<PrintPdfOptions['orientation']>(DEFAULT_PRINT_PDF_OPTIONS.orientation)
   const [duplex, setDuplex] = useState<PrintPdfOptions['duplex']>(DEFAULT_PRINT_PDF_OPTIONS.duplex)
+  const [copies, setCopies] = useState(DEFAULT_PRINT_PDF_OPTIONS.copies)
+  const [quality, setQuality] = useState<PrintPdfOptions['quality']>(DEFAULT_PRINT_PDF_OPTIONS.quality)
   const [multiPage, setMultiPage] = useState(DEFAULT_PRINT_PDF_OPTIONS.multiPage)
   const [rows, setRows] = useState(DEFAULT_PRINT_PDF_OPTIONS.rows)
   const [columns, setColumns] = useState(DEFAULT_PRINT_PDF_OPTIONS.columns)
@@ -551,9 +553,13 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
   // A border changes the actual PDF output, so leave it off unless requested.
   const [frame, setFrame] = useState(DEFAULT_PRINT_PDF_OPTIONS.frame)
   const [printerName, setPrinterName] = useState('')
+  const [reverseOrder, setReverseOrder] = useState(false)
+  const [printerSettingsBusy, setPrinterSettingsBusy] = useState(false)
+  const [printerSettingsError, setPrinterSettingsError] = useState<string>()
   const parsed = parsePageSelection(manual, pageCount)
   const invalid = parsed.invalid
-  const pages = useMemo(() => [...selected].sort((a, b) => a - b), [selected])
+  const ascendingPages = useMemo(() => [...selected].sort((a, b) => a - b), [selected])
+  const pages = useMemo(() => reverseOrder ? [...ascendingPages].reverse() : ascendingPages, [ascendingPages, reverseOrder])
   const selectedPrinter = printers.find((printer) => printer.name === printerName)
   const valid = pages.length > 0 && invalid.length === 0 && Boolean(selectedPrinter) && !printersLoading
   const replace = (nextPages: number[]) => {
@@ -565,7 +571,7 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
     const result = parsePageSelection(value, pageCount)
     if (!result.invalid.length) { setSelected(new Set(result.pages)); setSheetIndex(0) }
   }
-  const options = useMemo<PrintPdfOptions>(() => ({ pageSize, orientation, duplex, multiPage, rows, columns, scale, frame }), [pageSize, orientation, duplex, multiPage, rows, columns, scale, frame])
+  const options = useMemo<PrintPdfOptions>(() => ({ pageSize, orientation, duplex, copies, quality, multiPage, rows, columns, scale, frame }), [pageSize, orientation, duplex, copies, quality, multiPage, rows, columns, scale, frame])
   const perSheet = multiPage ? rows * columns : 1
   const sheetCount = printSheetCount(pages.length, options)
   const previewPages = pages.slice(sheetIndex * perSheet, (sheetIndex + 1) * perSheet)
@@ -582,8 +588,19 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
     setPrinterName(next?.name || '')
   }, [printerName, printers])
   const changePrinter = (name: string) => {
-    setPrinterName(name)
+    setPrinterName(name); setPrinterSettingsError(undefined)
     try { window.localStorage.setItem('pdfuck.print-printer', name) } catch { /* Keep printing available without preferences. */ }
+  }
+  const openPrinterSettings = async () => {
+    if (!selectedPrinter || !onOpenPrinterSettings || printerSettingsBusy) return
+    setPrinterSettingsBusy(true); setPrinterSettingsError(undefined)
+    try { await onOpenPrinterSettings(selectedPrinter.name) }
+    catch (error) { setPrinterSettingsError(error instanceof Error ? error.message : ui("ui.couldNotOpenPrinterSettings")) }
+    finally { setPrinterSettingsBusy(false) }
+  }
+  const selectManualDuplexPass = (odd: boolean) => {
+    setDuplex('simplex'); setMultiPage(false); setCopies(1)
+    replace(allPages.filter((page) => page % 2 === (odd ? 0 : 1)))
   }
   const setPreset = (nextRows: number, nextColumns: number) => { setRows(nextRows); setColumns(nextColumns); setSheetIndex(0) }
   const isAll = selected.size === pageCount
@@ -591,10 +608,12 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
     <div className="print-dialog-body"><aside className="print-controls">
       <section className="print-control-section print-printer-section"><header><b>{ui("ui.printer")}</b><button type="button" className="print-printer-refresh" disabled={printersLoading} aria-label={ui("ui.refreshPrinters")} title={ui("ui.refreshPrinters")} onClick={onRefreshPrinters}><span aria-hidden="true">↻</span></button></header>
         <div className={`print-printer-picker${printerError || (!printersLoading && !printers.length) ? ' unavailable' : ''}`}><span className="print-printer-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" /></svg></span><div>{printersLoading ? <span className="print-printer-state">{ui("ui.findingPrinters")}</span> : printers.length ? <><select className="print-printer-select" aria-label={ui("ui.printer")} value={printerName} onChange={(event) => changePrinter(event.target.value)}>{printers.map((printer) => <option key={printer.name} value={printer.name} data-duplex={String(printer.supportsDuplex)}>{printer.displayName}{printer.isDefault ? ` · ${ui("ui.default")}` : ''}</option>)}</select>{selectedPrinter?.description && <small>{selectedPrinter.description}</small>}</> : <span className="print-printer-state">{ui("ui.noAvailablePrintersFound")}</span>}</div></div>
-        {printerError ? <small className="print-printer-message error">{printerError}</small> : <small className="print-printer-message">{ui("ui.pdfuckSendsTheseSettingsDirectlyToTheSelectedPrinter")}</small>}
+        <div className="print-job-settings"><label><span>{ui("ui.copies")}</span><input className="print-copies-input" aria-label={ui("ui.copies")} type="number" min="1" max="99" value={copies} onChange={(event) => setCopies(Math.max(1, Math.min(99, Number(event.target.value) || 1)))} /></label><label><span>{ui("ui.printQuality")}</span><select className="print-quality-select" aria-label={ui("ui.printQuality")} value={quality} onChange={(event) => setQuality(Number(event.target.value) as PrintPdfOptions['quality'])}><option value="150">{ui("ui.draft150Dpi")}</option><option value="300">{ui("ui.standard300Dpi")}</option><option value="600">{ui("ui.high600Dpi")}</option></select></label></div>
+        {onOpenPrinterSettings && <button type="button" className="print-printer-settings" disabled={!selectedPrinter || printerSettingsBusy} onClick={() => void openPrinterSettings()}><span aria-hidden="true">⚙</span>{printerSettingsBusy ? ui("ui.openingPrinterSettings") : ui("ui.openPrinterSettings")}</button>}
+        {printerError || printerSettingsError ? <small className="print-printer-message error">{printerError || printerSettingsError}</small> : <small className="print-printer-message">{ui("ui.printerDriverOptionsHint")}</small>}
       </section>
       <section className="print-control-section print-pages-section"><header><b>{ui("ui.selectPagesToPrint")}</b><span>{t('page.selected', { count: pages.length })}</span></header>
-        <label className={`print-range-field${invalid.length ? ' invalid' : ''}`}><span>{ui("ui.pageRange")}</span><input value={manual} placeholder={ui("ui.forExample135810")} onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection(pages)) }} /><small>{invalid.length ? t('page.rangeInvalid', { value: invalid.join('、') }) : ui("ui.commasSpacesAndHyphensAreSupportedPagesNeedNotBe")}</small></label>
+        <label className={`print-range-field${invalid.length ? ' invalid' : ''}`}><span>{ui("ui.pageRange")}</span><input value={manual} placeholder={ui("ui.forExample135810")} onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection(ascendingPages)) }} /><small>{invalid.length ? t('page.rangeInvalid', { value: invalid.join('、') }) : ui("ui.commasSpacesAndHyphensAreSupportedPagesNeedNotBe")}</small></label>
         <div className="print-page-shortcuts"><button type="button" className={isAll ? 'active' : ''} onClick={() => replace(allPages)}>{ui("ui.all")}</button><button type="button" className={pages.length === 1 && selected.has(currentPage) ? 'active' : ''} onClick={() => replace([currentPage])}>{ui("ui.currentPage")}</button><button type="button" onClick={() => replace(allPages.filter((page) => page % 2 === 0))}>{ui("ui.oddPages")}</button><button type="button" onClick={() => replace(allPages.filter((page) => page % 2 === 1))}>{ui("ui.evenPages")}</button></div>
         <div className="print-page-strip" aria-label={ui("ui.selectPagesToPrint")}>{allPages.map((page) => <button type="button" key={page} className={selected.has(page) ? 'selected' : ''} aria-pressed={selected.has(page)} title={t('page.preview', { page: page + 1 })} onClick={() => replace(selected.has(page) ? pages.filter((value) => value !== page) : [...pages, page])}>{page + 1}</button>)}</div>
       </section>
@@ -602,6 +621,7 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
         <label className="print-field"><span>{ui("ui.paperSize")}</span><select value={pageSize} onChange={(event) => { setPageSize(event.target.value as PrintPdfOptions['pageSize']); setSheetIndex(0) }}><option>A4</option><option>A3</option><option>A5</option><option>Letter</option><option>Legal</option><option>Tabloid</option></select></label>
         <div className="print-field print-orientation-field"><span>{ui("ui.orientation")}</span><div className="print-orientation" role="group" aria-label={ui("ui.orientation")}><button type="button" className={orientation === 'auto' ? 'active' : ''} onClick={() => { setOrientation('auto'); setSheetIndex(0) }}><i className="paper-shape auto" aria-hidden="true" />{ui("ui.auto")}</button><button type="button" className={orientation === 'portrait' ? 'active' : ''} onClick={() => { setOrientation('portrait'); setSheetIndex(0) }}><i className="paper-shape portrait" aria-hidden="true" />{ui("ui.portrait")}</button><button type="button" className={orientation === 'landscape' ? 'active' : ''} onClick={() => { setOrientation('landscape'); setSheetIndex(0) }}><i className="paper-shape landscape" aria-hidden="true" />{ui("ui.landscape")}</button></div>{orientation === 'auto' && <small className="print-orientation-hint">{ui("ui.eachSheetChoosesItsOrientationFromThePagesItContains")}</small>}</div>
         <label className={`print-field print-duplex-field${selectedPrinter?.supportsDuplex === false ? ' unsupported' : ''}`}><span>{ui("ui.printMode")}</span><select className="print-duplex-select" value={duplex} onChange={(event) => setDuplex(event.target.value as PrintPdfOptions['duplex'])}><option value="simplex">{ui("ui.singleSided2")}</option><option value="longEdge" disabled={selectedPrinter?.supportsDuplex === false}>{ui("ui.doubleSidedLongEdge")}</option><option value="shortEdge" disabled={selectedPrinter?.supportsDuplex === false}>{ui("ui.doubleSidedShortEdge")}</option></select><small>{selectedPrinter?.supportsDuplex === false ? ui("ui.thisPrinterDoesNotReportDuplexCapability") : selectedPrinter?.supportsDuplex === null ? ui("ui.duplexCapabilityIsUnknownTheSelectedModeWillStillBe") : ui("ui.longEdgeIsForBookBindingShortEdgeIsFor")}</small></label>
+        {selectedPrinter && selectedPrinter.supportsDuplex !== true && <details className="print-manual-duplex" open={selectedPrinter.supportsDuplex === false}><summary>{selectedPrinter.supportsDuplex === false ? ui("ui.manualDuplex") : ui("ui.manualDuplexQuestion")}</summary><p>{ui("ui.manualDuplexGuide")}</p><label><input className="print-reverse-order" type="checkbox" checked={reverseOrder} onChange={(event) => setReverseOrder(event.target.checked)} /><span>{ui("ui.reversePrintOrder")}</span></label><small>{ui("ui.manualDuplexReverseHint")}</small><div className="print-manual-duplex-actions"><button type="button" onClick={() => selectManualDuplexPass(true)}>{ui("ui.manualDuplexOddStep")}</button><button type="button" onClick={() => selectManualDuplexPass(false)}>{ui("ui.manualDuplexEvenStep")}</button></div></details>}
       </section>
       <section className="print-control-section layout-section"><header><b>{ui("ui.pageLayout")}</b><span>{multiPage ? t('print.perSheet', { count: rows * columns }) : t('print.onePerSheet')}</span></header>
         <button type="button" role="switch" aria-checked={multiPage} className="print-multipage-toggle" onClick={() => { setMultiPage((value) => !value); setSheetIndex(0) }}><span><b>{ui("ui.printMultiplePagesPerSheet")}</b><small>{ui("ui.pdfuckWillGenerateTheLayoutShownInThePreview")}</small></span><i aria-hidden="true" /></button>

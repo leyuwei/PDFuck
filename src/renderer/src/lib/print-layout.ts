@@ -12,7 +12,7 @@ const PAPER_SIZES: Record<PrintPdfOptions['pageSize'], [number, number]> = {
 
 /** Initial UI settings deliberately preserve the source page without an added frame. */
 export const DEFAULT_PRINT_PDF_OPTIONS: PrintPdfOptions = {
-  pageSize: 'A4', orientation: 'auto', duplex: 'simplex', multiPage: false, rows: 2, columns: 2, scale: 100, frame: false
+  pageSize: 'A4', orientation: 'auto', duplex: 'simplex', copies: 1, quality: 600, multiPage: false, rows: 2, columns: 2, scale: 100, frame: false
 }
 
 export type ResolvedPrintOrientation = Exclude<PrintPdfOptions['orientation'], 'auto'>

@@ -83,6 +83,9 @@ export interface PrintPdfOptions {
   /** Auto resolves the orientation independently for every imposed sheet. */
   orientation: 'auto' | 'portrait' | 'landscape'
   duplex: 'simplex' | 'longEdge' | 'shortEdge'
+  copies: number
+  /** PDF rasterization resolution sent to the printer backend. */
+  quality: 150 | 300 | 600
   multiPage: boolean
   rows: number
   columns: number
@@ -184,6 +187,7 @@ export interface DesktopApi {
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<SavePdfResult>
   listPrinters(): Promise<PrinterDescriptor[]>
+  openPrinterSettings(printerName: string): Promise<void>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>

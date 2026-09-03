@@ -13,7 +13,7 @@ import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
 import { atomicWrite } from './atomic-write'
 import { convertOfficeDocument, OfficeImportError, officeImportSourceFormat } from './office-import'
-import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview } from './print-settings'
+import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview, windowsPrinterPreferencesArguments } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
@@ -349,9 +349,24 @@ async function listPrinters(contents: WebContents): Promise<PrinterDescriptor[]>
   return describePrinters(await contents.getPrintersAsync())
 }
 
-async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promise<PrintPdfResult> {
-  if (!request.data?.length) throw new Error('当前 PDF 没有可打印的内容。')
+async function openPrinterSettings(printerName: string, parent: BrowserWindow): Promise<void> {
   const language = requireWindowSession(parent.webContents).interfaceLanguage
+  if (process.platform !== 'win32') throw new Error(nativeText(language, "ui.couldNotOpenPrinterSettings"))
+  if (typeof printerName !== 'string' || !printerName || printerName.length > 512 || printerName.includes('\0')) throw new Error(nativeText(language, "ui.selectAnAvailablePrinter"))
+  const printers = await listPrinters(parent.webContents)
+  if (!printers.some((printer) => printer.name === printerName)) throw new Error(nativeText(language, "ui.theSelectedPrinterIsUnavailableRefreshTheListAndTry"))
+  try {
+    await execFileAsync('rundll32.exe', windowsPrinterPreferencesArguments(printerName), { windowsHide: true })
+  } catch (error) {
+    console.error('Could not open printer-specific preferences; opening Windows printer settings.', error)
+    try { await shell.openExternal('ms-settings:printers') }
+    catch { throw new Error(nativeText(language, "ui.couldNotOpenPrinterSettings")) }
+  }
+}
+
+async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promise<PrintPdfResult> {
+  const language = requireWindowSession(parent.webContents).interfaceLanguage
+  if (!request.data?.length) throw new Error(nativeText(language, "ui.theCurrentPdfHasNoPrintableContent"))
   if (!validPrintOptions(request.options)) throw new Error(nativeText(language, "ui.thePrintSettingsAreInvalid"))
   if (typeof request.printerName !== 'string' || !request.printerName || request.printerName.length > 512 || request.printerName.includes('\0')) throw new Error(nativeText(language, "ui.selectAnAvailablePrinter"))
   if (nativePrintBusy || (printWindow && !printWindow.isDestroyed())) throw new Error(nativeText(language, "ui.aPrintJobIsAlreadyBeingDispatchedPleaseWait"))
@@ -650,6 +665,7 @@ app.whenReady().then(async () => {
     }
   })
   ipcMain.handle('pdf:list-printers', (event) => listPrinters(requireMainWindow(event.sender).webContents))
+  ipcMain.handle('pdf:open-printer-settings', (event, printerName: string) => openPrinterSettings(printerName, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
     const session = requireWindowSession(event.sender)

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { PrintPdfOptions } from '../../../shared/contracts'
 import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, imposePdfForPrint, printCellsForSheet, printPaperSize, printSheetCount, printSheetOrientation, printSheetOrientations } from './print-layout'
 
-const options: PrintPdfOptions = { pageSize: 'A4', orientation: 'landscape', duplex: 'simplex', multiPage: true, rows: 2, columns: 2, scale: 100, frame: true }
+const options: PrintPdfOptions = { pageSize: 'A4', orientation: 'landscape', duplex: 'simplex', copies: 1, quality: 600, multiPage: true, rows: 2, columns: 2, scale: 100, frame: true }
 
 async function samplePdf(pageCount = 5): Promise<Uint8Array> {
   const document = await PDFDocument.create()
@@ -19,6 +19,8 @@ describe('print layout', () => {
     expect(DEFAULT_PRINT_PDF_OPTIONS.frame).toBe(false)
     expect(DEFAULT_PRINT_PDF_OPTIONS.multiPage).toBe(false)
     expect(DEFAULT_PRINT_PDF_OPTIONS.orientation).toBe('auto')
+    expect(DEFAULT_PRINT_PDF_OPTIONS.copies).toBe(1)
+    expect(DEFAULT_PRINT_PDF_OPTIONS.quality).toBe(600)
   })
 
   it('calculates paper orientation and bounded grid cells', () => {

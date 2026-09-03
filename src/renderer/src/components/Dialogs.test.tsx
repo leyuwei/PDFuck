@@ -210,14 +210,16 @@ describe('AnnotationDialog focus', () => {
   })
 
   it('combines page selection and print preview while submitting effective printer settings', async () => {
-    const onSubmit = vi.fn()
+    const onSubmit = vi.fn(), onOpenPrinterSettings = vi.fn().mockResolvedValue(undefined)
     const root = createRoot(container)
     const printers = [{ name: 'office-device', displayName: 'Office Printer', description: 'Floor 2', isDefault: true, supportsDuplex: true }]
-    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={5} currentPage={2} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onCancel={() => undefined} onSubmit={onSubmit} />))
+    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={5} currentPage={2} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onOpenPrinterSettings={onOpenPrinterSettings} onCancel={() => undefined} onSubmit={onSubmit} />))
     expect(container.querySelector('.print-options-dialog')).not.toBeNull()
     expect(container.querySelector('.page-selection-dialog')).toBeNull()
     expect(container.textContent).toContain('打印设置与预览')
     expect((container.querySelector('.print-printer-select') as HTMLSelectElement).value).toBe('office-device')
+    await act(async () => { (container.querySelector('.print-printer-settings') as HTMLButtonElement).click(); await Promise.resolve() })
+    expect(onOpenPrinterSettings).toHaveBeenCalledWith('office-device')
     expect(container.querySelectorAll('.print-page-strip button')).toHaveLength(5)
     const multiPageSwitch = container.querySelector<HTMLButtonElement>('.print-multipage-toggle')!
     expect(multiPageSwitch.getAttribute('role')).toBe('switch')
@@ -232,19 +234,34 @@ describe('AnnotationDialog focus', () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(duplex, 'shortEdge'); duplex.dispatchEvent(new Event('change', { bubbles: true })) })
     const scale = container.querySelector<HTMLInputElement>('.print-scale-number')!
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(scale, '125'); scale.dispatchEvent(new Event('input', { bubbles: true })) })
+    const copies = container.querySelector<HTMLInputElement>('.print-copies-input')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(copies, '3'); copies.dispatchEvent(new Event('input', { bubbles: true })) })
+    const quality = container.querySelector<HTMLSelectElement>('.print-quality-select')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(quality, '300'); quality.dispatchEvent(new Event('change', { bubbles: true })) })
     await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '发送到打印机')!).click() })
-    expect(onSubmit).toHaveBeenCalledWith([2], expect.objectContaining({ orientation: 'landscape', duplex: 'shortEdge', pageSize: 'A4', scale: 125 }), 'office-device')
+    expect(onSubmit).toHaveBeenCalledWith([2], expect.objectContaining({ orientation: 'landscape', duplex: 'shortEdge', copies: 3, quality: 300, pageSize: 'A4', scale: 125 }), 'office-device')
     await act(async () => root.unmount())
   })
 
   it('keeps duplex unavailable when the selected driver reports simplex-only capability', async () => {
+    const onSubmit = vi.fn()
     const root = createRoot(container)
     const printers = [{ name: 'simplex-device', displayName: 'Simplex Printer', description: '', isDefault: true, supportsDuplex: false }]
-    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={1} currentPage={0} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onCancel={() => undefined} onSubmit={() => undefined} />))
+    await act(async () => root.render(<PrintDialog data={Uint8Array.of(1)} pageCount={6} currentPage={0} printers={printers} printersLoading={false} onRefreshPrinters={() => undefined} onCancel={() => undefined} onSubmit={onSubmit} />))
     const duplexOptions = container.querySelectorAll<HTMLOptionElement>('.print-duplex-select option')
     expect(duplexOptions[1].disabled).toBe(true)
     expect(duplexOptions[2].disabled).toBe(true)
-    expect(container.textContent).toContain('此打印机未报告双面打印能力')
+    expect(container.textContent).toContain('不支持自动双面')
+    expect((container.querySelector('.print-manual-duplex') as HTMLDetailsElement).open).toBe(true)
+    await act(async () => (container.querySelector('.print-multipage-toggle') as HTMLButtonElement).click())
+    const copies = container.querySelector<HTMLInputElement>('.print-copies-input')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(copies, '3'); copies.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => (container.querySelector('.print-reverse-order') as HTMLInputElement).click())
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('.print-manual-duplex-actions button')].find((button) => button.textContent?.includes('偶数页'))!).click() })
+    expect((container.querySelector('.print-multipage-toggle') as HTMLButtonElement).getAttribute('aria-checked')).toBe('false')
+    expect((container.querySelector('.print-copies-input') as HTMLInputElement).value).toBe('1')
+    await act(async () => { ([...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '发送到打印机')!).click() })
+    expect(onSubmit).toHaveBeenCalledWith([5, 3, 1], expect.objectContaining({ duplex: 'simplex', copies: 1, multiPage: false }), 'simplex-device')
     await act(async () => root.unmount())
   })
 

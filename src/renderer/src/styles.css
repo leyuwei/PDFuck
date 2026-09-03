@@ -228,6 +228,7 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .ai-timeout-input input { width: 100%; }
 .ai-timeout-input > span { color: #6f7b90; font-size: 10px; }
 .tool-panel-action strong, .tool-button strong, .tool-panel-action small, .tool-button small { min-width: 0; overflow-wrap: anywhere; }
+.tool-panel-action small, .tool-button small { min-height: 2.8em; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 /* Shared Lab header and multi-feature actions. */
 .annotation-lab-heading { min-height: 32px; margin: 18px 0 9px; padding-bottom: 6px; border-bottom: 1px solid #e3e8f1; }

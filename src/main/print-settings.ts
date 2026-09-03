@@ -6,6 +6,8 @@ export function validPrintOptions(value: unknown): value is PrintPdfOptions {
   return ['A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid'].includes(options.pageSize || '')
     && ['auto', 'portrait', 'landscape'].includes(options.orientation || '')
     && ['simplex', 'longEdge', 'shortEdge'].includes(options.duplex || '')
+    && Number.isInteger(options.copies) && Number(options.copies) >= 1 && Number(options.copies) <= 99
+    && (options.quality === 150 || options.quality === 300 || options.quality === 600)
     && typeof options.multiPage === 'boolean'
     && Number.isInteger(options.rows) && Number(options.rows) >= 1 && Number(options.rows) <= 6
     && Number.isInteger(options.columns) && Number(options.columns) >= 1 && Number(options.columns) <= 6
@@ -24,11 +26,19 @@ export function buildDirectPrintOptions(options: PrintPdfOptions, printerName: s
     printBackground: true,
     pageSize: options.pageSize,
     duplexMode: options.duplex,
+    copies: options.copies,
+    collate: options.copies > 1,
+    dpi: { horizontal: options.quality, vertical: options.quality },
     pagesPerSheet: 1,
     margins: { marginType: 'none' }
   }
   if (options.orientation !== 'auto') printOptions.landscape = options.orientation === 'landscape'
   return printOptions
+}
+
+/** Keep the exact device name as one process argument, including spaces or shell characters. */
+export function windowsPrinterPreferencesArguments(printerName: string): string[] {
+  return ['printui.dll,PrintUIEntry', '/e', '/n', printerName]
 }
 
 function optionIsTrue(value: unknown): boolean {

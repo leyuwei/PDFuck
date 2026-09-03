@@ -115,6 +115,12 @@
 .print-printer-state { color: #69758a; font-size: 10px; font-weight: 650; }
 .print-printer-message { display: block; margin-top: 6px; color: #8792a4; font-size: 8px; line-height: 1.35; }
 .print-printer-message.error { color: #c04450; }
+.print-job-settings { display: grid; grid-template-columns: minmax(90px, .8fr) minmax(0, 1.35fr); gap: 7px; margin-top: 10px; }
+.print-job-settings label { min-width: 0; display: grid; gap: 5px; color: #657086; font-size: 9px; font-weight: 700; }
+.print-job-settings input, .print-job-settings select { width: 100%; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid #d5dbe5; border-radius: 6px; background: #fff; outline: 0; font-size: 10px; }
+.print-job-settings input:focus, .print-job-settings select:focus { border-color: #6680d9; box-shadow: 0 0 0 3px #3157d514; }
+.print-printer-settings { width: 100%; min-height: 31px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #5e6b81; font-size: 9px; }
+.print-printer-settings > span { font-size: 12px; }
 .print-duplex-field { align-items: start; }
 .print-duplex-field > span, .print-duplex-field > select { margin-top: 2px; }
 .print-duplex-field > small { grid-column: 2; margin-top: -4px; color: #8791a2; font-size: 8px; font-weight: 500; line-height: 1.35; }
@@ -180,6 +186,14 @@
 .print-paper > .print-preview-loading { padding: 16px; text-align: center; }
 .print-duplex-field.unsupported select { background: #f5f6f8; color: #767f8f; }
 .print-duplex-field.unsupported > small { color: #b04b55; }
+.print-manual-duplex { margin-top: 11px; padding: 9px 10px; border: 1px solid #e1c775; border-radius: 7px; background: #fffaf0; color: #626d80; font-size: 9px; }
+.print-manual-duplex summary { color: #765c16; cursor: pointer; font-weight: 750; }
+.print-manual-duplex p { margin: 7px 0; line-height: 1.45; }
+.print-manual-duplex > label { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.print-manual-duplex > label input { margin: 0; accent-color: #3157d5; }
+.print-manual-duplex > small { display: block; margin-top: 4px; color: #8a7950; line-height: 1.35; }
+.print-manual-duplex-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.print-manual-duplex-actions button { min-width: 0; min-height: 28px; padding: 3px 5px; border-color: #dcc77f; background: #fff; color: #725b20; font-size: 9px; }
 .print-scale-control { margin-top: 13px; padding: 11px; display: grid; gap: 8px; border: 1px solid #d9dfe9; border-radius: 7px; background: #fafbfc; }
 .print-scale-control > header { display: flex; align-items: center; justify-content: space-between; color: #4f5c72; font-size: 10px; font-weight: 750; }
 .print-scale-control > header label { position: relative; width: 69px; }
@@ -196,6 +210,10 @@
 .print-dialog-actions > span b { color: #2f3a4f; font-size: 12px; }
 .print-dialog-actions button { min-width: 82px; height: 36px; }
 .print-dialog-actions button.primary { min-width: 132px; }
+.theme-dark .print-manual-duplex { border-color: #6b5c3b; background: #332d21; color: #d8cfbf; }
+.theme-dark .print-manual-duplex summary { color: #efd48d; }
+.theme-dark .print-manual-duplex > small { color: #c7b27b; }
+.theme-dark .print-manual-duplex-actions button { border-color: #6b5c3b; background: #272c36; color: #eed797; }
 .insight-page-focus-ring { border-width: 3px; border-radius: 6px; }
 
 @media (max-width: 900px) {

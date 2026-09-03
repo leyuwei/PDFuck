@@ -12,6 +12,7 @@ const api: DesktopApi = {
   updatePdfPassword: (request: PdfPasswordUpdate) => ipcRenderer.invoke('pdf:password-update', request),
   savePdf: (request: SavePdfRequest) => ipcRenderer.invoke('pdf:save', request),
   listPrinters: () => ipcRenderer.invoke('pdf:list-printers'),
+  openPrinterSettings: (printerName) => ipcRenderer.invoke('pdf:open-printer-settings', printerName),
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
