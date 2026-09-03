@@ -93,6 +93,7 @@ interface PageProps {
   onCrossSelectionEnd(pageIndex: number, clientX: number, clientY: number, cancel?: boolean): void
   externalSelection?: TextSelection
   crossSelection?: CrossPageSelection
+  crossSelecting: boolean
   showSelectionToolbar: boolean
   selectionCancelToken: number
   onCopyText(text: string): void
@@ -544,9 +545,9 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
   </>
 }
 
-interface PageDrag { start: PdfPoint; current: PdfPoint; anchor?: TextPosition; focus?: TextPosition; moved: boolean }
+interface PageDrag { start: PdfPoint; current: PdfPoint; moved: boolean }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -588,7 +589,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const crossPageSelection = crossSelection?.segments.find((segment) => segment.pageIndex === pageIndex)
   // During a cross-page drag, the live cross-page state is authoritative. Do
   // not fall back to a stale page-local selection while the pointer is down.
-  const activeSelection = crossSelection ? crossPageSelection : selection || externalSelection
+  const activeSelection = crossSelecting ? crossPageSelection : selection || externalSelection
   const actionSelection = crossSelection || activeSelection
 
   useEffect(() => {
@@ -712,10 +713,15 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (canSelectText) {
       const caret = textCaretAtPoint(words, point)
       const position = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined
-      const next: PageDrag = { start: point, current: point, anchor: position, focus: position, moved: false }
-      dragRef.current = next; setDrag(next)
+      if (!position) {
+        onCrossSelectionStart(pageIndex, undefined, event.shiftKey)
+        setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
+        return
+      }
+      const next: PageDrag = { start: point, current: point, moved: false }
+      dragRef.current = next
       onCrossSelectionStart(pageIndex, position, event.shiftKey)
-      setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined)
+      setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
     } else if (tool === 'crop' || tool === 'add_text') {
       const next: PageDrag = { start: point, current: point, moved: false }
       dragRef.current = next; setDrag(next)
@@ -735,12 +741,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (!activeDrag) return
     if (canSelectText) {
       const moved = activeDrag.moved || Math.hypot(point.x - activeDrag.start.x, point.y - activeDrag.start.y) * zoom >= 4
-      const caret = textCaretAtPoint(words, point)
-      const focus = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : activeDrag.focus
-      const next = { ...activeDrag, current: point, focus, moved }
-      dragRef.current = next; setDrag(next)
-      onCrossSelectionMove(pageIndex, event.clientX, event.clientY)
-      if (moved && next.anchor && next.focus) setSelection(textSelectionBetween(words, next.anchor, next.focus))
+      const next = { ...activeDrag, current: point, moved }
+      dragRef.current = next
+      if (moved) onCrossSelectionMove(pageIndex, event.clientX, event.clientY)
     } else {
       const next = { ...activeDrag, current: point, moved: true }
       dragRef.current = next; setDrag(next)
@@ -749,8 +752,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const handlePointerUp = (event: React.PointerEvent) => {
     const completed = dragRef.current
     if (!completed) return
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     dragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setDrag(undefined)
     if (canSelectText) {
       if (!completed.moved) {
@@ -760,8 +763,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
         onCrossSelectionEnd(pageIndex, event.clientX, event.clientY, true)
         return
       }
-      const selected = completed.anchor && completed.focus ? textSelectionBetween(words, completed.anchor, completed.focus) : undefined
-      setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
+      setTextCaret(undefined); setSelectionAnchor(undefined)
       onCrossSelectionEnd(pageIndex, event.clientX, event.clientY)
     } else {
       const rect = normalizeRect(completed.start, completed.current)
@@ -772,8 +774,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     }
   }
   const handlePointerCancel = (event: React.PointerEvent) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (!dragRef.current) return
     dragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setDrag(undefined)
     onCrossSelectionEnd(pageIndex, event.clientX, event.clientY, true)
   }
@@ -1054,6 +1057,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const [citationHits, setCitationHits] = useState<CitationLink[]>([])
   const [pageSelections, setPageSelections] = useState<PageTextSelection[]>([])
   const [dragPageSelections, setDragPageSelections] = useState<PageTextSelection[]>([])
+  const dragPageSelectionsRef = useRef<PageTextSelection[]>([])
   const [crossSelecting, setCrossSelecting] = useState(false)
   const crossSelection = useMemo(() => mergePageTextSelections(crossSelecting ? dragPageSelections : pageSelections), [crossSelecting, dragPageSelections, pageSelections])
   const selectionAnchorRef = useRef<{ pageIndex: number; position: TextPosition } | undefined>(undefined)
@@ -1089,46 +1093,62 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }, [onSelectionChange])
   const onTextMap = useCallback((pageIndex: number, words: WordBox[]) => { wordMapsRef.current.set(pageIndex, words) }, [])
   const beginCrossSelection = useCallback((pageIndex: number, position?: TextPosition, extend = false) => {
-    if (!position) return
-    if (extend && selectionAnchorRef.current) return
+    if (!position) {
+      selectionAnchorRef.current = undefined
+      dragPageSelectionsRef.current = []
+      setCrossSelecting(false)
+      setDragPageSelections([])
+      if (!extend) updateSelection([])
+      return
+    }
+    dragPageSelectionsRef.current = []
+    if (extend && selectionAnchorRef.current) { setCrossSelecting(true); setDragPageSelections([]); return }
     const next = { pageIndex, position }
     selectionAnchorRef.current = next
     setCrossSelecting(true)
     setDragPageSelections([])
     if (!extend) updateSelection([])
   }, [updateSelection])
-  const calculateCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number): PageTextSelection[] => {
+  const calculateCrossSelection = useCallback((clientX: number, clientY: number): PageTextSelection[] | undefined => {
     const anchor = selectionAnchorRef.current
     const target = window.document.elementsFromPoint(clientX, clientY).find((element) => element instanceof HTMLElement && element.classList.contains('pdf-page')) as HTMLElement | undefined
-    const targetPageIndex = target ? Number(target.dataset.page) : originPageIndex
+    if (!target) return undefined
+    const targetPageIndex = Number(target.dataset.page)
     const targetWords = wordMapsRef.current.get(targetPageIndex)
-    if (!anchor || !targetWords || !Number.isInteger(targetPageIndex)) return []
-    const bounds = target?.getBoundingClientRect()
-    const focus = bounds ? textCaretAtPoint(targetWords, { x: (clientX - bounds.left) / zoom, y: (clientY - bounds.top) / zoom }) : undefined
-    if (!focus) return []
+    if (!anchor || !targetWords || !Number.isInteger(targetPageIndex)) return undefined
+    const bounds = target.getBoundingClientRect()
+    const focus = textCaretAtPoint(targetWords, { x: (clientX - bounds.left) / zoom, y: (clientY - bounds.top) / zoom })
+    if (!focus) return undefined
     const first = Math.min(anchor.pageIndex, targetPageIndex), last = Math.max(anchor.pageIndex, targetPageIndex)
+    const forward = anchor.pageIndex <= targetPageIndex
     const values: PageTextSelection[] = []
     for (let pageIndex = first; pageIndex <= last; pageIndex += 1) {
       const words = wordMapsRef.current.get(pageIndex)
       if (!words?.length) continue
-      const start = pageIndex === anchor.pageIndex ? anchor.position : { wordIndex: 0, offset: 0 }
-      const end = pageIndex === targetPageIndex ? focus : { wordIndex: words.length - 1, offset: Array.from(words.at(-1)!.text).length }
+      const pageStart = { wordIndex: 0, offset: 0 }
+      const pageEnd = { wordIndex: words.length - 1, offset: Array.from(words.at(-1)!.text).length }
+      const start = forward ? pageIndex === anchor.pageIndex ? anchor.position : pageStart : pageIndex === targetPageIndex ? focus : pageStart
+      const end = forward ? pageIndex === targetPageIndex ? focus : pageEnd : pageIndex === anchor.pageIndex ? anchor.position : pageEnd
       const selected = textSelectionBetween(words, start, end)
       if (selected) values.push(bindTextSelectionToPage(pageIndex, selected))
     }
     return values
   }, [zoom])
-  const moveCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number) => {
-    const values = calculateCrossSelection(originPageIndex, clientX, clientY)
+  const moveCrossSelection = useCallback((_originPageIndex: number, clientX: number, clientY: number) => {
+    const values = calculateCrossSelection(clientX, clientY)
+    if (!values) return
+    dragPageSelectionsRef.current = values
     setDragPageSelections(values)
   }, [calculateCrossSelection])
-  const endCrossSelection = useCallback((originPageIndex: number, clientX: number, clientY: number, cancel = false) => {
+  const endCrossSelection = useCallback((_originPageIndex: number, clientX: number, clientY: number, cancel = false) => {
     if (cancel) {
+      dragPageSelectionsRef.current = []
       setCrossSelecting(false)
       setDragPageSelections([])
       return
     }
-    const values = calculateCrossSelection(originPageIndex, clientX, clientY)
+    const values = calculateCrossSelection(clientX, clientY) ?? dragPageSelectionsRef.current
+    dragPageSelectionsRef.current = []
     setCrossSelecting(false)
     setDragPageSelections([])
     if (values.length) updateSelection(values)
@@ -1471,7 +1491,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationReply={onAnnotationReply} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}

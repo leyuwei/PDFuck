@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { _electron: electron } = require('playwright')
+const { traceSelectionMove } = require('./selection-temporal-ui.cjs')
 
 const root = path.resolve(__dirname, '..')
 const pdfPath = path.join(root, 'tmp', 'test2.pdf')
@@ -45,10 +46,27 @@ async function main() {
       }
     })
     assert.ok(points.start && points.end, `page 6 drag anchors unavailable: ${JSON.stringify(points)}`)
-    await page.mouse.move(points.start.x + 1, points.start.y + points.start.height / 2)
+    await page.bringToFront()
+    const flowFrom = { x: points.start.x + 1, y: points.start.y + points.start.height / 2 }
+    const flowTo = { x: points.end.x + points.end.width - 1, y: points.end.y + points.end.height / 2 }
+    await page.mouse.move(flowFrom.x, flowFrom.y)
     await page.mouse.down()
-    await page.mouse.move(points.end.x + points.end.width - 1, points.end.y + points.end.height / 2, { steps: 32 })
+    const flowFrames = await traceSelectionMove(page, documentPage, flowFrom, flowTo)
     await page.mouse.up()
+    const liveFlowFrames = flowFrames.filter((frame) => frame.count)
+    assert.ok(liveFlowFrames.length > 30, `page 6 temporal drag sampled too few live frames: ${liveFlowFrames.length}`)
+    let flowBottomHighWater = 0
+    for (const frame of liveFlowFrames) {
+      assert.ok(frame.minLeft >= .505, `page 6 live selection flashed into the left column: ${JSON.stringify(frame)}`)
+      assert.ok(frame.maxRight <= .93, `page 6 live selection escaped the right flow: ${JSON.stringify(frame)}`)
+      assert.ok(Math.abs(frame.minTop - liveFlowFrames[0].minTop) <= 3, `page 6 live selection anchor jumped: ${JSON.stringify(frame)}`)
+      assert.ok(frame.maxBottom <= frame.pointerY + points.start.height * 4, `page 6 live selection jumped below the pointer: ${JSON.stringify(frame)}`)
+      assert.ok(frame.maxBottom >= flowBottomHighWater - Math.max(24, points.start.height * 2.5), `page 6 live selection jumped backwards: ${JSON.stringify(frame)}`)
+      flowBottomHighWater = Math.max(flowBottomHighWater, frame.maxBottom)
+    }
+    const firstLiveFlowIndex = flowFrames.findIndex((frame) => frame.count)
+    assert.ok(firstLiveFlowIndex >= 0 && flowFrames.slice(firstLiveFlowIndex).every((frame) => frame.count), 'page 6 live selection disappeared during drag')
+    assert.ok(firstLiveFlowIndex <= 6, `page 6 live selection started late: frame ${firstLiveFlowIndex}`)
     await page.waitForFunction(() => document.querySelectorAll('.pdf-page[data-page="5"] .text-selection').length > 0)
     const geometry = await documentPage.evaluate((element) => {
       const pageBox = element.getBoundingClientRect()
@@ -79,7 +97,7 @@ async function main() {
     await captionPage.waitFor({ timeout: 60000 })
     await captionPage.evaluate((element) => element.scrollIntoView({ block: 'center' }))
     await captionPage.locator('.text-map span').first().waitFor({ timeout: 60000 })
-    const dragCaption = async (reverse) => {
+    const dragCaption = async (reverse, temporal = false) => {
       await captionPage.evaluate((element) => element.scrollIntoView({ block: 'center' }))
       await page.waitForTimeout(180)
       const anchors = await captionPage.evaluate((element) => {
@@ -96,10 +114,32 @@ async function main() {
       assert.ok(anchors.first && anchors.last, `page 9 caption anchors unavailable: ${JSON.stringify(anchors)}`)
       const from = reverse ? anchors.last : anchors.first
       const to = reverse ? anchors.first : anchors.last
-      await page.mouse.move(from.x + (reverse ? from.width + 20 : 1), from.y + (reverse ? from.height - 1 : from.height / 2))
+      const captionFrom = { x: from.x + (reverse ? from.width + 20 : 1), y: from.y + (reverse ? from.height - 1 : from.height / 2) }
+      const captionTo = { x: to.x + (reverse ? 1 : to.width + 20), y: to.y + (reverse ? to.height / 2 : to.height - 1) }
+      await page.bringToFront()
+      await page.mouse.move(captionFrom.x, captionFrom.y)
       await page.mouse.down()
-      await page.mouse.move(to.x + (reverse ? 1 : to.width + 20), to.y + (reverse ? to.height / 2 : to.height - 1), { steps: 32 })
+      const captionFrames = temporal ? await traceSelectionMove(page, captionPage, captionFrom, captionTo) : []
+      if (!temporal) await page.mouse.move(captionTo.x, captionTo.y, { steps: 32 })
       await page.mouse.up()
+      if (temporal) {
+        const pageBox = await captionPage.boundingBox()
+        const liveFrames = captionFrames.filter((frame) => frame.count)
+        assert.ok(pageBox && liveFrames.length > 60, `page 9 temporal caption drag sampled too few live frames: ${liveFrames.length}`)
+        assert.ok(liveFrames.every((frame) => frame.minTop >= pageBox.height * .3 && frame.maxBottom < pageBox.height * .4), 'page 9 live caption selection escaped its visual band')
+        let previousLeft = liveFrames[0].minLeft * pageBox.width
+        for (const frame of liveFrames) {
+          const left = frame.minLeft * pageBox.width
+          assert.ok(left <= previousLeft + 2, `page 9 live caption selection jumped right: ${JSON.stringify(frame)}`)
+          assert.ok(Math.abs(frame.maxRight * pageBox.width - liveFrames[0].maxRight * pageBox.width) <= 3, `page 9 live caption anchor moved: ${JSON.stringify(frame)}`)
+          previousLeft = left
+        }
+        const firstLiveIndex = captionFrames.findIndex((frame) => frame.count)
+        assert.ok(firstLiveIndex >= 0 && captionFrames.slice(firstLiveIndex).every((frame) => frame.count), 'page 9 live caption selection disappeared during drag')
+        // This reverse case starts 20 px beyond the final glyph to cover
+        // line-end overshoot; no range exists until the pointer re-enters it.
+        assert.ok(firstLiveIndex <= 25, `page 9 live caption selection started late: frame ${firstLiveIndex}`)
+      }
       await page.waitForFunction(() => document.querySelectorAll('.pdf-page[data-page="8"] .text-selection').length > 0)
       const captionGeometry = await captionPage.evaluate((element) => {
         const pageBox = element.getBoundingClientRect()
@@ -124,14 +164,14 @@ async function main() {
       await captionPage.screenshot({ path: captionScreenshot })
       await page.mouse.click(anchors.first.x, anchors.first.y + anchors.first.height / 2)
       await page.waitForFunction(() => document.querySelectorAll('.text-selection').length === 0)
-      return { reverse, geometry: captionGeometry, copiedPreview: captionText.slice(0, 180), screenshot: captionScreenshot }
+      return { reverse, temporalFrames: captionFrames.filter((frame) => frame.count).length, geometry: captionGeometry, copiedPreview: captionText.slice(0, 180), screenshot: captionScreenshot }
     }
     const captionReports = [await dragCaption(false)]
     const zoomBefore = await page.locator('.zoom-value').textContent()
     await page.locator('.zoom-value').click()
     await page.waitForFunction((value) => document.querySelector('.zoom-value')?.textContent !== value, zoomBefore)
-    captionReports.push(await dragCaption(true))
-    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, page6: { geometry, copiedPreview: copied.slice(0, 180), screenshot }, page9: captionReports }, null, 2))
+    captionReports.push(await dragCaption(true, true))
+    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, page6: { temporalFrames: liveFlowFrames.length, geometry, copiedPreview: copied.slice(0, 180), screenshot }, page9: captionReports }, null, 2))
   } finally {
     await app.close()
   }

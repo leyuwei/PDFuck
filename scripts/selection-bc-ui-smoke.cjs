@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { _electron: electron } = require('playwright')
+const { traceSelectionMove } = require('./selection-temporal-ui.cjs')
 
 const root = path.resolve(__dirname, '..')
 const pdfPath = path.join(root, 'tmp', 'bc.pdf')
@@ -23,7 +24,7 @@ async function main() {
     const window = await app.firstWindow()
     await window.waitForSelector('.pdf-page', { timeout: 60_000 })
 
-    const drag = async ({ pageIndex, startText, endText, startBand, endBand, side, include, exclude, maxBottom = 1, sideLimit, reverse = false, startOffsetX = 0, endOffsetX = 0 }) => {
+    const drag = async ({ pageIndex, startText, endText, startBand, endBand, side, include, exclude, maxBottom = 1, sideLimit, reverse = false, startOffsetX = 0, endOffsetX = 0, temporal = false }) => {
       const page = window.locator(`.pdf-page[data-page="${pageIndex}"]`)
       await page.evaluate((element) => element.scrollIntoView({ block: 'center' }))
       await page.locator('.text-map span').first().waitFor({ timeout: 60_000 })
@@ -37,10 +38,30 @@ async function main() {
         return { start: words.find((word) => match(word, options.startText, options.startBand)), end: words.find((word) => match(word, options.endText, options.endBand)) }
       }, { startText, endText, startBand, endBand })
       assert.ok(points.start && points.end, `page ${pageIndex + 1}: drag anchors unavailable: ${JSON.stringify(points)}`)
-      await window.mouse.move(points.start.x + (reverse ? points.start.width - 1 : 1) + startOffsetX, points.start.y + points.start.height / 2)
+      const from = { x: points.start.x + (reverse ? points.start.width - 1 : 1) + startOffsetX, y: points.start.y + points.start.height / 2 }
+      const to = { x: points.end.x + (reverse ? 1 : points.end.width - 1) + endOffsetX, y: points.end.y + points.end.height / 2 }
+      await window.bringToFront()
+      await window.mouse.move(from.x, from.y)
       await window.mouse.down()
-      await window.mouse.move(points.end.x + (reverse ? 1 : points.end.width - 1) + endOffsetX, points.end.y + points.end.height / 2, { steps: 30 })
+      const temporalSamples = temporal ? await traceSelectionMove(window, page, from, to) : []
+      if (!temporal) await window.mouse.move(to.x, to.y, { steps: 30 })
       await window.mouse.up()
+      if (temporal) {
+        const pageBox = await page.boundingBox()
+        const liveFrames = temporalSamples.filter((frame) => frame.count)
+        assert.ok(pageBox && liveFrames.length > 60, `page ${pageIndex + 1}: temporal caption drag sampled too few live frames: ${liveFrames.length}`)
+        assert.ok(liveFrames.every((frame) => frame.minTop >= pageBox.height * .58 && frame.maxBottom <= pageBox.height * .63), `page ${pageIndex + 1}: live caption selection escaped its visual band`)
+        let previousRight = liveFrames[0].maxRight * pageBox.width
+        for (const frame of liveFrames) {
+          const right = frame.maxRight * pageBox.width
+          assert.ok(Math.abs(frame.minLeft * pageBox.width - liveFrames[0].minLeft * pageBox.width) <= 3, `page ${pageIndex + 1}: live caption anchor moved: ${JSON.stringify(frame)}`)
+          assert.ok(right >= previousRight - 2, `page ${pageIndex + 1}: live caption selection jumped left: ${JSON.stringify(frame)}`)
+          previousRight = right
+        }
+        const firstLiveIndex = temporalSamples.findIndex((frame) => frame.count)
+        assert.ok(firstLiveIndex >= 0 && temporalSamples.slice(firstLiveIndex).every((frame) => frame.count), `page ${pageIndex + 1}: live caption selection disappeared during drag`)
+        assert.ok(firstLiveIndex <= 6, `page ${pageIndex + 1}: live caption selection started late: frame ${firstLiveIndex}`)
+      }
       await window.waitForFunction((index) => document.querySelectorAll(`.pdf-page[data-page="${index}"] .text-selection`).length > 0, pageIndex)
       const geometry = await page.evaluate((element) => {
         const pageBox = element.getBoundingClientRect()
@@ -76,12 +97,12 @@ async function main() {
       await page.screenshot({ path: screenshot })
       await window.mouse.click(points.start.x, points.start.y + points.start.height / 2)
       await window.waitForFunction(() => document.querySelectorAll('.text-selection').length === 0)
-      return { page: pageIndex + 1, geometry, copied: copied.slice(0, 100), screenshot }
+      return { page: pageIndex + 1, temporalFrames: temporalSamples.filter((frame) => frame.count).length, geometry, copied: copied.slice(0, 100), screenshot }
     }
 
     const reports = []
     reports.push(await drag({ pageIndex: 0, startText: 'Zhou', endText: 'Blockchain-Enabled', startBand: [.65, .75, .14, .19], endBand: [.1, .5, .06, .11], include: /^Blockchain-Enabled[\s\S]*Networks:[\s\S]*Xintong Ling[\s\S]*Xiaoyang Zhou$/u, exclude: /Abstract|Received|INTRODUCTION/u, maxBottom: .2, reverse: true }))
-    reports.push(await drag({ pageIndex: 6, startText: 'Fig.', endText: 'SPs.', startBand: [.07, .11, .59, .63], endBand: [.58, .63, .59, .63], include: /^Fig\. 4\. The sustainable throughput \(ST\) region of BES and independent SPs\. \(a\) 2 SPs\. \(b\) 3 SPs\.$/u, exclude: /blockchain|closed-form|POOLING|Stability conditions/u, maxBottom: .63, endOffsetX: 55 }))
+    reports.push(await drag({ pageIndex: 6, startText: 'Fig.', endText: 'SPs.', startBand: [.07, .11, .59, .63], endBand: [.58, .63, .59, .63], include: /^Fig\. 4\. The sustainable throughput \(ST\) region of BES and independent SPs\. \(a\) 2 SPs\. \(b\) 3 SPs\.$/u, exclude: /blockchain|closed-form|POOLING|Stability conditions/u, maxBottom: .63, endOffsetX: 55, temporal: true }))
     reports.push(await drag({ pageIndex: 6, startText: 'SPs.', endText: 'Fig.', startBand: [.58, .63, .59, .63], endBand: [.07, .11, .59, .63], include: /^Fig\. 4\. The sustainable throughput \(ST\) region of BES and independent SPs\. \(a\) 2 SPs\. \(b\) 3 SPs\.$/u, exclude: /blockchain|closed-form|POOLING|Stability conditions/u, maxBottom: .63, reverse: true, startOffsetX: 55 }))
     reports.push(await drag({ pageIndex: 6, startText: 'where', endText: 'SSESSMENT', startBand: [0, .5, .69, .75], endBand: [0, .5, .83, .88], side: 'left', include: /where[\s\S]*stability conditions[\s\S]*SSESSMENT/u, exclude: /matrix is easier|birth-death process/u, maxBottom: .89 }))
     reports.push(await drag({ pageIndex: 11, startText: 'The', endText: 'by', startBand: [.5, 1, .06, .1], endBand: [.5, 1, .06, .1], side: 'right', include: /^The derivative of E[\s\S]*is given by$/u, exclude: /where|Since|Authorized/u, maxBottom: .11 }))

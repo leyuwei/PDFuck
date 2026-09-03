@@ -30,7 +30,7 @@ Copyright © 2026 github@leyuwei
 - **Fast review decisions**: Each annotation has one-click **Done**, **Think about it**, and **Won't do** replies, plus custom replies. Status is visible through subtle list-row colors.
 - **A progress view for revisions**: Annotation counts are grouped by unanswered, done, thinking, and won't-do items. Selecting a count jumps to the first matching annotation.
 - **Search that leads somewhere**: Supports case sensitivity, fuzzy matching, and regular expressions. Results include page context and highlight only the matched text.
-- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Stable page gutters must remain empty through most visual rows, preventing repeated equation or matrix indentation from becoming false columns; captions, wide formulas, and other spanning content remain independent visual blocks. A detected or corrected gutter may split one caption into separate runs, but source-row continuity keeps that selection in geometric order instead of absorbing a body column. If automatic layout detection is wrong, the page context menu exposes an opt-in correction editor for draggable vertical column boundaries and top/bottom boundaries around spanning formulas or images, persisted locally by PDF fingerprint and page. `Shift` + arrow keys adjust the range. Copying joins hard PDF line breaks with Unicode script awareness: spaces remain between words in languages that use them, while Chinese, Japanese, Thai, and mixed CJK/Latin boundaries do not gain artificial spaces; common multilingual word splits are repaired.
+- **Selection and copy in every module**: View, Edit, Annotate, and Save modes support character-level selection. A selection survives module switching, so text selected while reading or editing is immediately available to Annotation Lab. Stable weighted hit-testing keeps one-pixel pointer movement in the intended column, while one shared live-selection owner prevents duplicate per-frame calculation and highlight flashing. Stable page gutters must remain empty through most visual rows, preventing repeated equation or matrix indentation from becoming false columns; captions, wide formulas, and other spanning content remain independent visual blocks. A detected or corrected gutter may split one caption into separate runs, but source-row continuity keeps that selection in geometric order instead of absorbing a body column. If automatic layout detection is wrong, the page context menu exposes an opt-in correction editor for draggable vertical column boundaries and top/bottom boundaries around spanning formulas or images, persisted locally by PDF fingerprint and page. `Shift` + arrow keys adjust the range. Copying joins hard PDF line breaks with Unicode script awareness: spaces remain between words in languages that use them, while Chinese, Japanese, Thai, and mixed CJK/Latin boundaries do not gain artificial spaces; common multilingual word splits are repaired.
 - **Responsive heavy-image pages**: Oversized PDF image strips are downsampled to a bounded decode surface, text extraction no longer waits for image operators, and a localized loading placeholder covers the first progressive canvas paint instead of exposing a blank page.
 - **Reorderable, detachable, and returnable document tabs**: Drag tabs forward or backward to arrange your workspace. Drag a tab outside the tab bar to move its current in-memory PDF, reading position, view state, and unsaved indicator into a separate window; drag that tab into another PDFuck window to return it automatically, including unsaved changes. Closing dirty work offers **Save and Close**, **Close Without Saving**, and a pulsing **Cancel** action; multi-document windows can save every dirty tab before closing.
 - **Standard PDF bookmarks and recognition**: Documents with outlines automatically open a collapsible, resizable bookmark sidebar with hierarchy controls, inline search, font sizing, double-click title editing, and undoable single-item deletion. The View panel recognizes numbered, localized, chapter-style, semantic, and optional typography-based headings across multiple languages, limits the hierarchy to levels 1–6, removes/restores false candidates directly in preview, appends or replaces outlines, and deletes all bookmarks as one undoable edit. Academic recognition normalizes PDF small caps, follows multi-column reading order, joins wrapped Roman-numeral headings, and rejects chart axes, formulas, years, and prose section references.
@@ -134,7 +134,7 @@ npm run build
 
 The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers the page 1 reverse drag from the final author to the full-width title as well as pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
-The 2.0.6 caption matrix also runs `test:selection-test2` and its UI counterpart. Across `bc.pdf`, `Scheduling0826m.pdf`, and `test2.pdf`, it exercises 1,253 corrected gutter positions plus forward/reverse real mouse drags, line-end overshoot, normal zoom, and Fit Width while checking both copied text and highlight geometry.
+The 2.0.7 selection matrix also runs `test:selection-test2` and its UI counterpart. Across `bc.pdf`, `Scheduling0826m.pdf`, and `test2.pdf`, it exercises 1,253 corrected gutter positions plus forward/reverse real mouse drags, line-end overshoot, normal zoom, and Fit Width while checking both copied text and highlight geometry. Hundreds of continuously sampled display frames across five drag trajectories additionally assert that a live selection never disappears, jumps backwards, crosses the column gutter, or escapes a spanning caption band, including a reverse cross-page drag through the page gap; sub-threshold pointer jitter must not create a selection.
 
 `npm run test:bookmarks-ui` additionally verifies undoable single-bookmark deletion and removal/restoration of recognition-preview candidates. `npm run test:bookmark-recognition-papers` opens the real `m91474-li paper.pdf` and `Scheduling0826m.pdf` fixtures in Electron and checks their exact 6/9 Roman-numeral section sequences, Abstract/References entries, wrapped headings, and false-positive exclusion.
 
@@ -154,17 +154,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.6` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.7` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.6
+npm run package:windows -- 2.0.7
 ```
 
 ```sh
-npm run package:macos -- 2.0.6
+npm run package:macos -- 2.0.7
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.6` and `bash scripts/package-macos.sh 2.0.6`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.7` and `bash scripts/package-macos.sh 2.0.7`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -269,7 +269,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **从列表回到原文只需一次点击**：批注列表支持 `Ctrl/⌘` 多选、`Shift` 连续选择、批量删除、行内双击编辑、右键设置颜色与回复，以及单行/多行显示和 280–560 px 宽度调整。定位时自动滚动到页面中央，用紧贴每行文字的短暂轮廓提示目标。
 - **批注不会挡住阅读，也不会失去上下文**：侧栏可以收起为窄栏，保留数量提示；选中批注后页面只显示约 1 秒的“当前批注”聚焦框，既能确认位置，又不会留下永久遮罩。
 - **搜索结果是真正可用的定位结果**：支持大小写、模糊匹配和正则表达式，命中结果按页显示上下文，跳转后只高亮匹配文字而不是整页。
-- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区。复制会按 Unicode 文字系统智能合并 PDF 硬回行：英文、俄文、韩文等使用分词空格的语言保留词界，中文、日文、泰文及中西文交界不再凭空插入空格，并修复常见多语言断词。
+- **选字和复制不受模式限制**：查看、编辑、批注、保存四个模块都能字符级拖选；稳定的加权命中规则会让 1 像素指针移动留在意向栏内，拖动期间只由一个状态源计算和绘制实时选区，不再因同帧重复计算而跳变闪烁。基于 PDF 原始文字运行区建立段落流走廊，既保留公式碎片，又阻止图表刻度、图例和相邻栏溢入选区。`Shift` 加左右方向键可逐字符扩展选区。复制会按 Unicode 文字系统智能合并 PDF 硬回行：英文、俄文、韩文等使用分词空格的语言保留词界，中文、日文、泰文及中西文交界不再凭空插入空格，并修复常见多语言断词。
 - **超大图片页面不再长期白屏**：限制异常超宽图片解码后的驻留面积，文字提取不再等待图片操作表；首次画布渐进绘制期间显示多语言加载占位符，不再暴露突兀的白页或黑页。
 - **标签可排序、可拖出和移回**：可前后拖动标签调整工作顺序；将标签拖出标签栏，即可把当前内存 PDF、阅读位置、查看状态和未保存标记无损移入一个单独窗口；再将该标签拖入另一个 PDFuck 窗口，PDF 会自动回归标签页，未保存修改也会保留。
 - **本地优先，密码边界清楚**：PDF 解析、渲染、编辑和导出都在本机完成；加密 PDF 默认以只读方式打开，只有用户明确选择保存密码时才交给系统安全存储。
@@ -452,7 +452,7 @@ npm run build
 
 针对框选溢出和错位的回归，可在构建后运行 `npm run test:selection-scheduling`、`npm run test:selection-scheduling-ui`、`npm run test:selection-scheduling-0826`、`npm run test:selection-scheduling-0826-ui`、`npm run test:selection-chinese`、`npm run test:selection-chinese-ui`、`npm run test:selection-bc` 和 `npm run test:selection-bc-ui`。前两项使用 `tmp/Scheduling0821m.pdf` 验证乱序项目符号；随后两项使用 `tmp/Scheduling0826m.pdf` 第 5、10、11 页覆盖公式碎片、图表文字、单双栏流域、反向拖拽和剪贴板文字；中文两项使用 `tmp/7.申报书原件.pdf` 第 3 页验证异常子集字体度量。`bc.pdf` 两项固定覆盖第 1 页“末位作者→跨栏标题”反向拖选，以及第 7、12、13 页的伪公式栏沟、跨栏图注和大公式、同行/长距离同栏拖拽，并在真实 Electron 中验证默认隐藏的校正入口、竖向栏界、跨栏区域上下横界、按文档/页持久化和恢复自动识别。
 
-2.0.6 另将 `test:selection-test2` 及其 UI 版本纳入图题矩阵：`bc.pdf`、`Scheduling0826m.pdf`、`test2.pdf` 三份不同论文合计穷举 1,253 个校正栏界位置，并用真实鼠标覆盖正反向、行尾越界、普通缩放与适合宽度，同时核对剪贴板文本和高亮几何。
+2.0.7 的框选矩阵继续包含 `test:selection-test2` 及其 UI 版本：`bc.pdf`、`Scheduling0826m.pdf`、`test2.pdf` 三份不同论文合计穷举 1,253 个校正栏界位置，并用真实鼠标覆盖正反向、行尾越界、普通缩放与适合宽度，同时核对剪贴板文本和高亮几何。另在五条拖动轨迹上连续采样数百个真实显示帧，逐帧断言实时选区不会消失、倒退、越过栏沟或逃出跨栏图题带，其中包含反向跨页并穿过页间空隙的拖动；同时验证小于拖动阈值的手部抖动不会生成选区。
 
 页面文字编辑回归使用 `npm run test:page-text-edit-ui`。它会在真实 Electron 窗口验证原位坐标、点击字符光标、双重提交去重、保存重开后对象唯一性，以及删除替换对象后恢复原文。
 
@@ -476,17 +476,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.6`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.7`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.6
+npm run package:windows -- 2.0.7
 ```
 
 ```sh
-npm run package:macos -- 2.0.6
+npm run package:macos -- 2.0.7
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.6` 和 `bash scripts/package-macos.sh 2.0.6`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.7` 和 `bash scripts/package-macos.sh 2.0.7`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

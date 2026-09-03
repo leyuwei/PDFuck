@@ -29,14 +29,22 @@ export function caretForTextPosition(words: WordBox[], position: TextPosition): 
 
 export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
   let nearestIndex = -1
-  let nearestVerticalDistance = Number.POSITIVE_INFINITY
-  let nearestHorizontalDistance = Number.POSITIVE_INFINITY
+  let nearestDistance = Number.POSITIVE_INFINITY
+  let nearestColumn: number | undefined
+  let nearestColumnDistance = Number.POSITIVE_INFINITY
+  words.forEach((word) => {
+    if (word.column === undefined || word.columnAmbiguous) return
+    const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
+    if (dx < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = dx }
+  })
   words.forEach((word, index) => {
+    if (nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
     const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
-    if (dy < nearestVerticalDistance || (dy === nearestVerticalDistance && dx < nearestHorizontalDistance)) {
-      nearestIndex = index; nearestVerticalDistance = dy; nearestHorizontalDistance = dx
-    }
+    // Lock ordinary text to the closest detected column, then weight vertical
+    // distance so modest line-end overshoot stays on its visual row.
+    const distance = dx * dx + 16 * dy * dy
+    if (distance < nearestDistance) { nearestIndex = index; nearestDistance = distance }
   })
   if (nearestIndex < 0) return undefined
   const nearest = words[nearestIndex], count = characterCount(nearest)
@@ -176,9 +184,9 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // its other endpoint. The word list is column-major, so an index range would
   // otherwise absorb the intervening body column. The same applies when a
   // detected column boundary splits one source row into separate runs.
-  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && ((startWord.columnAmbiguous || endWord.columnAmbiguous) && endpointYGap > endpointHeight * 0.45 || sameVisualRow && (hasStructuralEndpoint || sourceRangeStaysInBand))
+  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && (hasStructuralEndpoint || sameVisualRow && sourceRangeStaysInBand)
   const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
-  const flowBounds = useStructuralBand ? undefined : textFlowBounds(words, startWord, endWord)
+  const flowBounds = useStructuralBand || hasStructuralEndpoint ? undefined : textFlowBounds(words, startWord, endWord)
   const selectionBandTop = Math.min(startWord.rect.y, endWord.rect.y) - 0.5
   const selectionBandBottom = Math.max(startWord.rect.y + startWord.rect.height, endWord.rect.y + endWord.rect.height) + 0.5
   const hasOutOfBandIntermediate = sameColumnBand && words.slice(start.wordIndex + 1, end.wordIndex).some((word) => word.column === anchorColumn && (word.rect.y + word.rect.height < selectionBandTop || word.rect.y > selectionBandBottom))
@@ -721,7 +729,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     // individual formula glyphs with a second x-boundary heuristic can move
     // them across a narrow gutter and corrupt cross-column selections.
     run.column = targetIndex
-    const ambiguous = columnBoundaries.some((boundary) => run.left < boundary && run.right > boundary)
+    const ambiguous = columnBoundaries.some((boundary) => run.left < boundary && run.right > boundary || run.words.some((word) => word.textRunRect && word.textRunRect.x < boundary && word.textRunRect.x + word.textRunRect.width > boundary))
     run.words.forEach((word) => { word.column = targetIndex; word.columnAmbiguous = ambiguous })
   }
   // Keep structural visual content together even though the surrounding page

@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.6
+.\scripts\package-windows.ps1 2.0.7
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.6
+bash scripts/package-macos.sh 2.0.7
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -110,7 +110,7 @@ npm run test:selection-bc-ui
 
 涉及页面方向、栅格 DPI 或文字输入时，`test:page-manager-input-ui` 会生成三页非对称 PDF，并在真实 Electron 窗口验证：对同一批注连续派发两次删除只能产生一次幂等删除，不能出现原生或应用错误弹窗，且随后新建批注仍可接收普通键盘输入和中文 IME composition；逐页左转、180° 翻转和右转的预览与写回角度一致；DPI 空值、任意正数和小数在编辑中不被预设值改写；窗口失焦/回焦后仍保持真实输入框。发布脚本必须在源码构建和最终打包程序上各执行一次。
 
-2.0.6 的图题专项矩阵会在 `bc.pdf`、`Scheduling0826m.pdf` 和 `test2.pdf` 上合计穷举 1,253 个自动/手工栏界位置，并以真实 Electron 鼠标验证正反向、行尾越界、普通缩放与适合宽度；每次都同时检查剪贴板文本和选区几何，防止“文本看似正确但高亮仍溢出”的假通过。
+2.0.7 的框选专项矩阵会在 `bc.pdf`、`Scheduling0826m.pdf` 和 `test2.pdf` 上合计穷举 1,253 个自动/手工栏界位置，并以真实 Electron 鼠标验证正反向、行尾越界、普通缩放与适合宽度；每次都同时检查剪贴板文本和选区几何，防止“文本看似正确但高亮仍溢出”的假通过。三个 UI 回归会在五条拖动轨迹上连续采样数百个真实显示帧，逐帧检查选区不会消失、倒退、越过栏沟或逃出跨栏图题带，其中包括反向跨页并穿过页间空隙的拖动；同时验证低于 4 px 阈值的指针抖动不会生成选区。
 
 其中 `npm run build` 会重新生成 `out/main`、`out/preload` 和 `out/renderer`。不要直接用旧的 `out` 目录打包，否则源码修复可能没有进入 `app.asar`。
 

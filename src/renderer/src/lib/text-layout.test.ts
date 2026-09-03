@@ -124,6 +124,15 @@ describe('PDF text layout', () => {
     expect(words.map((word) => word.text)).toEqual(['L1', 'L2', 'L3', 'R1', 'R2', 'R3'])
   })
 
+  it('retains spanning metadata when a column boundary splits one source run', () => {
+    const items = [{ str: 'left right', width: 120, height: 12, transform: [12, 0, 0, 12, 40, 700], fontName: 'body' }] as TextItem[]
+    const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes(items, styles, [1, 0, 0, -1, 0, 792], {}, { columnBoundaries: [100] })
+    expect([...new Set(words.map((word) => word.column))]).toEqual([0, 1])
+    expect(words.every((word) => word.columnAmbiguous)).toBe(true)
+    expect(new Set(words.map((word) => word.visualBlock)).size).toBe(1)
+  })
+
   it('detects three visual columns from page gutters without a column limit', () => {
     const item = (str: string, x: number, baseline: number, width: number) => ({ str, width, height: 12, transform: [12, 0, 0, 12, x, baseline], fontName: 'body' }) as TextItem
     const styles = { body: { ascent: 0.8, descent: -0.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
@@ -211,6 +220,30 @@ describe('PDF text layout', () => {
     const overshotEnd = textCaretAtPoint(words, { x: 145, y: 29.5 })!
     expect(overshotEnd).toMatchObject({ wordIndex: 2, offset: 4 })
     expect(textSelectionBetween(words, start, overshotEnd)?.text).toBe('Fig. caption end.')
+  })
+
+  it('keeps caret hit-testing in the local column while crossing staggered line gaps', () => {
+    const words = [
+      { text: 'left-one', order: 0, column: 0, rect: { x: 10, y: 20, width: 90, height: 10 } },
+      { text: 'left-two', order: 1, column: 0, rect: { x: 10, y: 32, width: 90, height: 10 } },
+      { text: 'right-one', order: 2, column: 1, rect: { x: 180, y: 20.4, width: 90, height: 10 } },
+      { text: 'right-two', order: 3, column: 1, rect: { x: 180, y: 32.4, width: 90, height: 10 } }
+    ]
+    for (const y of [30.2, 30.6, 31, 31.4, 31.8]) {
+      expect(words[textCaretAtPoint(words, { x: 40, y })!.wordIndex].column).toBe(0)
+    }
+  })
+
+  it('keeps caret hit-testing in a narrow local column across paragraph whitespace', () => {
+    const words = [
+      { text: 'left-above', order: 0, column: 0, rect: { x: 10, y: 20, width: 80, height: 10 } },
+      { text: 'left-below', order: 1, column: 0, rect: { x: 10, y: 60, width: 80, height: 10 } },
+      { text: 'right-one', order: 2, column: 1, rect: { x: 100, y: 35, width: 80, height: 10 } },
+      { text: 'right-two', order: 3, column: 1, rect: { x: 100, y: 47, width: 80, height: 10 } }
+    ]
+    for (const y of [31, 39, 47, 55, 59]) {
+      expect(words[textCaretAtPoint(words, { x: 88, y })!.wordIndex].column).toBe(0)
+    }
   })
 
   it('creates tight partial-word rectangles in forward and reverse selections', () => {
@@ -302,6 +335,30 @@ describe('PDF text layout', () => {
       expect(forward?.text).not.toMatch(/body|tail/u)
       expect(reverse).toEqual(forward)
     }
+  })
+
+  it('keeps a cross-column drag bounded when it leaves a spanning block', () => {
+    const words = [
+      { text: 'Fig.', order: 0, column: 0, visualBlock: 2, rect: { x: 10, y: 20, width: 24, height: 10 } },
+      { text: 'caption', order: 1, column: 0, visualBlock: 2, rect: { x: 38, y: 20, width: 42, height: 10 } },
+      { text: 'left-body', order: 2, column: 0, rect: { x: 10, y: 40, width: 52, height: 10 } },
+      { text: 'left-tail', order: 3, column: 0, rect: { x: 10, y: 60, width: 44, height: 10 } },
+      { text: 'right-body', order: 4, column: 1, rect: { x: 70, y: 40, width: 54, height: 10 } }
+    ]
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 4, offset: 5 })
+    expect(selection?.text).toBe('Fig. caption left-body right')
+    expect(selection?.text).not.toContain('left-tail')
+    expect(Math.max(...selection!.rects.map((rect) => rect.y + rect.height))).toBe(50)
+  })
+
+  it('does not collapse a structural-to-body selection at a narrow formula run', () => {
+    const words = [
+      { text: 'Fig.', order: 0, column: 0, visualBlock: 2, textRun: 0, textRunRect: { x: 10, y: 20, width: 24, height: 10 }, rect: { x: 10, y: 20, width: 24, height: 10 } },
+      { text: 'caption', order: 1, column: 0, visualBlock: 2, textRun: 1, textRunRect: { x: 38, y: 20, width: 42, height: 10 }, rect: { x: 38, y: 20, width: 42, height: 10 } },
+      { text: 'wide-body-line', order: 2, column: 0, textRun: 2, textRunRect: { x: 10, y: 40, width: 100, height: 10 }, rect: { x: 10, y: 40, width: 100, height: 10 } },
+      { text: 'x', order: 3, column: 0, textRun: 3, textRunRect: { x: 10, y: 52, width: 8, height: 8 }, rect: { x: 10, y: 52, width: 8, height: 8 } }
+    ]
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 3, offset: 1 })?.text).toBe('Fig. caption wide-body-line x')
   })
 
   it('does not include another column when both drag endpoints are in one column', () => {
