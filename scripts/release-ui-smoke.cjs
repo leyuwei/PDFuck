@@ -68,7 +68,7 @@ async function main() {
       return { text: track?.textContent, fits: Boolean(viewport && track && track.scrollWidth <= viewport.clientWidth + 1) }
     })
     assert.equal(fullTitle.fits, true, `title should fit without scrolling in a wide window: ${JSON.stringify(fullTitle)}`)
-    assert.match(fullTitle.text || '', /文档标题自适应滚动验证/u)
+    assert.match(fullTitle.text || '', /文档标题自适应滚动与安全间距验证/u)
     await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), originalWindowBounds)
     const resizedWidth = originalWindowBounds.width >= 1300 ? originalWindowBounds.width - 180 : originalWindowBounds.width + 180
     await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 800), resizedWidth)
