@@ -75,7 +75,7 @@
 .export-mode { margin-bottom: 10px; }
 
 @media (max-width: 1240px) {
-  .titlebar-identity { gap: 8px; padding-left: 12px; }
+  .titlebar-identity { gap: 12px; padding-left: 12px; }
   .titlebar-tools { gap: 8px; }
   .brand { min-width: 78px; font-size: 18px; }
   .file-actions { gap: 4px; }
