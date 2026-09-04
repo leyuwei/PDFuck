@@ -17,7 +17,7 @@ assert.ok(fs.existsSync(fixture), `release smoke fixture not found: ${fixture}`)
 async function main() {
   fs.rmSync(userData, { recursive: true, force: true })
   fs.mkdirSync(userData, { recursive: true })
-  const longTitleFixture = path.join(userData, '2.0.13 文档标题自适应滚动验证.pdf')
+  const longTitleFixture = path.join(userData, '2.0.14 文档标题自适应滚动与安全间距验证.pdf')
   fs.copyFileSync(fixture, longTitleFixture)
   const app = await electron.launch({ executablePath: executable, args: [`--user-data-dir=${userData}`, longTitleFixture] })
   try {
@@ -48,6 +48,15 @@ async function main() {
     const originalWindowBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1080, 800))
     await page.waitForFunction(() => document.querySelector('.document-title')?.getAttribute('data-overflowing') === 'true')
+    const narrowTitleLayout = await page.evaluate(() => {
+      const brand = document.querySelector('.brand').getBoundingClientRect()
+      const title = document.querySelector('.document-title-viewport').getBoundingClientRect()
+      const tools = document.querySelector('.titlebar-tools').getBoundingClientRect()
+      return { brandRight: brand.right, titleLeft: title.left, titleRight: title.right, titleWidth: title.width, toolsLeft: tools.left }
+    })
+    assert.ok(narrowTitleLayout.titleWidth > 0, `narrow title lost its viewport: ${JSON.stringify(narrowTitleLayout)}`)
+    assert.ok(narrowTitleLayout.titleLeft - narrowTitleLayout.brandRight >= 12, `title overlaps the brand: ${JSON.stringify(narrowTitleLayout)}`)
+    assert.ok(narrowTitleLayout.toolsLeft - narrowTitleLayout.titleRight >= 16, `title is too close to the toolbar: ${JSON.stringify(narrowTitleLayout)}`)
     const scrollingTitle = await page.locator('.document-title-track').evaluate((element) => getComputedStyle(element).animationName)
     const reducedTitleMotion = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
     assert.ok(scrollingTitle === 'document-title-scroll' || reducedTitleMotion, `overflowing title is not scrolling: ${scrollingTitle}`)

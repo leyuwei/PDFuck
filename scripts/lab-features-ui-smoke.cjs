@@ -200,6 +200,15 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
 
     const issueOptions = automaticWindow.locator('.automatic-issue-grid input')
     assert.equal(await issueOptions.count(), 12, 'Automatic annotation must expose the complete issue checklist')
+    const issueFrame = await automaticWindow.locator('.automatic-issue-options').evaluate((element) => {
+      const style = getComputedStyle(element)
+      const frame = element.getBoundingClientRect()
+      const grid = element.querySelector('.automatic-issue-grid').getBoundingClientRect()
+      return { boxShadow: style.boxShadow, paddingLeft: parseFloat(style.paddingLeft), paddingRight: parseFloat(style.paddingRight), gridLeft: grid.left, gridRight: grid.right, frameLeft: frame.left, frameRight: frame.right }
+    })
+    assert.notEqual(issueFrame.boxShadow, 'none', 'Issue choices need a clear outer frame')
+    assert.ok(issueFrame.paddingLeft >= 12 && issueFrame.paddingRight >= 12, `Issue frame needs comfortable padding: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.gridLeft > issueFrame.frameLeft && issueFrame.gridRight < issueFrame.frameRight, `Issue grid escaped its frame: ${JSON.stringify(issueFrame)}`)
     assert.equal(await issueOptions.evaluateAll((inputs) => inputs.filter((input) => input.checked).length), 12, 'All issue categories should be enabled on first use')
     await automaticWindow.getByRole('button', { name: '清空选择', exact: true }).click()
     assert.equal(await automaticWindow.locator('.automatic-start').isDisabled(), true, 'No issue selection must disable the run')
