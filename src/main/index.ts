@@ -103,8 +103,17 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
   } catch { return { status: 'unavailable', currentVersion } }
 }
 
-async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
+interface ActiveAiRequest {
+  controller: AbortController
+  abortReason?: 'timeout' | 'user'
+}
+
+const activeAiRequests = new Map<string, ActiveAiRequest>()
+const aiRequestKey = (senderId: number, requestId: string): string => `${senderId}\0${requestId}`
+
+async function requestAiCompletion(request: AiRequest, senderId: number): Promise<AiResponse> {
   if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('AI 请求无效。')
+  if (request.requestId !== undefined && (typeof request.requestId !== 'string' || request.requestId.length < 1 || request.requestId.length > 200)) throw new Error('AI 请求无效。')
   if (Buffer.byteLength(request.body, 'utf8') > 64 * 1024 * 1024) throw new Error('AI 请求超过 64 MB。请缩短内容，或在全文评价中改用转换后的文档文字。')
   const requestedTimeout = typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs) ? request.timeoutMs : 120_000
   const timeoutMs = Math.round(Math.max(5_000, Math.min(3_600_000, requestedTimeout)))
@@ -120,15 +129,28 @@ async function requestAiCompletion(request: AiRequest): Promise<AiResponse> {
     }
   }
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const activeRequest: ActiveAiRequest = { controller }
+  const requestKey = request.requestId === undefined ? undefined : aiRequestKey(senderId, request.requestId)
+  if (requestKey && activeAiRequests.has(requestKey)) throw new Error('AI 请求无效。')
+  if (requestKey) activeAiRequests.set(requestKey, activeRequest)
+  const abort = (reason: ActiveAiRequest['abortReason']): void => {
+    if (controller.signal.aborted) return
+    activeRequest.abortReason = reason
+    controller.abort()
+  }
+  const timeout = setTimeout(() => abort('timeout'), timeoutMs)
   try {
     const response = await net.fetch(target.toString(), { method: 'POST', headers, body: request.body, signal: controller.signal })
     const body = await response.text()
     return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
+    if (activeRequest.abortReason === 'user') throw new Error('AI 请求已取消。')
+    if (activeRequest.abortReason === 'timeout') throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
-  } finally { clearTimeout(timeout) }
+  } finally {
+    clearTimeout(timeout)
+    if (requestKey && activeAiRequests.get(requestKey) === activeRequest) activeAiRequests.delete(requestKey)
+  }
 }
 
 const isPdf = (value: string): boolean => extname(value).toLowerCase() === '.pdf'
@@ -688,7 +710,15 @@ app.whenReady().then(async () => {
     if (typeof text !== 'string' || text.length > 5_000_000) throw new Error('复制内容无效或过长。')
     clipboard.writeText(text)
   })
-  ipcMain.handle('ai:request', (event, request: AiRequest) => { requireMainWindow(event.sender); return requestAiCompletion(request) })
+  ipcMain.handle('ai:request', (event, request: AiRequest) => { requireMainWindow(event.sender); return requestAiCompletion(request, event.sender.id) })
+  ipcMain.on('ai:cancel', (event, requestId: unknown) => {
+    requireMainWindow(event.sender)
+    if (typeof requestId !== 'string' || requestId.length < 1 || requestId.length > 200) return
+    const activeRequest = activeAiRequests.get(aiRequestKey(event.sender.id, requestId))
+    if (!activeRequest || activeRequest.controller.signal.aborted) return
+    activeRequest.abortReason = 'user'
+    activeRequest.controller.abort()
+  })
   ipcMain.handle('app:check-update', (event) => { requireMainWindow(event.sender); return checkForUpdates() })
   ipcMain.handle('app:skip-update-version', async (event, version: string) => {
     requireMainWindow(event.sender)

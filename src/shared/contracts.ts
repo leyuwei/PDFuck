@@ -163,6 +163,8 @@ export interface UpdateCheckResult {
 }
 
 export interface AiRequest {
+  /** Optional renderer-generated identifier used to cancel this request. */
+  requestId?: string
   url: string
   headers: Record<string, string>
   body: string
@@ -192,6 +194,7 @@ export interface DesktopApi {
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>
   aiRequest(request: AiRequest): Promise<AiResponse>
+  cancelAiRequest(requestId: string): void
   checkForUpdates(): Promise<UpdateCheckResult>
   skipUpdateVersion(version: string): Promise<void>
   openReleasePage(url: string): Promise<void>

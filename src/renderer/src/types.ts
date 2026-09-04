@@ -34,6 +34,8 @@ export interface AnnotationRecord {
   kind: AnnotationKind
   author: string
   content: string
+  /** Optional explanation kept separate from replacement/insertion text. */
+  reason?: string
   color: string
   reply?: AnnotationReply
   rects: PdfRect[]
@@ -68,6 +70,18 @@ export interface EditableTextRegion {
   sourceRects: PdfRect[]
   lines: Array<{ text: string; rect: PdfRect }>
   style: TextStyle
+}
+
+export interface AddAnnotationRequest {
+  pageIndex: number
+  kind: AnnotationKind
+  rects: PdfRect[]
+  content?: string
+  point?: PdfPoint
+  color?: string
+  groupId?: string
+  author?: string
+  reason?: string
 }
 
 export interface PageTextEdit {

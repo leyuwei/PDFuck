@@ -2,7 +2,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AddAnnotationRequest, AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
   displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
@@ -122,6 +122,9 @@ function kindFor(dict: PDFDict, document: PDFDocument): AnnotationKind | null {
 }
 
 interface AnnotationEntry { dict: PDFDict; ref?: PDFRef; index: number; page: PDFPage; pageIndex: number }
+interface PreparedAnnotation extends AddAnnotationRequest { page: PDFPage; geometry: PageGeometry; normalized: PdfRect[] }
+
+const ANNOTATION_KINDS = new Set<AnnotationKind>(['highlight', 'note', 'replace', 'insert', 'delete', 'underline', 'ai_polish'])
 
 export class PdfDocumentModel {
   private document!: PDFDocument
@@ -745,6 +748,7 @@ export class PdfDocumentModel {
       const geometry = pageGeometry(entry.page)
       const storedColor = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckColor')))
       const color = normalizeHexColor(storedColor, rgbArrayToHex(numberArray(this.document, entry.dict.get(PDFName.of('C'))), DEFAULT_ANNOTATION_COLOR[kind]))
+      const reason = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReason'))) || undefined
       const replyStatus = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyStatus'))) as AnnotationReplyStatus
       const replyContent = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReply')))
       const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent } : undefined
@@ -752,6 +756,7 @@ export class PdfDocumentModel {
         id, groupId, pageIndex: entry.pageIndex, kind,
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
+        ...(reason ? { reason } : {}),
         color,
         reply,
         rects: quads.length ? pdfQuadsToDisplayRects(quads, geometry) : [pdfBoundsToDisplayRect(rect, geometry)],
@@ -857,18 +862,26 @@ export class PdfDocumentModel {
     return entry
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string): Promise<string> {
-    const page = this.document.getPage(pageIndex)
+  private prepareAnnotation(request: AddAnnotationRequest): PreparedAnnotation {
+    if (!request || typeof request !== 'object' || !Number.isInteger(request.pageIndex) || request.pageIndex < 0 || request.pageIndex >= this.pageCount || !ANNOTATION_KINDS.has(request.kind) || !Array.isArray(request.rects)) throw new Error('ui.annotationRequestInvalid')
+    if ([request.content, request.color, request.groupId, request.author, request.reason].some((value) => value !== undefined && typeof value !== 'string')) throw new Error('ui.annotationRequestInvalid')
+    if (request.point && (!Number.isFinite(request.point.x) || !Number.isFinite(request.point.y))) throw new Error('ui.annotationPositionInvalid')
+    if (request.rects.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('ui.annotationAreaInvalid')
+    const page = this.document.getPage(request.pageIndex)
     const geometry = pageGeometry(page)
-    const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    let normalized = rects
-    if (kind === 'note' && point) normalized = [{ x: point.x, y: point.y, width: 20, height: 20 }]
-    if (kind === 'insert' && point) {
+    let normalized = request.rects.map((rect) => ({ ...rect }))
+    if (request.kind === 'note' && request.point) normalized = [{ x: request.point.x, y: request.point.y, width: 20, height: 20 }]
+    if (request.kind === 'insert' && request.point) {
       const displayWidth = geometry.rotation % 180 ? geometry.height : geometry.width
       const displayHeight = geometry.rotation % 180 ? geometry.width : geometry.height
-      normalized = [{ x: Math.max(0, Math.min(displayWidth - 14, point.x - 7)), y: Math.max(0, Math.min(displayHeight - 18, point.y)), width: 14, height: 18 }]
+      normalized = [{ x: Math.max(0, Math.min(displayWidth - 14, request.point.x - 7)), y: Math.max(0, Math.min(displayHeight - 18, request.point.y)), width: 14, height: 18 }]
     }
     if (!normalized.length) throw new Error('请先选择文字或页面位置。')
+    return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
+  }
+
+  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason }: PreparedAnnotation): string {
+    const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const bounds = rectUnion(normalized)
     const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
     const color = hexColor(colorHex)
@@ -880,6 +893,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
     if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
+    if (reason) dictionary.set(PDFName.of('PDFuckReason'), pdfString(reason))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     dictionary.set(PDFName.of('C'), this.document.context.obj(color))
     dictionary.set(PDFName.of('PDFuckColor'), pdfString(colorHex))
@@ -890,7 +904,28 @@ export class PdfDocumentModel {
     if (kind === 'insert') dictionary.set(PDFName.of('Sy'), PDFName.of('P'))
     if (kind === 'insert') this.setAnnotationColor(dictionary, colorHex)
     page.node.addAnnot(this.document.context.register(dictionary))
-    await this.commit()
+    return id
+  }
+
+  async addAnnotations(requests: AddAnnotationRequest[]): Promise<string[]> {
+    if (!Array.isArray(requests)) throw new Error('ui.annotationRequestInvalid')
+    if (!requests.length) return []
+    const prepared = requests.map((request) => this.prepareAnnotation(request))
+    const previous = Uint8Array.from(this.currentBytes)
+    const undoStack = [...this.undoStack], redoStack = [...this.redoStack]
+    try {
+      const ids = prepared.map((request) => this.appendAnnotation(request))
+      await this.commit()
+      return ids
+    } catch (error) {
+      this.undoStack = undoStack; this.redoStack = redoStack
+      await this.restoreHistory(previous)
+      throw error
+    }
+  }
+
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string): Promise<string> {
+    const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason }])
     return id
   }
 

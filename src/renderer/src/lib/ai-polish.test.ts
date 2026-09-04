@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
   FULL_REVIEW_PRESETS, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiTimeoutSeconds, polishText,
-  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation
+  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage
 } from './ai-polish'
 import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
@@ -200,5 +200,78 @@ describe('Lab document review and annotation suggestion transport', () => {
     await expect(reviewDocument(settings, 'Review.', { name: 'empty.pdf', bytes: new Uint8Array() }, 'text', 'en')).rejects.toThrow('没有提取到')
     await expect(reviewDocument(settings, 'Review.', { name: 'large.pdf', bytes: new Uint8Array(MAX_AI_PDF_BYTES + 1) }, 'file', 'en')).rejects.toThrow('40 MB')
     expect(aiRequest).not.toHaveBeenCalled()
+  })
+})
+
+describe('automatic annotation transport', () => {
+  const settings = { ...defaultSettings, apiKey: 'test-key' }
+  const block = {
+    id: 'p1-b1', pageIndex: 0, text: 'This are unclear.',
+    words: [
+      { text: 'This', order: 0, rect: { x: 10, y: 20, width: 32, height: 10 } },
+      { text: 'are', order: 1, rect: { x: 46, y: 20, width: 24, height: 10 } },
+      { text: 'unclear.', order: 2, rect: { x: 74, y: 20, width: 52, height: 10 } }
+    ]
+  }
+
+  it('sends bounded page context, the six-action contract, and a cancelable request id', async () => {
+    const modelResult = {
+      version: 1, contextSummary: 'The document introduces a scheduling method.',
+      findings: [{ action: 'replace', blockId: block.id, quote: 'This are', occurrence: 0, insertSide: null, replacementText: 'This is', reason: 'Subject–verb agreement.' }]
+    }
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelResult) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(autoAnnotatePage(settings, {
+      pageIndex: 0,
+      blocks: [block],
+      opening: 'Opening contribution statement.',
+      previous: 'Previous page context.',
+      next: 'Next page context.',
+      contextSummary: 'Rolling summary.',
+      detail: 'brief',
+      language: 'en'
+    }, 'auto-page-1')).resolves.toEqual(modelResult)
+
+    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'auto-page-1' }))
+    const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
+    const prompt = payload.messages[1].content as string
+    expect(prompt).toContain('spelling and typographical errors')
+    expect(prompt).toContain('soft line wraps and page breaks')
+    expect(prompt).toContain('unclear contributions or poorly surfaced novelty')
+    expect(prompt).toContain('highlight|replace|delete|underline|insert|note')
+    expect(prompt).toContain('brief: reason is required')
+    expect(prompt).toContain('Opening contribution statement.')
+    expect(prompt).toContain('Previous page context.')
+    expect(prompt).toContain('Next page context.')
+    expect(prompt).toContain('Rolling summary.')
+    expect(prompt).toContain('"targetBlocks":[{"blockId":"p1-b1","text":"This are unclear."}]')
+    expect(prompt).not.toContain('"rect"')
+  })
+
+  it.each([
+    ['revision' as const, '', 'revision: reason must be the empty string'],
+    ['brief' as const, 'Brief reason.', 'brief: reason is required'],
+    ['detailed' as const, 'Detailed evidence and explanation.', 'detailed: reason is required']
+  ])('enforces and advertises the %s output mode', async (detail, reason, promptRule) => {
+    const result = {
+      version: 1, contextSummary: '',
+      findings: [{ action: 'replace', blockId: block.id, quote: 'This are', occurrence: 0, insertSide: null, replacementText: 'This is', reason }]
+    }
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail, language: 'en' })).resolves.toEqual(result)
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content).toContain(promptRule)
+  })
+
+  it('rejects a model quote outside the block whitelist and validates before transport', async () => {
+    const invalidResult = {
+      version: 1, contextSummary: '',
+      findings: [{ action: 'highlight', blockId: block.id, quote: 'invented words', occurrence: 0, insertSide: null, replacementText: null, reason: 'Not grounded.' }]
+    }
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(invalidResult) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationResponseInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
+    expect(aiRequest).toHaveBeenCalledTimes(1)
   })
 })

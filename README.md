@@ -24,6 +24,7 @@ Copyright © 2026 github@leyuwei
 - **Lightweight paper-oriented grammar checks**: Flags common English spelling, repeated-word, and subject-verb agreement issues and links each result back to its context. It is a review aid, not an uncontrolled rewrite engine.
 - **Edit PDF text as editable objects**: PDF.js text blocks are regrouped into natural chunks. New text inherits the source font, size, weight, style, alignment, color, and sampled page background, and remains movable and editable after saving.
 - **Annotations built for review**: Highlight, replace, delete, underline, note, and insert annotations can carry explanations, colors, replies, and positions that persist in the saved PDF.
+- **Automatic annotation with user control**: Review the whole document or only the current selection with document-opening, nearby-paragraph, and cross-page context as read-only guidance. The model can propose all six annotation types, with revision-only, brief-reason, or detailed-reason output; progress can be paused, resumed, or ended, and the first run requires an explicit privacy and copyright confirmation.
 - **Reviewer identities without list clutter**: A movable Annotation Author window stores the local reviewer name for future PDF annotations. Its single visibility switch can place compact, stable-color author badges above the annotation body, preserving the full content-column width without adding another list column.
 - **Platform-native shortcut guidance**: Functional buttons use one consistent keycap style and automatically show Windows or macOS conventions. The eight Edit actions also use matching compact line icons for faster scanning.
 - **Character-level selection**: Select partial words, half-lines, mixed Chinese and English text, and cross-line ranges precisely. Dragging past the end of a caption stays on that visual row instead of snapping into nearby column text; replacement lines and insertion arrows still snap to actual character boundaries.
@@ -38,8 +39,10 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.9
+## What's New in 2.0.10
 
+- Automatic Annotation reviews either the full document or the current selection, using document-opening, nearby, and cross-page context without writing outside the chosen scope.
+- Findings can use highlight, replace, delete, underline, insert, or note annotations. Revision text stays separate from an optional brief or detailed reason, and the run can be paused, resumed, or ended at any time after the one-time privacy and copyright confirmation.
 - Helper text is shorter and follows one consistent two-line layout across all ten interface languages. Note and text-insertion tools now show distinct, task-specific guidance.
 - Printing now supports 1–99 copies and selectable 150, 300, or 600 DPI PDF rasterization quality on both the native Windows path and the cross-platform Electron path.
 - Printer preferences open for the selected Windows device, with the system printer page as a safe fallback for driver-specific media, color, and finishing options.
@@ -98,7 +101,8 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Double-clicking any page annotation activates the Annotate module before opening its editor, regardless of the current module. Duplicate rapid delete events are idempotent, so a stale second event cannot open a native alert or detach the active editor/IME. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
 - Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions automatically selects nearby text from the annotation geometry, offers a five-level context-amount slider, and still accepts multiple manual selections that can optionally be retained locally per PDF. Free-position notes only receive automatic context when they are genuinely near recognizable text, avoiding unrelated paragraphs, figures, or columns. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Add to Reply is bound to the originating document, writes every segment of a cross-page annotation atomically, verifies the result, and exposes the multiline reply in both the annotation row and reply settings; saved replies are restored after reopening. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. AI responses follow all ten interface languages; only AI Polish has a keyboard shortcut.
-- Free Drawing Board is the fourth Annotation Lab tool. Its floating window can be moved and resized, with aligned brush, color, and canvas-action groups plus visible drawing and resize guidance; the controls reflow with the board itself when it is narrowed. Finished work can be exported as a transparent PNG or added directly to the current page as an editable image.
+- Automatic Annotation reviews the whole PDF or strictly the current selection. Document-opening text, nearby paragraphs, and cross-page text may guide the model but cannot expand the writeback scope. It can add highlight, replace, delete, underline, insert, and note annotations, keeping proposed text separate from revision-only, brief-reason, or detailed-reason explanations. Progress can be paused, resumed, or ended; first use requires the same explicit privacy and copyright confirmation as Full Document Review.
+- Free Drawing Board is the fifth Annotation Lab tool. Its floating window can be moved and resized, with aligned brush, color, and canvas-action groups plus visible drawing and resize guidance; the controls reflow with the board itself when it is narrowed. Finished work can be exported as a transparent PNG or added directly to the current page as an editable image.
 - Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. Long responses request server-sent streaming by default so upstream gateways receive response bytes early; an older relay that explicitly rejects streaming falls back once without replaying timeouts or ambiguous billable requests. HTTP 524, other gateway timeouts, temporary service failures, authentication, model-route, input-size, and quota/rate-limit errors receive distinct actionable diagnostics instead of raw status pages. API keys, shared model settings, and a customizable 5–3600 second response timeout (120 seconds by default) are kept in local browser storage.
 
 ### Save, Print, and Export
@@ -171,17 +175,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.9` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.10` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.9
+npm run package:windows -- 2.0.10
 ```
 
 ```sh
-npm run package:macos -- 2.0.9
+npm run package:macos -- 2.0.10
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.9` and `bash scripts/package-macos.sh 2.0.9`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.10` and `bash scripts/package-macos.sh 2.0.10`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -278,6 +282,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
 - **批注是审稿工作流，不是装饰层**：高亮、替换、删除、下划线、便笺和插入六类批注都能携带文字说明；批注内容、颜色、位置和回复会随 PDF 保存，重开文档仍可继续编辑。
+- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落和跨页文字辅助判断；模型可综合使用六类批注，说明可选“仅修订文本 / 简短原因 / 详细原因”，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
 - **批注人清楚可辨，列表仍然干净**：可在可移动的“批注人”浮窗中持久保存本机审阅者姓名，今后的新批注会把姓名写入 PDF；单一外显开关可在批注正文上方显示稳定配色的紧凑标签，正文仍独占完整内容列宽度，也不会额外增加列表列。
 - **快捷键提示遵循当前系统**：所有功能按钮统一使用右侧键帽样式，并自动切换 Windows 与 macOS 的按键习惯；编辑模块八项主功能也补齐了与批注工具一致的简洁线性图标。
 - **字符级批注，半行文字也不丢精度**：单击得到字符间光标，拖动只选择真正命中的字符；跨行、半词和中英文混排都能精确标记，替换线与插入箭头会吸附到真实字符边界。选中文字后，页面浮动工具栏和右键菜单都能直接创建批注。
@@ -294,8 +299,10 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.9 新增与完善
+## 2.0.10 新增与完善
 
+- “自动批注”可审阅全文或严格限定在当前选区内，文档开头、邻近段落与跨页内容只辅助理解，不会扩大批注落点。
+- 批注可综合使用高亮、替换、删除、下划线、插入文字与自由批注；修订文本与可选的简短/详细原因分开保存，任务可随时暂停、继续或结束，首次使用前须确认隐私与版权风险。
 - 十种界面语言的操作提示均已简化并统一为两行以内；便签与插入文字不再共用含义不符的提示。
 - 打印份数支持 1–99 份，Windows 原生链路与跨平台 Electron 链路均可选择 150、300 或 600 DPI 的 PDF 栅格化质量。
 - Windows 可直接打开当前所选打印机的首选项；若驱动入口不可用，则安全转到系统打印机页面，便于调整纸张、颜色和装订等驱动专属选项。
@@ -420,7 +427,8 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失；
 - 删除批注会立即执行，不再二次确认；误删可用 `Ctrl/⌘Z` 撤销。
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组，标题不再带多余上下分隔线，模型设置齿轮位于分组标题右侧；智能润色、全文评价和批注建议共用同一连接与超时设置，只有智能润色显示 `Ctrl/⌘I` 快捷键。
-- 自由画板是批注实验室的第四项工具；浮窗可移动和拖动改大小，画笔、颜色、画布操作等高对齐并带有清晰的绘制与缩放提示，缩窄画板时会自行重排且不溢出。完成后可导出透明 PNG，或作为可编辑图片直接加入当前 PDF 页。
+- “自动批注”可处理全文或严格限定在当前选区；文档开头、邻近段落与跨页内容可辅助判断，但不会扩大写入范围。结果可使用高亮、替换、删除、下划线、插入文字和自由批注，并将修订文本与“仅修订文本 / 简短原因 / 详细原因”对应的说明分开保存。任务可暂停、继续或结束；首次使用沿用全文评价的隐私与版权确认。
+- 自由画板是批注实验室的第五项工具；浮窗可移动和拖动改大小，画笔、颜色、画布操作等高对齐并带有清晰的绘制与缩放提示，缩窄画板时会自行重排且不溢出。完成后可导出透明 PNG，或作为可编辑图片直接加入当前 PDF 页。
 - 每个 PDF 标签拥有相互隔离、持续挂载的 AI 会话；打开新 PDF 或手动切换标签时，原文档的 AI 浮窗只会暂时隐藏，请求和倒计时继续运行，切回后会恢复原进度、错误或返回结果，不会把内容串到当前 PDF。
 - “全文评价”首次使用时必须勾选数据风险声明，复选框说明保持同行且声明卡片与浮窗边界留有一致间距；可发送带逐页标记的全文文字或当前 PDF 文件，并从五语预置审稿提示词中选择或自行修改。请求期间会按用户设置的超时时间显示进度条和剩余秒数。
 - “批注建议”功能开启后，只能从单条批注设置区的专用按钮启动建议流程；请求在打开后立即按一次性事件消费，切换模块或双击任意批注都不会重放旧浮窗。流程会按批注的页面几何自动选取同栏附近正文，并提供 1–5 级上下文量滑动条；自由位置批注只有确实靠近可识别正文时才自动取文，避免误抓图表、边栏或无关段落。用户仍可跨页、多次框选补充上下文，也可选择把手动上下文按当前 PDF 持久保存在本机，后续批注自动载入，关闭后立即清除该文档的本机副本。“添加到回复”严格绑定发起建议的 PDF，会原子写入跨页批注的全部分段并回读校验；写入后会选中目标批注，在列表与回复设置中显示保留 Markdown 换行的多行回复，保存并重开 PDF 后仍可恢复。
@@ -510,17 +518,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.9`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.10`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.9
+npm run package:windows -- 2.0.10
 ```
 
 ```sh
-npm run package:macos -- 2.0.9
+npm run package:macos -- 2.0.10
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.9` 和 `bash scripts/package-macos.sh 2.0.9`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.10` 和 `bash scripts/package-macos.sh 2.0.10`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

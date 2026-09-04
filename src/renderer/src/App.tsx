@@ -29,6 +29,7 @@ import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type Ap
 import { documentTransferToken, isDocumentTransferDrag } from './lib/document-transfer'
 import { initialImageRect } from './lib/image-geometry'
 import type { AutomaticAnnotationContextRequest, AutomaticAnnotationContextResult } from './lib/automatic-annotation-context'
+import type { AutomaticAnnotationDraft } from './lib/automatic-annotation'
 import { countBookmarks, type BookmarkRecognitionOptions, type RecognizedBookmark } from './lib/bookmark-recognition'
 import { t, translateUiText, ui, useInterfaceLanguage } from './lib/i18n'
 import { adaptShortcutText, shortcutLabel } from './lib/platform-shortcuts'
@@ -1039,6 +1040,10 @@ export default function App() {
   const getAutomaticAnnotationContext = useCallback(async (request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult> => {
     return viewerRef.current?.automaticAnnotationContext(request, level) || { issue: 'no-text' }
   }, [])
+  const getAutomaticAnnotationPages = useCallback(async () => {
+    const viewer = viewerRef.current
+    return viewer ? viewer.autoAnnotationPages() : []
+  }, [])
   const addFullReviewAnnotation = useCallback(async (content: string) => {
     const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model) throw new Error('请先打开 PDF 文档。')
@@ -1046,6 +1051,20 @@ export default function App() {
       const size = model.getPageSize(0)
       await model.addAnnotation(0, 'note', [], content, { x: Math.max(24, size.width - 42), y: 42 }, undefined, undefined, preferences.annotationAuthor)
       syncModel('全文评价已作为第一页便笺添加到批注列表', false, model, documentId)
+    })
+  }, [preferences.annotationAuthor, runDocumentOperation, syncModel])
+  const addAutomaticAnnotations = useCallback(async (documentId: number, annotations: AutomaticAnnotationDraft[]) => {
+    if (!annotations.length) return
+    const session = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
+    const model = session?.model
+    if (!session || !model) throw new Error('目标文档已关闭，无法显示写入结果。')
+    await runDocumentOperation(documentId, async () => {
+      const current = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
+      if (!current || current.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
+      await model.addAnnotations(annotations.map((annotation) => ({ ...annotation, author: preferences.annotationAuthor })))
+      const latest = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
+      if (!latest || latest.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
+      syncModel('ui.automaticAnnotationsAddedSaveThePdfToKeepTheChanges', false, model, documentId)
     })
   }, [preferences.annotationAuthor, runDocumentOperation, syncModel])
   const addAnnotationSuggestion = useCallback(async (documentIdOrAnnotationId: number | string, annotationIdOrContent: string, suggestionContent?: string) => {
@@ -1363,7 +1382,7 @@ export default function App() {
     if (!session) return null
     const visible = id === activeDocumentId && module === 'annotate'
     const request = annotationSuggestionRequest?.documentId === id ? annotationSuggestionRequest : undefined
-    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={request} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={visible ? getAutomaticAnnotationContext : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
+    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={request} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={visible ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
   })
   return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
     if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }

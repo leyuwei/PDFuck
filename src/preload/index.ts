@@ -17,6 +17,7 @@ const api: DesktopApi = {
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
   aiRequest: (request: AiRequest) => ipcRenderer.invoke('ai:request', request),
+  cancelAiRequest: (requestId: string) => ipcRenderer.send('ai:cancel', requestId),
   checkForUpdates: () => ipcRenderer.invoke('app:check-update'),
   skipUpdateVersion: (version) => ipcRenderer.invoke('app:skip-update-version', version),
   openReleasePage: (url) => ipcRenderer.invoke('app:open-release-page', url),

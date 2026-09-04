@@ -19,12 +19,13 @@ import type { ReadingPosition } from '../../../shared/contracts'
 import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { shortcutLabel } from '../lib/platform-shortcuts'
+import type { AutomaticAnnotationSourcePage } from '../lib/automatic-annotation'
 import { automaticPageContext, type AutomaticAnnotationContextRequest, type AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
 import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecognitionOptions, type RecognizedBookmark } from '../lib/bookmark-recognition'
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
-export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 interface ViewerProps {
   data?: Uint8Array
@@ -549,9 +550,32 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
 
 interface PageDrag { start: PdfPoint; current: PdfPoint; moved: boolean }
 
+function pdfDocumentKey(document: PDFDocumentProxy): string {
+  return document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
+}
+
+function fontDetailsForPage(page: PDFPageProxy, items: TextItem[]): Record<string, PdfFontDetails> {
+  const details: Record<string, PdfFontDetails> = {}
+  for (const fontName of new Set(items.map((item) => item.fontName))) {
+    try {
+      const font = page.commonObjs.get(fontName) as PdfFontDetails | undefined
+      if (font) details[fontName] = { name: font.name, loadedName: font.loadedName, bold: font.bold, italic: font.italic }
+    } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
+  }
+  return details
+}
+
+function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: number, height: number) {
+  if (!override) return undefined
+  return {
+    ...(override.columnBoundaries === undefined ? {} : { columnBoundaries: override.columnBoundaries.map((value) => value * width) }),
+    ...(override.spanningRegions?.length ? { spanningRegions: override.spanningRegions.map(([top, bottom]) => ({ top: top * height, bottom: bottom * height })) } : {})
+  }
+}
+
 function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationReply, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
-  const documentKey = document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
+  const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const preciseFocusRef = useRef<HTMLDivElement>(null)
@@ -625,18 +649,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     page.getTextContent().then((content) => {
       if (cancelled) return
       const items = content.items.filter((item): item is TextItem => 'str' in item)
-      const fontDetails: Record<string, PdfFontDetails> = {}
-      for (const fontName of new Set(items.map((item) => item.fontName))) {
-        try {
-          const font = page.commonObjs.get(fontName) as PdfFontDetails | undefined
-          if (font) fontDetails[fontName] = { name: font.name, loadedName: font.loadedName, bold: font.bold, italic: font.italic }
-        } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
-      }
+      const fontDetails = fontDetailsForPage(page, items)
       const rebuild = (override?: PageLayoutOverride) => {
-        const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, override ? {
-          ...(override.columnBoundaries === undefined ? {} : { columnBoundaries: override.columnBoundaries.map((value) => value * viewport.width) }),
-          ...(override.spanningRegions?.length ? { spanningRegions: override.spanningRegions.map(([top, bottom]) => ({ top: top * viewport.height, bottom: bottom * viewport.height })) } : {})
-        } : undefined)
+        const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, scaledLayoutOverride(override, viewport.width, viewport.height))
         setWords(nextWords); onTextMap(pageIndex, nextWords)
         if (override?.columnBoundaries === undefined) setAutomaticBoundaries(automaticBoundaryFractions(nextWords, viewport.width))
       }
@@ -1065,6 +1080,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const selectionAnchorRef = useRef<{ pageIndex: number; position: TextPosition } | undefined>(undefined)
   const [selectionCancelToken, setSelectionCancelToken] = useState(0)
   const wordMapsRef = useRef(new Map<number, WordBox[]>())
+  const wordMapsDocumentRef = useRef<PDFDocumentProxy | undefined>(undefined)
   const insightFocusTimerRef = useRef<number | undefined>(undefined)
   const insightFocusSequenceRef = useRef(0)
   const restoredDocumentRef = useRef<string | undefined>(undefined)
@@ -1093,7 +1109,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (!values.length) setSelectionCancelToken((token) => token + 1)
     onSelectionChange(values[0]?.pageIndex || 0, merged)
   }, [onSelectionChange])
-  const onTextMap = useCallback((pageIndex: number, words: WordBox[]) => { wordMapsRef.current.set(pageIndex, words) }, [])
+  const onTextMap = useCallback((pageIndex: number, words: WordBox[]) => {
+    if (document && wordMapsDocumentRef.current === document) wordMapsRef.current.set(pageIndex, words)
+  }, [document])
   const beginCrossSelection = useCallback((pageIndex: number, position?: TextPosition, extend = false) => {
     if (!position) {
       selectionAnchorRef.current = undefined
@@ -1210,6 +1228,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     setTextFocus(undefined); setVisualFocus(undefined); setCitationHits([])
     restoredDocumentRef.current = undefined
     restoringPositionRef.current = true
+    wordMapsDocumentRef.current = undefined
+    wordMapsRef.current.clear()
     if (!data?.length) { setDocument(undefined); return }
     // Fully unmount old pages while a replacement byte stream is loading.
     // This prevents PDF.js from retaining a previously painted canvas when a
@@ -1217,7 +1237,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     setDocument(undefined); setSizes({})
     let active = true
     const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, ...(password === undefined ? {} : { password }) })
-    task.promise.then((value) => { if (active) { setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
+    task.promise.then((value) => { if (active) { wordMapsDocumentRef.current = value; wordMapsRef.current.clear(); setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])
 
@@ -1318,6 +1338,18 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     setVisualFocus({ pageIndex, rects, token })
     insightFocusTimerRef.current = window.setTimeout(() => { setVisualFocus((current) => current?.token === token ? undefined : current); insightFocusTimerRef.current = undefined }, 1000)
   }
+  const wordsForPage = useCallback(async (pageIndex: number): Promise<WordBox[]> => {
+    if (!document || pageIndex < 0 || pageIndex >= document.numPages) return []
+    const cached = wordMapsRef.current.get(pageIndex)
+    if (cached !== undefined) return cached
+    const page = await document.getPage(pageIndex + 1)
+    const viewport = page.getViewport({ scale: 1 })
+    const content = await page.getTextContent()
+    const items = content.items.filter((item): item is TextItem => 'str' in item)
+    const words = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetailsForPage(page, items), scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height))
+    if (wordMapsDocumentRef.current === document) wordMapsRef.current.set(pageIndex, words)
+    return words
+  }, [document])
   const pageSnapshots = useCallback(async (includeImages = false): Promise<Array<PageTextSnapshot & { imageCount?: number }>> => {
     if (!document) return []
     const pages: Array<PageTextSnapshot & { imageCount?: number }> = []
@@ -1351,6 +1383,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const hits = grammarIssues(await pageSnapshots()); setGrammarTerms([]); onInsight('grammar', hits)
   }
   const documentText = async () => (await pageSnapshots()).map((page) => `--- Page ${page.pageIndex + 1} ---\n${page.text}`).join('\n\n')
+  const autoAnnotationPages = useCallback(async (): Promise<AutomaticAnnotationSourcePage[]> => {
+    if (!document) return []
+    const pages: AutomaticAnnotationSourcePage[] = []
+    for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) pages.push({ pageIndex, words: await wordsForPage(pageIndex) })
+    return pages
+  }, [document, wordsForPage])
   const automaticAnnotationContext = useCallback(async (request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult> => {
     if (!document || !request.anchors.length) return { issue: 'no-text' }
     const anchors = new Map<number, PdfRect[]>()
@@ -1359,38 +1397,26 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     let issue: AutomaticAnnotationContextResult['issue']
     for (const [pageIndex, rects] of [...anchors].sort((left, right) => left[0] - right[0])) {
       if (pageIndex < 0 || pageIndex >= document.numPages) continue
-      let words = wordMapsRef.current.get(pageIndex)
-      if (!words?.length) {
-        const page = await document.getPage(pageIndex + 1)
-        const content = await page.getTextContent()
-        const items = content.items.filter((item): item is TextItem => 'str' in item)
-        words = textItemsToWordBoxes(items, content.styles, page.getViewport({ scale: 1 }).transform as [number, number, number, number, number, number])
-        wordMapsRef.current.set(pageIndex, words)
-      }
+      const words = await wordsForPage(pageIndex)
       const selected = automaticPageContext(words, rects, request.kind, level)
       if (selected.text) passages.push({ pageIndex, text: selected.text })
       else issue ||= selected.issue
     }
     if (!passages.length) return { issue: issue || 'no-text' }
     return { context: { text: passages.map((passage) => passage.text).join('\n\n'), pageIndexes: passages.map((passage) => passage.pageIndex) } }
-  }, [document])
+  }, [document, wordsForPage])
   const recognizeBookmarks = useCallback(async (options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]> => {
     if (!document) return []
     const lines = []
     for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
       const page = await document.getPage(pageIndex + 1)
       const viewport = page.getViewport({ scale: 1 })
-      let words = wordMapsRef.current.get(pageIndex)
-      if (!words?.length) {
-        const content = await page.getTextContent()
-        words = textItemsToWordBoxes(content.items.filter((item): item is TextItem => 'str' in item), content.styles, viewport.transform as [number, number, number, number, number, number])
-        wordMapsRef.current.set(pageIndex, words)
-      }
+      const words = await wordsForPage(pageIndex)
       lines.push(...bookmarkLinesFromWords(pageIndex, words, viewport.width, viewport.height))
     }
     return recognizeBookmarkCandidates(lines, options)
-  }, [document])
-  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, automaticAnnotationContext, recognizeBookmarks, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
+  }, [document, wordsForPage])
+  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined

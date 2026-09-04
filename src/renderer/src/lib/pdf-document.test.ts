@@ -195,6 +195,49 @@ describe('PdfDocumentModel', () => {
     expect(reopened.annotations().find((annotation) => annotation.kind === 'replace')?.reply).toEqual({ status: 'handled', content: '已处理' })
   })
 
+  it('adds all six annotation kinds as one undoable batch and persists separate reasons', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const ids = await model.addAnnotations([
+      { pageIndex: 0, kind: 'highlight', rects: [{ x: 70, y: 110, width: 90, height: 14 }], content: 'highlight action', reason: 'highlight reason' },
+      { pageIndex: 0, kind: 'replace', rects: [{ x: 70, y: 140, width: 90, height: 14 }], content: 'replacement only', reason: 'replacement reason' },
+      { pageIndex: 0, kind: 'delete', rects: [{ x: 70, y: 170, width: 90, height: 14 }], content: 'delete action', reason: 'delete reason' },
+      { pageIndex: 1, kind: 'underline', rects: [{ x: 70, y: 110, width: 90, height: 14 }], content: 'underline action', reason: 'underline reason' },
+      { pageIndex: 1, kind: 'note', rects: [], point: { x: 250, y: 150 }, content: 'note action', reason: 'note reason' },
+      { pageIndex: 2, kind: 'insert', rects: [], point: { x: 280, y: 180 }, content: 'inserted text only', reason: 'insertion reason' }
+    ])
+    expect(ids).toHaveLength(6)
+    expect(model.annotations().map(({ kind, reason }) => ({ kind, reason }))).toEqual([
+      { kind: 'highlight', reason: 'highlight reason' },
+      { kind: 'replace', reason: 'replacement reason' },
+      { kind: 'delete', reason: 'delete reason' },
+      { kind: 'underline', reason: 'underline reason' },
+      { kind: 'note', reason: 'note reason' },
+      { kind: 'insert', reason: 'insertion reason' }
+    ])
+    expect(model.annotations().find((annotation) => annotation.kind === 'replace')?.content).toBe('replacement only')
+    expect(model.annotations().find((annotation) => annotation.kind === 'insert')?.content).toBe('inserted text only')
+
+    const reopened = await PdfDocumentModel.load(model.bytes)
+    expect(reopened.annotations().map((annotation) => annotation.reason)).toEqual(model.annotations().map((annotation) => annotation.reason))
+    await model.undo()
+    expect(model.annotations()).toHaveLength(0)
+    expect(model.canUndo).toBe(false)
+    await model.redo()
+    expect(model.annotations()).toHaveLength(6)
+  })
+
+  it('validates an annotation batch before writing any part of it', async () => {
+    const model = await PdfDocumentModel.load(await samplePdf())
+    const original = model.bytes
+    await expect(model.addAnnotations([
+      { pageIndex: 0, kind: 'highlight', rects: [{ x: 70, y: 110, width: 90, height: 14 }], content: 'must not be written' },
+      { pageIndex: 1, kind: 'underline', rects: [], content: 'invalid empty region' }
+    ])).rejects.toThrow('请先选择文字或页面位置。')
+    expect(model.annotations()).toHaveLength(0)
+    expect(model.bytes).toEqual(original)
+    expect(model.canUndo).toBe(false)
+  })
+
   it('stores the configured author in the standard PDF annotation field', async () => {
     const model = await PdfDocumentModel.load(await samplePdf())
     const id = await model.addAnnotation(0, 'highlight', [{ x: 70, y: 110, width: 150, height: 15 }], 'authored note', undefined, undefined, undefined, '  Yuwei   Le  ')
