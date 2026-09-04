@@ -33,7 +33,9 @@ async function main() {
       element.scrollIntoView({ block: 'center' })
     })
     await documentPage.locator('.text-map span').first().waitFor({ timeout: 60000 })
+    await page.bringToFront()
     await documentPage.focus()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     const points = await documentPage.evaluate((element) => {
       const pageBox = element.getBoundingClientRect()
       const words = [...element.querySelectorAll('.text-map span')].map((span) => {
@@ -46,11 +48,23 @@ async function main() {
       }
     })
     assert.ok(points.start && points.end, `page 6 drag anchors unavailable: ${JSON.stringify(points)}`)
-    await page.bringToFront()
     const flowFrom = { x: points.start.x + 1, y: points.start.y + points.start.height / 2 }
     const flowTo = { x: points.end.x + points.end.width - 1, y: points.end.y + points.end.height / 2 }
     const flowPageBox = await documentPage.boundingBox()
     assert.ok(flowPageBox, 'page 6 bounding box unavailable')
+    const flowAnchorStillHit = await documentPage.evaluate((element, point) => {
+      const pageBox = element.getBoundingClientRect()
+      const span = [...element.querySelectorAll('.text-map span')].find((candidate) => {
+        const box = candidate.getBoundingClientRect()
+        const relativeX = (box.x - pageBox.left) / pageBox.width
+        const relativeY = (box.y - pageBox.top) / pageBox.height
+        return candidate.textContent === 'where' && relativeX > .5 && relativeY > .52 && relativeY < .57
+      })
+      if (!span) return false
+      const box = span.getBoundingClientRect()
+      return point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom
+    }, flowFrom)
+    assert.ok(flowAnchorStillHit, 'page 6 layout moved after measuring the drag anchor')
     await page.mouse.move(flowFrom.x, flowFrom.y)
     await page.mouse.down()
     const flowFrames = await traceSelectionMove(page, documentPage, flowFrom, flowTo)
@@ -102,7 +116,8 @@ async function main() {
     await captionPage.locator('.text-map span').first().waitFor({ timeout: 60000 })
     const dragCaption = async (reverse, temporal = false) => {
       await captionPage.evaluate((element) => element.scrollIntoView({ block: 'center' }))
-      await page.waitForTimeout(180)
+      await page.bringToFront()
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
       const anchors = await captionPage.evaluate((element) => {
         const pageBox = element.getBoundingClientRect()
         const words = [...element.querySelectorAll('.text-map span')].map((span) => {
@@ -119,7 +134,6 @@ async function main() {
       const to = reverse ? anchors.first : anchors.last
       const captionFrom = { x: from.x + (reverse ? from.width + 20 : 1), y: from.y + (reverse ? from.height - 1 : from.height / 2) }
       const captionTo = { x: to.x + (reverse ? 1 : to.width + 20), y: to.y + (reverse ? to.height / 2 : to.height - 1) }
-      await page.bringToFront()
       await page.mouse.move(captionFrom.x, captionFrom.y)
       await page.mouse.down()
       const captionFrames = temporal ? await traceSelectionMove(page, captionPage, captionFrom, captionTo) : []
