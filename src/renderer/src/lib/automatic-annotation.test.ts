@@ -143,6 +143,7 @@ describe('automatic annotation response schema', () => {
     expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[1], reason: '' }] }), [target], 'brief')).toThrow('ui.automaticAnnotationResponseInvalid')
     expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[1], reason: 'x'.repeat(241) }] }), [target], 'brief')).toThrow('ui.automaticAnnotationResponseInvalid')
     expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[5], reason: '' }] }), [target], 'revision')).toThrow('ui.automaticAnnotationResponseInvalid')
+    expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[0], reason: '' }] }), [target], 'revision')).toThrow('ui.automaticAnnotationResponseInvalid')
     expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[0], replacementText: 'not allowed' }] }), [target], 'brief')).toThrow('ui.automaticAnnotationResponseInvalid')
     expect(() => parseAutomaticAnnotationResponse(JSON.stringify({ ...candidate, findings: [{ ...candidate.findings[4], insertSide: null }] }), [target], 'brief')).toThrow('ui.automaticAnnotationResponseInvalid')
   })

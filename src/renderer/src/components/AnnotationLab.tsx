@@ -4,7 +4,7 @@ import { AnnotationIcon } from './AnnotationIcon'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, FULL_REVIEW_PRESETS,
   loadAiSettings, localizedPrompt, MAX_AI_TIMEOUT_SECONDS, MIN_AI_TIMEOUT_SECONDS, normalizeAiTimeoutSeconds,
-  autoAnnotatePage, polishText, promptForLanguage, providerSettings, reviewDocument, saveAiSettings, suggestForAnnotation,
+  autoAnnotatePage, isRetryableAutomaticAnnotationError, polishText, promptForLanguage, providerSettings, reviewDocument, saveAiSettings, suggestForAnnotation,
   type AiLanguage, type AiSettings, type FullReviewDocument, type FullReviewSendMode
 } from '../lib/ai-polish'
 import { normalizeCopiedText } from '../lib/clipboard-text'
@@ -26,13 +26,15 @@ import {
 import {
   buildAutomaticAnnotationPages, draftAutomaticAnnotations,
   MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS,
-  type AutomaticAnnotationDetail, type AutomaticAnnotationDraft, type AutomaticAnnotationPage,
+  type AutomaticAnnotationDetail, type AutomaticAnnotationDraft, type AutomaticAnnotationIntensity, type AutomaticAnnotationPage,
   type AutomaticAnnotationSourcePage
 } from '../lib/automatic-annotation'
 import './annotation-lab.css'
 
 export const FULL_REVIEW_CONSENT_KEY = 'pdfuck.lab.full-review-consent.v1'
 export const AUTOMATIC_ANNOTATION_DETAIL_KEY = 'pdfuck.lab.auto-annotation-detail.v1'
+export const AUTOMATIC_ANNOTATION_INTENSITY_KEY = 'pdfuck.lab.auto-annotation-intensity.v1'
+const MAX_AUTOMATIC_ANNOTATION_RETRIES = 3
 
 export interface AnnotationSuggestionRequest extends AutomaticAnnotationContextRequest { token: number; annotationId: string; annotationContent: string; pageIndex: number }
 export interface LabDocumentPayload extends FullReviewDocument {}
@@ -77,6 +79,11 @@ interface AutomaticAnnotationProgress {
 function loadAutomaticAnnotationDetail(): AutomaticAnnotationDetail {
   const value = localStorage.getItem(AUTOMATIC_ANNOTATION_DETAIL_KEY)
   return value === 'revision' || value === 'detailed' ? value : 'brief'
+}
+
+function loadAutomaticAnnotationIntensity(): AutomaticAnnotationIntensity {
+  const value = localStorage.getItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY)
+  return value === 'lenient' || value === 'strict' ? value : 'balanced'
 }
 
 function characters(value: string): string[] { return Array.from(value) }
@@ -163,7 +170,9 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   const [suggestionAdding, setSuggestionAdding] = useState(false)
   const [automaticScope, setAutomaticScope] = useState<AutomaticAnnotationScope>('document')
   const [automaticDetail, setAutomaticDetail] = useState<AutomaticAnnotationDetail>(loadAutomaticAnnotationDetail)
+  const [automaticIntensity, setAutomaticIntensity] = useState<AutomaticAnnotationIntensity>(loadAutomaticAnnotationIntensity)
   const [automaticStatus, setAutomaticStatus] = useState<AutomaticAnnotationStatus>('idle')
+  const [automaticRetryAttempt, setAutomaticRetryAttempt] = useState(0)
   const [automaticError, setAutomaticError] = useState('')
   const [automaticProgress, setAutomaticProgress] = useState<AutomaticAnnotationProgress>({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0 })
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | undefined>(undefined)
@@ -329,6 +338,13 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   const waitForAutomaticDecision = (cause: unknown) => new Promise<AutomaticAnnotationDecision>((resolve) => {
     setAutomaticError(automaticFailureText(cause)); setAutomaticStatus('error'); automaticDecision.current = resolve
   })
+  const waitWhileAutomaticPaused = async (runId: number): Promise<boolean> => {
+    if (!automaticPauseRequested.current) return automaticRunId.current === runId
+    setAutomaticStatus('paused')
+    await new Promise<void>((resolve) => { automaticResume.current = resolve })
+    automaticResume.current = undefined
+    return automaticRunId.current === runId
+  }
   const decideAutomaticAnnotation = (decision: AutomaticAnnotationDecision) => {
     const resolve = automaticDecision.current
     if (!resolve) return
@@ -344,10 +360,11 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     const runId = ++automaticRunId.current
     const settingsSnapshot = settings
     const detailSnapshot = automaticDetail
+    const intensitySnapshot = automaticIntensity
     automaticPauseRequested.current = false
     automaticResume.current = undefined
     automaticDecision.current = undefined
-    setAutomaticError(''); setAutomaticStatus('extracting')
+    setAutomaticError(''); setAutomaticRetryAttempt(0); setAutomaticStatus('extracting')
     setAutomaticProgress({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0 })
     try {
       const sourcePages = await getAutomaticAnnotationPages()
@@ -363,12 +380,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
       for (let index = 0; index < targetPages.length;) {
         if (automaticRunId.current !== runId) return
-        if (automaticPauseRequested.current) {
-          setAutomaticStatus('paused')
-          await new Promise<void>((resolve) => { automaticResume.current = resolve })
-          automaticResume.current = undefined
-          if (automaticRunId.current !== runId) return
-        }
+        if (!(await waitWhileAutomaticPaused(runId))) return
         const page = targetPages[index]
         const fullPage = fullPageByIndex.get(page.pageIndex)
         const nearby = scopedSelection ? localSelectionContext(fullPage, pageSelection(scopedSelection, page.pageIndex)) : ''
@@ -381,14 +393,25 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
         let response: Awaited<ReturnType<typeof autoAnnotatePage>> | undefined
         let skipPage = false
+        let retries = 0
         while (!response && !skipPage) {
+          if (!(await waitWhileAutomaticPaused(runId))) return
           const requestId = crypto.randomUUID()
           automaticAiRequestId.current = requestId
           try {
-            response = await autoAnnotatePage(settingsSnapshot, { pageIndex: page.pageIndex, blocks: page.blocks, opening, previous, next, contextSummary, detail: detailSnapshot, language: interfaceLanguage }, requestId)
+            response = await autoAnnotatePage(settingsSnapshot, { pageIndex: page.pageIndex, blocks: page.blocks, opening, previous, next, contextSummary, detail: detailSnapshot, intensity: intensitySnapshot, retryAttempt: retries, language: interfaceLanguage }, requestId)
           } catch (cause) {
             if (automaticRunId.current !== runId) return
-            const decision = await waitForAutomaticDecision(cause)
+            if (retries < MAX_AUTOMATIC_ANNOTATION_RETRIES && isRetryableAutomaticAnnotationError(cause)) {
+              retries += 1
+              setAutomaticRetryAttempt(retries)
+              continue
+            }
+            setAutomaticRetryAttempt(0)
+            const failure = retries === MAX_AUTOMATIC_ANNOTATION_RETRIES
+              ? message('autoAnnotation.retriesExhausted', { count: MAX_AUTOMATIC_ANNOTATION_RETRIES, error: automaticFailureText(cause) })
+              : cause
+            const decision = await waitForAutomaticDecision(failure)
             if (automaticRunId.current !== runId || decision === 'end') return
             if (decision === 'skip') skipPage = true
             else setAutomaticStatus('running')
@@ -396,6 +419,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
             if (automaticAiRequestId.current === requestId) automaticAiRequestId.current = undefined
           }
         }
+        setAutomaticRetryAttempt(0)
         if (automaticRunId.current !== runId) return
         if (skipPage || !response) {
           completed += page.blocks.length; index += 1
@@ -425,9 +449,9 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
         index += 1
         setAutomaticProgress({ page: Math.min(index + 1, targetPages.length), pages: targetPages.length, completed, total, annotations, skipped })
       }
-      if (automaticRunId.current === runId) { setAutomaticStatus('complete'); setAutomaticError('') }
+      if (automaticRunId.current === runId) { setAutomaticRetryAttempt(0); setAutomaticStatus('complete'); setAutomaticError('') }
     } catch (cause) {
-      if (automaticRunId.current === runId) { setAutomaticStatus('idle'); setAutomaticError(automaticFailureText(cause)) }
+      if (automaticRunId.current === runId) { setAutomaticRetryAttempt(0); setAutomaticStatus('idle'); setAutomaticError(automaticFailureText(cause)) }
     }
   }
   const pauseAutomaticAnnotation = () => {
@@ -446,7 +470,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     automaticDecision.current?.('end'); automaticDecision.current = undefined
     if (automaticAiRequestId.current) window.desktop?.cancelAiRequest?.(automaticAiRequestId.current)
     automaticAiRequestId.current = undefined
-    setAutomaticError(''); setAutomaticStatus('stopped')
+    setAutomaticError(''); setAutomaticRetryAttempt(0); setAutomaticStatus('stopped')
   }
   const captureContext = () => {
     if (!selection || !normalizedSelection) { setSuggestionError('请先在 PDF 页面框选一段正文，再点击“加入当前选区”。'); return }
@@ -494,7 +518,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
       : automaticStatus === 'paused' ? t("ui.automaticAnnotationPaused")
         : automaticStatus === 'complete' ? t("ui.automaticAnnotationComplete")
           : automaticStatus === 'stopped' ? t("ui.automaticAnnotationStopped")
-            : t("ui.analyzingAndAddingAnnotations")
+            : automaticRetryAttempt ? t("ui.retryingCurrentPage") : t("ui.analyzingAndAddingAnnotations")
   return <div className="annotation-lab">
     <div className="annotation-lab-heading"><h3>{t("ui.lab")}</h3><button type="button" className="annotation-lab-settings-trigger" title={t("ui.labModelSettings")} aria-label={t("ui.labModelSettings")} onClick={() => setSettingsOpen(true)}>⚙</button></div>
     <div className="annotation-lab-tools">
@@ -521,9 +545,10 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
     {activeWindow === 'automatic' && <div className="ai-polish-window lab-workflow-window automatic-annotation-window" style={windowStyle}><header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag}><span><AnnotationIcon kind="ai_annotate" />{t("ui.automaticAnnotation")}</span><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.close")}>×</button></header><p className="lab-workflow-intro">{t("ui.automaticAnnotationIntro")}</p>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationScope")}</legend><div className="automatic-option-grid"><label className={automaticScope === 'document' ? 'active' : ''}><input type="radio" name="automatic-annotation-scope" value="document" checked={automaticScope === 'document'} onChange={() => setAutomaticScope('document')} /><span><b>{t("ui.fullDocument")}</b><small>{t("ui.reviewEachPageAndAddAnnotations")}</small></span></label><label className={automaticScope === 'selection' ? 'active' : ''}><input type="radio" name="automatic-annotation-scope" value="selection" checked={automaticScope === 'selection'} disabled={!normalizedSelection} onChange={() => setAutomaticScope('selection')} /><span><b>{t("ui.currentSelection")}</b><small>{normalizedSelection ? clipStart(normalizedSelection, 90) : t("ui.selectTextInThePdfFirst")}</small></span></label></div>{automaticScope === 'selection' && <p className="automatic-context-disclosure">{t("ui.selectionAnnotationContextNotice")}</p>}</fieldset>
+      <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationIntensity")}</legend><div className="automatic-option-grid three"><label className={automaticIntensity === 'lenient' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="lenient" checked={automaticIntensity === 'lenient'} onChange={() => { setAutomaticIntensity('lenient'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'lenient') }} /><span><b>{t("ui.annotationIntensityLenient")}</b><small>{t("ui.annotationIntensityLenientHint")}</small></span></label><label className={automaticIntensity === 'balanced' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="balanced" checked={automaticIntensity === 'balanced'} onChange={() => { setAutomaticIntensity('balanced'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'balanced') }} /><span><b>{t("ui.annotationIntensityBalanced")}</b><small>{t("ui.annotationIntensityBalancedHint")}</small></span></label><label className={automaticIntensity === 'strict' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="strict" checked={automaticIntensity === 'strict'} onChange={() => { setAutomaticIntensity('strict'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'strict') }} /><span><b>{t("ui.annotationIntensityStrict")}</b><small>{t("ui.annotationIntensityStrictHint")}</small></span></label></div></fieldset>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationExplanation")}</legend><div className="automatic-option-grid three"><label className={automaticDetail === 'revision' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="revision" checked={automaticDetail === 'revision'} onChange={() => { setAutomaticDetail('revision'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'revision') }} /><span><b>{t("ui.revisionOnly")}</b><small>{t("ui.revisionOnlyHint")}</small></span></label><label className={automaticDetail === 'brief' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="brief" checked={automaticDetail === 'brief'} onChange={() => { setAutomaticDetail('brief'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'brief') }} /><span><b>{t("ui.briefReason")}</b><small>{t("ui.briefReasonHint")}</small></span></label><label className={automaticDetail === 'detailed' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="detailed" checked={automaticDetail === 'detailed'} onChange={() => { setAutomaticDetail('detailed'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'detailed') }} /><span><b>{t("ui.detailedReason")}</b><small>{t("ui.detailedReasonHint")}</small></span></label></div></fieldset>
       {!automaticActive && <button type="button" className="primary wide automatic-start" disabled={!getAutomaticAnnotationPages || !onAddAutomaticAnnotations} onClick={() => void startAutomaticAnnotation()}>{t("ui.startAutomaticAnnotation")}</button>}
-      {automaticStatus !== 'idle' && <section className={`automatic-annotation-progress ${automaticStatus}`} role="progressbar" aria-label={t("ui.automaticAnnotationProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={automaticStatus === 'extracting' ? undefined : automaticPercent}><header><b>{automaticStatus === 'error' ? t("ui.actionFailed") : automaticStateLabel}</b><span>{automaticStatus === 'extracting' ? '' : `${automaticPercent}%`}</span></header><div className="lab-review-progress-track"><i style={{ width: automaticStatus === 'extracting' ? '35%' : `${automaticPercent}%` }} /></div>{automaticStatus !== 'extracting' && <p aria-live="polite">{automaticStatus === 'complete' ? message('autoAnnotation.complete', { total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped }) : message('autoAnnotation.progress', { page: automaticProgress.page, pages: automaticProgress.pages, completed: automaticProgress.completed, total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped })}</p>}</section>}
+      {automaticStatus !== 'idle' && <section className={`automatic-annotation-progress ${automaticStatus}`} role="progressbar" aria-label={t("ui.automaticAnnotationProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={automaticStatus === 'extracting' ? undefined : automaticPercent}><header><b>{automaticStatus === 'error' ? t("ui.actionFailed") : automaticStateLabel}</b><span>{automaticStatus === 'extracting' ? '' : `${automaticPercent}%`}</span></header><div className="lab-review-progress-track"><i style={{ width: automaticStatus === 'extracting' ? '35%' : `${automaticPercent}%` }} /></div>{automaticStatus !== 'extracting' && <p aria-live="polite">{automaticStatus === 'complete' ? message('autoAnnotation.complete', { total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped }) : automaticRetryAttempt && automaticStatus === 'running' ? message('autoAnnotation.retryProgress', { page: automaticProgress.page, pages: automaticProgress.pages, attempt: automaticRetryAttempt, max: MAX_AUTOMATIC_ANNOTATION_RETRIES }) : message('autoAnnotation.progress', { page: automaticProgress.page, pages: automaticProgress.pages, completed: automaticProgress.completed, total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped })}</p>}</section>}
       {automaticError && <p className="ai-polish-error" role="alert">{automaticError}</p>}
       {automaticActive && <div className="automatic-annotation-controls">{automaticStatus === 'error' ? <><button type="button" onClick={() => decideAutomaticAnnotation('retry')}>{t("ui.retryCurrentPage")}</button><button type="button" onClick={() => decideAutomaticAnnotation('skip')}>{t("ui.skipCurrentPage")}</button></> : automaticStatus === 'running' ? <button type="button" onClick={pauseAutomaticAnnotation}>{t("ui.pause")}</button> : (automaticStatus === 'paused' || automaticStatus === 'pausing') ? <button type="button" onClick={resumeAutomaticAnnotation}>{t("ui.resume")}</button> : null}<button type="button" className="danger" onClick={stopAutomaticAnnotation}>{t("ui.endAutomaticAnnotation")}</button></div>}
       {automaticActive && <p className="automatic-control-note">{t("ui.pauseAndStopBehavior")}</p>}

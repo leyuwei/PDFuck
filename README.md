@@ -39,10 +39,13 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.10
+## What's New in 2.0.11
 
 - Automatic Annotation reviews either the full document or the current selection, using document-opening, nearby, and cross-page context without writing outside the chosen scope.
-- Findings can use highlight, replace, delete, underline, insert, or note annotations. Revision text stays separate from an optional brief or detailed reason, and the run can be paused, resumed, or ended at any time after the one-time privacy and copyright confirmation.
+- Annotation intensity can be Lenient, Balanced (default), or Strict. The threshold changes coverage without imposing a finding count, lowering the evidence standard, or manufacturing issues.
+- Invalid model output and retryable provider failures are retried automatically up to three times with visible progress. Only then does PDFuck ask whether to retry the page, skip it, or end; annotation write failures are never replayed automatically.
+- Findings use an explicit remedy-based policy across highlight, replace, delete, underline, insert, and note. Safe local corrections use destructive tools, while contextual, structural, logical, evidence, and contribution problems use decisive non-destructive annotations. Revision text stays separate from an optional brief or detailed reason.
+- The run can be paused, resumed, or ended at any time after the one-time privacy and copyright confirmation.
 - Helper text is shorter and follows one consistent two-line layout across all ten interface languages. Note and text-insertion tools now show distinct, task-specific guidance.
 - Printing now supports 1–99 copies and selectable 150, 300, or 600 DPI PDF rasterization quality on both the native Windows path and the cross-platform Electron path.
 - Printer preferences open for the selected Windows device, with the system printer page as a safe fallback for driver-specific media, color, and finishing options.
@@ -101,7 +104,7 @@ On macOS, dragging, double-clicking, or opening a PDF through file association r
 - Cross-line and cross-page selection is written as accurate per-page annotation rectangles, including multi-column layouts, figures, tables, captions, and long formulas.
 - Edit or delete existing annotations from the page or list. Double-clicking any page annotation activates the Annotate module before opening its editor, regardless of the current module. Duplicate rapid delete events are idempotent, so a stale second event cannot open a native alert or detach the active editor/IME. Change annotation colors, collapse the list to a narrow rail, and focus a selected annotation in the document without leaving a permanent overlay.
 - Annotation Lab is visually aligned with the standard annotation-tool groups and has one shared model-settings control beside a divider-free heading. AI Polish provides focused rewrite presets; Full Document Review can send extracted page-marked text or the current PDF file after a one-time, properly inset data-risk consent, with an elegant countdown driven by the configured timeout; Annotation Suggestions automatically selects nearby text from the annotation geometry, offers a five-level context-amount slider, and still accepts multiple manual selections that can optionally be retained locally per PDF. Free-position notes only receive automatic context when they are genuinely near recognizable text, avoiding unrelated paragraphs, figures, or columns. Each PDF owns an isolated, continuously mounted AI session: opening another PDF or manually switching tabs only hides the original window while its request and countdown continue, and switching back restores its progress or result. Suggestion requests are one-shot and can only be opened from the explicit button in an annotation's settings; ordinary annotation double-clicks only open the annotation editor. Add to Reply is bound to the originating document, writes every segment of a cross-page annotation atomically, verifies the result, and exposes the multiline reply in both the annotation row and reply settings; saved replies are restored after reopening. Every AI response is safely rendered as GitHub-flavoured Markdown while Copy preserves the original Markdown. AI responses follow all ten interface languages; only AI Polish has a keyboard shortcut.
-- Automatic Annotation reviews the whole PDF or strictly the current selection. Document-opening text, nearby paragraphs, and cross-page text may guide the model but cannot expand the writeback scope. It can add highlight, replace, delete, underline, insert, and note annotations, keeping proposed text separate from revision-only, brief-reason, or detailed-reason explanations. Progress can be paused, resumed, or ended; first use requires the same explicit privacy and copyright confirmation as Full Document Review.
+- Automatic Annotation reviews the whole PDF or strictly the current selection. Document-opening text, nearby paragraphs, and cross-page text may guide the model but cannot expand the writeback scope. Lenient, Balanced, and Strict settings change coverage without quotas. A remedy-based policy selects highlight, replace, delete, underline, insert, or note; invalid model output and transient provider responses receive up to three automatic retries before the user chooses what happens next. Proposed text remains separate from revision-only, brief-reason, or detailed-reason explanations. Progress can be paused, resumed, or ended; first use requires the same explicit privacy and copyright confirmation as Full Document Review.
 - Free Drawing Board is the fifth Annotation Lab tool. Its floating window can be moved and resized, with aligned brush, color, and canvas-action groups plus visible drawing and resize guidance; the controls reflow with the board itself when it is narrowed. Finished work can be exported as a transparent PNG or added directly to the current page as an editable image.
 - Supported providers include OpenAI-compatible endpoints, Claude-compatible endpoints, BigModel Plan, Doubao, DeepSeek, KIMI, and custom OpenAI-compatible services. Long responses request server-sent streaming by default so upstream gateways receive response bytes early; an older relay that explicitly rejects streaming falls back once without replaying timeouts or ambiguous billable requests. HTTP 524, other gateway timeouts, temporary service failures, authentication, model-route, input-size, and quota/rate-limit errors receive distinct actionable diagnostics instead of raw status pages. API keys, shared model settings, and a customizable 5–3600 second response timeout (120 seconds by default) are kept in local browser storage.
 
@@ -149,7 +152,7 @@ npm test
 npm run build
 ```
 
-The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers the page 1 reverse drag from the final author to the full-width title as well as pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
+The build also audits the i18n catalogue. Run `npm run test:ai-smoke` to pass a real server-sent event stream through Electron's main-process AI proxy; unit coverage additionally verifies OpenAI- and Claude-style streams, explicit legacy-relay fallback, no blind replay after HTTP 524, actionable gateway/authentication/quota/input diagnostics, and all ten UI languages. Run `npm run test:workflow-state-ui` for the real Electron regression covering no-document button availability, clean/dirty Save state, cross-module AI selection, annotation double-click activation without replaying a closed Annotation Suggestions request, inline AI shortcut layout, and timeout persistence. Run `npm run test:lab-features-ui` to launch a local mock AI service and verify shared Lab layout, one-time consent, full-document text transport, all three persisted annotation-intensity controls, per-document AI progress and result restoration across PDF opening and manual tab switches, multi-page context collection, response copying, and both annotation writeback paths in a real Electron window. Unit tests separately force three invalid model responses before a fourth accepted response, verify unique request IDs and one writeback, and prove that manual decisions appear only after the bounded retry budget is exhausted. Run `npm run test:bookmarks-ui` for a generated standards-based PDF and a real Electron regression covering automatic sidebar display, resizing, search, font controls, narrow-window coexistence with annotations, double-click title editing, recognition rules and depth, append/replace/delete, undo, Save and Close, and persisted outlines. Selection regression checks are available through `npm run test:selection-scheduling`, `npm run test:selection-scheduling-ui`, `npm run test:selection-scheduling-0826`, `npm run test:selection-scheduling-0826-ui`, `npm run test:selection-chinese`, `npm run test:selection-chinese-ui`, `npm run test:selection-bc`, and `npm run test:selection-bc-ui`. The first pair uses `tmp/Scheduling0821m.pdf`; the second uses pages 5, 10, and 11 of `tmp/Scheduling0826m.pdf` to verify formula retention, chart isolation, single-/multi-column flow clipping, reverse drags, Electron selection geometry, and copied text. The Chinese pair uses page 3 of `tmp/7.申报书原件.pdf` to verify malformed subset-font metrics. The `bc.pdf` pair covers the page 1 reverse drag from the final author to the full-width title as well as pages 7, 12, and 13, false formula gutters, captions and wide equations, same-line and long same-column drags, the hidden-by-default correction editor, vertical and horizontal boundary manipulation, per-document/page persistence, and reset to automatic detection. `npm run test:heavy-image-page-ui` uses page 2 of `tmp/dawenjian.pdf` to verify the localized loading placeholder appears and disappears, enforce a bounded first-paint time, and check both monochrome text and colored image content. Run `npm run test:window-tabs` to verify tab reordering, dirty multi-document Save All and Close choices, standalone windows, automatic return to another PDFuck window, and safe standalone-window cleanup. Run `npm run test:page-text-edit-ui` for the real Electron regression covering in-place geometry, click-relative caret placement, duplicate-free double submission, save/reopen persistence, and source restoration after deletion. Run `npm run test:page-manager-input-ui` to dispatch two immediate deletes for the same annotation and prove no native/error dialog appears before verifying subsequent real typing, CJK IME composition, native focus round-trips, page-direction previews and saved rotations, and unclamped DPI drafts.
 
 Run `npm run test:creative-tools-ui` for the real Electron regression that checks Drawing Board control alignment, visible guidance, board-width-responsive reflow and overflow before drawing, moving, resizing, exporting, and placing its PNG; it also exercises every shape kind and style control, including invisible-shape validation, then saves, restarts, and verifies that all three generated page images remain editable. The release scripts run this check against both source and the final packaged application and retain PNG/PDF visual-QA artifacts under `output/playwright/`.
 
@@ -175,17 +178,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.10` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.11` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.10
+npm run package:windows -- 2.0.11
 ```
 
 ```sh
-npm run package:macos -- 2.0.10
+npm run package:macos -- 2.0.11
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.10` and `bash scripts/package-macos.sh 2.0.10`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.11` and `bash scripts/package-macos.sh 2.0.11`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -282,7 +285,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
 - **批注是审稿工作流，不是装饰层**：高亮、替换、删除、下划线、便笺和插入六类批注都能携带文字说明；批注内容、颜色、位置和回复会随 PDF 保存，重开文档仍可继续编辑。
-- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落和跨页文字辅助判断；模型可综合使用六类批注，说明可选“仅修订文本 / 简短原因 / 详细原因”，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
+- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落和跨页文字辅助判断；可选宽松、均衡或严格力度，按修复方式综合使用六类批注，格式错误或临时服务错误最多自动重试三次后再询问用户。说明可选“仅修订文本 / 简短原因 / 详细原因”，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
 - **批注人清楚可辨，列表仍然干净**：可在可移动的“批注人”浮窗中持久保存本机审阅者姓名，今后的新批注会把姓名写入 PDF；单一外显开关可在批注正文上方显示稳定配色的紧凑标签，正文仍独占完整内容列宽度，也不会额外增加列表列。
 - **快捷键提示遵循当前系统**：所有功能按钮统一使用右侧键帽样式，并自动切换 Windows 与 macOS 的按键习惯；编辑模块八项主功能也补齐了与批注工具一致的简洁线性图标。
 - **字符级批注，半行文字也不丢精度**：单击得到字符间光标，拖动只选择真正命中的字符；跨行、半词和中英文混排都能精确标记，替换线与插入箭头会吸附到真实字符边界。选中文字后，页面浮动工具栏和右键菜单都能直接创建批注。
@@ -299,10 +302,13 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.10 新增与完善
+## 2.0.11 新增与完善
 
 - “自动批注”可审阅全文或严格限定在当前选区内，文档开头、邻近段落与跨页内容只辅助理解，不会扩大批注落点。
-- 批注可综合使用高亮、替换、删除、下划线、插入文字与自由批注；修订文本与可选的简短/详细原因分开保存，任务可随时暂停、继续或结束，首次使用前须确认隐私与版权风险。
+- 批注力度可选“宽松 / 均衡（默认）/ 严格”；档位只调整问题覆盖范围，不设置批注数量指标、不降低证据门槛，也不会为了凑数制造问题。
+- 模型返回无效格式或遇到可重试的服务错误时，会显示进度并自动重试最多三次；全部失败后才询问用户重试本页、跳过或结束。批注写回失败不会自动重放，避免重复落笔。
+- 六类工具按问题的修复方式选用：可靠的局部修改才使用替换、删除或插入；涉及上下文、结构、逻辑、证据或贡献表达且无法安全代改的问题，会果断使用高亮、下划线或自由批注。修订文本与可选的简短/详细原因分开保存。
+- 任务可随时暂停、继续或结束，首次使用前须确认隐私与版权风险。
 - 十种界面语言的操作提示均已简化并统一为两行以内；便签与插入文字不再共用含义不符的提示。
 - 打印份数支持 1–99 份，Windows 原生链路与跨平台 Electron 链路均可选择 150、300 或 600 DPI 的 PDF 栅格化质量。
 - Windows 可直接打开当前所选打印机的首选项；若驱动入口不可用，则安全转到系统打印机页面，便于调整纸张、颜色和装订等驱动专属选项。
@@ -427,7 +433,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失；
 - 删除批注会立即执行，不再二次确认；误删可用 `Ctrl/⌘Z` 撤销。
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组，标题不再带多余上下分隔线，模型设置齿轮位于分组标题右侧；智能润色、全文评价和批注建议共用同一连接与超时设置，只有智能润色显示 `Ctrl/⌘I` 快捷键。
-- “自动批注”可处理全文或严格限定在当前选区；文档开头、邻近段落与跨页内容可辅助判断，但不会扩大写入范围。结果可使用高亮、替换、删除、下划线、插入文字和自由批注，并将修订文本与“仅修订文本 / 简短原因 / 详细原因”对应的说明分开保存。任务可暂停、继续或结束；首次使用沿用全文评价的隐私与版权确认。
+- “自动批注”可处理全文或严格限定在当前选区；文档开头、邻近段落与跨页内容可辅助判断，但不会扩大写入范围。宽松、均衡、严格三档控制覆盖程度而不规定数量；系统按修复方式选择高亮、替换、删除、下划线、插入文字和自由批注，模型格式错误或可重试服务错误会自动重试最多三次，耗尽后才让用户决定。修订文本与“仅修订文本 / 简短原因 / 详细原因”对应的说明分开保存。任务可暂停、继续或结束；首次使用沿用全文评价的隐私与版权确认。
 - 自由画板是批注实验室的第五项工具；浮窗可移动和拖动改大小，画笔、颜色、画布操作等高对齐并带有清晰的绘制与缩放提示，缩窄画板时会自行重排且不溢出。完成后可导出透明 PNG，或作为可编辑图片直接加入当前 PDF 页。
 - 每个 PDF 标签拥有相互隔离、持续挂载的 AI 会话；打开新 PDF 或手动切换标签时，原文档的 AI 浮窗只会暂时隐藏，请求和倒计时继续运行，切回后会恢复原进度、错误或返回结果，不会把内容串到当前 PDF。
 - “全文评价”首次使用时必须勾选数据风险声明，复选框说明保持同行且声明卡片与浮窗边界留有一致间距；可发送带逐页标记的全文文字或当前 PDF 文件，并从五语预置审稿提示词中选择或自行修改。请求期间会按用户设置的超时时间显示进度条和剩余秒数。
@@ -518,17 +524,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.10`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.11`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.10
+npm run package:windows -- 2.0.11
 ```
 
 ```sh
-npm run package:macos -- 2.0.10
+npm run package:macos -- 2.0.11
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.10` 和 `bash scripts/package-macos.sh 2.0.10`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.11` 和 `bash scripts/package-macos.sh 2.0.11`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

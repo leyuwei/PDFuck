@@ -198,6 +198,14 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await automaticWindow.locator('.automatic-context-disclosure').waitFor()
     await scopeOptions.first().check()
 
+    const intensityOptions = automaticWindow.locator('input[name="automatic-annotation-intensity"]')
+    assert.equal(await intensityOptions.count(), 3)
+    assert.deepEqual(await intensityOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['lenient', 'balanced', 'strict'])
+    for (const label of ['宽松', '均衡', '严格']) assert.ok((await automaticWindow.innerText()).includes(label))
+    assert.equal(await intensityOptions.nth(1).isChecked(), true, 'Balanced annotation intensity must be the default')
+    await intensityOptions.nth(2).check()
+    assert.equal(await page.evaluate(() => localStorage.getItem('pdfuck.lab.auto-annotation-intensity.v1')), 'strict')
+
     const detailOptions = automaticWindow.locator('input[name="automatic-annotation-detail"]')
     assert.equal(await detailOptions.count(), 3)
     assert.deepEqual(await detailOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['revision', 'brief', 'detailed'])
@@ -225,7 +233,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await automaticWindow.locator('.automatic-annotation-progress.stopped').waitFor()
     assert.ok((await automaticProgress.innerText()).includes('自动批注已结束'))
     await automaticWindow.locator(':scope > header button').click()
-    console.log('[lab-smoke] automatic annotation scopes, explanation levels, and live controls verified')
+    console.log('[lab-smoke] automatic annotation scopes, intensity, explanation levels, and live controls verified')
 
     const toggle = page.locator('.annotation-suggestion-toggle')
     await toggle.click()

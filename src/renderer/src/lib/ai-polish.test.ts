@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
   FULL_REVIEW_PRESETS, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiTimeoutSeconds, polishText,
-  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage
+  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage,
+  isRetryableAutomaticAnnotationError
 } from './ai-polish'
 import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
@@ -229,6 +230,8 @@ describe('automatic annotation transport', () => {
       next: 'Next page context.',
       contextSummary: 'Rolling summary.',
       detail: 'brief',
+      intensity: 'strict',
+      retryAttempt: 1,
       language: 'en'
     }, 'auto-page-1')).resolves.toEqual(modelResult)
 
@@ -239,6 +242,11 @@ describe('automatic annotation transport', () => {
     expect(prompt).toContain('soft line wraps and page breaks')
     expect(prompt).toContain('unclear contributions or poorly surfaced novelty')
     expect(prompt).toContain('highlight|replace|delete|underline|insert|note')
+    expect(prompt).toContain('do not default to replace or delete')
+    expect(prompt).toContain('note a paragraph-level, cross-context, structural')
+    expect(prompt).toContain('There is no minimum, target count, or action quota')
+    expect(prompt).toContain('strict: also inspect subtle but text-supported ambiguity')
+    expect(prompt).toContain('A previous response could not be accepted')
     expect(prompt).toContain('brief: reason is required')
     expect(prompt).toContain('Opening contribution statement.')
     expect(prompt).toContain('Previous page context.')
@@ -263,6 +271,21 @@ describe('automatic annotation transport', () => {
     expect(JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content).toContain(promptRule)
   })
 
+  it.each([
+    [undefined, 'balanced: cover clear correctness'],
+    ['lenient' as const, 'lenient: flag only high-confidence'],
+    ['strict' as const, 'strict: also inspect subtle but text-supported ambiguity']
+  ])('applies the %s annotation intensity without a finding quota', async (intensity, promptRule) => {
+    const result = { version: 1, contextSummary: '', findings: [] }
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', intensity, language: 'en' })
+    const prompt = JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content as string
+    expect(prompt).toContain(promptRule)
+    expect(prompt).toContain('which may be zero')
+    expect(prompt).toContain('never manufacture findings')
+  })
+
   it('rejects a model quote outside the block whitelist and validates before transport', async () => {
     const invalidResult = {
       version: 1, contextSummary: '',
@@ -272,6 +295,22 @@ describe('automatic annotation transport', () => {
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationResponseInvalid')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', intensity: 'extreme' as never })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', retryAttempt: 4 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
     expect(aiRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['ui.automaticAnnotationResponseInvalid', true],
+    ['模型未返回可显示的内容，请检查模型、额度或接口兼容性。', true],
+    ['请求失败（429）：请求过于频繁。', true],
+    ['请求失败（503）：服务暂时不可用。', true],
+    ['无法连接模型服务，请检查接口地址、网络或证书。', true],
+    ['请求失败（401）：身份验证失败。', false],
+    ['已达到模型设置中的响应超时时间，软件已停止等待。', false],
+    ['AI 请求已取消。', false],
+    ['ui.automaticAnnotationRequestInvalid', false]
+  ])('classifies bounded automatic retries for %s', (error, expected) => {
+    expect(isRetryableAutomaticAnnotationError(new Error(error))).toBe(expected)
   })
 })

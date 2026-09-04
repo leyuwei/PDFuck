@@ -13,6 +13,7 @@ export const MAX_AUTOMATIC_ANNOTATION_REPLACEMENT_CHARS = 1_600
 export const MAX_AUTOMATIC_ANNOTATION_RESPONSE_CHARS = 120_000
 
 export type AutomaticAnnotationDetail = 'revision' | 'brief' | 'detailed'
+export type AutomaticAnnotationIntensity = 'lenient' | 'balanced' | 'strict'
 export type AutomaticAnnotationAction = 'highlight' | 'replace' | 'delete' | 'underline' | 'insert' | 'note'
 export type AutomaticAnnotationInsertSide = 'before' | 'after'
 
@@ -312,6 +313,7 @@ export function parseAutomaticAnnotationResponse(raw: string, blocks: AutomaticA
     if (!plainObject(candidate) || !exactKeys(candidate, FINDING_KEYS)) invalidResponse(`${label} 字段不符合 schema。`)
     if (typeof candidate.action !== 'string' || !ACTIONS.has(candidate.action as AutomaticAnnotationAction)) invalidResponse(`${label}.action 不受支持。`)
     const action = candidate.action as AutomaticAnnotationAction
+    if (detail === 'revision' && action !== 'replace' && action !== 'delete' && action !== 'insert') invalidResponse(`${label}.action 在仅修订模式中必须可直接应用。`)
     const blockId = limitedString(candidate.blockId, `${label}.blockId`, 80)
     const block = blockMap.get(blockId)
     if (!block) invalidResponse(`${label}.blockId 不在本页白名单中。`)
@@ -330,7 +332,6 @@ export function parseAutomaticAnnotationResponse(raw: string, blocks: AutomaticA
     const reasonLimit = detail === 'brief' ? 240 : detail === 'detailed' ? 1_200 : 0
     const reason = limitedString(candidate.reason, `${label}.reason`, reasonLimit, detail === 'revision')
     if (detail === 'revision' && reason) invalidResponse(`${label}.reason 在仅修订模式中必须为空。`)
-    if (detail === 'revision' && action === 'note') invalidResponse(`${label}.note 需要原因说明，不能用于仅修订模式。`)
     return {
       action,
       blockId,
