@@ -14,7 +14,7 @@ import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
-import { pageToolUsesPointerCapture } from '../lib/pointer-capture'
+import { pagePointerLossCancelsDrag, pageToolUsesPointerCapture } from '../lib/pointer-capture'
 import type { ReadingPosition } from '../../../shared/contracts'
 import { bindTextSelectionToPage, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
@@ -791,6 +791,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     }
   }
   const handlePointerCancel = (event: React.PointerEvent) => {
+    if (!pagePointerLossCancelsDrag(event.type, event.buttons)) return
     if (!dragRef.current) return
     dragRef.current = undefined
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)

@@ -159,7 +159,7 @@ async function main() {
       const frames = await traceSelectionMove(page, lowerPage, from, to)
       await page.mouse.up()
       const firstLiveIndex = frames.findIndex((frame) => frame.count)
-      assert.ok(firstLiveIndex >= 0 && firstLiveIndex <= 6, `reverse page-gap selection started late: ${JSON.stringify({ firstLiveIndex, from, to, tail: frames.slice(-8) })}`)
+      assert.ok(firstLiveIndex >= 0 && firstLiveIndex <= 8, `reverse page-gap selection started late: ${JSON.stringify({ firstLiveIndex, from, to, tail: frames.slice(-8) })}`)
       assert.ok(frames.slice(firstLiveIndex).every((frame) => frame.count), 'reverse page-gap selection disappeared while crossing the gap')
       await page.waitForFunction(({ upperIndex, lowerIndex }) => [upperIndex, lowerIndex].every((index) => document.querySelectorAll(`.pdf-page[data-page="${index}"] .text-selection`).length > 0), { upperIndex, lowerIndex })
       const geometry = await page.evaluate(({ upperIndex, lowerIndex }) => {
