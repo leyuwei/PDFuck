@@ -10,9 +10,9 @@ import { BookmarkRecognitionDialog } from './BookmarkRecognitionDialog'
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const candidates: RecognizedBookmark[] = [
-  { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, level: 1, top: 40, fontSize: 18, rule: 'decimal' },
-  { id: 'recognized-2', title: '1.1 Scope', pageIndex: 1, level: 2, top: 80, fontSize: 15, rule: 'decimal' },
-  { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, level: 1, top: 40, fontSize: 18, rule: 'headings' }
+  { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, level: 1, top: 40, pageHeight: 800, fontSize: 18, rule: 'decimal' },
+  { id: 'recognized-2', title: '1.1 Scope', pageIndex: 1, level: 2, top: 80, pageHeight: 800, fontSize: 15, rule: 'decimal' },
+  { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, level: 1, top: 40, pageHeight: 800, fontSize: 18, rule: 'headings' }
 ]
 
 function button(container: HTMLElement, label: string): HTMLButtonElement {
@@ -38,8 +38,8 @@ describe('BookmarkRecognitionDialog', () => {
     await act(async () => button(container, '覆盖已有书签').click())
     await act(async () => button(container, '写入 3 条书签').click())
     expect(onApply).toHaveBeenCalledWith([
-      { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, open: true, children: [{ id: 'recognized-2', title: '1.1 Scope', pageIndex: 1, open: true, children: [] }] },
-      { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, open: true, children: [] }
+      { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, position: .05, open: true, children: [{ id: 'recognized-2', title: '1.1 Scope', pageIndex: 1, position: .1, open: true, children: [] }] },
+      { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, position: .05, open: true, children: [] }
     ], 'replace')
   })
 
@@ -51,8 +51,8 @@ describe('BookmarkRecognitionDialog', () => {
     expect(container.textContent).toContain('识别到 2 条候选书签')
     await act(async () => button(container, '写入 2 条书签').click())
     expect(onApply).toHaveBeenCalledWith([
-      { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, open: true, children: [] },
-      { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, open: true, children: [] }
+      { id: 'recognized-1', title: '1 Introduction', pageIndex: 0, position: .05, open: true, children: [] },
+      { id: 'recognized-3', title: 'Conclusion', pageIndex: 2, position: .05, open: true, children: [] }
     ], 'replace')
     await act(async () => button(container, '恢复已移除项').click())
     expect(container.textContent).toContain('识别到 3 条候选书签')

@@ -26,6 +26,14 @@ describe('PDF bookmark outlines', () => {
     expect(readPdfBookmarks(reopened)).toEqual(sampleBookmarks())
   })
 
+  it('round-trips an exact vertical destination within a page', async () => {
+    const document = await sourcePdf()
+    const positioned: PdfBookmark[] = [{ id: 'middle', title: 'Middle', pageIndex: 1, position: .375, open: true, children: [] }]
+    replacePdfBookmarks(document, positioned)
+    const reopened = await PDFDocument.load(await document.save({ useObjectStreams: false }))
+    expect(readPdfBookmarks(reopened)).toEqual(positioned)
+  })
+
   it('appends roots without replacing existing bookmark objects', async () => {
     const document = await sourcePdf()
     replacePdfBookmarks(document, sampleBookmarks().slice(0, 1))

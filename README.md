@@ -39,9 +39,12 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.12
+## What's New in 2.0.13
 
-- Automatic Annotation now performs three independent passes: surface and technical correctness, paragraph purpose/coherence/progression, and section/document architecture. Structural findings must explain the reader impact and propose a concrete move, merge, split, bridge, reorder, or evidence action.
+- The desktop title now uses every available title-bar pixel: complete names stay still, while only clipped names scroll smoothly back and forth.
+- The bookmark sidebar follows the current page and vertical reading position, highlights the active bookmark range, reveals its ancestors, and stores exact within-page destinations for recognized and edited outlines.
+- Automatic Annotation offers 12 persistent issue checkboxes spanning spelling/formatting, grammar, clarity, terminology, sentence flow, paragraph focus, evidence, mathematics, cross-context consistency, section structure, restructuring, and academic contribution.
+- Each selected issue runs as its own complete page-by-page AI pass. Its rolling context restarts per issue, keeping detailed language checks from being crowded out by structural analysis while preserving the existing full-document or selection-only scope.
 - The document opening acts as a thesis and contribution contract, while nearby text, cross-page context, and the evolving discourse outline expose unclear main points, weak transitions, unsupported contributions, repetition, fragmentation, and section-order problems without expanding the writeback scope.
 - Revision text and its optional brief or detailed comment now share the annotation content itself. Automatic annotations no longer create a separate reason region.
 - Exact automatic-annotation anchors preserve the complete matched source range, including wider intermediate lines and formula fragments, instead of reapplying pointer-drag flow clipping that could omit words.
@@ -182,17 +185,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.12` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.13` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.12
+npm run package:windows -- 2.0.13
 ```
 
 ```sh
-npm run package:macos -- 2.0.12
+npm run package:macos -- 2.0.13
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.12` and `bash scripts/package-macos.sh 2.0.12`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.13` and `bash scripts/package-macos.sh 2.0.13`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -289,7 +292,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
 - **批注是审稿工作流，不是装饰层**：高亮、替换、删除、下划线、便笺和插入六类批注都能携带文字说明；批注内容、颜色、位置和回复会随 PDF 保存，重开文档仍可继续编辑。
-- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落、跨页文字和持续更新的篇章提纲辅助判断；文字与技术问题、段落主旨/衔接、章节及全文结构会分别审阅。可选宽松、均衡或严格力度，按修复方式综合使用六类批注，格式错误或临时服务错误最多自动重试三次后再询问用户。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
+- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落、跨页文字和持续更新的篇章提纲辅助判断；12 类问题可自由勾选并持久化，每类都会独立完成一轮逐页 AI 审查，文字细节、段落与篇章结构、数学、论据及论文贡献不会互相挤占。可选宽松、均衡或严格力度，按修复方式综合使用六类批注，格式错误或临时服务错误最多自动重试三次后再询问用户。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
 - **批注人清楚可辨，列表仍然干净**：可在可移动的“批注人”浮窗中持久保存本机审阅者姓名，今后的新批注会把姓名写入 PDF；单一外显开关可在批注正文上方显示稳定配色的紧凑标签，正文仍独占完整内容列宽度，也不会额外增加列表列。
 - **快捷键提示遵循当前系统**：所有功能按钮统一使用右侧键帽样式，并自动切换 Windows 与 macOS 的按键习惯；编辑模块八项主功能也补齐了与批注工具一致的简洁线性图标。
 - **字符级批注，半行文字也不丢精度**：单击得到字符间光标，拖动只选择真正命中的字符；跨行、半词和中英文混排都能精确标记，替换线与插入箭头会吸附到真实字符边界。选中文字后，页面浮动工具栏和右键菜单都能直接创建批注。
@@ -306,9 +309,12 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.12 新增与完善
+## 2.0.13 新增与完善
 
-- “自动批注”改为三层独立审阅：文字与技术正确性、自然段主旨/统一性/衔接、章节与全文结构。结构性问题必须说明对读者或论证的影响，并给出移动、合并、拆分、补桥、重排或补证据等具体动作。
+- 最上方标题栏会自适应利用可用宽度：能完整显示时保持静止，确实显示不全时才会平滑地往返滚动。
+- 书签边栏会跟随当前页和页内阅读位置，高亮当前所属的书签范围并自动展开其父级；自动识别和标准 PDF 书签均支持精确页内落点。
+- “自动批注”新增 12 类可持久化勾选项，完整覆盖错别字/格式、语法、清晰度与地道表达、术语一致性、句间衔接、段落主旨、事实/引证/论据、数学推理、跨段落/章节一致性、章节结构、重组建议和论文贡献。
+- 每种勾选问题单独完成一轮逐页 AI 审查，每轮独立重建上下文摘要；文字细节与篇章结构不再互相挤占，同时继续严格遵守全文或当前选区的落注范围。
 - 文档开头会作为主旨与贡献约定，邻近段落、跨页上下文和持续更新的篇章提纲用于识别主旨模糊、过渡生硬、贡献缺证、重复、碎片化和章节顺序问题，但不会扩大实际落注范围。
 - 修订文本及其可选的简短或详细说明统一写入批注正文；自动批注不再创建单独的“原因”区域。
 - 自动定位直接保留精确命中的完整原文范围，包括较宽的中间行与公式片段，不再套用鼠标拖选的流域裁剪而漏掉词语。
@@ -532,17 +538,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.12`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.13`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.12
+npm run package:windows -- 2.0.13
 ```
 
 ```sh
-npm run package:macos -- 2.0.12
+npm run package:macos -- 2.0.13
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.12` 和 `bash scripts/package-macos.sh 2.0.12`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.13` 和 `bash scripts/package-macos.sh 2.0.13`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

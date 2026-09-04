@@ -4,7 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PdfBookmark } from '../types'
-import { BookmarkPanel, filterBookmarkTree } from './BookmarkPanel'
+import { activeBookmarkIdForPosition, BookmarkPanel, filterBookmarkTree } from './BookmarkPanel'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -49,5 +49,17 @@ describe('BookmarkPanel', () => {
   it('does not expose editing or deletion actions for read-only bookmarks', async () => {
     await act(async () => root.render(<BookmarkPanel bookmarks={bookmarks} collapsed={false} readOnly onToggle={() => undefined} onNavigate={() => undefined} onEdit={async () => undefined} onDelete={async () => undefined} />))
     expect(container.querySelector('.bookmark-delete-one')).toBeNull()
+  })
+
+  it('tracks the latest bookmark range including positions within the same page', async () => {
+    const positioned: PdfBookmark[] = [{ id: 'chapter', title: 'Chapter', pageIndex: 2, position: .1, open: false, children: [{ id: 'section', title: 'Section', pageIndex: 2, position: .55, open: true, children: [] }] }, { id: 'next', title: 'Next', pageIndex: 3, position: .2, open: true, children: [] }]
+    expect(activeBookmarkIdForPosition(positioned, 2, .05)).toBeUndefined()
+    expect(activeBookmarkIdForPosition(positioned, 2, .4)).toBe('chapter')
+    expect(activeBookmarkIdForPosition(positioned, 2, .8)).toBe('section')
+    expect(activeBookmarkIdForPosition(positioned, 3, .1)).toBe('section')
+    expect(activeBookmarkIdForPosition(positioned, 3, .3)).toBe('next')
+    await act(async () => root.render(<BookmarkPanel bookmarks={positioned} activeId="section" collapsed={false} onToggle={() => undefined} onNavigate={() => undefined} onEdit={async () => undefined} onDelete={async () => undefined} />))
+    expect(container.querySelector('[data-bookmark-id="section"]')?.getAttribute('aria-current')).toBe('location')
+    expect(container.querySelector('[data-bookmark-id="section"]')?.classList.contains('active')).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRef, PDFString } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNull, PDFNumber, PDFObject, PDFRef, PDFString } from 'pdf-lib'
 import type { PdfBookmark } from '../types'
 
 const MAX_BOOKMARKS = 10_000
@@ -66,16 +66,22 @@ function destinationArray(document: PDFDocument, object?: PDFObject): PDFArray |
   return value instanceof PDFArray ? value : undefined
 }
 
-function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<string, number>): number | undefined {
+function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<string, number>): Pick<PdfBookmark, 'pageIndex' | 'position'> {
   let destination = destinationArray(document, item.get(PDFName.of('Dest')))
   if (!destination) {
     const action = dictionary(document, item.get(PDFName.of('A')))
     if (text(document, action?.get(PDFName.of('S'))) === 'GoTo') destination = destinationArray(document, action?.get(PDFName.of('D')))
   }
   const page = destination?.get(0)
-  if (page instanceof PDFRef) return pages.get(page.toString())
-  const pageNumber = number(document, page)
-  return pageNumber !== undefined && Number.isInteger(pageNumber) && pageNumber >= 0 && pageNumber < document.getPageCount() ? pageNumber : undefined
+  const directPage = number(document, page)
+  const pageIndex = page instanceof PDFRef ? pages.get(page.toString()) : directPage !== undefined && Number.isInteger(directPage) && directPage >= 0 && directPage < document.getPageCount() ? directPage : undefined
+  if (pageIndex === undefined || !destination) return {}
+  const mode = text(document, destination.get(1))
+  const topIndex = mode === 'XYZ' ? 3 : mode === 'FitH' || mode === 'FitBH' ? 2 : mode === 'FitR' ? 5 : -1
+  const top = topIndex >= 0 ? number(document, destination.get(topIndex)) : undefined
+  const pageHeight = document.getPage(pageIndex).getHeight()
+  const position = top === undefined || !pageHeight ? undefined : Math.max(0, Math.min(1, (pageHeight - top) / pageHeight))
+  return { pageIndex, ...(position === undefined ? {} : { position }) }
 }
 
 function bookmarkColor(document: PDFDocument, object?: PDFObject): string | undefined {
@@ -111,9 +117,10 @@ export function readPdfBookmarks(document: PDFDocument): PdfBookmark[] {
       const color = bookmarkColor(document, item.get(PDFName.of('C')))
       if (title) {
         total += 1
+        const destination = bookmarkDestination(document, item, pages)
         result.push({
           id: bookmarkKey(document, current, item, `${path}-${sibling}`), title,
-          pageIndex: bookmarkDestination(document, item, pages),
+          ...destination,
           open: (number(document, item.get(PDFName.of('Count'))) || 0) >= 0,
           ...(style & 2 ? { bold: true } : {}), ...(style & 1 ? { italic: true } : {}),
           ...(color ? { color } : {}), children
@@ -152,7 +159,10 @@ function writeBranch(document: PDFDocument, bookmarks: PdfBookmark[], parent: PD
     if (index + 1 < entries.length) dict.set(PDFName.of('Next'), entries[index + 1].ref)
     if (bookmark.pageIndex !== undefined) {
       const page = document.getPage(bookmark.pageIndex)
-      dict.set(PDFName.of('Dest'), document.context.obj([page.ref, PDFName.of('Fit')]))
+      const position = bookmark.position
+      dict.set(PDFName.of('Dest'), position === undefined
+        ? document.context.obj([page.ref, PDFName.of('Fit')])
+        : document.context.obj([page.ref, PDFName.of('XYZ'), PDFNull, PDFNumber.of(page.getHeight() * (1 - position)), PDFNull]))
     }
     const style = (bookmark.italic ? 1 : 0) | (bookmark.bold ? 2 : 0)
     if (style) dict.set(PDFName.of('F'), PDFNumber.of(style))
@@ -181,6 +191,7 @@ function validateBookmarks(document: PDFDocument, bookmarks: PdfBookmark[]): voi
       ids.add(item.id)
       if (!item.title.trim()) throw new Error('书签文字不能为空。')
       if (item.pageIndex !== undefined && (!Number.isInteger(item.pageIndex) || item.pageIndex < 0 || item.pageIndex >= document.getPageCount())) throw new Error('书签目标页无效。')
+      if (item.position !== undefined && (item.pageIndex === undefined || !Number.isFinite(item.position) || item.position < 0 || item.position > 1)) throw new Error('ui.invalidBookmarkPosition')
       visit(item.children, depth + 1)
     })
   }

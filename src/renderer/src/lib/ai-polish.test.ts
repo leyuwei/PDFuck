@@ -3,7 +3,7 @@ import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
   FULL_REVIEW_PRESETS, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiTimeoutSeconds, polishText,
   promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage,
-  isRetryableAutomaticAnnotationError
+  AUTOMATIC_ANNOTATION_ISSUE_TYPES, isRetryableAutomaticAnnotationError
 } from './ai-polish'
 import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
@@ -225,6 +225,7 @@ describe('automatic annotation transport', () => {
     await expect(autoAnnotatePage(settings, {
       pageIndex: 0,
       blocks: [block],
+      issueType: 'typos_formatting',
       opening: 'Opening contribution statement.',
       previous: 'Previous page context.',
       next: 'Next page context.',
@@ -238,15 +239,12 @@ describe('automatic annotation transport', () => {
     expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'auto-page-1' }))
     const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
     const prompt = payload.messages[1].content as string
-    expect(prompt).toContain('spelling and typographical errors')
-    expect(prompt).toContain('Assess three levels independently')
-    expect(prompt).toContain('Paragraph discourse')
-    expect(prompt).toContain('Section and document architecture')
+    expect(prompt).toContain('FOCUSED CATEGORY (typos_formatting)')
+    expect(prompt).toContain('Spelling, typos, punctuation')
+    expect(prompt).toContain('Review only this category in this pass')
     expect(prompt).toContain("Treat opening as the document's thesis and contribution contract")
-    expect(prompt).toContain('Do not let correct wording or mathematics hide')
     expect(prompt).toContain('move, merge, split, bridge, reorder, or strengthen evidence')
     expect(prompt).toContain('soft line wraps and page breaks')
-    expect(prompt).toContain('contributions and novelty are explicit, differentiated, and supported')
     expect(prompt).toContain('highlight|replace|delete|underline|insert|note')
     expect(prompt).toContain('do not default to replace or delete')
     expect(prompt).toContain('note a paragraph-level, cross-context, structural')
@@ -276,8 +274,19 @@ describe('automatic annotation transport', () => {
     }
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail, language: 'en' })).resolves.toEqual(result)
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail, language: 'en' })).resolves.toEqual(result)
     expect(JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content).toContain(promptRule)
+  })
+
+  it.each(AUTOMATIC_ANNOTATION_ISSUE_TYPES)('keeps the %s pass focused on exactly that issue category', async (issueType) => {
+    const result = { version: 1, contextSummary: '', findings: [] }
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType, detail: 'brief', language: 'en' })
+    const prompt = JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content as string
+    expect(prompt).toContain(`FOCUSED CATEGORY (${issueType})`)
+    expect(prompt).toContain('Review only this category in this pass')
+    expect(prompt).toContain(`"issueType":"${issueType}"`)
   })
 
   it.each([
@@ -288,7 +297,7 @@ describe('automatic annotation transport', () => {
     const result = { version: 1, contextSummary: '', findings: [] }
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', intensity, language: 'en' })
+    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', intensity, language: 'en' })
     const prompt = JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content as string
     expect(prompt).toContain(promptRule)
     expect(prompt).toContain('which may be zero')
@@ -302,10 +311,10 @@ describe('automatic annotation transport', () => {
     }
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(invalidResult) } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationResponseInvalid')
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', intensity: 'extreme' as never })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], detail: 'brief', retryAttempt: 4 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationResponseInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], issueType: 'clarity_style', detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', intensity: 'extreme' as never })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', retryAttempt: 4 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
     expect(aiRequest).toHaveBeenCalledTimes(1)
   })
 

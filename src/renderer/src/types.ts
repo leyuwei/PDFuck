@@ -6,6 +6,8 @@ export interface PdfBookmark {
   id: string
   title: string
   pageIndex?: number
+  /** Normalized vertical destination within pageIndex (0 = top, 1 = bottom). */
+  position?: number
   open: boolean
   bold?: boolean
   italic?: boolean

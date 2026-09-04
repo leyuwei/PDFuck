@@ -16,7 +16,10 @@ assert.ok(fs.existsSync(fixture), `release smoke fixture not found: ${fixture}`)
 
 async function main() {
   fs.rmSync(userData, { recursive: true, force: true })
-  const app = await electron.launch({ executablePath: executable, args: [`--user-data-dir=${userData}`, fixture] })
+  fs.mkdirSync(userData, { recursive: true })
+  const longTitleFixture = path.join(userData, '2.0.13 文档标题自适应滚动验证.pdf')
+  fs.copyFileSync(fixture, longTitleFixture)
+  const app = await electron.launch({ executablePath: executable, args: [`--user-data-dir=${userData}`, longTitleFixture] })
   try {
     const attachDialogDiagnostics = (target) => target.on('dialog', (dialog) => {
       console.error(`unexpected packaged-app dialog (${dialog.type()}): ${dialog.message()}`)
@@ -43,6 +46,21 @@ async function main() {
     const initialShell = await shellBounds()
     assert.ok(Math.abs(initialShell.titlebarCenter - initialShell.toolsCenter) <= 1, `titlebar tools are not centered: ${JSON.stringify(initialShell)}`)
     const originalWindowBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1080, 800))
+    await page.waitForFunction(() => document.querySelector('.document-title')?.getAttribute('data-overflowing') === 'true')
+    const scrollingTitle = await page.locator('.document-title-track').evaluate((element) => getComputedStyle(element).animationName)
+    const reducedTitleMotion = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+    assert.ok(scrollingTitle === 'document-title-scroll' || reducedTitleMotion, `overflowing title is not scrolling: ${scrollingTitle}`)
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1700, 800))
+    await page.waitForFunction(() => !document.querySelector('.document-title')?.hasAttribute('data-overflowing'))
+    const fullTitle = await page.locator('.document-title').evaluate((element) => {
+      const viewport = element.querySelector('.document-title-viewport')
+      const track = element.querySelector('.document-title-track')
+      return { text: track?.textContent, fits: Boolean(viewport && track && track.scrollWidth <= viewport.clientWidth + 1) }
+    })
+    assert.equal(fullTitle.fits, true, `title should fit without scrolling in a wide window: ${JSON.stringify(fullTitle)}`)
+    assert.match(fullTitle.text || '', /文档标题自适应滚动验证/u)
+    await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), originalWindowBounds)
     const resizedWidth = originalWindowBounds.width >= 1300 ? originalWindowBounds.width - 180 : originalWindowBounds.width + 180
     await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 800), resizedWidth)
     await page.waitForFunction((width) => Math.abs(window.innerWidth - width) < 4, resizedWidth)
@@ -77,7 +95,7 @@ async function main() {
     await page.evaluate(async ({ paths, current }) => {
       for (const recentPath of paths) await window.desktop.readPdf(recentPath)
       await window.desktop.readPdf(current)
-    }, { paths: recentFixtures, current: fixture })
+    }, { paths: recentFixtures, current: longTitleFixture })
 
     await page.locator('.window-tab.current .window-tab-close').click()
     await page.locator('.welcome-layout').waitFor()
@@ -136,7 +154,7 @@ async function main() {
     const closeEvent = page.waitForEvent('close')
     await page.getByRole('button', { name: '不保存并关闭', exact: true }).click()
     await closeEvent
-    console.log(JSON.stringify({ releaseUiSmoke: 'passed', version, executable, shell: { temporaryWarningLifecycle: true, adaptiveLogo: true, recentFiles: storedRecent.length, recentScrolling: true, responsiveToolbarCenter: true, windowsVectorControls: platform === 'win32' }, unsavedClose: { saveAndClose: true, discardColor: dangerBackground, cancelAnimation: animationName, cancelDefaultFocus: true } }, null, 2))
+    console.log(JSON.stringify({ releaseUiSmoke: 'passed', version, executable, shell: { temporaryWarningLifecycle: true, adaptiveLogo: true, adaptiveTitleScroll: true, recentFiles: storedRecent.length, recentScrolling: true, responsiveToolbarCenter: true, windowsVectorControls: platform === 'win32' }, unsavedClose: { saveAndClose: true, discardColor: dangerBackground, cancelAnimation: animationName, cancelDefaultFocus: true } }, null, 2))
   } finally {
     await app.close().catch(() => undefined)
     for (let attempt = 0; attempt < 8; attempt += 1) {

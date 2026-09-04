@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as aiPolish from '../lib/ai-polish'
 import type { AutomaticAnnotationModelResponse, AutomaticAnnotationSourcePage } from '../lib/automatic-annotation'
 import type { AutomaticAnnotationContextRequest } from '../lib/automatic-annotation-context'
-import { AnnotationLab, type AnnotationSuggestionRequest } from './AnnotationLab'
+import { AnnotationLab, AUTOMATIC_ANNOTATION_ISSUES_KEY, type AnnotationSuggestionRequest } from './AnnotationLab'
 
 const selection = { pageIndex: 0, text: 'Selected text', rects: [{ x: 10, y: 20, width: 80, height: 12 }] }
 const suggestionGeometry = { kind: 'note' as const, anchors: [{ pageIndex: 0, rects: [{ x: 10, y: 20, width: 12, height: 12 }] }] }
@@ -30,6 +30,10 @@ async function flushWork(): Promise<void> {
   await act(async () => {
     for (let index = 0; index < 12; index += 1) await Promise.resolve()
   })
+}
+
+function automaticIssues(...issues: aiPolish.AutomaticAnnotationIssueType[]): void {
+  localStorage.setItem(AUTOMATIC_ANNOTATION_ISSUES_KEY, JSON.stringify(issues))
 }
 
 function OneShotSuggestionHarness({ mounted, onConsumed }: { mounted: boolean; onConsumed(token: number): void }) {
@@ -244,6 +248,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('enables selection scope only with a selection, sends bounded cross-page context, and restores the explanation detail', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('cross_context_consistency')
     const pages = [automaticPage(0, 'OpeningContext'), automaticPage(1, 'SelectedFirst'), automaticPage(2, 'SelectedSecond')]
     const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockImplementation(async (_settings, request) => automaticResponse(request.pageIndex))
     const props = { getAutomaticAnnotationPages: async () => pages, onAddAutomaticAnnotations: vi.fn(), onAdd: vi.fn(), onCopy: vi.fn() }
@@ -278,7 +283,7 @@ describe('AnnotationLab settings and availability', () => {
 
     expect(annotate).toHaveBeenCalledTimes(2)
     const firstRequest = annotate.mock.calls[0][1]
-    expect(firstRequest).toMatchObject({ pageIndex: 1, detail: 'detailed', intensity: 'strict', retryAttempt: 0 })
+    expect(firstRequest).toMatchObject({ pageIndex: 1, issueType: 'cross_context_consistency', detail: 'detailed', intensity: 'strict', retryAttempt: 0 })
     expect(firstRequest.blocks.map((block) => block.text)).toEqual(['SelectedFirst'])
     expect(firstRequest.opening).toContain('OpeningContext')
     expect(firstRequest.previous).toContain('OpeningContext')
@@ -296,8 +301,34 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => restoredRoot.unmount())
   })
 
+  it('offers all issue categories and runs one complete page pass per selected category', async () => {
+    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    const pages = [automaticPage(0, 'Opening'), automaticPage(1, 'Conclusion')]
+    const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockImplementation(async (_settings, request) => automaticResponse(request.pageIndex))
+    const root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab getAutomaticAnnotationPages={async () => pages} onAddAutomaticAnnotations={() => undefined} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
+    const issueInputs = [...container.querySelectorAll<HTMLInputElement>('.automatic-issue-grid input')]
+    expect(issueInputs).toHaveLength(aiPolish.AUTOMATIC_ANNOTATION_ISSUE_TYPES.length)
+    expect(issueInputs.every((input) => input.checked)).toBe(true)
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.automatic-issue-actions button')].find((button) => button.textContent === '清空选择')!.click())
+    expect(container.querySelector<HTMLButtonElement>('.automatic-start')!.disabled).toBe(true)
+    await act(async () => issueInputs[0].click())
+    await act(async () => issueInputs[9].click())
+    expect(JSON.parse(localStorage.getItem(AUTOMATIC_ANNOTATION_ISSUES_KEY) || '[]')).toEqual(['typos_formatting', 'section_structure'])
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
+    await flushWork()
+    expect(annotate.mock.calls.map((entry) => [entry[1].issueType, entry[1].pageIndex])).toEqual([
+      ['typos_formatting', 0], ['typos_formatting', 1], ['section_structure', 0], ['section_structure', 1]
+    ])
+    expect(annotate.mock.calls[2][1].contextSummary).toBe('')
+    expect(container.querySelector('.automatic-annotation-progress.complete')?.textContent).toContain('第 2/2 轮')
+    await act(async () => root.unmount())
+  })
+
   it('retries a rejected model response three times with unique request ids and writes only the accepted result', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('typos_formatting')
     const page = automaticPage(0, 'mistkae')
     const responses = Array.from({ length: 4 }, () => deferred<AutomaticAnnotationModelResponse>())
     let call = 0
@@ -331,6 +362,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('asks for a decision only after all three automatic retries fail', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('typos_formatting')
     const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockRejectedValue(new Error('ui.automaticAnnotationResponseInvalid'))
     const root = createRoot(container)
     await act(async () => root.render(<AnnotationLab getAutomaticAnnotationPages={async () => [automaticPage(0, 'mistkae')]} onAddAutomaticAnnotations={() => undefined} onAdd={() => undefined} onCopy={() => undefined} />))
@@ -351,6 +383,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('updates progress page by page, pauses after the active page, and resumes from the next page', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('sentence_flow')
     const pages = [automaticPage(0, 'FirstPage'), automaticPage(1, 'SecondPage'), automaticPage(2, 'ThirdPage')]
     const responses = pages.map(() => deferred<AutomaticAnnotationModelResponse>())
     const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockImplementation((_settings, request) => responses[request.pageIndex].promise)
@@ -369,7 +402,7 @@ describe('AnnotationLab settings and availability', () => {
     expect(annotate).toHaveBeenCalledTimes(1)
     expect(container.querySelector('.automatic-annotation-progress.paused')).not.toBeNull()
     expect(container.querySelector('.automatic-annotation-progress')?.getAttribute('aria-valuenow')).toBe('33')
-    expect(container.querySelector('.automatic-annotation-progress')?.textContent).toContain('已检查 1/3 段')
+    expect(container.querySelector('.automatic-annotation-progress')?.textContent).toContain('已完成 1/3 项检查')
 
     const resume = [...container.querySelectorAll<HTMLButtonElement>('.automatic-annotation-controls button')].find((button) => button.textContent === '继续')!
     await act(async () => resume.click())
@@ -388,6 +421,7 @@ describe('AnnotationLab settings and availability', () => {
 
   it('cancels an active retry on End and ignores a response that arrives afterward', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('typos_formatting')
     const page = automaticPage(0, 'mistkae')
     const first = deferred<AutomaticAnnotationModelResponse>()
     const retry = deferred<AutomaticAnnotationModelResponse>()

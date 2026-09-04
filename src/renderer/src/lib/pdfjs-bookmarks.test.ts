@@ -15,4 +15,15 @@ describe('PDF.js bookmark conversion', () => {
     }])
     expect(result).toEqual([{ id: 'pdfjs-bookmark-root-0', title: 'Introduction', pageIndex: 0, open: true, bold: true, italic: undefined, color: '#3157d5', children: [{ id: 'pdfjs-bookmark-root-0-0', title: 'Chapter 2', pageIndex: 2, open: false, bold: undefined, italic: true, color: undefined, children: [] }] }])
   })
+
+  it('normalizes an XYZ destination to a page-relative reading position', async () => {
+    const direct = { num: 4, gen: 0 }
+    const document = {
+      getDestination: vi.fn(async () => null),
+      getPageIndex: vi.fn(async () => 1),
+      getPage: vi.fn(async () => ({ view: [0, 0, 600, 800] }))
+    }
+    const result = await pdfJsBookmarks(document, [{ title: 'Inside page', bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: [direct, { name: 'XYZ' }, null, 600, null], url: null, unsafeUrl: undefined, newWindow: undefined, count: 0, items: [] }])
+    expect(result[0]).toMatchObject({ pageIndex: 1, position: .25 })
+  })
 })

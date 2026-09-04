@@ -82,6 +82,12 @@ async function main() {
     const panel = page.locator('.bookmark-panel:not(.collapsed)')
     await panel.waitFor({ timeout: 10000 })
     assert.equal(await panel.locator('.bookmark-row').count(), 3, 'existing hierarchical PDF bookmarks must open automatically')
+    await page.waitForFunction(() => document.querySelector('[data-bookmark-id="outline-8-0"]')?.getAttribute('aria-current') === 'location' || document.querySelector('.bookmark-row.active')?.textContent?.includes('Existing Introduction'))
+    await page.getByRole('button', { name: '1.1 Existing Scope', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.bookmark-row.active')?.textContent?.includes('1.1 Existing Scope'))
+    await page.getByRole('button', { name: 'Existing Conclusion', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.bookmark-row.active')?.textContent?.includes('Existing Conclusion'))
+    assert.equal(await panel.locator('.bookmark-row.active[aria-current="location"]').count(), 1, 'bookmark sidebar must highlight exactly one range for the current reading position')
     console.log('[bookmarks-ui] document and automatic sidebar ready')
 
     const initialWidth = (await panel.boundingBox()).width
@@ -189,7 +195,7 @@ async function main() {
     assert.equal(await page.locator('button.quick-save').isDisabled(), true, 'saving must clear the bookmark edit dirty state')
     const titles = await savedBookmarkTitles()
     assert.ok(titles.includes('Release Introduction'), `saving must persist the edited bookmark title: ${titles.join(' | ')}`)
-    console.log(JSON.stringify({ existingBookmarks: true, hierarchy: true, search: true, fontSize: true, resize: true, narrowAnnotationCompatibility: true, inlineRename: true, singleDeleteAndUndo: true, recognitionRules: 5, maxDepth: 6, previewRemovalAndRestore: true, write: true, deleteAndUndo: true, savedBookmarkEdit: true, savedTitles: titles, screenshots: [screenshot, recognitionScreenshot] }, null, 2))
+    console.log(JSON.stringify({ existingBookmarks: true, hierarchy: true, activeRangeHighlight: true, search: true, fontSize: true, resize: true, narrowAnnotationCompatibility: true, inlineRename: true, singleDeleteAndUndo: true, recognitionRules: 5, maxDepth: 6, previewRemovalAndRestore: true, write: true, deleteAndUndo: true, savedBookmarkEdit: true, savedTitles: titles, screenshots: [screenshot, recognitionScreenshot] }, null, 2))
   } finally {
     await app.close().catch(() => undefined)
     fs.rmSync(userData, { recursive: true, force: true })

@@ -25,7 +25,7 @@ import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecog
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
-export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 interface ViewerProps {
   data?: Uint8Array
@@ -1309,11 +1309,14 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     handledFitPageRequestRef.current = fitPageRequest
     fitPage()
   }, [currentPage, document, fitPage, fitPageRequest, sizes])
-  const goToPage = (pageIndex: number) => {
+  const goToPage = (pageIndex: number, position?: number) => {
     const viewport = viewportRef.current
-    const target = viewport?.querySelector(`[data-page="${pageIndex}"]`)
-    if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    else if (viewport && document && document.numPages > 80) viewport.scrollTo({ top: 24 + pageIndex * 812 * zoom, behavior: 'smooth' })
+    const target = viewport?.querySelector<HTMLElement>(`[data-page="${pageIndex}"]`)
+    if (target && viewport && position !== undefined) {
+      const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
+      viewport.scrollTo({ top: scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, position), behavior: 'smooth' })
+    } else if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    else if (viewport && document && document.numPages > 80) viewport.scrollTo({ top: 24 + (pageIndex + (position || 0)) * 812 * zoom, behavior: 'smooth' })
   }
   const focusAnnotation = (id: string, pageIndex: number) => {
     const reveal = () => {

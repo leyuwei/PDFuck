@@ -88,5 +88,6 @@ describe('bookmark recognition', () => {
     const tree = bookmarkTreeFromCandidates(candidates)
     expect(tree).toHaveLength(2)
     expect(tree[0].children[0].children[0].title).toBe('1.1.1 Grandchild')
+    expect(tree[0].position).toBe(.1)
   })
 })

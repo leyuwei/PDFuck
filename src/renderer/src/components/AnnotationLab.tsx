@@ -4,11 +4,11 @@ import { AnnotationIcon } from './AnnotationIcon'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, FULL_REVIEW_PRESETS,
   loadAiSettings, localizedPrompt, MAX_AI_TIMEOUT_SECONDS, MIN_AI_TIMEOUT_SECONDS, normalizeAiTimeoutSeconds,
-  autoAnnotatePage, isRetryableAutomaticAnnotationError, polishText, promptForLanguage, providerSettings, reviewDocument, saveAiSettings, suggestForAnnotation,
-  type AiLanguage, type AiSettings, type FullReviewDocument, type FullReviewSendMode
+  autoAnnotatePage, AUTOMATIC_ANNOTATION_ISSUE_TYPES, isRetryableAutomaticAnnotationError, polishText, promptForLanguage, providerSettings, reviewDocument, saveAiSettings, suggestForAnnotation,
+  type AiLanguage, type AiSettings, type AutomaticAnnotationIssueType, type FullReviewDocument, type FullReviewSendMode
 } from '../lib/ai-polish'
 import { normalizeCopiedText } from '../lib/clipboard-text'
-import { t as message, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
+import { t as message, translateUiText, ui, useInterfaceLanguage, type TranslationKey } from '../lib/i18n'
 import { shortcutLabel } from '../lib/platform-shortcuts'
 import { isImeCompositionKey, isTextEntryEvent } from '../lib/keyboard-input'
 import { aiRequestProgress } from '../lib/ai-request-progress'
@@ -34,7 +34,15 @@ import './annotation-lab.css'
 export const FULL_REVIEW_CONSENT_KEY = 'pdfuck.lab.full-review-consent.v1'
 export const AUTOMATIC_ANNOTATION_DETAIL_KEY = 'pdfuck.lab.auto-annotation-detail.v1'
 export const AUTOMATIC_ANNOTATION_INTENSITY_KEY = 'pdfuck.lab.auto-annotation-intensity.v1'
+export const AUTOMATIC_ANNOTATION_ISSUES_KEY = 'pdfuck.lab.auto-annotation-issues.v1'
 const MAX_AUTOMATIC_ANNOTATION_RETRIES = 3
+
+const AUTOMATIC_ISSUE_LABELS: Record<AutomaticAnnotationIssueType, TranslationKey> = {
+  typos_formatting: 'ui.autoIssueTyposFormatting', grammar_syntax: 'ui.autoIssueGrammarSyntax', clarity_style: 'ui.autoIssueClarityStyle',
+  terminology_consistency: 'ui.autoIssueTerminologyConsistency', sentence_flow: 'ui.autoIssueSentenceFlow', paragraph_focus: 'ui.autoIssueParagraphFocus',
+  evidence_accuracy: 'ui.autoIssueEvidenceAccuracy', math_reasoning: 'ui.autoIssueMathReasoning', cross_context_consistency: 'ui.autoIssueCrossContextConsistency',
+  section_structure: 'ui.autoIssueSectionStructure', restructuring: 'ui.autoIssueRestructuring', academic_contribution: 'ui.autoIssueAcademicContribution'
+}
 
 export interface AnnotationSuggestionRequest extends AutomaticAnnotationContextRequest { token: number; annotationId: string; annotationContent: string; pageIndex: number }
 export interface LabDocumentPayload extends FullReviewDocument {}
@@ -74,6 +82,9 @@ interface AutomaticAnnotationProgress {
   total: number
   annotations: number
   skipped: number
+  issue: number
+  issues: number
+  issueType?: AutomaticAnnotationIssueType
 }
 
 function loadAutomaticAnnotationDetail(): AutomaticAnnotationDetail {
@@ -84,6 +95,13 @@ function loadAutomaticAnnotationDetail(): AutomaticAnnotationDetail {
 function loadAutomaticAnnotationIntensity(): AutomaticAnnotationIntensity {
   const value = localStorage.getItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY)
   return value === 'lenient' || value === 'strict' ? value : 'balanced'
+}
+
+function loadAutomaticAnnotationIssues(): AutomaticAnnotationIssueType[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTOMATIC_ANNOTATION_ISSUES_KEY) || 'null')
+    return Array.isArray(value) ? AUTOMATIC_ANNOTATION_ISSUE_TYPES.filter((issue) => value.includes(issue)) : [...AUTOMATIC_ANNOTATION_ISSUE_TYPES]
+  } catch { return [...AUTOMATIC_ANNOTATION_ISSUE_TYPES] }
 }
 
 function characters(value: string): string[] { return Array.from(value) }
@@ -171,10 +189,11 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   const [automaticScope, setAutomaticScope] = useState<AutomaticAnnotationScope>('document')
   const [automaticDetail, setAutomaticDetail] = useState<AutomaticAnnotationDetail>(loadAutomaticAnnotationDetail)
   const [automaticIntensity, setAutomaticIntensity] = useState<AutomaticAnnotationIntensity>(loadAutomaticAnnotationIntensity)
+  const [automaticIssues, setAutomaticIssues] = useState<AutomaticAnnotationIssueType[]>(loadAutomaticAnnotationIssues)
   const [automaticStatus, setAutomaticStatus] = useState<AutomaticAnnotationStatus>('idle')
   const [automaticRetryAttempt, setAutomaticRetryAttempt] = useState(0)
   const [automaticError, setAutomaticError] = useState('')
-  const [automaticProgress, setAutomaticProgress] = useState<AutomaticAnnotationProgress>({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0 })
+  const [automaticProgress, setAutomaticProgress] = useState<AutomaticAnnotationProgress>({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0, issue: 0, issues: 0 })
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | undefined>(undefined)
   const polishRequestId = useRef(0)
   const reviewRequestId = useRef(0)
@@ -351,8 +370,14 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     automaticDecision.current = undefined; setAutomaticError('')
     resolve(decision)
   }
+  const updateAutomaticIssues = (issues: AutomaticAnnotationIssueType[]) => {
+    setAutomaticIssues(issues)
+    localStorage.setItem(AUTOMATIC_ANNOTATION_ISSUES_KEY, JSON.stringify(issues))
+  }
   const startAutomaticAnnotation = async () => {
     if (automaticActive || !getAutomaticAnnotationPages || !onAddAutomaticAnnotations) return
+    const issueTypes = [...automaticIssues]
+    if (!issueTypes.length) { setAutomaticError(t("ui.selectAtLeastOneIssueType")); return }
     const scopedSelection = automaticScope === 'selection' && selection ? copySelection(selection) : undefined
     if (automaticScope === 'selection' && (!scopedSelection || !normalizeCopiedText(scopedSelection.text))) {
       setAutomaticError(t("ui.selectTextInThePdfFirst")); return
@@ -365,7 +390,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     automaticResume.current = undefined
     automaticDecision.current = undefined
     setAutomaticError(''); setAutomaticRetryAttempt(0); setAutomaticStatus('extracting')
-    setAutomaticProgress({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0 })
+    setAutomaticProgress({ page: 0, pages: 0, completed: 0, total: 0, annotations: 0, skipped: 0, issue: 0, issues: issueTypes.length })
     try {
       const sourcePages = await getAutomaticAnnotationPages()
       if (automaticRunId.current !== runId) return
@@ -374,80 +399,85 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
       if (!targetPages.length) throw new Error(t("ui.noExtractableTextForAutomaticAnnotation"))
       const fullPageByIndex = new Map(fullPages.map((page) => [page.pageIndex, page]))
       const opening = clipStart(fullPages.map(pageText).join('\n'), MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS)
-      const total = targetPages.reduce((count, page) => count + page.blocks.length, 0)
-      let completed = 0, annotations = 0, skipped = 0, contextSummary = ''
-      setAutomaticProgress({ page: 1, pages: targetPages.length, completed, total, annotations, skipped })
+      const total = targetPages.reduce((count, page) => count + page.blocks.length, 0) * issueTypes.length
+      let completed = 0, annotations = 0, skipped = 0
+      const report = (issueIndex: number, pageIndex: number) => setAutomaticProgress({ page: Math.min(pageIndex + 1, targetPages.length), pages: targetPages.length, completed, total, annotations, skipped, issue: issueIndex + 1, issues: issueTypes.length, issueType: issueTypes[issueIndex] })
+      report(0, 0)
 
-      for (let index = 0; index < targetPages.length;) {
-        if (automaticRunId.current !== runId) return
-        if (!(await waitWhileAutomaticPaused(runId))) return
-        const page = targetPages[index]
-        const fullPage = fullPageByIndex.get(page.pageIndex)
-        const nearby = scopedSelection ? localSelectionContext(fullPage, pageSelection(scopedSelection, page.pageIndex)) : ''
-        const previousPage = fullPageByIndex.get(page.pageIndex - 1)
-        const nextPage = fullPageByIndex.get(page.pageIndex + 1)
-        const previous = clipStart([nearby, clipEnd(pageText(previousPage), 900)].filter(Boolean).join('\n'), MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS)
-        const next = clipStart(pageText(nextPage), 1_200)
-        setAutomaticStatus('running')
-        setAutomaticProgress({ page: index + 1, pages: targetPages.length, completed, total, annotations, skipped })
-
-        let response: Awaited<ReturnType<typeof autoAnnotatePage>> | undefined
-        let skipPage = false
-        let retries = 0
-        while (!response && !skipPage) {
+      for (let issueIndex = 0; issueIndex < issueTypes.length; issueIndex += 1) {
+        const issueType = issueTypes[issueIndex]
+        let contextSummary = ''
+        for (let index = 0; index < targetPages.length;) {
+          if (automaticRunId.current !== runId) return
           if (!(await waitWhileAutomaticPaused(runId))) return
-          const requestId = crypto.randomUUID()
-          automaticAiRequestId.current = requestId
-          try {
-            response = await autoAnnotatePage(settingsSnapshot, { pageIndex: page.pageIndex, blocks: page.blocks, opening, previous, next, contextSummary, detail: detailSnapshot, intensity: intensitySnapshot, retryAttempt: retries, language: interfaceLanguage }, requestId)
-          } catch (cause) {
-            if (automaticRunId.current !== runId) return
-            if (retries < MAX_AUTOMATIC_ANNOTATION_RETRIES && isRetryableAutomaticAnnotationError(cause)) {
-              retries += 1
-              setAutomaticRetryAttempt(retries)
-              continue
-            }
-            setAutomaticRetryAttempt(0)
-            const failure = retries === MAX_AUTOMATIC_ANNOTATION_RETRIES
-              ? message('autoAnnotation.retriesExhausted', { count: MAX_AUTOMATIC_ANNOTATION_RETRIES, error: automaticFailureText(cause) })
-              : cause
-            const decision = await waitForAutomaticDecision(failure)
-            if (automaticRunId.current !== runId || decision === 'end') return
-            if (decision === 'skip') skipPage = true
-            else setAutomaticStatus('running')
-          } finally {
-            if (automaticAiRequestId.current === requestId) automaticAiRequestId.current = undefined
-          }
-        }
-        setAutomaticRetryAttempt(0)
-        if (automaticRunId.current !== runId) return
-        if (skipPage || !response) {
-          completed += page.blocks.length; index += 1
-          setAutomaticProgress({ page: Math.min(index + 1, targetPages.length), pages: targetPages.length, completed, total, annotations, skipped })
-          continue
-        }
+          const page = targetPages[index]
+          const fullPage = fullPageByIndex.get(page.pageIndex)
+          const nearby = scopedSelection ? localSelectionContext(fullPage, pageSelection(scopedSelection, page.pageIndex)) : ''
+          const previousPage = fullPageByIndex.get(page.pageIndex - 1)
+          const nextPage = fullPageByIndex.get(page.pageIndex + 1)
+          const previous = clipStart([nearby, clipEnd(pageText(previousPage), 900)].filter(Boolean).join('\n'), MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS)
+          const next = clipStart(pageText(nextPage), 1_200)
+          setAutomaticStatus('running')
+          report(issueIndex, index)
 
-        const resolved = draftAutomaticAnnotations(response, page.blocks, scopedSelection)
-        let writeSkipped = false
-        if (resolved.drafts.length) {
-          for (;;) {
-            try { await onAddAutomaticAnnotations(resolved.drafts); break }
-            catch (cause) {
+          let response: Awaited<ReturnType<typeof autoAnnotatePage>> | undefined
+          let skipPage = false
+          let retries = 0
+          while (!response && !skipPage) {
+            if (!(await waitWhileAutomaticPaused(runId))) return
+            const requestId = crypto.randomUUID()
+            automaticAiRequestId.current = requestId
+            try {
+              response = await autoAnnotatePage(settingsSnapshot, { pageIndex: page.pageIndex, blocks: page.blocks, issueType, opening, previous, next, contextSummary, detail: detailSnapshot, intensity: intensitySnapshot, retryAttempt: retries, language: interfaceLanguage }, requestId)
+            } catch (cause) {
               if (automaticRunId.current !== runId) return
-              const decision = await waitForAutomaticDecision(cause)
+              if (retries < MAX_AUTOMATIC_ANNOTATION_RETRIES && isRetryableAutomaticAnnotationError(cause)) {
+                retries += 1
+                setAutomaticRetryAttempt(retries)
+                continue
+              }
+              setAutomaticRetryAttempt(0)
+              const failure = retries === MAX_AUTOMATIC_ANNOTATION_RETRIES
+                ? message('autoAnnotation.retriesExhausted', { count: MAX_AUTOMATIC_ANNOTATION_RETRIES, error: automaticFailureText(cause) })
+                : cause
+              const decision = await waitForAutomaticDecision(failure)
               if (automaticRunId.current !== runId || decision === 'end') return
-              if (decision === 'skip') { writeSkipped = true; break }
-              setAutomaticStatus('running')
+              if (decision === 'skip') skipPage = true
+              else setAutomaticStatus('running')
+            } finally {
+              if (automaticAiRequestId.current === requestId) automaticAiRequestId.current = undefined
             }
           }
+          setAutomaticRetryAttempt(0)
+          if (automaticRunId.current !== runId) return
+          if (skipPage || !response) {
+            completed += page.blocks.length; index += 1
+            report(issueIndex, index)
+            continue
+          }
+
+          const resolved = draftAutomaticAnnotations(response, page.blocks, scopedSelection)
+          let writeSkipped = false
+          if (resolved.drafts.length) {
+            for (;;) {
+              try { await onAddAutomaticAnnotations(resolved.drafts); break }
+              catch (cause) {
+                if (automaticRunId.current !== runId) return
+                const decision = await waitForAutomaticDecision(cause)
+                if (automaticRunId.current !== runId || decision === 'end') return
+                if (decision === 'skip') { writeSkipped = true; break }
+                setAutomaticStatus('running')
+              }
+            }
+          }
+          if (automaticRunId.current !== runId) return
+          completed += page.blocks.length
+          skipped += resolved.rejected.length + (writeSkipped ? resolved.drafts.length : 0)
+          if (!writeSkipped) annotations += resolved.drafts.length
+          contextSummary = response.contextSummary
+          index += 1
+          report(issueIndex, index)
         }
-        if (automaticRunId.current !== runId) return
-        completed += page.blocks.length
-        skipped += resolved.rejected.length + (writeSkipped ? resolved.drafts.length : 0)
-        if (!writeSkipped) annotations += resolved.drafts.length
-        contextSummary = response.contextSummary
-        index += 1
-        setAutomaticProgress({ page: Math.min(index + 1, targetPages.length), pages: targetPages.length, completed, total, annotations, skipped })
       }
       if (automaticRunId.current === runId) { setAutomaticRetryAttempt(0); setAutomaticStatus('complete'); setAutomaticError('') }
     } catch (cause) {
@@ -545,10 +575,11 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
     {activeWindow === 'automatic' && <div className="ai-polish-window lab-workflow-window automatic-annotation-window" style={windowStyle}><header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag}><span><AnnotationIcon kind="ai_annotate" />{t("ui.automaticAnnotation")}</span><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.close")}>×</button></header><p className="lab-workflow-intro">{t("ui.automaticAnnotationIntro")}</p>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationScope")}</legend><div className="automatic-option-grid"><label className={automaticScope === 'document' ? 'active' : ''}><input type="radio" name="automatic-annotation-scope" value="document" checked={automaticScope === 'document'} onChange={() => setAutomaticScope('document')} /><span><b>{t("ui.fullDocument")}</b><small>{t("ui.reviewEachPageAndAddAnnotations")}</small></span></label><label className={automaticScope === 'selection' ? 'active' : ''}><input type="radio" name="automatic-annotation-scope" value="selection" checked={automaticScope === 'selection'} disabled={!normalizedSelection} onChange={() => setAutomaticScope('selection')} /><span><b>{t("ui.currentSelection")}</b><small>{normalizedSelection ? clipStart(normalizedSelection, 90) : t("ui.selectTextInThePdfFirst")}</small></span></label></div>{automaticScope === 'selection' && <p className="automatic-context-disclosure">{t("ui.selectionAnnotationContextNotice")}</p>}</fieldset>
+      <fieldset className="automatic-annotation-options automatic-issue-options" disabled={automaticActive}><legend><span>{t("ui.annotationIssueTypes")}</span><span className="automatic-issue-actions"><button type="button" onClick={() => updateAutomaticIssues([...AUTOMATIC_ANNOTATION_ISSUE_TYPES])}>{t("ui.selectAll")}</button><button type="button" onClick={() => updateAutomaticIssues([])}>{t("ui.clearSelection")}</button></span></legend><p className="automatic-context-disclosure">{t("ui.eachIssueTypeRunsAsASeparateAiPass")}</p><div className="automatic-issue-grid">{AUTOMATIC_ANNOTATION_ISSUE_TYPES.map((issue) => { const checked = automaticIssues.includes(issue); return <label key={issue} className={checked ? 'active' : ''}><input type="checkbox" checked={checked} onChange={() => updateAutomaticIssues(checked ? automaticIssues.filter((value) => value !== issue) : AUTOMATIC_ANNOTATION_ISSUE_TYPES.filter((value) => value === issue || automaticIssues.includes(value)))} /><span>{t(AUTOMATIC_ISSUE_LABELS[issue])}</span></label> })}</div></fieldset>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationIntensity")}</legend><div className="automatic-option-grid three"><label className={automaticIntensity === 'lenient' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="lenient" checked={automaticIntensity === 'lenient'} onChange={() => { setAutomaticIntensity('lenient'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'lenient') }} /><span><b>{t("ui.annotationIntensityLenient")}</b><small>{t("ui.annotationIntensityLenientHint")}</small></span></label><label className={automaticIntensity === 'balanced' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="balanced" checked={automaticIntensity === 'balanced'} onChange={() => { setAutomaticIntensity('balanced'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'balanced') }} /><span><b>{t("ui.annotationIntensityBalanced")}</b><small>{t("ui.annotationIntensityBalancedHint")}</small></span></label><label className={automaticIntensity === 'strict' ? 'active' : ''}><input type="radio" name="automatic-annotation-intensity" value="strict" checked={automaticIntensity === 'strict'} onChange={() => { setAutomaticIntensity('strict'); localStorage.setItem(AUTOMATIC_ANNOTATION_INTENSITY_KEY, 'strict') }} /><span><b>{t("ui.annotationIntensityStrict")}</b><small>{t("ui.annotationIntensityStrictHint")}</small></span></label></div></fieldset>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}><legend>{t("ui.annotationExplanation")}</legend><div className="automatic-option-grid three"><label className={automaticDetail === 'revision' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="revision" checked={automaticDetail === 'revision'} onChange={() => { setAutomaticDetail('revision'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'revision') }} /><span><b>{t("ui.revisionOnly")}</b><small>{t("ui.revisionOnlyHint")}</small></span></label><label className={automaticDetail === 'brief' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="brief" checked={automaticDetail === 'brief'} onChange={() => { setAutomaticDetail('brief'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'brief') }} /><span><b>{t("ui.briefReason")}</b><small>{t("ui.briefReasonHint")}</small></span></label><label className={automaticDetail === 'detailed' ? 'active' : ''}><input type="radio" name="automatic-annotation-detail" value="detailed" checked={automaticDetail === 'detailed'} onChange={() => { setAutomaticDetail('detailed'); localStorage.setItem(AUTOMATIC_ANNOTATION_DETAIL_KEY, 'detailed') }} /><span><b>{t("ui.detailedReason")}</b><small>{t("ui.detailedReasonHint")}</small></span></label></div></fieldset>
-      {!automaticActive && <button type="button" className="primary wide automatic-start" disabled={!getAutomaticAnnotationPages || !onAddAutomaticAnnotations} onClick={() => void startAutomaticAnnotation()}>{t("ui.startAutomaticAnnotation")}</button>}
-      {automaticStatus !== 'idle' && <section className={`automatic-annotation-progress ${automaticStatus}`} role="progressbar" aria-label={t("ui.automaticAnnotationProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={automaticStatus === 'extracting' ? undefined : automaticPercent}><header><b>{automaticStatus === 'error' ? t("ui.actionFailed") : automaticStateLabel}</b><span>{automaticStatus === 'extracting' ? '' : `${automaticPercent}%`}</span></header><div className="lab-review-progress-track"><i style={{ width: automaticStatus === 'extracting' ? '35%' : `${automaticPercent}%` }} /></div>{automaticStatus !== 'extracting' && <p aria-live="polite">{automaticStatus === 'complete' ? message('autoAnnotation.complete', { total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped }) : automaticRetryAttempt && automaticStatus === 'running' ? message('autoAnnotation.retryProgress', { page: automaticProgress.page, pages: automaticProgress.pages, attempt: automaticRetryAttempt, max: MAX_AUTOMATIC_ANNOTATION_RETRIES }) : message('autoAnnotation.progress', { page: automaticProgress.page, pages: automaticProgress.pages, completed: automaticProgress.completed, total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped })}</p>}</section>}
+      {!automaticActive && <button type="button" className="primary wide automatic-start" disabled={!getAutomaticAnnotationPages || !onAddAutomaticAnnotations || !automaticIssues.length} onClick={() => void startAutomaticAnnotation()}>{automaticIssues.length ? t("ui.startAutomaticAnnotation") : t("ui.selectAtLeastOneIssueType")}</button>}
+      {automaticStatus !== 'idle' && <section className={`automatic-annotation-progress ${automaticStatus}`} role="progressbar" aria-label={t("ui.automaticAnnotationProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={automaticStatus === 'extracting' ? undefined : automaticPercent}><header><b>{automaticStatus === 'error' ? t("ui.actionFailed") : automaticStateLabel}</b><span>{automaticStatus === 'extracting' ? '' : `${automaticPercent}%`}</span></header>{automaticProgress.issueType && <small className="automatic-current-issue">{message('autoAnnotation.issueProgress', { issue: automaticProgress.issue, issues: automaticProgress.issues, label: t(AUTOMATIC_ISSUE_LABELS[automaticProgress.issueType]) })}</small>}<div className="lab-review-progress-track"><i style={{ width: automaticStatus === 'extracting' ? '35%' : `${automaticPercent}%` }} /></div>{automaticStatus !== 'extracting' && <p aria-live="polite">{automaticStatus === 'complete' ? message('autoAnnotation.complete', { total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped }) : automaticRetryAttempt && automaticStatus === 'running' ? message('autoAnnotation.retryProgress', { page: automaticProgress.page, pages: automaticProgress.pages, attempt: automaticRetryAttempt, max: MAX_AUTOMATIC_ANNOTATION_RETRIES }) : message('autoAnnotation.progress', { page: automaticProgress.page, pages: automaticProgress.pages, completed: automaticProgress.completed, total: automaticProgress.total, annotations: automaticProgress.annotations, skipped: automaticProgress.skipped })}</p>}</section>}
       {automaticError && <p className="ai-polish-error" role="alert">{automaticError}</p>}
       {automaticActive && <div className="automatic-annotation-controls">{automaticStatus === 'error' ? <><button type="button" onClick={() => decideAutomaticAnnotation('retry')}>{t("ui.retryCurrentPage")}</button><button type="button" onClick={() => decideAutomaticAnnotation('skip')}>{t("ui.skipCurrentPage")}</button></> : automaticStatus === 'running' ? <button type="button" onClick={pauseAutomaticAnnotation}>{t("ui.pause")}</button> : (automaticStatus === 'paused' || automaticStatus === 'pausing') ? <button type="button" onClick={resumeAutomaticAnnotation}>{t("ui.resume")}</button> : null}<button type="button" className="danger" onClick={stopAutomaticAnnotation}>{t("ui.endAutomaticAnnotation")}</button></div>}
       {automaticActive && <p className="automatic-control-note">{t("ui.pauseAndStopBehavior")}</p>}

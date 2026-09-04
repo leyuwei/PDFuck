@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.12
+.\scripts\package-windows.ps1 2.0.13
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.12
+bash scripts/package-macos.sh 2.0.13
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -109,13 +109,13 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 `test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及十种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、包含自动批注与自由画板的五功能按钮及快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、切换标签期间仍定向到原文档的 AI 回复写回、回复行与设置区可见性，以及保存重开后的回复持久化；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
 
-2.0.12 自动批注 / Automatic Annotation：发布验证必须覆盖全文与当前选区两种范围；文档开头、邻近段落、跨页文字及持续更新的篇章提纲只能作为上下文，选区任务不得在范围外落注。提示词必须强制分别审阅文字与技术正确性、段落主旨/统一性/衔接、章节及全文结构；结构问题须说明影响并给出移动、合并、拆分、补桥、重排或补证据等具体动作。六类结果（高亮、替换、删除、下划线、插入文字、自由批注）均须可保存、重开和一次撤销；“仅修订文本 / 简短说明 / 详细说明”必须直接写入批注内容，不得为自动批注创建独立原因区域。精确原文锚点必须覆盖完整命中范围，包括较宽中间行和公式碎片。宽松、均衡（默认）、严格三档必须持久化并逐页透传，不得按数量或动作配额凑批注。必须强制前三次可重试模型失败不显示人工决策、第四次失败后才显示重试/跳过/结束；四次请求 ID 均须唯一且只允许一次写回，写回失败不可自动重放，重试中结束后迟到响应不可落注。还应验证实时进度、暂停、继续、结束，以及首次运行复用全文评价的隐私与版权确认。Release validation must cover scope-safe context, independent surface/paragraph/document passes, concrete restructuring advice, complete exact-quote geometry, direct annotation content without a separate automatic-reason region, all six persisted annotation types, three persistent intensity levels without quotas, one initial model call plus at most three automatic retries with unique IDs, manual decisions only after exhaustion, single writeback, pause/resume/end controls, and the one-time privacy and copyright confirmation.
+2.0.13 自动批注 / Automatic Annotation：发布验证必须覆盖全文与当前选区两种范围，以及 12 类完整且可持久化的问题清单：错别字/格式、语法、清晰度与地道表达、术语一致性、句间衔接、段落主旨、事实/引证/论据、数学推理、跨段落/章节一致性、章节结构、段落/章节重组、论文贡献。每种勾选问题必须单独完成一轮逐页请求，并在新问题轮次开始时清空上一类的滚动摘要；进度须同时显示问题轮次、名称、页码和总检查量。文档开头、邻近段落、跨页文字及本轮持续更新的篇章提纲只能作为上下文，选区任务不得在范围外落注。结构问题须说明影响并给出移动、合并、拆分、补桥、重排或补证据等具体动作。六类结果（高亮、替换、删除、下划线、插入文字、自由批注）均须可保存、重开和一次撤销；“仅修订文本 / 简短说明 / 详细说明”必须直接写入批注内容。精确原文锚点必须覆盖完整命中范围。宽松、均衡（默认）、严格三档必须持久化且不得按配额凑批注。前三次可重试模型失败不得显示人工决策，第四次失败后才显示重试/跳过/结束；写回失败不可自动重放，重试中结束后迟到响应不可落注。还应验证暂停、继续、结束及首次隐私与版权确认。Release validation must cover all 12 persistent issue choices, one complete page pass per selected issue with a reset per-issue rolling summary, scope-safe context, concrete restructuring advice, exact-quote geometry, all six persisted annotation types, three persistent intensity levels without quotas, automatic retries, single writeback, pause/resume/end controls, and the one-time privacy and copyright confirmation.
 
 `test:creative-tools-ui` 会在真实 Electron 窗口先验证自由画板三个控件分组等高对齐、操作提示可见、按浮窗自身宽度响应式重排且无溢出，再验证绘制、移动、缩放、画笔粗细/颜色、PNG 导出和加入当前页；同时遍历箭头、椭圆、方框及线宽、透明边框/填充、线型、箭头大小/样式，并拦截完全不可见图形。之后保存、重启并确认三个生成对象都恢复为可编辑图片。Windows/macOS 发布脚本会在源码态与最终打包程序上各执行一次，并把 PNG/PDF 视觉检查产物保存在 `output/playwright/`。
 
-打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.12 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中，Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
+打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.13 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
 
-涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
+涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 
 涉及页面文字编辑时，`test:page-text-edit-ui` 会生成独立测试 PDF，并在真实 Electron 窗口验证：点击后输入层与原字形区域保持同一坐标和尺寸、光标落在点击字符附近、双重提交只生成一个替换对象、保存并重开后仍只有一个对象，以及删除替换对象后原文编辑区域立即恢复。发布脚本必须执行此项，不能只依赖模型层单元测试。
 
