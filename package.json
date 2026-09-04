@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
