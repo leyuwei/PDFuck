@@ -8,7 +8,7 @@ export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
 export interface TextLayoutOverride { columnBoundaries?: number[]; spanningRegions?: Array<{ top: number; bottom: number }> }
-export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
+export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean; includeAllMatchedWords?: boolean }
 
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
 
@@ -291,7 +291,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
 }
 
 export function textSelectionForQuery(words: WordBox[], query: string, options: TextQueryOptions = {}): { text: string; rects: PdfRect[] } | undefined {
-  const { occurrence = 0, caseSensitive = false, ignoreWhitespace = false } = options
+  const { occurrence = 0, caseSensitive = false, ignoreWhitespace = false, includeAllMatchedWords = false } = options
   const indexed: Array<{ char: string; start: TextPosition; end: TextPosition }> = []
   const append = (char: string, start: TextPosition, end: TextPosition) => {
     if (ignoreWhitespace && /\s/u.test(char)) return
@@ -316,7 +316,13 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
   }
   const first = indexed[start], last = indexed[start + normalizedNeedle.length - 1]
   if (!first || !last) return undefined
-  return textSelectionBetween(words, first.start, last.end)
+  // Exact model/search quotes already define their source range. Automatic
+  // annotations may opt out of pointer-drag flow cropping so a wider line or
+  // formula inside that exact range cannot silently lose matched words.
+  const selectionWords = includeAllMatchedWords
+    ? words.map((word) => ({ ...word, column: undefined, columnAmbiguous: false, visualBlock: undefined, textRun: undefined, textRunRect: undefined }))
+    : words
+  return textSelectionBetween(selectionWords, first.start, last.end)
 }
 
 const fontAscentRatioCache = new Map<string, number>()

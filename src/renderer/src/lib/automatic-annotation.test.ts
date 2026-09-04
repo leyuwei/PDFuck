@@ -168,9 +168,50 @@ describe('automatic annotation draft resolution', () => {
     }
     const result = draftAutomaticAnnotations(response, [target])
     expect(result.rejected).toEqual([])
-    expect(result.drafts[0]).toEqual(expect.objectContaining({ pageIndex: 0, kind: 'replace', content: 'revision', reason: 'Fix the repeated term.', rects: [{ x: 80, y: 0, width: 60, height: 10 }] }))
-    expect(result.drafts[1]).toEqual(expect.objectContaining({ kind: 'insert', content: 'new ', point: { x: 0, y: 10 } }))
-    expect(result.drafts[2]).toEqual(expect.objectContaining({ kind: 'note', content: 'Check the surrounding logic.', reason: undefined }))
+    expect(result.drafts[0]).toEqual(expect.objectContaining({ pageIndex: 0, kind: 'replace', content: 'revision\n\nFix the repeated term.', rects: [{ x: 80, y: 0, width: 60, height: 10 }] }))
+    expect(result.drafts[1]).toEqual(expect.objectContaining({ kind: 'insert', content: 'new \n\nAdd a transition.', point: { x: 0, y: 10 } }))
+    expect(result.drafts[2]).toEqual(expect.objectContaining({ kind: 'note', content: 'Check the surrounding logic.' }))
+    expect(result.drafts.every((draft) => draft.reason === undefined)).toBe(true)
+  })
+
+  it('writes every explanation into annotation content without separate reason metadata', () => {
+    const actions = ['highlight', 'replace', 'delete', 'underline', 'insert', 'note'] as const
+    const words = actions.map((action, index) => word(action, index * 100, 0))
+    const target = block(words)
+    const response: AutomaticAnnotationModelResponse = {
+      version: 1,
+      contextSummary: '',
+      findings: actions.map((action) => finding({
+        action,
+        quote: action,
+        insertSide: action === 'insert' ? 'after' : null,
+        replacementText: action === 'replace' ? 'replacement' : action === 'insert' ? 'insertion' : null,
+        reason: `${action} guidance`
+      }))
+    }
+    const drafts = draftAutomaticAnnotations(response, [target]).drafts
+    expect(drafts.map(({ content }) => content)).toEqual([
+      'highlight guidance', 'replacement\n\nreplace guidance', 'delete guidance',
+      'underline guidance', 'insertion\n\ninsert guidance', 'note guidance'
+    ])
+    expect(drafts.every((draft) => draft.reason === undefined)).toBe(true)
+  })
+
+  it('keeps every word of an exact model quote when a wider middle line exceeds pointer-selection flow bounds', () => {
+    const words = [
+      word('Alpha', 10, 0, { order: 0, column: 0, textRun: 1, textRunRect: { x: 10, y: 0, width: 50, height: 10 } }),
+      word('complete', 10, 20, { order: 1, column: 0, textRun: 2, textRunRect: { x: 10, y: 20, width: 200, height: 10 } }),
+      word('thought', 10, 40, { order: 2, column: 0, textRun: 3, textRunRect: { x: 10, y: 40, width: 50, height: 10 } })
+    ]
+    const target = block(words)
+    const response: AutomaticAnnotationModelResponse = {
+      version: 1,
+      contextSummary: '',
+      findings: [finding({ quote: 'Alpha complete thought', reason: 'Review the complete sentence.' })]
+    }
+    const [draft] = draftAutomaticAnnotations(response, [target]).drafts
+    expect(draft.quote).toBe('Alpha complete thought')
+    expect(draft.rects).toEqual(words.map(({ rect }) => rect))
   })
 
   it('performs a second selection-boundary check and never falls back to fuzzy text', () => {

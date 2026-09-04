@@ -320,7 +320,7 @@ export function parseAutomaticAnnotationResponse(raw: string, blocks: AutomaticA
     const quote = limitedString(candidate.quote, `${label}.quote`, MAX_AUTOMATIC_ANNOTATION_QUOTE_CHARS)
     if (!Number.isInteger(candidate.occurrence) || (candidate.occurrence as number) < 0 || (candidate.occurrence as number) > 99) invalidResponse(`${label}.occurrence 必须是 0 到 99 的整数。`)
     const occurrence = candidate.occurrence as number
-    if (!textSelectionForQuery(block.words, quote, { occurrence, caseSensitive: true, ignoreWhitespace: true })) invalidResponse(`${label}.quote 不是指定块中的精确原文。`)
+    if (!textSelectionForQuery(block.words, quote, { occurrence, caseSensitive: true, ignoreWhitespace: true, includeAllMatchedWords: true })) invalidResponse(`${label}.quote 不是指定块中的精确原文。`)
     const insertSide = candidate.insertSide
     if (action === 'insert') {
       if (insertSide !== 'before' && insertSide !== 'after') invalidResponse(`${label}.insertSide 必须指定 before 或 after。`)
@@ -375,6 +375,11 @@ function annotationKind(action: AutomaticAnnotationAction): AnnotationKind {
   return action === 'delete' ? 'delete' : action
 }
 
+function annotationContent(finding: AutomaticAnnotationFinding): string {
+  const revision = finding.replacementText || ''
+  return revision && finding.reason ? `${revision}\n\n${finding.reason}` : revision || finding.reason
+}
+
 /** Resolve only exact model quotes and produce one atomic addAnnotations batch. */
 export function draftAutomaticAnnotations(response: AutomaticAnnotationModelResponse, blocks: AutomaticAnnotationBlock[], selection?: PageTextSelection): AutomaticAnnotationDraftResult {
   const blockMap = new Map(blocks.map((block) => [block.id, block]))
@@ -383,24 +388,20 @@ export function draftAutomaticAnnotations(response: AutomaticAnnotationModelResp
   for (const finding of response.findings) {
     const block = blockMap.get(finding.blockId)
     if (!block) { rejected.push({ finding, issue: 'unknown-block' }); continue }
-    const target = textSelectionForQuery(block.words, finding.quote, { occurrence: finding.occurrence, caseSensitive: true, ignoreWhitespace: true })
+    const target = textSelectionForQuery(block.words, finding.quote, { occurrence: finding.occurrence, caseSensitive: true, ignoreWhitespace: true, includeAllMatchedWords: true })
     if (!target) { rejected.push({ finding, issue: 'quote-not-found' }); continue }
     const scope = selectionRects(selection, block.pageIndex) ?? block.selectionRects
     if (scope && (!scope.length || target.rects.some((rect) => !scope.some((candidate) => containsRect(candidate, rect))))) {
       rejected.push({ finding, issue: 'outside-selection' })
       continue
     }
-    // For a free note the explanation is the note itself. Storing it again in
-    // PDFuckReason would make the annotation panel render duplicate prose.
-    const reason = finding.action === 'note' ? undefined : finding.reason || undefined
     drafts.push({
       pageIndex: block.pageIndex,
       kind: annotationKind(finding.action),
       rects: target.rects.map((rect) => ({ ...rect })),
-      content: finding.action === 'note' ? finding.reason : finding.replacementText || '',
+      content: annotationContent(finding),
       point: finding.action === 'insert' ? insertionPoint(target.rects, finding.insertSide!, finding.quote)
         : finding.action === 'note' ? { x: target.rects[0].x, y: target.rects[0].y } : undefined,
-      reason,
       action: finding.action,
       blockId: finding.blockId,
       quote: finding.quote,
