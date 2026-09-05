@@ -17,7 +17,7 @@ assert.ok(fs.existsSync(fixture), `release smoke fixture not found: ${fixture}`)
 async function main() {
   fs.rmSync(userData, { recursive: true, force: true })
   fs.mkdirSync(userData, { recursive: true })
-  const longTitleFixture = path.join(userData, '2.0.14 文档标题自适应滚动与安全间距验证.pdf')
+  const longTitleFixture = path.join(userData, '2.0.15 文档标题自适应滚动与安全间距验证.pdf')
   fs.copyFileSync(fixture, longTitleFixture)
   const app = await electron.launch({ executablePath: executable, args: [`--user-data-dir=${userData}`, longTitleFixture] })
   try {

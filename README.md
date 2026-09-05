@@ -39,7 +39,10 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.14
+## What's New in 2.0.15
+
+- Automatic Annotation's issue checklist now uses a compact, aligned title row and card grid. Browser-native fieldset spacing can no longer push the action buttons into the border, stretch rows, or clip the final issue choices.
+- Every Lab feature window keeps its title visible while its content scrolls and remains draggable from that frozen title. The resizable Free Drawing Board continues to use its fixed first title row.
 
 - Long desktop titles now keep a deliberate gap from the centered toolbar, and the fixed-width PDFuck brand can no longer collapse into a scrolling document name in the narrowest supported window.
 - Automatic Annotation's issue checklist now sits inside a clearly bounded, padded group in both light and dark themes, so its 12 choices remain visually distinct from adjacent settings.
@@ -187,17 +190,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.14` before packaging:
+Pass a semantic version when preparing a new release. For example, these commands update both `package.json` and `package-lock.json` to `2.0.15` before packaging:
 
 ```powershell
-npm run package:windows -- 2.0.14
+npm run package:windows -- 2.0.15
 ```
 
 ```sh
-npm run package:macos -- 2.0.14
+npm run package:macos -- 2.0.15
 ```
 
-The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.14` and `bash scripts/package-macos.sh 2.0.14`. Review and commit the two version-file changes after a successful versioned run.
+The direct-script equivalents are `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.15` and `bash scripts/package-macos.sh 2.0.15`. Review and commit the two version-file changes after a successful versioned run.
 
 Successful Windows builds produce `release/PDFuck-<version>-Windows-Setup.exe`, `release/PDFuck-<version>-Windows.exe`, and `release/PDFuck-<version>-Windows-release.json`. Successful macOS builds produce `release/PDFuck-<version>-macOS.dmg`, `release/PDFuck-<version>-macOS.zip`, and `release/PDFuck-<version>-macOS-release.json`; the checked `.app` remains under `release/mac-arm64/`, `release/mac/`, or `release/mac-universal/`, depending on the architecture.
 
@@ -311,7 +314,10 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.14 新增与完善
+## 2.0.15 新增与完善
+
+- “自动批注”的问题类型清单改为紧凑、对齐的标题行与卡片网格；不再受浏览器原生 `fieldset` 间距影响，操作按钮不会压在线框上，选项行不会被异常撑高，最后一行也不会被裁切。
+- 所有实验室功能浮窗在正文滚动时都会冻结标题，并可随时从标题栏拖动；可缩放的“自由画板”继续使用固定在第一行的标题栏。
 
 - 过长的桌面标题与居中工具栏之间保留明确留白；PDFuck Logo 固定为不可压缩区域，在最窄支持窗口中也不会与滚动标题重叠。
 - “自动批注”的 12 类问题清单新增明暗主题均清晰可见的完整外框和舒适内边距，与上下设置形成明确分组。
@@ -542,17 +548,17 @@ npm run package:windows
 npm run package:macos
 ```
 
-准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.14`，再开始打包：
+准备新版本时可传入语义化版本号。例如下面的命令会先把 `package.json` 和 `package-lock.json` 一起更新为 `2.0.15`，再开始打包：
 
 ```powershell
-npm run package:windows -- 2.0.14
+npm run package:windows -- 2.0.15
 ```
 
 ```sh
-npm run package:macos -- 2.0.14
+npm run package:macos -- 2.0.15
 ```
 
-直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.14` 和 `bash scripts/package-macos.sh 2.0.14`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
+直接执行脚本的等价命令分别是 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 2.0.15` 和 `bash scripts/package-macos.sh 2.0.15`。带版本号执行成功后，请检查并提交上述两个版本文件的变更。
 
 Windows 成功后会得到 `release/PDFuck-<version>-Windows-Setup.exe`、`release/PDFuck-<version>-Windows.exe` 和 `release/PDFuck-<version>-Windows-release.json`。macOS 成功后会得到 `release/PDFuck-<version>-macOS.dmg`、`release/PDFuck-<version>-macOS.zip` 和 `release/PDFuck-<version>-macOS-release.json`；已检查的 `.app` 会根据架构位于 `release/mac-arm64/`、`release/mac/` 或 `release/mac-universal/`。
 

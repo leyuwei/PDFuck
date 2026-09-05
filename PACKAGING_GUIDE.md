@@ -48,13 +48,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.14
+.\scripts\package-windows.ps1 2.0.15
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.14
+bash scripts/package-macos.sh 2.0.15
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -115,7 +115,9 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 2.0.14 界面布局 / UI Layout：最窄支持窗口下，滚动文档标题与 PDFuck Logo 之间至少保留 12px 间距，与居中工具栏之间至少保留 16px 间距；Logo 不得被压缩。自动批注的 12 类问题清单必须位于明暗主题均清晰可辨的完整外框内，左右内边距不得小于 12px，列表不得越出外框。The narrowest supported window must keep at least 12px between the scrolling title and the fixed brand and at least 16px before the centered toolbar. The 12 automatic-annotation issue choices must stay within a clearly framed group with at least 12px horizontal padding in both themes.
 
-打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.14 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
+2.0.15 实验室浮窗 / Lab Windows：自动批注的问题类型标题、说明、操作按钮和 12 张选项卡不得重叠，通用工具面板的 `label` 外边距不得泄漏进卡片网格，标准窗口宽度下不得出现被裁切的半行。智能润色、全文评价、自动批注和批注建议在滚动到底部后，标题必须仍位于浮窗内并可拖动；自由画板标题必须固定在不可滚动的第一行。The issue title, explanation, actions, and 12 cards must not overlap or inherit generic tool-label margins. AI Polish, Full Review, Automatic Annotation, and Annotation Suggestions must keep a draggable title visible at the bottom of their scroll ranges; the Drawing Board title remains in its fixed first row.
+
+打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.15 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
 
 涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 

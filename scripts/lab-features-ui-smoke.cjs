@@ -70,6 +70,49 @@ async function selectPageText(page, pageIndex) {
   await page.waitForFunction((value) => document.querySelector('footer')?.textContent?.includes(`已选择：${value}`), expected, { timeout: 5000 })
 }
 
+async function verifyStickyDraggableHeader(page, windowLocator, name) {
+  await windowLocator.evaluate((element) => {
+    element.style.maxHeight = '220px'
+    element.scrollTop = element.scrollHeight
+  })
+  await page.waitForTimeout(50)
+  const layout = await windowLocator.evaluate((element) => {
+    const dialog = element.getBoundingClientRect()
+    const header = element.querySelector(':scope > header').getBoundingClientRect()
+    return {
+      dialog: { top: dialog.top, bottom: dialog.bottom },
+      header: { top: header.top, bottom: header.bottom },
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      position: getComputedStyle(element.querySelector(':scope > header')).position
+    }
+  })
+  assert.ok(layout.scrollHeight > layout.clientHeight && layout.scrollTop > 0, `${name} must have a scrollable test state: ${JSON.stringify(layout)}`)
+  assert.equal(layout.position, 'sticky', `${name} title must use the shared sticky header`)
+  assert.ok(layout.header.top >= layout.dialog.top - 1 && layout.header.bottom <= layout.dialog.bottom + 1, `${name} title left the visible window after scrolling: ${JSON.stringify(layout)}`)
+
+  const before = await windowLocator.boundingBox()
+  const header = await windowLocator.locator(':scope > header').boundingBox()
+  assert.ok(before && header, `${name} window/header must be visible`)
+  await page.mouse.move(header.x + Math.min(80, header.width / 3), header.y + header.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(header.x + Math.min(80, header.width / 3) - 28, header.y + header.height / 2 - 16, { steps: 5 })
+  await page.mouse.up()
+  const after = await windowLocator.boundingBox()
+  assert.ok(after && (Math.abs(after.x - before.x) > 8 || Math.abs(after.y - before.y) > 8), `${name} title must remain draggable after scrolling`)
+  const movedHeader = await windowLocator.locator(':scope > header').boundingBox()
+  assert.ok(movedHeader, `${name} title must remain visible after dragging`)
+  await page.mouse.move(movedHeader.x + Math.min(80, movedHeader.width / 3), movedHeader.y + movedHeader.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(movedHeader.x + Math.min(80, movedHeader.width / 3) + 28, movedHeader.y + movedHeader.height / 2 + 16, { steps: 5 })
+  await page.mouse.up()
+  await windowLocator.evaluate((element) => {
+    element.scrollTop = 0
+    element.style.removeProperty('max-height')
+  })
+}
+
 async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
   const app = await launch(userData, pdf)
   try {
@@ -119,6 +162,12 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-toolbar-${releaseVersion}.png`) })
     console.log('[lab-smoke] shared header layout verified')
 
+    await page.locator('.annotation-lab-tools > button').first().click()
+    const polishWindow = page.locator('.ai-polish-window:not(.lab-workflow-window)')
+    await polishWindow.waitFor()
+    await verifyStickyDraggableHeader(page, polishWindow, 'AI polish')
+    await polishWindow.locator(':scope > header button').click()
+
     await page.locator('.full-review-launch').click()
     await page.locator('.lab-disclaimer').waitFor()
     const consentLayout = await page.evaluate(() => {
@@ -140,6 +189,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await continueButton.click()
     assert.equal(await page.evaluate(() => localStorage.getItem('pdfuck.lab.full-review-consent.v1')), 'accepted')
     await page.locator('.full-review-window').waitFor()
+    await verifyStickyDraggableHeader(page, page.locator('.full-review-window'), 'Full review')
     console.log('[lab-smoke] disclaimer accepted')
     assert.equal(await page.locator('.lab-send-mode button').count(), 2)
     assert.ok((await page.locator('.full-review-window textarea').inputValue()).includes('恰好三句话'))
@@ -187,6 +237,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await page.locator('.automatic-annotation-launch').click()
     const automaticWindow = page.locator('.automatic-annotation-window')
     await automaticWindow.waitFor()
+    await verifyStickyDraggableHeader(page, automaticWindow, 'Automatic annotation')
     const scopeOptions = automaticWindow.locator('input[name="automatic-annotation-scope"]')
     assert.equal(await scopeOptions.count(), 2)
     assert.deepEqual(await scopeOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['document', 'selection'])
@@ -203,13 +254,36 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     const issueFrame = await automaticWindow.locator('.automatic-issue-options').evaluate((element) => {
       const style = getComputedStyle(element)
       const frame = element.getBoundingClientRect()
+      const heading = element.querySelector('.automatic-issue-heading').getBoundingClientRect()
+      const actions = element.querySelector('.automatic-issue-actions').getBoundingClientRect()
+      const disclosure = element.querySelector('.automatic-context-disclosure').getBoundingClientRect()
       const grid = element.querySelector('.automatic-issue-grid').getBoundingClientRect()
-      return { boxShadow: style.boxShadow, paddingLeft: parseFloat(style.paddingLeft), paddingRight: parseFloat(style.paddingRight), gridLeft: grid.left, gridRight: grid.right, frameLeft: frame.left, frameRight: frame.right }
+      const cards = [...element.querySelectorAll('.automatic-issue-grid > label')].map((card) => {
+        const box = card.getBoundingClientRect()
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+      })
+      return {
+        borderWidth: parseFloat(style.borderTopWidth),
+        paddingLeft: parseFloat(style.paddingLeft), paddingRight: parseFloat(style.paddingRight),
+        frame: { left: frame.left, right: frame.right, top: frame.top, bottom: frame.bottom },
+        heading: { left: heading.left, right: heading.right, top: heading.top, bottom: heading.bottom },
+        actions: { left: actions.left, right: actions.right, top: actions.top, bottom: actions.bottom },
+        disclosure: { top: disclosure.top, bottom: disclosure.bottom },
+        grid: { left: grid.left, right: grid.right, top: grid.top, bottom: grid.bottom, scrollHeight: element.querySelector('.automatic-issue-grid').scrollHeight, clientHeight: element.querySelector('.automatic-issue-grid').clientHeight },
+        cards
+      }
     })
-    assert.notEqual(issueFrame.boxShadow, 'none', 'Issue choices need a clear outer frame')
+    assert.ok(issueFrame.borderWidth >= 1, 'Issue choices need a clear outer frame')
     assert.ok(issueFrame.paddingLeft >= 12 && issueFrame.paddingRight >= 12, `Issue frame needs comfortable padding: ${JSON.stringify(issueFrame)}`)
-    assert.ok(issueFrame.gridLeft > issueFrame.frameLeft && issueFrame.gridRight < issueFrame.frameRight, `Issue grid escaped its frame: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.heading.left > issueFrame.frame.left && issueFrame.heading.right < issueFrame.frame.right, `Issue heading escaped its frame: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.actions.top >= issueFrame.heading.top && issueFrame.actions.bottom <= issueFrame.heading.bottom, `Issue actions are not aligned with the title: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.disclosure.top >= issueFrame.heading.bottom + 5, `Issue explanation overlaps the title row: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.grid.top >= issueFrame.disclosure.bottom + 5, `Issue cards overlap the explanation: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.grid.left > issueFrame.frame.left && issueFrame.grid.right < issueFrame.frame.right, `Issue grid escaped its frame: ${JSON.stringify(issueFrame)}`)
+    assert.equal(issueFrame.grid.scrollHeight, issueFrame.grid.clientHeight, `All 12 issue cards should fit without a clipped partial row: ${JSON.stringify(issueFrame)}`)
+    for (const card of issueFrame.cards) assert.ok(card.left >= issueFrame.grid.left && card.right <= issueFrame.grid.right + 1 && card.top >= issueFrame.grid.top && card.bottom <= issueFrame.grid.bottom + 1, `Issue card escaped or was clipped: ${JSON.stringify(issueFrame)}`)
     assert.equal(await issueOptions.evaluateAll((inputs) => inputs.filter((input) => input.checked).length), 12, 'All issue categories should be enabled on first use')
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-auto-annotation-options-${releaseVersion}.png`) })
     await automaticWindow.getByRole('button', { name: '清空选择', exact: true }).click()
     assert.equal(await automaticWindow.locator('.automatic-start').isDisabled(), true, 'No issue selection must disable the run')
     await issueOptions.nth(0).check()
@@ -264,6 +338,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await annotation.locator('.annotation-settings-button').click()
     await annotation.locator('.annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()
+    await verifyStickyDraggableHeader(page, page.locator('.annotation-suggestion-window'), 'Annotation suggestion')
     console.log('[lab-smoke] annotation suggestion collector opened')
 
     const automaticContextSwitch = page.locator('.suggestion-auto-context [role="switch"]')

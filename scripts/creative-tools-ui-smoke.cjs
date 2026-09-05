@@ -168,6 +168,14 @@ async function verifyDrawingBoard(app, page) {
   const drawingWindow = page.locator('.drawing-board-window')
   await drawingWindow.waitFor()
   assert.equal(await drawingWindow.evaluate((element) => getComputedStyle(element).resize), 'both')
+  const fixedTitle = await drawingWindow.evaluate((element) => ({
+    overflow: getComputedStyle(element).overflow,
+    firstRow: getComputedStyle(element).gridTemplateRows.split(' ')[0],
+    headerTop: element.querySelector(':scope > header').getBoundingClientRect().top,
+    windowTop: element.getBoundingClientRect().top
+  }))
+  assert.equal(fixedTitle.overflow, 'hidden', 'Drawing board content must not scroll its title out of view')
+  assert.ok(Math.abs(fixedTitle.headerTop - fixedTitle.windowTop) <= 1, `Drawing board title must stay in its fixed first row: ${JSON.stringify(fixedTitle)}`)
   const wideLayout = await drawingWindow.evaluate((element) => {
     const rect = (target) => {
       const box = target.getBoundingClientRect()
