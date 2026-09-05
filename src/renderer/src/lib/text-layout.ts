@@ -82,9 +82,30 @@ function comparePosition(a: TextPosition, b: TextPosition): number {
 
 interface TextFlowBounds { left: number; right: number; padding: number }
 
-function textFlowBounds(words: WordBox[], startWord: WordBox, endWord: WordBox): TextFlowBounds | undefined {
-  const startRect = startWord.textRunRect
-  const endRect = endWord.textRunRect
+/** Join adjacent PDF objects on one baseline, without bridging a column gutter. */
+function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => number): PdfRect | undefined {
+  if (!word.textRunRect) return undefined
+  const rect = { ...word.textRunRect }
+  const neighbors = words.filter((candidate) => candidate.column === word.column && !candidate.columnAmbiguous && candidate.visualBlock === word.visualBlock && Math.abs(rowY(candidate) - rowY(word)) <= Math.min(candidate.rect.height, word.rect.height) * 0.18)
+    .sort((left, right) => left.rect.x - right.rect.x)
+  // Traverse in both directions so an endpoint in the middle of a fragmented
+  // formula joins the prose on both sides, even when PDF objects are shuffled.
+  for (const candidates of [neighbors, [...neighbors].reverse()]) {
+    for (const candidate of candidates) {
+      const next = candidate.textRunRect || candidate.rect
+      const gap = Math.max(next.x - rect.x - rect.width, rect.x - next.x - next.width, 0)
+      if (gap > word.rect.height * 1.6) continue
+      const right = Math.max(rect.x + rect.width, next.x + next.width)
+      rect.x = Math.min(rect.x, next.x)
+      rect.width = right - rect.x
+    }
+  }
+  return rect
+}
+
+function textFlowBounds(words: WordBox[], startWord: WordBox, endWord: WordBox, rowY: (word: WordBox) => number): TextFlowBounds | undefined {
+  const startRect = textLineRect(words, startWord, rowY)
+  const endRect = textLineRect(words, endWord, rowY)
   if (!startRect || !endRect) return undefined
   if (startWord.column !== endWord.column && !startWord.columnAmbiguous && !endWord.columnAmbiguous) return undefined
   const startRight = startRect.x + startRect.width
@@ -154,19 +175,39 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const startWord = words[start.wordIndex], endWord = words[end.wordIndex]
   if (!startWord || !endWord) return undefined
   const endpointHeight = Math.max(startWord?.rect.height || 0, endWord?.rect.height || 0)
-  const endpointYGap = startWord && endWord ? Math.abs(startWord.rect.y - endWord.rect.y) : Number.POSITIVE_INFINITY
+  // Small scripts/fraction parts belong to the nearest adjacent body row.
+  // Their glyph tops may sit outside the drag band; neither band clipping nor
+  // reading order should treat a denominator as the start of the following row.
+  const visualY = new Map<WordBox, number>()
+  for (const word of words) {
+    let nearest: WordBox | undefined, distance = Number.POSITIVE_INFINITY
+    if (word.baselineY !== undefined && word.rect.height < endpointHeight * 0.82) {
+      for (const candidate of words) {
+        if (candidate.column !== word.column || candidate.baselineY === undefined || candidate.rect.height < endpointHeight * 0.82) continue
+        const gap = Math.max(candidate.rect.x - word.rect.x - word.rect.width, word.rect.x - candidate.rect.x - candidate.rect.width, 0)
+        const dy = Math.abs(candidate.rect.y + candidate.rect.height / 2 - word.rect.y - word.rect.height / 2)
+        if (gap <= endpointHeight * 1.6 && dy <= endpointHeight && dy < distance) { nearest = candidate; distance = dy }
+      }
+    }
+    visualY.set(word, nearest?.rect.y ?? word.rect.y)
+  }
+  const rowY = (word: WordBox): number => visualY.get(word)!
+  const endpointYGap = Math.abs(rowY(startWord) - rowY(endWord))
   const sameColumnBand = anchorColumn !== undefined && anchorColumn === focusColumn
   const visualOrder = (left: WordBox, right: WordBox): number => {
     const height = Math.max(left.rect.height, right.rect.height, endpointHeight)
-    const yDifference = left.rect.y - right.rect.y
+    const yDifference = rowY(left) - rowY(right)
+    // Stacked parts at the same x read top-to-bottom, before the following prose.
+    const horizontalOverlap = Math.min(left.rect.x + left.rect.width, right.rect.x + right.rect.width) - Math.max(left.rect.x, right.rect.x)
+    if (Math.abs(yDifference) <= height * 0.55 && horizontalOverlap > Math.min(left.rect.width, right.rect.width) * 0.5) return left.rect.y - right.rect.y || left.rect.x - right.rect.x || left.order - right.order
     return Math.abs(yDifference) <= height * 0.55 ? left.rect.x - right.rect.x || left.order - right.order : yDifference || left.rect.x - right.rect.x || left.order - right.order
   }
   const blockId = startWord.visualBlock !== undefined && startWord.visualBlock === endWord.visualBlock ? startWord.visualBlock : undefined
   // Older callers and synthetic documents may not carry visualBlock metadata.
   // A range whose endpoints and every occupied row are gutter-crossing is still
   // unambiguously a visual block (captions, wide equations, or table labels).
-  const minY = Math.min(startWord.rect.y, endWord.rect.y) - endpointHeight * 0.35
-  const maxY = Math.max(startWord.rect.y, endWord.rect.y) + endpointHeight * 0.35
+  const minY = Math.min(rowY(startWord), rowY(endWord)) - endpointHeight * 0.35
+  const maxY = Math.max(rowY(startWord), rowY(endWord)) + endpointHeight * 0.35
   const fallbackRows = new Map<number, WordBox[]>()
   words.forEach((word) => {
     if (word.rect.y < minY || word.rect.y > maxY) return
@@ -186,29 +227,19 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // detected column boundary splits one source row into separate runs.
   const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && (hasStructuralEndpoint || sameVisualRow && sourceRangeStaysInBand)
   const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
-  const flowBounds = useStructuralBand || hasStructuralEndpoint ? undefined : textFlowBounds(words, startWord, endWord)
-  const selectionBandTop = Math.min(startWord.rect.y, endWord.rect.y) - 0.5
-  const selectionBandBottom = Math.max(startWord.rect.y + startWord.rect.height, endWord.rect.y + endWord.rect.height) + 0.5
-  const hasOutOfBandIntermediate = sameColumnBand && words.slice(start.wordIndex + 1, end.wordIndex).some((word) => word.column === anchorColumn && (word.rect.y + word.rect.height < selectionBandTop || word.rect.y > selectionBandBottom))
-  // PDF content streams are not guaranteed to keep words in visual reading
-  // order. A common example is a list marker (or a small formula fragment)
-  // emitted between two words on the line above it. When both endpoints are
-  // in one column and such an object falls outside the endpoint band, use its
-  // geometric reading order for the whole range so an adjacent line cannot
-  // leak into an otherwise complete line selection. Compact stacked formulas
-  // remain in their PDF reading order because their fragments share the band.
+  const flowBounds = useStructuralBand || hasStructuralEndpoint ? undefined : textFlowBounds(words, startWord, endWord, rowY)
+  const bandWords = !flowBounds ? words.filter((word) => word.column === anchorColumn && rowY(word) >= minY && rowY(word) <= maxY) : []
+  const bandLeft = bandWords.length ? Math.min(...bandWords.map((word) => word.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
+  const bandRight = bandWords.length ? Math.max(...bandWords.map((word) => word.rect.x + word.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
   const visualBandIndices = useStructuralBand
     ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined
       ? word.visualBlock === blockId
       : useCrossColumnStructuralBand
         ? word.rect.y >= minY && word.rect.y <= maxY
         : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
-    // Once a same-column drag crosses a visual row, selection must use page
-    // geometry rather than the PDF object stream. Equations can emit their
-    // small superscripts before the surrounding base characters; those items
-    // still sit inside the endpoint band, so the former out-of-band fallback
-    // never ran and the range skipped or reordered visible text.
-    : sameColumnBand && endpointHeight > 0 && endpointYGap > endpointHeight * 0.45
+    // Use geometry even for one row: a formula's EOL flags and tiny baseline
+    // differences can serialize the row's suffix before its prefix.
+    : sameColumnBand && endpointHeight > 0
       ? words.map((word, index) => ({ word, index })).filter(({ word }) => {
         // Geometry can repair a scrambled content stream, but it must not let
         // a widened flow corridor pull an adjacent column back into the
@@ -224,14 +255,9 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
           const seedPadding = endpointHeight * 0.35
           if (centre < seedLeft - seedPadding || centre > seedRight + seedPadding) return false
         }
-        const y = word.rect.y
-        const bandWords = words.filter((candidate) => candidate.column === anchorColumn && candidate.rect.y >= minY && candidate.rect.y <= maxY && (!flowBounds || wordBelongsToFlow(candidate, flowBounds)))
-        const left = bandWords.length ? Math.min(...bandWords.map((candidate) => candidate.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
-        const right = bandWords.length ? Math.max(...bandWords.map((candidate) => candidate.rect.x + candidate.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
-        return y >= minY && y <= maxY && (flowBounds ? wordBelongsToFlow(word, flowBounds) : word.rect.x + word.rect.width >= left && word.rect.x <= right)
+        const y = rowY(word)
+        return y >= minY && y <= maxY && (flowBounds ? wordBelongsToFlow(word, flowBounds) : word.rect.x + word.rect.width >= bandLeft && word.rect.x <= bandRight)
       }).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
-    : hasOutOfBandIntermediate
-      ? words.map((word, index) => ({ word, index })).filter(({ word }) => word.column === anchorColumn && (!flowBounds || wordBelongsToFlow(word, flowBounds))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
       : undefined
   const selectionEntries = visualBandIndices?.length
     ? (() => {

@@ -392,6 +392,17 @@ describe('PDF text layout', () => {
     expect(selection?.rects.every((rect) => rect.x >= 312)).toBe(true)
   })
 
+  it('keeps a raised derivative on its formula row instead of the preceding prose', () => {
+    const item = (str: string, x: number, baseline: number, width: number, size = 10) => ({ str, width, height: size, transform: [size, 0, 0, size, x, baseline], fontName: 'body', hasEOL: true }) as TextItem
+    const styles = { body: { ascent: 0.68, descent: -0.32, vertical: false, fontFamily: 'serif' } as TextStyle }
+    const words = textItemsToWordBoxes([
+      item('i.e., they remain stable', 100, 700, 200),
+      item('′', 108, 694.18, 3, 5), item('F', 100, 687.56, 7), item('holds', 116, 687.56, 30)
+    ], styles, [1, 0, 0, -1, 0, 792])
+    const start = words.findIndex(w => w.text === 'i.e.,'), end = words.findIndex(w => w.text === 'holds')
+    expect(textSelectionBetween(words, { wordIndex: start, offset: 0 }, { wordIndex: end, offset: 5 })?.text).toBe('i.e., they remain stable F ′ holds')
+  })
+
   it('retains formula fragments inside a text flow while excluding a neighboring chart column', () => {
     const words = [
       { text: 'conditions', order: 0, column: 0, textRun: 0, textRunRect: { x: 49, y: 20, width: 251, height: 10 }, rect: { x: 49, y: 20, width: 44, height: 10 } },
@@ -403,6 +414,39 @@ describe('PDF text layout', () => {
     expect(selection?.text).toBe('conditions ξ network.')
     expect(selection?.text).not.toContain('120')
     expect(selection?.rects.every((rect) => rect.x + rect.width <= 300)).toBe(true)
+  })
+
+  it('selects fragmented formula rows and stacked fractions independently of PDF object order and font ascent', () => {
+    for (const ascent of [0.68, 0.9]) for (const reverseStream of [false, true]) {
+      const item = (str: string, x: number, baseline: number, width: number, height = 10) => ({ str, width, height, transform: [height, 0, 0, height, x, baseline], fontName: 'body', hasEOL: true }) as TextItem
+      const items = [
+        item('Start when', 40, 700, 55), item('τ', 98, 700, 5), item('=', 107, 700, 7), item('T', 117, 700, 6), item('c', 123, 698.5, 4, 7), item('the complete sentence', 130, 700, 160),
+        item('A wider intermediate line', 40, 688, 250), item('Short ending', 40, 676, 100),
+        item('each user scales as', 40, 664, 84), item('1', 132, 668, 4, 7), item('K', 131, 660.5, 6, 7), item('Therefore', 144, 664, 45),
+        item('following line', 40, 652, 100),
+        ...[700, 688, 676, 664, 652].map(y => item('Adjacent column', 312, y, 250))
+      ]
+      const styles = { body: { ascent, descent: ascent - 1, vertical: false, fontFamily: 'serif' } as TextStyle }
+      const words = textItemsToWordBoxes(reverseStream ? items.reverse() : items, styles, [1, 0, 0, -1, 0, 792])
+      const select = (first: string, last: string) => {
+        const start = words.findIndex(w => w.text === first), end = words.findIndex(w => w.text === last)
+        const a = { wordIndex: start, offset: 0 }, b = { wordIndex: end, offset: words[end].text.length }
+        const selection = textSelectionBetween(words, a, b)!
+        expect(textSelectionBetween(words, b, a)).toEqual(selection)
+        expect(selection.rects.every(r => r.x + r.width <= 290)).toBe(true)
+        return selection
+      }
+      expect(select('Start', 'ending').text).toBe('Start when τ = T c the complete sentence A wider intermediate line Short ending')
+      expect(select('c', 'ending').text).toBe('c the complete sentence A wider intermediate line Short ending')
+      const fraction = select('each', 'Therefore')
+      expect(fraction.text).toBe('each user scales as 1 K Therefore')
+      for (const text of ['1', 'K']) {
+        const { rect } = words.find(w => w.text === text)!
+        expect(fraction.rects.some(r => r.x <= rect.x && r.x + r.width >= rect.x + rect.width && r.y <= rect.y && r.y + r.height >= rect.y + rect.height)).toBe(true)
+      }
+      const start = words.findIndex(w => w.text === 'Start'), end = words.findIndex(w => w.text === 'ending')
+      expect(textSelectionBetween(words, { wordIndex: start, offset: 2 }, { wordIndex: end, offset: 3 })?.text).toBe('art when τ = T c the complete sentence A wider intermediate line Short end')
+    }
   })
 
   it('keeps a completed line free of a list marker emitted out of PDF stream order', () => {
