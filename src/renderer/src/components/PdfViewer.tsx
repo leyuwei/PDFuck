@@ -1,3 +1,4 @@
+import { ContextMenu } from './ContextMenu'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
@@ -803,8 +804,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     if (boundaryEditing) return
     const point = pointFor(event)
     if (activeSelection?.text) { setTextCaret(undefined); setSelectionAnchor(undefined) }
-    const bounds = pageRef.current!.getBoundingClientRect()
-    setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, point })
+    setMenu({ x: event.clientX, y: event.clientY, point })
   }
   const handleDoubleClick = (event: React.MouseEvent) => {
     if (!canSelectText) return
@@ -814,9 +814,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
   }
   const openAnnotationMenu = (annotation: AnnotationRecord, clientX: number, clientY: number) => {
-    const bounds = pageRef.current!.getBoundingClientRect()
     setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined); onSelectionChange(undefined)
-    setMenu({ x: clientX - bounds.left, y: clientY - bounds.top, point: { x: annotation.rects[0]?.x || 0, y: annotation.rects[0]?.y || 0 }, annotation })
+    setMenu({ x: clientX, y: clientY, point: { x: annotation.rects[0]?.x || 0, y: annotation.rects[0]?.y || 0 }, annotation })
   }
   const runMenu = (selectedTool: Tool) => {
     if (!menu) return
@@ -1046,7 +1045,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     {textObjects.map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}
-    {menu && <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
+    {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(undefined)}>
       {menu.annotation ? <>
         <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui("ui.editAnnotation2")}</span></button>
         <div className="annotation-context-controls"><AnnotationColorPicker compact color={menu.annotation.color} onChange={colorMenuAnnotation} /><AnnotationReplyPicker compact reply={menu.annotation.reply} onChange={replyMenuAnnotation} onQuickReply={() => setMenu(undefined)} /></div>
@@ -1058,7 +1057,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
           <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui("ui.deleteText")}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui("ui.underlineText")}</span></button></>}
           {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui("ui.note")}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui("ui.insertText")}</span></button></>}
       </>}
-    </div>}
+    </ContextMenu>}
   </div>
 }
 

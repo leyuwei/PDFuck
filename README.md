@@ -39,7 +39,16 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.16
+## What's New in 2.0.17
+
+- Context menus flip at viewport edges, scroll when necessary, and use the browser top layer to escape page clipping and overlapping panels.
+- Annotation author badges resolve palette collisions within each document, including documents with more than eight reviewers.
+- Automatic Annotation adds an optional **Custom** issue criterion, saved locally and run as its own complete page pass. Blank custom criteria cannot start a run.
+- Lab windows fit small screens and stay below the native title and tab drag regions. Minimize AI tools or the drawing board to their toolbar buttons, then restore their ongoing work; state and drawings remain isolated between documents. Amber buttons identify minimized windows. Model settings can also be minimized to the gear button.
+- EPS export now sends the edited PDF directly through **Poppler / Cairo (`pdftocairo`)**, preserving text and vector paths. EPS cannot represent all PDF transparency; Cairo confines those effects to local image regions instead of rasterizing the entire page. Install Poppler on the target computer (`brew install poppler` on macOS), or supply its runtime under the application's `Resources/poppler/bin`. Ghostscript remains the EPS import dependency. EPS no longer uses the PNG/JPG DPI setting.
+- New `test:popups-ui` and `test:eps-vector` regressions verify small-screen hit targets, menu layering, author colours, minimize/restore and document isolation, local custom settings, and `tmp/try-eps.pdf` vector/text preservation through EPS round-trip conversion. The EPS test additionally requires Ghostscript and Poppler's `pdftoppm`.
+
+### Earlier improvements in 2.0.16
 
 - Formula selection joins adjacent text objects on the same visual row before estimating paragraph width, preventing short formula fragments from cutting holes in prose or dropping wider intermediate lines.
 - Inline subscripts and fractions follow their surrounding row, including at drag endpoints. Same-row, cross-line, and reverse selections preserve numerators, denominators, and text on both sides of a formula.
@@ -320,7 +329,16 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.16 新增与完善
+## 2.0.17 新增与完善
+
+- 右键菜单根据实际尺寸自动换向，超高时可滚动，并进入浏览器最上层，避免页面裁切和其他面板覆盖。
+- 批注人配色按文档消解哈希碰撞，超过八位批注人也不会重复使用同一颜色。
+- 自动批注新增可选的“自定义”检查要求，自动保存在本机，作为独立完整轮次运行；空白要求不能启动。
+- 实验室浮窗适配小屏幕，拖动边界避开原生标题栏和标签栏。AI 功能与画板可缩小到左侧功能按钮，再次点击恢复；请求、结果和画布按文档隔离保留。琥珀色按钮表示已缩小，模型设置也支持缩小到齿轮按钮。
+- EPS 导出改为通过 **Poppler / Cairo (`pdftocairo`)** 直接转换当前修改后的 PDF，保留文字和矢量路径。EPS 不支持完整 PDF 透明度，相关区域由 Cairo 局部处理，不再主动栅格化整页。目标电脑须安装 Poppler（macOS：`brew install poppler`），也可将转换运行时放在应用的 `Resources/poppler/bin`；EPS 导入仍使用 Ghostscript。EPS 不再使用 PNG/JPG 的 DPI 设置。
+- 新增 `test:popups-ui` 和 `test:eps-vector`，覆盖菜单边缘及层级、小屏幕标题栏点击、批注人颜色、浮窗缩小恢复、多文档隔离、自定义要求持久化，以及 `tmp/try-eps.pdf` 导出回读后的完整文字与矢量路径。EPS 回归另外使用 Ghostscript 和 Poppler 的 `pdftoppm`。
+
+### 2.0.16 的改进
 
 - 修复含公式段落框选漏字、整行跳过：先连接同一视觉行的相邻文字对象，再确定段落宽度，避免将短公式碎片误当整段边界。
 - 行内上下标和分数按所属正文行参与选择；同行、跨行、正反向拖选均保留分子、分母及公式两侧正文，也覆盖从下标开始的选区。

@@ -76,7 +76,12 @@
 
 @media (max-width: 1240px) {
   .titlebar-identity { gap: 12px; padding-left: 12px; }
-  .titlebar-tools { gap: 8px; }
+  .titlebar-tools { gap: 6px; }
+  .titlebar-tools .history-controls button { width: 25px; min-width: 25px; }
+  .titlebar-tools .page-controls > button, .titlebar-tools .zoom-controls > button { min-width: 26px; padding-inline: 4px; }
+  .titlebar-tools .zoom-controls .fit-control { width: 28px; min-width: 28px; padding: 0; }
+  .titlebar-tools .zoom-value { min-width: 48px !important; }
+  .titlebar-tools .page-controls > div { padding-inline: 4px; }
   .brand { min-width: 78px; font-size: 18px; }
   .file-actions { gap: 4px; }
   .open-button, .folder-button { padding-inline: 8px; font-size: 11px; }

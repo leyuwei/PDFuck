@@ -1374,7 +1374,9 @@ export default function App() {
         }
         return
       }
-      const pages = await exportPdfPages(model.bytes, exportFormat, exportDpi, (completed, total, originalPage) => setStatus(`正在导出 ${completed}/${total} · 原文档第 ${originalPage} 页…`), selectedPages)
+      const pages = exportFormat === 'eps'
+        ? await Promise.all(selectedPages.map(async (page) => ({ data: await model.pageSubset([page]), pageNumber: page + 1 })))
+        : await exportPdfPages(model.bytes, exportFormat, exportDpi, (completed, total, originalPage) => setStatus(`正在导出 ${completed}/${total} · 原文档第 ${originalPage} 页…`), selectedPages)
       const outputs = await window.desktop.exportPages({ format: exportFormat, pages, sourceName: model.fileName })
       if (outputs) setStatus(`已导出 ${outputs.length} 个文件 · ${outputs[0]}`); else setStatus('已取消导出')
     } catch (error) { showError(error) }

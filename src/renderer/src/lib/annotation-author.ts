@@ -24,3 +24,24 @@ export function annotationAuthorColors(author: string): typeof AUTHOR_COLORS[num
   for (const character of value) { hash ^= character.codePointAt(0) || 0; hash = Math.imul(hash, 16777619) }
   return AUTHOR_COLORS[(hash >>> 0) % AUTHOR_COLORS.length]
 }
+
+// Imported PDFs may contain author names longer than the local name-entry limit.
+export function annotationAuthorKey(author: string): string { return author.trim().replace(/\s+/gu, ' ') || DEFAULT_ANNOTATION_AUTHOR }
+
+export type AnnotationAuthorColors = { background: string; border: string; text: string }
+
+/** Resolve hash collisions within the document, independent of annotation order. */
+export function annotationAuthorPalette(authors: string[]): Map<string, AnnotationAuthorColors> {
+  const result = new Map<string, AnnotationAuthorColors>()
+  const used = new Set<string>()
+  for (const author of [...new Set(authors.map(annotationAuthorKey))].sort()) {
+    const preferred = annotationAuthorColors(author)
+    const start = AUTHOR_COLORS.indexOf(preferred)
+    const color: AnnotationAuthorColors = Array.from({ length: AUTHOR_COLORS.length }, (_, index) => AUTHOR_COLORS[(start + index) % AUTHOR_COLORS.length]).find((item) => !used.has(item.text)) || (() => {
+      const hue = (result.size * 137.508) % 360
+      return { background: `hsl(${hue} 65% 94%)`, border: `hsl(${hue} 45% 72%)`, text: `hsl(${hue} 52% 34%)` }
+    })()
+    used.add(color.text); result.set(author, color)
+  }
+  return result
+}

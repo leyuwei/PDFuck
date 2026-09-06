@@ -166,7 +166,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     const polishWindow = page.locator('.ai-polish-window:not(.lab-workflow-window)')
     await polishWindow.waitFor()
     await verifyStickyDraggableHeader(page, polishWindow, 'AI polish')
-    await polishWindow.locator(':scope > header button').click()
+    await polishWindow.locator(':scope > header button[aria-label="关闭"]').click()
 
     await page.locator('.full-review-launch').click()
     await page.locator('.lab-disclaimer').waitFor()
@@ -201,6 +201,12 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     const remaining = Number(countdown.match(/\d+/)?.[0])
     assert.ok(remaining >= 118 && remaining <= 120, `Expected countdown to start from configured 120 seconds, got ${countdown}`)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-progress-${releaseVersion}.png`) })
+    await page.locator('.full-review-window').getByRole('button', { name: '缩小到工具栏', exact: true }).click()
+    assert.equal(await page.locator('.full-review-window').count(), 0)
+    assert.equal(await page.locator('.full-review-launch').getAttribute('data-window-state'), 'minimized')
+    await page.locator('.full-review-launch').click()
+    await progress.waitFor()
+
 
     await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), switchTarget)
     const originalTab = page.locator('.window-tab').filter({ hasText: 'lab-features.pdf' })
@@ -231,7 +237,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
 
     await page.locator('.full-review-launch').click()
     assert.equal(await page.locator('.lab-disclaimer').count(), 0, 'Accepted disclaimer must not reappear')
-    await page.locator('.full-review-window > header button').click()
+    await page.locator('.full-review-window > header button[aria-label="关闭"]').click()
 
     await selectPageText(page, 0)
     await page.locator('.automatic-annotation-launch').click()
@@ -250,7 +256,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await scopeOptions.first().check()
 
     const issueOptions = automaticWindow.locator('.automatic-issue-grid input')
-    assert.equal(await issueOptions.count(), 12, 'Automatic annotation must expose the complete issue checklist')
+    assert.equal(await issueOptions.count(), 13, 'Automatic annotation must expose the complete issue checklist')
     const issueFrame = await automaticWindow.locator('.automatic-issue-options').evaluate((element) => {
       const style = getComputedStyle(element)
       const frame = element.getBoundingClientRect()
@@ -326,7 +332,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await automaticControls.getByText('结束', { exact: true }).click()
     await automaticWindow.locator('.automatic-annotation-progress.stopped').waitFor()
     assert.ok((await automaticProgress.innerText()).includes('自动批注已结束'))
-    await automaticWindow.locator(':scope > header button').click()
+    await automaticWindow.locator(':scope > header button[aria-label="关闭"]').click()
     console.log('[lab-smoke] automatic annotation scopes, issue passes, intensity, explanation levels, and live controls verified')
 
     const toggle = page.locator('.annotation-suggestion-toggle')
@@ -374,7 +380,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await persist.isDisabled(), false)
     await persist.check()
     assert.equal(await persist.isChecked(), true)
-    await page.locator('.annotation-suggestion-window > header button').click()
+    await page.locator('.annotation-suggestion-window > header button[aria-label="关闭"]').click()
     await annotation.locator('.annotation-settings-button').click()
     await annotation.locator('.annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()

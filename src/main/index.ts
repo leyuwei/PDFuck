@@ -1,3 +1,4 @@
+import { convertPdfToEps, findPdfToCairo } from './eps-export'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -177,7 +178,7 @@ function matchesImageSignature(data: Uint8Array, format: ImageImportFile['format
 async function ghostscriptCandidates(): Promise<string[]> {
   const names = process.platform === 'win32' ? ['gswin64c.exe', 'gswin32c.exe'] : ['gs']
   const paths = (process.env.PATH || '').split(delimiter).filter(Boolean)
-  const bundled = [join(process.resourcesPath, 'ghostscript', 'bin'), join(process.resourcesPath, 'ghostscript')]
+  const bundled = [join(process.resourcesPath, 'ghostscript', 'bin'), join(process.resourcesPath, 'ghostscript'), ...(process.platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'] : [])]
   const programFiles = [...new Set([process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter((value): value is string => Boolean(value))) ]
   const installed = (await Promise.all(programFiles.map(async (root) => {
     try { return (await readdir(join(root, 'gs'), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(root, 'gs', entry.name, 'bin')) } catch { return [] }
@@ -693,6 +694,8 @@ app.whenReady().then(async () => {
     const session = requireWindowSession(event.sender)
     const window = session.window
     if (!['pdf', 'png', 'jpg', 'eps'].includes(request.format)) throw new Error('不支持的导出格式。')
+    const epsCommand = request.format === 'eps' ? findPdfToCairo(process.resourcesPath) : undefined
+    if (request.format === 'eps' && !epsCommand) throw new Error('ui.epsNeedsPoppler')
     const stem = parse(request.sourceName || 'document').name
     const result = await dialog.showSaveDialog(window, { title: `${nativeText(session.interfaceLanguage, "ui.export")} ${request.format.toUpperCase()}`, defaultPath: `${stem}.${request.format}`, filters: [{ name: request.format.toUpperCase(), extensions: [request.format] }] })
     if (result.canceled || !result.filePath) return null
@@ -701,7 +704,8 @@ app.whenReady().then(async () => {
     for (const page of request.pages) {
       const suffix = many ? `_${String(page.pageNumber).padStart(3, '0')}` : ''
       const target = join(selected.dir, `${selected.name}${suffix}.${request.format}`)
-      await atomicWrite(target, page.data); outputs.push(target)
+      const data = request.format === 'eps' ? await convertPdfToEps(epsCommand!, page.data) : page.data
+      await atomicWrite(target, data); outputs.push(target)
     }
     return outputs
   })

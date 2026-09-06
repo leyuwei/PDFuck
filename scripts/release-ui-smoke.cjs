@@ -47,14 +47,14 @@ async function main() {
     assert.ok(Math.abs(initialShell.titlebarCenter - initialShell.toolsCenter) <= 1, `titlebar tools are not centered: ${JSON.stringify(initialShell)}`)
     const originalWindowBounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1080, 800))
-    await page.waitForFunction(() => document.querySelector('.document-title')?.getAttribute('data-overflowing') === 'true')
+    await page.waitForFunction(() => Math.abs(window.innerWidth - 1080) < 4 && document.querySelector('.document-title')?.getAttribute('data-overflowing') === 'true' && document.querySelector('.document-title-viewport')?.getBoundingClientRect().width >= 24)
     const narrowTitleLayout = await page.evaluate(() => {
       const brand = document.querySelector('.brand').getBoundingClientRect()
       const title = document.querySelector('.document-title-viewport').getBoundingClientRect()
       const tools = document.querySelector('.titlebar-tools').getBoundingClientRect()
       return { brandRight: brand.right, titleLeft: title.left, titleRight: title.right, titleWidth: title.width, toolsLeft: tools.left }
     })
-    assert.ok(narrowTitleLayout.titleWidth > 0, `narrow title lost its viewport: ${JSON.stringify(narrowTitleLayout)}`)
+    assert.ok(narrowTitleLayout.titleWidth >= 24, `narrow title lost its viewport: ${JSON.stringify(narrowTitleLayout)}`)
     assert.ok(narrowTitleLayout.titleLeft - narrowTitleLayout.brandRight >= 12, `title overlaps the brand: ${JSON.stringify(narrowTitleLayout)}`)
     assert.ok(narrowTitleLayout.toolsLeft - narrowTitleLayout.titleRight >= 16, `title is too close to the toolbar: ${JSON.stringify(narrowTitleLayout)}`)
     const scrollingTitle = await page.locator('.document-title-track').evaluate((element) => getComputedStyle(element).animationName)
@@ -165,6 +165,7 @@ async function main() {
     await closeEvent
     console.log(JSON.stringify({ releaseUiSmoke: 'passed', version, executable, shell: { temporaryWarningLifecycle: true, adaptiveLogo: true, adaptiveTitleScroll: true, recentFiles: storedRecent.length, recentScrolling: true, responsiveToolbarCenter: true, windowsVectorControls: platform === 'win32' }, unsavedClose: { saveAndClose: true, discardColor: dangerBackground, cancelAnimation: animationName, cancelDefaultFocus: true } }, null, 2))
   } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
     await app.close().catch(() => undefined)
     for (let attempt = 0; attempt < 8; attempt += 1) {
       try { fs.rmSync(userData, { recursive: true, force: true }); break }

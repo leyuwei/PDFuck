@@ -63,6 +63,58 @@ describe('AnnotationLab settings and availability', () => {
     container.remove()
   })
 
+  it('minimizes an in-flight review, restores without another request, and keeps document sessions separate', async () => {
+    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    const response = deferred<string>()
+    const review = vi.spyOn(aiPolish, 'reviewDocument').mockReturnValue(response.promise)
+    const props = { getDocument: async () => ({ name: 'a.pdf', bytes: new Uint8Array(), text: 'A' }), onAdd: vi.fn(), onCopy: vi.fn() }
+    const root = createRoot(container)
+    const render = (active: string) => root.render(<><AnnotationLab key="a" {...props} visible={active === 'a'} documentKey="a.pdf" /><AnnotationLab key="b" {...props} visible={active === 'b'} documentKey="b.pdf" /></>)
+    await act(async () => render('a'))
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-launch')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-window button.primary.wide')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-window [aria-label="缩小到工具栏"]')!.click())
+    expect(container.querySelector('.full-review-window')).toBeNull()
+    expect(container.querySelector('.full-review-launch')?.getAttribute('data-window-state')).toBe('minimized')
+    await act(async () => render('b'))
+    expect(container.querySelector('.full-review-launch')?.getAttribute('data-window-state')).toBe('closed')
+    await act(async () => response.resolve('# Only document A'))
+    await act(async () => render('a'))
+    await act(async () => container.querySelector<HTMLButtonElement>('.full-review-launch')!.click())
+    expect(container.querySelector('.ai-markdown h1')?.textContent).toBe('Only document A')
+    expect(review).toHaveBeenCalledTimes(1)
+    await act(async () => root.unmount())
+  })
+
+  it('persists custom criteria across remounts and snapshots the criterion for its own page pass', async () => {
+    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('custom')
+    const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockImplementation(async (_settings, request) => automaticResponse(request.pageIndex))
+    const props = { getAutomaticAnnotationPages: async () => [automaticPage(0, 'Opening'), automaticPage(1, 'Conclusion')], onAddAutomaticAnnotations: vi.fn(), onAdd: vi.fn(), onCopy: vi.fn() }
+    let root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab {...props} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
+    expect(container.querySelector<HTMLButtonElement>('.automatic-start')!.disabled).toBe(true)
+    const input = container.querySelector<HTMLTextAreaElement>('.automatic-custom-issue textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Check experimental evidence for every conclusion.')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab {...props} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
+    expect(container.querySelector<HTMLTextAreaElement>('.automatic-custom-issue textarea')!.value).toContain('experimental evidence')
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
+    await flushWork()
+    expect(annotate).toHaveBeenCalledTimes(2)
+    for (const [, request] of annotate.mock.calls) {
+      expect(request.issueType).toBe('custom')
+      expect(request.customIssue).toBe('Check experimental evidence for every conclusion.')
+    }
+    await act(async () => root.unmount())
+  })
+
   it('keeps the shortcut keycap in the launch button and persists a custom timeout', async () => {
     const root = createRoot(container)
     await act(async () => root.render(<AnnotationLab selection={selection} platform="win32" onAdd={() => undefined} onCopy={() => undefined} />))
@@ -310,7 +362,8 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
     const issueInputs = [...container.querySelectorAll<HTMLInputElement>('.automatic-issue-grid input')]
     expect(issueInputs).toHaveLength(aiPolish.AUTOMATIC_ANNOTATION_ISSUE_TYPES.length)
-    expect(issueInputs.every((input) => input.checked)).toBe(true)
+    expect(issueInputs.filter((input) => input.checked)).toHaveLength(12)
+    expect(issueInputs.at(-1)!.checked).toBe(false)
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.automatic-issue-actions button')].find((button) => button.textContent === '清空选择')!.click())
     expect(container.querySelector<HTMLButtonElement>('.automatic-start')!.disabled).toBe(true)
     await act(async () => issueInputs[0].click())

@@ -1,3 +1,4 @@
+import { floatingTop, clampFloatingPosition } from '../lib/floating-window'
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import './drawing-board.css'
 
@@ -21,6 +22,9 @@ export interface DrawingBoardLabels {
 
 interface Props {
   labels: DrawingBoardLabels
+  hidden?: boolean
+  minimizeLabel?: string
+  onMinimize?(): void
   onClose(): void
   onAddPng(data: Uint8Array): void | Promise<void>
   onExportPng(data: Uint8Array): void | Promise<void>
@@ -70,7 +74,7 @@ function ClearCanvasIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 4 11.2 11.2-4.5 4.5H9.8L4.3 14.2 14.5 4z" /><path d="m6.8 11.7 6.5 6.5M4 20h16" /></svg>
 }
 
-export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) {
+export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel, onClose, onAddPng, onExportPng }: Props) {
   const titleId = useId()
   const descriptionId = useId()
   const canvasHintId = useId()
@@ -83,9 +87,25 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
   const [hasInk, setHasInk] = useState(false)
   const [busy, setBusy] = useState<'add' | 'export'>()
   const [error, setError] = useState('')
-  const [position, setPosition] = useState(() => ({ left: Math.max(12, (window.innerWidth - 720) / 2), top: Math.max(12, (window.innerHeight - 560) / 2) }))
+  const [position, setPosition] = useState(() => ({ left: Math.max(12, (window.innerWidth - 720) / 2), top: Math.max(floatingTop(), (window.innerHeight - 560) / 2) }))
 
   useEffect(() => () => stopWindowDrag.current(), [])
+  useEffect(() => {
+    if (hidden || !windowRef.current) return
+    const element = windowRef.current
+    const fit = () => {
+      element.style.maxHeight = `${Math.max(100, window.innerHeight - floatingTop() - 16)}px`
+      setPosition((current) => {
+        const next = clampFloatingPosition(current.left, current.top, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, floatingTop())
+        return current.left === next.left && current.top === next.top ? current : next
+      })
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(fit)
+    observer?.observe(element)
+    return () => { window.removeEventListener('resize', fit); observer?.disconnect() }
+  }, [hidden])
 
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!
@@ -168,7 +188,7 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
       const height = bounds?.height || 560
       setPosition({
         left: Math.max(8, Math.min(window.innerWidth - width - 8, origin.left + next.clientX - origin.x)),
-        top: Math.max(8, Math.min(window.innerHeight - height - 8, origin.top + next.clientY - origin.y))
+        top: Math.max(floatingTop(), Math.min(window.innerHeight - height - 8, origin.top + next.clientY - origin.y))
       })
     }
     const stop = (next?: PointerEvent) => {
@@ -188,8 +208,8 @@ export function DrawingBoard({ labels, onClose, onAddPng, onExportPng }: Props) 
     stopWindowDrag.current = stop
   }
 
-  return <section ref={windowRef} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
-    <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div><button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
+  return <section ref={windowRef} hidden={hidden} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
+    <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
       <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output dir="ltr" aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
       <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code dir="ltr">{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>

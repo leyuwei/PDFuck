@@ -318,3 +318,5 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .theme-dark .recent-list { scrollbar-color: #53647c transparent; }
 .theme-dark .recent-list::-webkit-scrollbar-thumb { background: #53647c; background-clip: padding-box; }
 .theme-dark .recent-list::-webkit-scrollbar-thumb:hover { background: #6c809c; background-clip: padding-box; }
+
+.context-menu[popover] { position: fixed; inset: auto; margin: 0; z-index: 2147483647; max-width: calc(100vw - 16px); overflow: auto; -webkit-app-region: no-drag; }

@@ -117,3 +117,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) { .drawing-board-empty { transition: none; } }
+
+@container (max-width: 600px) {
+  .drawing-board-toolbar { padding: 8px 12px; gap: 8px; }
+  .drawing-board-control { grid-template-rows: minmax(17px, 1fr) 28px; padding: 6px; gap: 4px; }
+  .tool-panel .drawing-board-window .drawing-board-brush > input[type="range"],
+  .tool-panel .drawing-board-window .drawing-board-color > input[type="color"],
+  .drawing-board-actions button { height: 28px; }
+}

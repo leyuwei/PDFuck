@@ -282,9 +282,10 @@ describe('automatic annotation transport', () => {
     const result = { version: 1, contextSummary: '', findings: [] }
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType, detail: 'brief', language: 'en' })
+    await autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType, customIssue: 'Check that every conclusion has experimental evidence.', detail: 'brief', language: 'en' })
     const prompt = JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content as string
     expect(prompt).toContain(`FOCUSED CATEGORY (${issueType})`)
+    if (issueType === 'custom') expect(prompt).toContain('USER REVIEW CRITERION: Check that every conclusion has experimental evidence.')
     expect(prompt).toContain('Review only this category in this pass')
     expect(prompt).toContain(`"issueType":"${issueType}"`)
   })
@@ -314,6 +315,7 @@ describe('automatic annotation transport', () => {
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationResponseInvalid')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], issueType: 'clarity_style', detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', intensity: 'extreme' as never })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'custom', customIssue: '  ', detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', retryAttempt: 4 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
     expect(aiRequest).toHaveBeenCalledTimes(1)
   })

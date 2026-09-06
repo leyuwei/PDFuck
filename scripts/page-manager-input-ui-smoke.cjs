@@ -53,11 +53,18 @@ async function compositionCommit(locator, value) {
 }
 
 async function refocusNativeWindow(app) {
-  await app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0]
-    window.blur()
-    window.focus()
+  // Switching native windows exercises actual focus loss on macOS; blur() alone
+  // can resign Chromium's first responder without deactivating the window.
+  const otherId = await app.evaluate(({ BrowserWindow }) => {
+    const other = new BrowserWindow({ width: 200, height: 150, show: true })
+    other.focus()
+    return other.id
   })
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  await app.evaluate(({ BrowserWindow }, otherId) => {
+    BrowserWindow.getAllWindows().find((window) => window.id !== otherId).focus()
+    BrowserWindow.fromId(otherId).destroy()
+  }, otherId)
 }
 
 async function main() {
@@ -153,6 +160,7 @@ async function main() {
     assert.equal(await dpi.inputValue(), '327.5')
     await page.locator('.tool-panel').screenshot({ path: path.join(screenshotDirectory, `direct-dpi-input-${version}.png`) })
   } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
     await app.close().catch(() => undefined)
     await removePath(userData)
   }

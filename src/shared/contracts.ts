@@ -1,7 +1,7 @@
 import type { InterfaceLanguage } from './i18n-catalogue'
 
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
-export type RasterExportFormat = Exclude<ExportFormat, 'pdf'>
+export type RasterExportFormat = Exclude<ExportFormat, 'pdf' | 'eps'>
 
 export interface OpenedPdf {
   path: string
@@ -104,6 +104,7 @@ export interface ExportPage {
 
 export interface ExportRequest {
   format: ExportFormat
+  /** For EPS, each page contains a single-page PDF for vector conversion in the main process. */
   pages: ExportPage[]
   sourceName: string
 }

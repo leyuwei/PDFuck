@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { AnnotationRecord, AnnotationReply, AnnotationReplyStatus } from '../types'
 import { AnnotationIcon } from './AnnotationIcon'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { annotationSummary, annotationSummaryStatus, type AnnotationSummaryStatus } from '../lib/annotation-summary'
 import { t as message, translateUiText, ui, useInterfaceLanguage, type TranslationKey } from '../lib/i18n'
-import { annotationAuthorColors } from '../lib/annotation-author'
+import { annotationAuthorPalette, annotationAuthorKey, type AnnotationAuthorColors } from '../lib/annotation-author'
 import { AnnotationAuthorSettings } from './AnnotationAuthorSettings'
 import { quickReply } from '../lib/annotation-style'
 
@@ -45,7 +45,7 @@ function annotationContent(annotation: AnnotationRecord, t: (value: TranslationK
   return annotation.content === '标记删除' ? t("ui.markedForDeletion") : annotation.content
 }
 
-function AnnotationRow({ annotation, selected, showAuthor, aiSuggestionsEnabled, onSelect, onEdit, onColor, onReply, onAiSuggestion }: { annotation: AnnotationRecord; selected: boolean; showAuthor: boolean; aiSuggestionsEnabled?: boolean; onSelect(options?: { additive?: boolean; range?: boolean }): void; onEdit(content: string): Promise<void>; onColor(color: string): Promise<void>; onReply(reply?: AnnotationReply): Promise<void>; onAiSuggestion?(): void }) {
+function AnnotationRow({ annotation, authorColors, selected, showAuthor, aiSuggestionsEnabled, onSelect, onEdit, onColor, onReply, onAiSuggestion }: { annotation: AnnotationRecord; authorColors: AnnotationAuthorColors; selected: boolean; showAuthor: boolean; aiSuggestionsEnabled?: boolean; onSelect(options?: { additive?: boolean; range?: boolean }): void; onEdit(content: string): Promise<void>; onColor(color: string): Promise<void>; onReply(reply?: AnnotationReply): Promise<void>; onAiSuggestion?(): void }) {
   const t = ui
   const rowRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
@@ -62,7 +62,6 @@ function AnnotationRow({ annotation, selected, showAuthor, aiSuggestionsEnabled,
   }
   const replyClass = annotation.reply ? ` reply-${annotation.reply.status}` : ''
   const customStyle = { '--annotation-color': annotation.color } as CSSProperties
-  const authorColors = annotationAuthorColors(annotation.author)
   const authorStyle = { '--author-bg': authorColors.background, '--author-border': authorColors.border, '--author-text': authorColors.text } as CSSProperties
   return <div ref={rowRef} className={`annotation-row${selected ? ' selected' : ''}${replyClass}${settings ? ' settings-open' : ''}`} style={customStyle} onClick={(event) => onSelect({ additive: event.metaKey || event.ctrlKey, range: event.shiftKey })} onDoubleClick={() => setEditing(true)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onSelect({ additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); setSettings(true) }}>
     <span className="annotation-kind-icon"><AnnotationIcon kind={annotation.kind} size={20} /></span><span>{annotation.pageIndex + 1}</span><span className="annotation-statuses">{QUICK_REPLY.map((item) => <button key={item.status} type="button" className={`annotation-status-button ${item.status}${annotation.reply?.status === item.status || (item.status === 'handled' && annotation.reply?.status === 'custom') ? ' active' : ''}`} title={t(item.label)} aria-label={`${t(item.label)} ${message('annotation.pageLabel', { page: annotation.pageIndex + 1 })}`} onClick={(event) => { event.stopPropagation(); void onReply(annotation.reply?.status === item.status ? undefined : quickReply(item.status)) }}><span>{item.icon}</span></button>)}</span>
@@ -78,6 +77,7 @@ function AnnotationRow({ annotation, selected, showAuthor, aiSuggestionsEnabled,
 }
 
 export function AnnotationPanel({ annotations, selectedId, selectedIds = [], collapsed, annotationAuthor, showAnnotationAuthors, theme, accent, aiSuggestionsEnabled = false, onToggle, onSelect, onEdit, onColor, onReply, onDelete, onAuthorSettings, onAiSuggestion }: Props) {
+  const authorPalette = useMemo(() => annotationAuthorPalette(annotations.map((item) => item.author)), [annotations])
   useInterfaceLanguage()
   const t = ui
   const [singleLine, setSingleLine] = useState(false)
@@ -112,7 +112,7 @@ export function AnnotationPanel({ annotations, selectedId, selectedIds = [], col
     <div className="annotation-toolbar"><span>{t("ui.listFontSize")}</span><div className="annotation-font-stepper"><button type="button" disabled={fontSize <= 10} onClick={() => setFontSize((value) => Math.max(10, value - 1))} aria-label={t("ui.decreaseAnnotationListFontSize")} title={t("ui.decreaseFontSize")}>A−</button><output>{fontSize}</output><button type="button" disabled={fontSize >= 15} onClick={() => setFontSize((value) => Math.min(15, value + 1))} aria-label={t("ui.increaseAnnotationListFontSize")} title={t("ui.increaseFontSize")}>A＋</button></div><AnnotationAuthorSettings author={annotationAuthor} showAuthors={showAnnotationAuthors} theme={theme} accent={accent} onSave={onAuthorSettings} /><button type="button" className="annotation-line-toggle" aria-pressed={singleLine} title={t(singleLine ? "ui.switchToFullMultiLineDisplay" : "ui.switchToCompactSingleLineDisplay")} onClick={() => setSingleLine((value) => !value)}><span>{singleLine ? '☰' : '≡'}</span><span className="annotation-line-label">{t(singleLine ? "ui.multiLine" : "ui.singleLine")}</span></button></div>
     <section className={`annotation-summary${summaryCollapsed ? ' collapsed' : ''}`}><header><div><b>{t("ui.replySummary")}</b><small>{message('annotation.count', { count: annotations.length })}</small></div><button type="button" onClick={() => setSummaryCollapsed((value) => !value)} aria-expanded={!summaryCollapsed} aria-label={t(summaryCollapsed ? "ui.expandReplySummary" : "ui.collapseReplySummary")} title={t(summaryCollapsed ? "ui.expandSummary" : "ui.collapseSummary")}>{summaryCollapsed ? '⌄' : '⌃'}</button></header>{!summaryCollapsed && <div className="annotation-summary-grid">{statuses.map((item) => <button type="button" key={item.status} className={item.status} disabled={!counts[item.status]} onClick={() => jumpToStatus(item.status)} title={counts[item.status] ? message('annotation.jumpToFirst', { status: t(item.label) }) : message('annotation.noneForStatus', { status: t(item.label) })}><b>{counts[item.status]}</b><span>{t(item.label)}</span></button>)}</div>}</section>
     <div className="annotation-header"><span /><span>{t("ui.page")}</span><span>{t("ui.status")}</span><span>{t("ui.contentDoubleClickToEdit")}</span><span /></div>
-    <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} selected={selectedIds.includes(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} aiSuggestionsEnabled={aiSuggestionsEnabled} onSelect={(options) => onSelect(annotation, options)} onEdit={(content) => onEdit(annotation.id, content)} onColor={(color) => onColor(annotation.id, color)} onReply={(reply) => onReply(annotation.id, reply)} onAiSuggestion={() => onAiSuggestion?.(annotation)} />) : <div className="empty-list">{t("ui.noAnnotationsYet")}<br /><small>{t("ui.selectTextOnThePageToStartAnnotating")}</small></div>}</div>
+    <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} authorColors={authorPalette.get(annotationAuthorKey(annotation.author))!} selected={selectedIds.includes(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} aiSuggestionsEnabled={aiSuggestionsEnabled} onSelect={(options) => onSelect(annotation, options)} onEdit={(content) => onEdit(annotation.id, content)} onColor={(color) => onColor(annotation.id, color)} onReply={(reply) => onReply(annotation.id, reply)} onAiSuggestion={() => onAiSuggestion?.(annotation)} />) : <div className="empty-list">{t("ui.noAnnotationsYet")}<br /><small>{t("ui.selectTextOnThePageToStartAnnotating")}</small></div>}</div>
     <div className="annotation-actions"><button onClick={() => onDelete(selectedIds.length ? selectedIds : selected ? [selected.id] : [])} disabled={!selectedIds.length && !selected} className="danger">{selectedIds.length > 1 ? message('annotation.deleteMany', { count: selectedIds.length }) : message('annotation.delete')}</button></div>
   </aside>
 }

@@ -29,11 +29,12 @@ export interface FullReviewDocument { name: string; bytes: Uint8Array; text?: st
 
 export const AUTOMATIC_ANNOTATION_ISSUE_TYPES = [
   'typos_formatting', 'grammar_syntax', 'clarity_style', 'terminology_consistency', 'sentence_flow', 'paragraph_focus',
-  'evidence_accuracy', 'math_reasoning', 'cross_context_consistency', 'section_structure', 'restructuring', 'academic_contribution'
+  'evidence_accuracy', 'math_reasoning', 'cross_context_consistency', 'section_structure', 'restructuring', 'academic_contribution', 'custom'
 ] as const
 export type AutomaticAnnotationIssueType = typeof AUTOMATIC_ANNOTATION_ISSUE_TYPES[number]
 
 const AUTOMATIC_ANNOTATION_ISSUE_INSTRUCTIONS: Record<AutomaticAnnotationIssueType, string> = {
+  custom: 'Inspect the user-defined review criterion below, within the same source scope and output constraints.',
   typos_formatting: 'Spelling, typos, punctuation, capitalization, spacing, numbering, and visible formatting consistency.',
   grammar_syntax: 'Grammar, syntax, agreement, tense, collocation, and malformed sentences.',
   clarity_style: 'Ambiguity, redundancy, verbosity, imprecision, readability, tone, and natural or idiomatic expression.',
@@ -52,6 +53,7 @@ export interface AutoAnnotatePageRequest {
   pageIndex: number
   blocks: AutomaticAnnotationBlock[]
   issueType: AutomaticAnnotationIssueType
+  customIssue?: string
   /** Document opening, neighboring page text, and the rolling prior-page summary are context only. */
   opening?: string
   previous?: string
@@ -436,7 +438,7 @@ function automaticAnnotationInstruction(request: AutoAnnotatePageRequest, langua
   }
   return `Review one PDF page and propose precise annotations for exactly one issue category.
 
-FOCUSED CATEGORY (${request.issueType}): ${AUTOMATIC_ANNOTATION_ISSUE_INSTRUCTIONS[request.issueType]}
+FOCUSED CATEGORY (${request.issueType}): ${AUTOMATIC_ANNOTATION_ISSUE_INSTRUCTIONS[request.issueType]}${request.issueType === 'custom' ? `\nUSER REVIEW CRITERION: ${request.customIssue!.trim()}` : ''}
 Review only this category in this pass. Do not report findings from other categories, except when their context is necessary to explain a focused-category finding. This separation is deliberate: other categories receive their own complete passes.
 
 Treat opening as the document's thesis and contribution contract. Use previous, next, and the rolling contextSummary to test continuity across pages and sections. A focused finding may be local, paragraph-level, or document-level. When a higher-level problem is supported by the supplied context, annotate it even if no single sentence is grammatically wrong; propose a concrete action rather than a vague request to "improve flow".
@@ -468,6 +470,7 @@ ${JSON.stringify(input)}`
 export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnotatePageRequest, requestId?: string): Promise<AutomaticAnnotationModelResponse> {
   if (!Number.isInteger(request.pageIndex) || request.pageIndex < 0) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!AUTOMATIC_ANNOTATION_ISSUE_TYPES.includes(request.issueType)) throw new Error('ui.automaticAnnotationRequestInvalid')
+  if (request.issueType === 'custom' && (typeof request.customIssue !== 'string' || !request.customIssue.trim() || request.customIssue.length > 4000)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!['revision', 'brief', 'detailed'].includes(request.detail)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.intensity !== undefined && !['lenient', 'balanced', 'strict'].includes(request.intensity)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.retryAttempt !== undefined && (!Number.isInteger(request.retryAttempt) || request.retryAttempt < 0 || request.retryAttempt > 3)) throw new Error('ui.automaticAnnotationRequestInvalid')

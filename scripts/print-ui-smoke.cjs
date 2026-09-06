@@ -142,6 +142,7 @@ async function main() {
         }
       })
     }, language)
+    const supportsPrinterSettings = await page.evaluate(() => window.desktop.platform === 'win32')
     const results = []
     const printerResults = []
     const controlResults = []
@@ -162,7 +163,8 @@ async function main() {
       await quality.selectOption('300')
       assert.equal(await copies.inputValue(), '3', `${language}: copy count was not retained`)
       assert.equal(await quality.inputValue(), '300', `${language}: print quality was not retained`)
-      assert.equal(await settings.isEnabled(), true, `${language}: printer settings should be available`)
+      if (supportsPrinterSettings) assert.equal(await settings.isEnabled(), true, `${language}: printer settings should be available`)
+      else assert.equal(await settings.count(), 0, `${language}: native Windows printer settings must not appear on this platform`)
       await printerSelect.selectOption(simplexPrinter.name)
       await page.locator('.print-manual-duplex').waitFor()
       const controls = await controlFit(page, language)
@@ -172,7 +174,7 @@ async function main() {
       }
       assert.ok(controls.some((item) => item.selector === '.print-copies-input'), `${language}: copies control was not visible`)
       assert.ok(controls.some((item) => item.selector === '.print-quality-select'), `${language}: quality control was not visible`)
-      assert.ok(controls.some((item) => item.selector === '.print-printer-settings'), `${language}: printer settings control was not visible`)
+      assert.equal(controls.some((item) => item.selector === '.print-printer-settings'), supportsPrinterSettings, `${language}: printer settings control was not visible`)
       assert.ok(controls.some((item) => item.selector === '.print-manual-duplex'), `${language}: manual-duplex guide was not visible`)
       assert.ok(controls.some((item) => item.selector === '.print-manual-duplex-actions'), `${language}: manual-duplex actions were not visible`)
       assert.ok(controls.some((item) => item.selector === '.print-reverse-order'), `${language}: reverse-order control was not visible`)
@@ -221,8 +223,10 @@ async function main() {
     assert.equal(previewQuality.naturalWidth, previewQuality.sourceWidth)
     assert.equal(previewQuality.naturalHeight, previewQuality.sourceHeight)
 
-    await page.locator('.print-printer-settings').click()
-    assert.deepEqual(await waitForCapture(app, 'settings', 1), [duplexPrinter.name], 'printer settings did not receive the exact selected device name')
+    if (supportsPrinterSettings) {
+      await page.locator('.print-printer-settings').click()
+      assert.deepEqual(await waitForCapture(app, 'settings', 1), [duplexPrinter.name], 'printer settings did not receive the exact selected device name')
+    }
     await page.locator('.print-copies-input').fill('3')
     await page.locator('.print-quality-select').selectOption('300')
     await page.locator('.print-dialog-actions button.primary').click()

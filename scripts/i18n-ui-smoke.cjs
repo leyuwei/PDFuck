@@ -110,7 +110,7 @@ async function main() {
       await page.locator('.annotation-lab-settings label').filter({ hasText: language.timeout }).waitFor()
       assert.equal(await page.locator('.ai-timeout-input input').inputValue(), '120', `${language.value} timeout default must be 120 seconds`)
       if (language.cjkFree) await assertNoChineseControls(page, '.annotation-lab-settings')
-      await page.locator('.annotation-lab-settings header button').click()
+      await page.locator('.annotation-lab-settings header button:last-child').click()
       await page.locator('.nav-rail').getByRole('button', { name: language.view, exact: true }).click()
       await assertAdaptiveToolPanel(page, language.value, language.view)
       const documentTransfer = await page.evaluateHandle(() => {

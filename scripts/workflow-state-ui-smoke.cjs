@@ -104,7 +104,7 @@ async function verifyDocumentWorkflow(userData, pdf) {
     await launch.click()
     const selectedInAi = await page.locator('.ai-polish-selection').textContent()
     assert.ok(selectedInAi.includes('Selected'), `AI polish lost the cross-module selection: ${selectedInAi}`)
-    await page.locator('.ai-polish-window > header button').click()
+    await page.locator('.ai-polish-window > header button[aria-label="关闭"]').click()
 
     await page.locator('.annotation-lab-settings-trigger').click()
     const timeout = page.locator('.ai-timeout-input input')
@@ -135,7 +135,7 @@ async function verifyDocumentWorkflow(userData, pdf) {
     assert.ok((await page.locator('.automatic-context-state').innerText()).includes('已关闭'))
     await automaticSwitch.click()
     await automaticContext.waitFor({ timeout: 10000 })
-    await page.locator('.annotation-suggestion-window > header button').click()
+    await page.locator('.annotation-suggestion-window > header button[aria-label="关闭"]').click()
     assert.equal(await page.locator('.annotation-suggestion-window').count(), 0, 'Explicit suggestion window should close normally')
 
     await nav(page, '查看')

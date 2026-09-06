@@ -1,6 +1,5 @@
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from './pdfjs'
 import type { ExportPage, RasterExportFormat } from '../../../shared/contracts'
-import { encodeRgbEps } from './eps'
 import { rasterExportDimensions } from './export-dpi'
 import { t } from './i18n'
 
@@ -9,18 +8,6 @@ function canvasBytes(canvas: HTMLCanvasElement, type: string, quality?: number):
     if (!blob) return reject(new Error('页面图像编码失败。'))
     resolve(new Uint8Array(await blob.arrayBuffer()))
   }, type, quality))
-}
-
-function epsBytes(canvas: HTMLCanvasElement, widthPoints: number, heightPoints: number): Uint8Array {
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error('无法读取页面像素。')
-  const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data
-  const rgb = new Uint8Array(canvas.width * canvas.height * 3)
-  let target = 0
-  for (let index = 0; index < rgba.length; index += 4) {
-    rgb[target++] = rgba[index]; rgb[target++] = rgba[index + 1]; rgb[target++] = rgba[index + 2]
-  }
-  return encodeRgbEps(rgb, canvas.width, canvas.height, widthPoints, heightPoints)
 }
 
 export async function exportPdfPages(data: Uint8Array, format: RasterExportFormat, dpi: number, onProgress?: (completed: number, total: number, pageNumber: number) => void, pageIndices?: number[], password?: string): Promise<ExportPage[]> {
@@ -47,7 +34,7 @@ export async function exportPdfPages(data: Uint8Array, format: RasterExportForma
       if (!context) throw new Error('无法创建页面画布。')
       if (format === 'jpg') { context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height) }
       await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
-      const bytes = format === 'eps' ? epsBytes(canvas, base.width, base.height) : await canvasBytes(canvas, format === 'png' ? 'image/png' : 'image/jpeg', 0.95)
+      const bytes = await canvasBytes(canvas, format === 'png' ? 'image/png' : 'image/jpeg', 0.95)
       outputs.push({ data: bytes, pageNumber })
       page.cleanup()
     }
