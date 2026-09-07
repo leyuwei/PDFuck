@@ -210,6 +210,9 @@ async function verifyDrawingBoard(app, page) {
   for (const control of wideLayout.controls) assert.ok(control.left >= wideLayout.toolbar.left && control.right <= wideLayout.toolbar.right, `Drawing control escaped its toolbar: ${JSON.stringify(wideLayout)}`)
   await page.screenshot({ path: artifacts.drawingLayoutScreenshot })
 
+  // Leave deterministic room for the resize assertion at compact CI viewport sizes.
+  await drawingWindow.evaluate((element) => { element.style.width = '640px'; element.style.height = '500px' })
+  await page.waitForTimeout(100)
   const beforeDrag = await drawingWindow.boundingBox()
   const header = await drawingWindow.locator('> header').boundingBox()
   assert.ok(beforeDrag && header, 'Drawing board window/header is not visible')
@@ -402,8 +405,8 @@ async function verifyShapeCreator(page) {
 async function verifyCrossDocumentCommit(app, page, secondaryFixture) {
   await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), secondaryFixture)
   await page.locator('.window-tab').nth(1).waitFor({ timeout: 60000 })
-  const firstTab = page.locator('.window-tab').filter({ hasText: 'creative-tools.pdf' })
-  const secondTab = page.locator('.window-tab').filter({ hasText: 'creative-tools-secondary.pdf' })
+  const firstTab = page.locator('.window-tab[title^="creative-tools.pdf"]')
+  const secondTab = page.locator('.window-tab[title^="creative-tools-secondary.pdf"]')
   await secondTab.waitFor()
 
   await page.locator('.nav-rail button').nth(1).click()
@@ -425,7 +428,7 @@ async function verifyCrossDocumentCommit(app, page, secondaryFixture) {
   await page.evaluate(() => {
     const confirm = document.querySelector('.pdf-page[data-page="0"] .image-draft-actions button.primary')
     const save = document.querySelector('.quick-save')
-    const target = [...document.querySelectorAll('.window-tab')].find((tab) => tab.textContent?.includes('creative-tools-secondary.pdf'))
+    const target = [...document.querySelectorAll('.window-tab')].find((tab) => tab.getAttribute('title')?.startsWith('creative-tools-secondary.pdf'))
     if (!(confirm instanceof HTMLButtonElement) || !(save instanceof HTMLButtonElement) || !(target instanceof HTMLElement)) throw new Error('Cross-document controls are unavailable')
     confirm.click()
     save.click()

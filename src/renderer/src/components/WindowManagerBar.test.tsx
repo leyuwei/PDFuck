@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DocumentTabsSnapshot } from '../../../shared/contracts'
 import { setInterfaceLanguage } from '../lib/i18n'
-import { reorderDocumentTabs, WindowManagerBar } from './WindowManagerBar'
+import { distinctiveTabTitle, reorderDocumentTabs, WindowManagerBar } from './WindowManagerBar'
 
 const snapshot: DocumentTabsSnapshot = {
   currentId: 2,
@@ -27,6 +27,29 @@ describe('WindowManagerBar', () => {
     expect(reorderDocumentTabs(snapshot, 1, 3).documents.map((document) => document.id)).toEqual([2, 3, 1])
     expect(reorderDocumentTabs(snapshot, 3, 1).documents.map((document) => document.id)).toEqual([3, 1, 2])
     expect(reorderDocumentTabs(snapshot, 2, 2)).toBe(snapshot)
+  })
+
+  it('finds distinctive filename regions without splitting multilingual graphemes', () => {
+    expect(distinctiveTabTitle('实验报告（中文）.pdf', ['实验报告（中文）.pdf', '实验报告（英文）.pdf'])).toEqual({ prefix: '实验报告（', focus: '中', trailingHidden: true })
+    expect(distinctiveTabTitle('تقرير-نهائي.pdf', ['تقرير-نهائي.pdf', 'تقرير-مسودة.pdf'])).toEqual({ prefix: 'تقرير-', focus: 'نهائي', trailingHidden: true })
+    expect(distinctiveTabTitle('re\u0301sume\u0301-v1.pdf', ['re\u0301sume\u0301-v1.pdf', 'résumé-v2.pdf'])?.focus).toBe('1')
+    expect(distinctiveTabTitle('one.pdf', ['one.pdf', 'two.pdf', 'three.pdf'])).toBeUndefined()
+  })
+
+  it('visually emphasizes the differing region while preserving the full accessible name', async () => {
+    const root = createRoot(container)
+    const similar = { ...snapshot, documents: [
+      { ...snapshot.documents[0], title: '实验报告（中文）.pdf' },
+      { ...snapshot.documents[1], title: '实验报告（英文）.pdf' }
+    ] }
+    await act(async () => root.render(<WindowManagerBar snapshot={similar} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />))
+    const tabs = [...container.querySelectorAll<HTMLDivElement>('.window-tab')]
+    expect(tabs[0].querySelector('mark')?.textContent).toBe('中')
+    expect(tabs[1].querySelector('mark')?.textContent).toBe('英')
+    expect(tabs[0].querySelector('.window-tab-prefix')?.textContent).toBe('实验报告（')
+    expect(tabs[0].getAttribute('aria-label')).toContain('实验报告（中文）.pdf')
+    expect(tabs[0].title).toContain('实验报告（中文）.pdf')
+    await act(async () => root.unmount())
   })
 
   it('exposes a translated drag instruction and keyboard ordering fallback', async () => {

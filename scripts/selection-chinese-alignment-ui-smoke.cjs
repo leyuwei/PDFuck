@@ -92,7 +92,9 @@ async function main() {
     const bodyStart = await documentPage.locator('.text-map span').filter({ hasText: '项目支撑国家数据基础设施建设工程' }).first().boundingBox()
     const bodyEnd = await documentPage.locator('.text-map span').filter({ hasText: '科技创新榜单双第一' }).first().boundingBox()
     assert.ok(bodyStart && bodyEnd, 'Chinese wrapped-body drag anchors unavailable')
-    await window.mouse.move(bodyStart.x + 1, bodyStart.y + bodyStart.height / 2)
+    // Start just before the first glyph so hit testing clamps to caret offset 0;
+    // a positive pixel inset can round onto offset 1 at some device scales.
+    await window.mouse.move(bodyStart.x - 2, bodyStart.y + bodyStart.height / 2)
     await window.mouse.down()
     await window.mouse.move(bodyEnd.x + bodyEnd.width - 1, bodyEnd.y + bodyEnd.height / 2, { steps: 30 })
     await window.mouse.up()

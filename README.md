@@ -39,7 +39,20 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.17
+## What's New in 2.0.21
+
+- The Lab no longer labels the entire first-token wait as “Connecting.” It now distinguishes request preparation from a submitted request that is waiting for the model's first output, then switches to reasoning or answer generation only after actual response bytes arrive.
+- The live panel is never blank while work is active. Before the first model output it shows a frozen, safe summary of what was submitted: model, selection/document representation, page and text-block scope, issue type, context count, and a bounded prompt preview. API keys and fabricated reasoning are never displayed.
+
+### Earlier improvements in 2.0.20
+
+- Lab requests now stream through the Electron main/preload bridge instead of waiting for the complete response. AI Polish, Full Document Review, Automatic Annotation, and Annotation Suggestions all expose a live connection/reasoning/generation panel; provider-returned `reasoning_content` and Claude thinking blocks remain inspectable after completion.
+- The shared model settings now provide a 1,024–131,072 maximum-output-token control (default 16,384). Reasoning and final output share that explicit budget. A provider `length` / `max_tokens` stop is reported as truncation and is never mistaken for malformed output or blindly retried.
+- Automatic Annotation requests JSON mode when supported, falls back only after an explicit compatibility rejection, and does not replay ambiguous timeout/cancellation failures. DeepSeek uses the current `deepseek-v4-flash` model with visible low-effort thinking; Claude uses `claude-sonnet-4-6` adaptive low-effort thinking, with compatibility fallback for older relays.
+- Similar document-tab names are shortened by Unicode grapheme clusters: the common beginning uses every remaining pixel and ellipsizes only when it truly overflows, while the differing region stays highlighted and common suffixes/extensions collapse. Complete filenames remain in the tooltip and accessible label, including CJK, Arabic, and combining-character names.
+- AI transport, Lab UI, multilingual tab names, truncation, reasoning streams, and the live main/preload bridge have dedicated unit and Electron regressions.
+
+### Earlier improvements in 2.0.17
 
 - Context menus flip at viewport edges, scroll when necessary, and use the browser top layer to escape page clipping and overlapping panels.
 - Annotation author badges resolve palette collisions within each document, including documents with more than eight reviewers.
@@ -329,7 +342,20 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.17 新增与完善
+## 2.0.21 新增与完善
+
+- 实验室不再把整个首 Token 等待阶段都错误显示成“正在连接模型”。现在会明确区分“正在准备发送内容”和“请求已提交，等待模型首次输出”，只有收到真实响应字节后才切换为思考或回答生成状态。
+- AI 工作期间实时面板不再留空。首个模型输出到达前会显示冻结的安全请求摘要，包括模型、选区或文档发送方式、页码与文本块范围、检查类型、上下文数量和有限长度的提示词预览；不会显示 API Key，也不会伪造模型思考。
+
+### 2.0.20 的改进
+
+- 实验室请求改为从 Electron 主进程、预加载桥到界面的真实增量传递，不再等完整响应结束后一次性返回。智能润色、全文评价、自动批注和批注建议都会显示连接、思考和生成状态；服务商返回的 `reasoning_content` 与 Claude thinking 内容在结束后仍可展开查看。
+- 共用模型设置新增 1,024–131,072 的最大输出 Token 控件，默认 16,384；思考与最终回答共用这份明确额度。服务商以 `length` / `max_tokens` 结束时会明确报告截断，不再误判为格式错误或盲目自动重试。
+- 自动批注会优先请求 JSON 模式，只在服务商明确拒绝兼容参数后安全降级，超时与取消等结果不明的请求不会重放。DeepSeek 默认更新为 `deepseek-v4-flash` 并采用可见的低强度思考；Claude 更新为 `claude-sonnet-4-6` 的自适应低强度思考，旧中转明确不支持时自动兼容降级。
+- 多个文档标签名相似时，按 Unicode 字素簇处理：共同开头会用满差异段以外的剩余宽度，仅在确实溢出时自身省略；差异始终高亮，共同后缀和扩展名折叠。完整文件名仍保留在悬停提示和无障碍标签中，覆盖中日韩文、阿拉伯文和组合音标。
+- 新增 AI 传输、实验室实时界面、多语言相似标签、输出截断、推理流以及主进程/预加载增量桥的单元与 Electron 回归。
+
+### 2.0.17 的改进
 
 - 右键菜单根据实际尺寸自动换向，超高时可滚动，并进入浏览器最上层，避免页面裁切和其他面板覆盖。
 - 批注人配色按文档消解哈希碰撞，超过八位批注人也不会重复使用同一颜色。
@@ -529,7 +555,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 
 ## 从源码运行
 
-需要 Node.js 22 或更高版本。Windows PowerShell、macOS Terminal 和 Linux shell 都可以使用下面的命令。
+需要 Node.js 22.4 或更高版本。Windows PowerShell、macOS Terminal 和 Linux shell 都可以使用下面的命令。
 
 合并导入 Word/PowerPoint 还需要任一平台安装 LibreOffice，或在 Windows/macOS 安装 Microsoft Office；转换只在本机进行。EPS 导入同样需要 Ghostscript。
 
@@ -564,7 +590,7 @@ npm run build
 
 ### 一键打包发布
 
-请在仓库根目录、对应的目标系统上执行脚本。两个脚本都要求 Node.js 22 或更高版本，并会通过 `npm ci` 安装锁定依赖，执行全部发布回归，打包应用，启动最终可执行程序完成冒烟测试，核对包内版本，最后生成 SHA-256 发布清单。
+请在仓库根目录、对应的目标系统上执行脚本。两个脚本都要求 Node.js 22.4 或更高版本，并会通过 `npm ci` 安装锁定依赖，执行全部发布回归，打包应用，启动最终可执行程序完成冒烟测试，核对包内版本，最后生成 SHA-256 发布清单。
 
 不传参数时，脚本会自动使用 `package.json` 中已有的版本号：
 

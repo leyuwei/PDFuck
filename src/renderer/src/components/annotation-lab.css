@@ -20,3 +20,26 @@
 
 .annotation-lab-settings > header { position: sticky; top: -16px; padding: 8px 0; background: inherit; z-index: 2; }
 .annotation-lab-settings > header > b { flex: 1; }
+
+.ai-stream-activity { margin: 10px 0; border: 1px solid #d8e1f4; border-radius: 9px; background: #f7f9ff; overflow: hidden; }
+.ai-stream-activity > summary { min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #53617a; cursor: pointer; list-style: none; }
+.ai-stream-activity > summary::-webkit-details-marker { display: none; }
+.ai-stream-activity > summary > i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #7d8aa4; }
+.ai-stream-activity.active > summary > i { background: #5575de; box-shadow: 0 0 0 4px #5575de1f; animation: ai-stream-pulse 1.25s ease-in-out infinite; }
+.ai-stream-activity > summary > b { font-size: 11px; }
+.ai-stream-activity > summary > span { margin-left: auto; font-size: 10px; }
+.ai-stream-activity-body { display: grid; gap: 8px; max-height: 220px; padding: 0 10px 10px; overflow: auto; border-top: 1px solid #e4e9f4; }
+.ai-stream-activity-body section { min-width: 0; padding-top: 8px; }
+.ai-stream-activity-body section > b { display: block; margin-bottom: 4px; color: #66728a; font-size: 10px; }
+.ai-stream-request { padding-bottom: 8px; border-bottom: 1px solid #e4e9f4; }
+.ai-stream-request > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; color: #53617a; font-size: 10px; }
+.ai-stream-request > div > span { font-weight: 700; }.ai-stream-request bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-stream-request ul { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 18px; color: #657189; font-size: 10px; line-height: 1.4; }
+.ai-stream-activity-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #303a4e; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.ai-stream-activity-body small { padding-top: 8px; color: #7a8499; line-height: 1.45; }
+.theme-dark .ai-stream-activity { border-color: #3b4964; background: #252c39; }
+.theme-dark .ai-stream-activity-body { border-color: #39445a; }
+.theme-dark .ai-stream-request { border-color: #39445a; }.theme-dark .ai-stream-request > div, .theme-dark .ai-stream-request ul { color: #bdc8d8; }
+.theme-dark .ai-stream-activity-body pre { color: #e2e7f1; }
+@keyframes ai-stream-pulse { 50% { opacity: .48; transform: scale(.76); } }
+@media (prefers-reduced-motion: reduce) { .ai-stream-activity.active > summary > i { animation: none; } }

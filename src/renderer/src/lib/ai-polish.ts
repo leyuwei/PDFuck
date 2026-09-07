@@ -17,8 +17,13 @@ export type AiProvider = 'openai' | 'claude' | 'bigmodel' | 'doubao' | 'deepseek
 export const DEFAULT_AI_TIMEOUT_SECONDS = 120
 export const MIN_AI_TIMEOUT_SECONDS = 5
 export const MAX_AI_TIMEOUT_SECONDS = 3600
+export const DEFAULT_AI_MAX_OUTPUT_TOKENS = 16_384
+export const MIN_AI_MAX_OUTPUT_TOKENS = 1_024
+export const MAX_AI_MAX_OUTPUT_TOKENS = 131_072
 
-export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number }
+export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number; maxOutputTokens: number }
+export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean }
+export type AiProgressCallback = (progress: AiStreamProgress) => void
 export type AiLanguage = InterfaceLanguage
 export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
 export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Partial<Record<AiLanguage, string>> & Record<'zh' | 'en' | 'ja' | 'ru' | 'es', string> }
@@ -160,20 +165,26 @@ export function localizedPrompt(preset: LocalizedAiPromptPreset, language: AiLan
 
 export const PROVIDER_PRESETS: Record<Exclude<AiProvider, 'custom'>, AiProviderPreset> = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  claude: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-3-5-sonnet-latest' },
+  claude: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-6' },
   bigmodel: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5-air' },
   doubao: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-1-6-250615' },
-  deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
   kimi: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' }
 }
 
 const KEY = 'pdfuck.ai-settings.v1'
-export const defaultSettings: AiSettings = { provider: 'openai', ...PROVIDER_PRESETS.openai, apiKey: '', timeoutSeconds: DEFAULT_AI_TIMEOUT_SECONDS }
+export const defaultSettings: AiSettings = { provider: 'openai', ...PROVIDER_PRESETS.openai, apiKey: '', timeoutSeconds: DEFAULT_AI_TIMEOUT_SECONDS, maxOutputTokens: DEFAULT_AI_MAX_OUTPUT_TOKENS }
 
 export function normalizeAiTimeoutSeconds(value: unknown): number {
   const timeout = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(timeout)) return DEFAULT_AI_TIMEOUT_SECONDS
   return Math.round(Math.max(MIN_AI_TIMEOUT_SECONDS, Math.min(MAX_AI_TIMEOUT_SECONDS, timeout)))
+}
+
+export function normalizeAiMaxOutputTokens(value: unknown): number {
+  const tokens = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(tokens)) return DEFAULT_AI_MAX_OUTPUT_TOKENS
+  return Math.round(Math.max(MIN_AI_MAX_OUTPUT_TOKENS, Math.min(MAX_AI_MAX_OUTPUT_TOKENS, tokens)))
 }
 
 export function providerSettings(current: AiSettings, provider: AiProvider): AiSettings {
@@ -187,13 +198,18 @@ export function loadAiSettings(): AiSettings {
   try {
     const parsed = { ...defaultSettings, ...JSON.parse(localStorage.getItem(KEY) || '{}') } as AiSettings
     parsed.timeoutSeconds = normalizeAiTimeoutSeconds(parsed.timeoutSeconds)
+    parsed.maxOutputTokens = normalizeAiMaxOutputTokens(parsed.maxOutputTokens)
+    const officialBaseUrl = parsed.provider === 'claude' || parsed.provider === 'deepseek' ? PROVIDER_PRESETS[parsed.provider].baseUrl : undefined
+    const retiredModel = parsed.provider === 'claude' ? 'claude-3-5-sonnet-latest' : parsed.provider === 'deepseek' ? 'deepseek-chat' : undefined
+    const replacementModel = parsed.provider === 'claude' ? PROVIDER_PRESETS.claude.model : parsed.provider === 'deepseek' ? PROVIDER_PRESETS.deepseek.model : undefined
+    if (officialBaseUrl && retiredModel && replacementModel && parsed.baseUrl.replace(/\/+$/u, '') === officialBaseUrl && parsed.model === retiredModel) parsed.model = replacementModel
     // 1.16.8 could store BigModel with the OpenAI defaults after provider switching.
     if (parsed.provider !== 'openai' && parsed.provider !== 'custom' && parsed.baseUrl === PROVIDER_PRESETS.openai.baseUrl && parsed.model === PROVIDER_PRESETS.openai.model) return { ...parsed, ...PROVIDER_PRESETS[parsed.provider] }
     return parsed
   } catch { return defaultSettings }
 }
 
-export function saveAiSettings(value: AiSettings): void { localStorage.setItem(KEY, JSON.stringify({ ...value, timeoutSeconds: normalizeAiTimeoutSeconds(value.timeoutSeconds) })) }
+export function saveAiSettings(value: AiSettings): void { localStorage.setItem(KEY, JSON.stringify({ ...value, timeoutSeconds: normalizeAiTimeoutSeconds(value.timeoutSeconds), maxOutputTokens: normalizeAiMaxOutputTokens(value.maxOutputTokens) })) }
 
 export function endpoint(settings: AiSettings): string {
   const raw = settings.baseUrl.trim()
@@ -259,14 +275,28 @@ function responseError(response: Pick<AiResponse, 'status' | 'statusText' | 'bod
   return new Error(`请求失败（${response.status}）：${key ? translateMessage('zh', key) : responseDetail(response)}`)
 }
 
-async function sendRequest(url: string, headers: Record<string, string>, body: string, timeoutMs: number, requestId?: string): Promise<AiResponse> {
+async function sendRequest(url: string, headers: Record<string, string>, body: string, timeoutMs: number, requestId?: string, onChunk?: (chunk: string) => void): Promise<AiResponse> {
   const desktop = typeof window !== 'undefined' ? window.desktop : undefined
-  if (desktop?.aiRequest) return desktop.aiRequest({ requestId, url, headers, body, timeoutMs })
+  if (desktop?.aiRequest) return desktop.aiRequest({ requestId, url, headers, body, timeoutMs }, onChunk)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal })
-    return { status: response.status, statusText: response.statusText, body: await response.text() }
+    const reader = response.body?.getReader()
+    if (!reader) return { status: response.status, statusText: response.statusText, body: await response.text() }
+    const decoder = new TextDecoder()
+    let responseBody = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = decoder.decode(value, { stream: true })
+      responseBody += chunk
+      if (chunk) onChunk?.(chunk)
+    }
+    const tail = decoder.decode()
+    responseBody += tail
+    if (tail) onChunk?.(tail)
+    return { status: response.status, statusText: response.statusText, body: responseBody }
   } catch (error) {
     if (controller.signal.aborted) throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
     throw error
@@ -285,23 +315,48 @@ function requestCredentials(settings: AiSettings): { model: string; claude: bool
   return { model, claude, headers }
 }
 
-function streamedContent(body: string): string {
+function responsePartsFromPayload(payload: Record<string, unknown>): Omit<AiStreamProgress, 'received'> {
+  let reasoning = ''
   let output = ''
+  let truncated = false
+  const choice = (payload.choices as Array<{ delta?: Record<string, unknown>; message?: Record<string, unknown>; text?: unknown; finish_reason?: unknown }> | undefined)?.[0]
+  const message = choice?.message
+  const delta = choice?.delta || (payload.delta && typeof payload.delta === 'object' ? payload.delta as Record<string, unknown> : undefined)
+  reasoning += contentText(delta?.reasoning_content) || contentText(delta?.reasoning) || contentText(delta?.thinking)
+  reasoning += contentText(message?.reasoning_content) || contentText(message?.reasoning) || contentText(message?.thinking)
+  output += contentText(choice?.delta?.content) || contentText(delta?.type === 'text_delta' ? delta.text : undefined) || contentText(choice?.text)
+  const content = message?.content ?? payload.content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue
+      const value = block as Record<string, unknown>
+      if (value.type === 'thinking' || value.type === 'reasoning') reasoning += contentText(value.thinking) || contentText(value.reasoning) || contentText(value.text)
+      else output += contentText(value.text)
+    }
+  } else output += contentText(content)
+  if (payload.type === 'response.reasoning_summary_text.delta' || payload.type === 'response.reasoning_text.delta') reasoning += contentText(payload.delta)
+  if (payload.type === 'response.output_text.delta') output += contentText(payload.delta)
+  const stopReason = choice?.finish_reason ?? delta?.stop_reason ?? payload.stop_reason ?? (payload.incomplete_details as Record<string, unknown> | undefined)?.reason
+  truncated = stopReason === 'length' || stopReason === 'max_tokens' || stopReason === 'max_output_tokens' || stopReason === 'model_context_window_exceeded'
+  return { reasoning, output, truncated }
+}
+
+/** Parse final and streaming OpenAI-compatible, DeepSeek, and Claude responses. */
+export function parseAiResponseBody(body: string): AiStreamProgress {
+  const direct = parseJson(body)
+  if (Object.keys(direct).length) return { ...responsePartsFromPayload(direct), received: Boolean(body) }
+  const result: AiStreamProgress = { reasoning: '', output: '', received: Boolean(body), truncated: false }
   for (const rawLine of body.split(/\r?\n/gu)) {
     const line = rawLine.trim()
     if (!line || line.startsWith(':') || line.startsWith('event:') || line.startsWith('id:') || line.startsWith('retry:')) continue
     const data = line.startsWith('data:') ? line.slice(5).trim() : line
     if (!data || data === '[DONE]' || !data.startsWith('{')) continue
-    const chunk = parseJson(data)
-    const choice = (chunk.choices as Array<{ delta?: { content?: unknown }; message?: { content?: unknown }; text?: unknown }> | undefined)?.[0]
-    const delta = chunk.delta as { text?: unknown } | undefined
-    const text = contentText(choice?.delta?.content)
-      || contentText(delta?.text)
-      || contentText(choice?.message?.content)
-      || contentText(choice?.text)
-    output += text
+    const part = responsePartsFromPayload(parseJson(data))
+    result.reasoning += part.reasoning
+    result.output += part.output
+    result.truncated ||= part.truncated
   }
-  return output
+  return result
 }
 
 function streamUnsupported(response: AiResponse): boolean {
@@ -310,26 +365,92 @@ function streamUnsupported(response: AiResponse): boolean {
   return /stream/iu.test(detail) && /unsupported|not supported|not support|must be false|only false|disabled|unknown|unrecognized|invalid|unexpected|extra|additional|不支持|必须为 false|未知|无效|未识别/iu.test(detail)
 }
 
-async function requestOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>, requestId?: string): Promise<string> {
+function outputLimitUnsupported(response: AiResponse): boolean {
+  if (response.status !== 400 && response.status !== 422) return false
+  const detail = responseDetail(response)
+  return /max_(?:completion_)?tokens/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|too (?:large|high)|at most|less than|must be|range|exceed|不支持|未知|未识别|过大|至多|必须|范围|超过/iu.test(detail)
+}
+
+function jsonModeUnsupported(response: AiResponse): boolean {
+  if (response.status !== 400 && response.status !== 422) return false
+  const detail = responseDetail(response)
+  return /response_format|json(?: mode|_object)/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|不支持|未知|未识别/iu.test(detail)
+}
+
+function reasoningControlsUnsupported(response: AiResponse): boolean {
+  if (response.status !== 400 && response.status !== 422) return false
+  const detail = responseDetail(response)
+  return /thinking|reasoning_effort|output_config/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|invalid|不支持|未知|未识别|无效/iu.test(detail)
+}
+
+async function requestOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>, requestId?: string, onProgress?: AiProgressCallback, structured = false): Promise<string> {
   let response: AiResponse
   const url = endpoint(settings)
   const timeoutMs = normalizeAiTimeoutSeconds(settings.timeoutSeconds) * 1000
+  const activeRequestId = requestId?.trim() || crypto.randomUUID()
+  let responseBody = ''
+  let progressTimer: ReturnType<typeof setTimeout> | undefined
+  let lastProgressAt = 0
+  const publishProgress = () => {
+    progressTimer = undefined
+    lastProgressAt = Date.now()
+    onProgress?.(parseAiResponseBody(responseBody))
+  }
+  const receiveChunk = (chunk: string) => {
+    responseBody += chunk
+    if (!onProgress) return
+    const delay = 80 - (Date.now() - lastProgressAt)
+    if (delay <= 0) publishProgress()
+    else if (progressTimer === undefined) progressTimer = setTimeout(publishProgress, delay)
+  }
+  let requestPayload: Record<string, unknown> = {
+    ...payload,
+    ...(settings.provider === 'deepseek' ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
+    ...(claude && /(?:^|[-_.])4[-_.]?6(?:[-_.]|$)/u.test(String(payload.model)) ? { thinking: { type: 'adaptive' }, output_config: { effort: 'low' } } : {}),
+    ...(claude ? { max_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }
+      : settings.provider === 'openai' ? { max_completion_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }
+        : { max_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }),
+    ...(structured && !claude ? { response_format: { type: 'json_object' } } : {})
+  }
+  let useStream = true
   try {
-    response = await sendRequest(url, { ...headers, accept: 'text/event-stream' }, JSON.stringify({ ...payload, stream: true }), timeoutMs, requestId)
-    // Some older OpenAI-compatible relays reject the stream field instead of ignoring it.
-    // Fall back only after an explicit, immediate compatibility error; never replay a timed-out or billable request.
-    if (streamUnsupported(response)) response = await sendRequest(url, { ...headers, accept: 'application/json' }, JSON.stringify(payload), timeoutMs, requestId)
+    for (;;) {
+      if (progressTimer !== undefined) { clearTimeout(progressTimer); progressTimer = undefined }
+      responseBody = ''
+      lastProgressAt = 0
+      response = await sendRequest(url, { ...headers, accept: useStream ? 'text/event-stream' : 'application/json' }, JSON.stringify(useStream ? { ...requestPayload, stream: true } : requestPayload), timeoutMs, activeRequestId, receiveChunk)
+      // Compatibility retries happen only after an immediate 400/422 validation response.
+      if (useStream && streamUnsupported(response)) { useStream = false; continue }
+      if (!claude && outputLimitUnsupported(response) && ('max_tokens' in requestPayload || 'max_completion_tokens' in requestPayload)) {
+        const { max_tokens: _maxTokens, max_completion_tokens: _maxCompletionTokens, ...compatible } = requestPayload
+        requestPayload = compatible
+        continue
+      }
+      if (structured && 'response_format' in requestPayload && jsonModeUnsupported(response)) {
+        const { response_format: _responseFormat, ...compatible } = requestPayload
+        requestPayload = compatible
+        structured = false
+        continue
+      }
+      if (('thinking' in requestPayload || 'reasoning_effort' in requestPayload || 'output_config' in requestPayload) && reasoningControlsUnsupported(response)) {
+        const { thinking: _thinking, reasoning_effort: _reasoningEffort, output_config: _outputConfig, ...compatible } = requestPayload
+        requestPayload = compatible
+        continue
+      }
+      break
+    }
   } catch (error) {
+    if (progressTimer !== undefined) clearTimeout(progressTimer)
     if (error instanceof Error && /failed to fetch|networkerror|load failed/iu.test(error.message)) throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
     if (error instanceof Error && error.message) throw error
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   }
+  if (progressTimer !== undefined) clearTimeout(progressTimer)
   if (response.status < 200 || response.status >= 300) throw responseError(response)
-  const responsePayload = parseJson(response.body)
-  const output = claude
-    ? contentText(responsePayload.content)
-    : contentText((responsePayload.choices as Array<{ message?: { content?: unknown }; text?: unknown }> | undefined)?.[0]?.message?.content ?? (responsePayload.choices as Array<{ text?: unknown }> | undefined)?.[0]?.text)
-  const normalizedOutput = output || streamedContent(response.body)
+  const progress = parseAiResponseBody(response.body)
+  onProgress?.(progress)
+  if (progress.truncated) throw new Error('ui.aiResponseTruncated')
+  const normalizedOutput = progress.output
   if (!normalizedOutput.trim()) throw new Error('模型未返回可显示的内容，请检查模型、额度或接口兼容性。')
   return normalizedOutput.trim()
 }
@@ -357,15 +478,15 @@ function safePdfName(value: string): string {
   return normalized.toLowerCase().endsWith('.pdf') ? normalized : `${normalized}.pdf`
 }
 
-export async function polishText(settings: AiSettings, instruction: string, text: string): Promise<string> {
+export async function polishText(settings: AiSettings, instruction: string, text: string, onProgress?: AiProgressCallback): Promise<string> {
   const { model, claude, headers } = requestCredentials(settings)
   const language = detectAiLanguage(text)
   return requestOutput(settings, claude
-    ? { model, max_tokens: 1800, messages: [{ role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }], temperature: 0.25 }, claude, headers)
+    ? { model, messages: [{ role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }] }
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }], temperature: 0.25 }, claude, headers, undefined, onProgress)
 }
 
-export async function reviewDocument(settings: AiSettings, instruction: string, document: FullReviewDocument, mode: FullReviewSendMode, language: AiLanguage): Promise<string> {
+export async function reviewDocument(settings: AiSettings, instruction: string, document: FullReviewDocument, mode: FullReviewSendMode, language: AiLanguage, onProgress?: AiProgressCallback): Promise<string> {
   const { model, claude, headers } = requestCredentials(settings)
   const name = safePdfName(document.name)
   if (mode === 'text') {
@@ -373,8 +494,8 @@ export async function reviewDocument(settings: AiSettings, instruction: string, 
     if (!text) throw new Error('没有提取到可发送的文档文字。若文档是扫描件，请改用直接发送 PDF 文件。')
     const label = language === 'zh' ? '文档全文' : 'Full document text'
     return requestOutput(settings, claude
-      ? { model, max_tokens: 6000, messages: [{ role: 'user', content: `${instruction}\n\n${label}：\n${text}` }] }
-      : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${label}：\n${text}` }], temperature: 0.15 }, claude, headers)
+      ? { model, messages: [{ role: 'user', content: `${instruction}\n\n${label}：\n${text}` }] }
+      : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${label}：\n${text}` }], temperature: 0.15 }, claude, headers, undefined, onProgress)
   }
   if (!document.bytes.length) throw new Error('当前 PDF 文件内容为空，无法发送。')
   if (document.bytes.length > MAX_AI_PDF_BYTES) throw new Error('PDF 文件超过 40 MB，无法直接发送。请选择发送转换后的文档文字。')
@@ -383,11 +504,11 @@ export async function reviewDocument(settings: AiSettings, instruction: string, 
     ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: instruction }]
     : [{ type: 'file', file: { filename: name, file_data: `data:application/pdf;base64,${base64}` } }, { type: 'text', text: instruction }]
   return requestOutput(settings, claude
-    ? { model, max_tokens: 6000, messages: [{ role: 'user', content }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content }], temperature: 0.15 }, claude, headers)
+    ? { model, messages: [{ role: 'user', content }] }
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content }], temperature: 0.15 }, claude, headers, undefined, onProgress)
 }
 
-export async function suggestForAnnotation(settings: AiSettings, instruction: string, annotation: string, contexts: string[], language: AiLanguage): Promise<string> {
+export async function suggestForAnnotation(settings: AiSettings, instruction: string, annotation: string, contexts: string[], language: AiLanguage, onProgress?: AiProgressCallback): Promise<string> {
   const normalizedAnnotation = annotation.trim()
   const normalizedContexts = contexts.map((context) => context.trim()).filter(Boolean)
   if (!normalizedAnnotation) throw new Error('当前批注没有可用于生成建议的内容。')
@@ -402,8 +523,8 @@ export async function suggestForAnnotation(settings: AiSettings, instruction: st
   const label = labels[language]
   const input = `${instruction}\n\n${label.annotation}：\n${normalizedAnnotation}\n\n${normalizedContexts.map((context, index) => `${label.contexts} ${index + 1}：\n${context}`).join('\n\n')}`
   return requestOutput(settings, claude
-    ? { model, max_tokens: 2800, messages: [{ role: 'user', content: input }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: input }], temperature: 0.2 }, claude, headers)
+    ? { model, messages: [{ role: 'user', content: input }] }
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: input }], temperature: 0.2 }, claude, headers, undefined, onProgress)
 }
 
 function limitedAutomaticContext(value?: string): string {
@@ -467,7 +588,7 @@ ${JSON.stringify(input)}`
 }
 
 /** Send one bounded page request and return only a schema-validated model result. */
-export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnotatePageRequest, requestId?: string): Promise<AutomaticAnnotationModelResponse> {
+export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnotatePageRequest, requestId?: string, onProgress?: AiProgressCallback): Promise<AutomaticAnnotationModelResponse> {
   if (!Number.isInteger(request.pageIndex) || request.pageIndex < 0) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!AUTOMATIC_ANNOTATION_ISSUE_TYPES.includes(request.issueType)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.issueType === 'custom' && (typeof request.customIssue !== 'string' || !request.customIssue.trim() || request.customIssue.length > 4000)) throw new Error('ui.automaticAnnotationRequestInvalid')
@@ -485,15 +606,15 @@ export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnota
   const instruction = automaticAnnotationInstruction(request, language)
   const { model, claude, headers } = requestCredentials(settings)
   const output = await requestOutput(settings, claude
-    ? { model, max_tokens: 6000, system: systemInstruction(language), messages: [{ role: 'user', content: instruction }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: instruction }], temperature: 0.1 }, claude, headers, requestId?.trim() || undefined)
+    ? { model, system: systemInstruction(language), messages: [{ role: 'user', content: instruction }] }
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: instruction }], temperature: 0.1 }, claude, headers, requestId?.trim() || undefined, onProgress, true)
   return parseAutomaticAnnotationResponse(output, request.blocks, request.detail)
 }
 
 /** Retry only failures that another model call can plausibly repair. */
 export function isRetryableAutomaticAnnotationError(cause: unknown): boolean {
   const value = cause instanceof Error ? cause.message : String(cause)
-  if (value === 'ui.automaticAnnotationRequestInvalid' || value === 'ui.noExtractableTextForAutomaticAnnotation' || value === 'ui.aiRequestWasCanceled') return false
+  if (value === 'ui.automaticAnnotationRequestInvalid' || value === 'ui.noExtractableTextForAutomaticAnnotation' || value === 'ui.aiRequestWasCanceled' || value === 'ui.aiResponseTruncated') return false
   if (/AI 请求已取消|已达到模型设置中的响应超时时间|请先(?:在模型设置中填写 API Key|选择或填写模型名称|填写接口地址)|接口地址(?:无效|只支持)/u.test(value)) return false
   const status = /请求失败[（(](\d+)[）)]/u.exec(value)?.[1]
   if (status) {

@@ -25,6 +25,8 @@ async function main() {
       return
     }
     assert.equal(payload.model, 'smoke-model')
+    response.write('data: {"choices":[{"delta":{"reasoning_content":"checking request"}}]}\n\n')
+    await new Promise((resolve) => setTimeout(resolve, 80))
     response.write('data: {"choices":[{"delta":{"content":"mock "}}]}\n\n')
     response.end('data: {"choices":[{"delta":{"content":"reply"}}]}\n\ndata: [DONE]\n\n')
   })
@@ -37,8 +39,24 @@ async function main() {
   try {
     const page = await app.firstWindow()
     await page.waitForSelector('.titlebar', { timeout: 60000 })
-    const result = await page.evaluate(({ baseUrl }) => window.desktop.aiRequest({ url: `${baseUrl}/chat/completions`, headers: { authorization: 'Bearer smoke-key', accept: 'text/event-stream' }, body: JSON.stringify({ model: 'smoke-model', stream: true }), timeoutMs: 120000 }), { baseUrl })
+    const streamed = await page.evaluate(async ({ baseUrl }) => {
+      let completed = false
+      let firstChunk
+      const firstChunkReceived = new Promise((resolve) => { firstChunk = resolve })
+      const chunks = []
+      const pending = window.desktop.aiRequest({ requestId: 'stream-one', url: `${baseUrl}/chat/completions`, headers: { authorization: 'Bearer smoke-key', accept: 'text/event-stream' }, body: JSON.stringify({ model: 'smoke-model', stream: true }), timeoutMs: 120000 }, (chunk) => {
+        chunks.push(chunk)
+        firstChunk({ chunk, completed })
+      }).then((response) => { completed = true; return response })
+      const first = await firstChunkReceived
+      const result = await pending
+      return { first, chunks, result }
+    }, { baseUrl })
+    const { result } = streamed
     assert.equal(result.status, 200)
+    assert.equal(streamed.first.completed, false, 'the renderer must receive bytes before the request promise completes')
+    assert.match(streamed.first.chunk, /reasoning_content/)
+    assert.ok(streamed.chunks.length >= 2, 'the main/preload bridge must preserve incremental chunks')
     const reply = result.body.split(/\r?\n/).filter((line) => line.startsWith('data: {')).map((line) => JSON.parse(line.slice(5)).choices[0].delta.content).join('')
     assert.equal(reply, 'mock reply')
     const cancellation = await page.evaluate(async ({ baseUrl }) => {

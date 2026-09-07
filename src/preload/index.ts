@@ -16,7 +16,15 @@ const api: DesktopApi = {
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
-  aiRequest: (request: AiRequest) => ipcRenderer.invoke('ai:request', request),
+  aiRequest: async (request: AiRequest, onChunk?: (chunk: string) => void) => {
+    if (!onChunk || !request.requestId) return ipcRenderer.invoke('ai:request', request)
+    const listener = (_event: Electron.IpcRendererEvent, requestId: string, chunk: string) => {
+      if (requestId === request.requestId && typeof chunk === 'string') onChunk(chunk)
+    }
+    ipcRenderer.on('ai:chunk', listener)
+    try { return await ipcRenderer.invoke('ai:request', request) }
+    finally { ipcRenderer.removeListener('ai:chunk', listener) }
+  },
   cancelAiRequest: (requestId: string) => ipcRenderer.send('ai:cancel', requestId),
   checkForUpdates: () => ipcRenderer.invoke('app:check-update'),
   skipUpdateVersion: (version) => ipcRenderer.invoke('app:skip-update-version', version),

@@ -112,7 +112,9 @@ interface ActiveAiRequest {
 const activeAiRequests = new Map<string, ActiveAiRequest>()
 const aiRequestKey = (senderId: number, requestId: string): string => `${senderId}\0${requestId}`
 
-async function requestAiCompletion(request: AiRequest, senderId: number): Promise<AiResponse> {
+const MAX_AI_RESPONSE_BYTES = 64 * 1024 * 1024
+
+async function requestAiCompletion(request: AiRequest, sender: WebContents): Promise<AiResponse> {
   if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('AI 请求无效。')
   if (request.requestId !== undefined && (typeof request.requestId !== 'string' || request.requestId.length < 1 || request.requestId.length > 200)) throw new Error('AI 请求无效。')
   if (Buffer.byteLength(request.body, 'utf8') > 64 * 1024 * 1024) throw new Error('AI 请求超过 64 MB。请缩短内容，或在全文评价中改用转换后的文档文字。')
@@ -131,7 +133,7 @@ async function requestAiCompletion(request: AiRequest, senderId: number): Promis
   }
   const controller = new AbortController()
   const activeRequest: ActiveAiRequest = { controller }
-  const requestKey = request.requestId === undefined ? undefined : aiRequestKey(senderId, request.requestId)
+  const requestKey = request.requestId === undefined ? undefined : aiRequestKey(sender.id, request.requestId)
   if (requestKey && activeAiRequests.has(requestKey)) throw new Error('AI 请求无效。')
   if (requestKey) activeAiRequests.set(requestKey, activeRequest)
   const abort = (reason: ActiveAiRequest['abortReason']): void => {
@@ -142,11 +144,33 @@ async function requestAiCompletion(request: AiRequest, senderId: number): Promis
   const timeout = setTimeout(() => abort('timeout'), timeoutMs)
   try {
     const response = await net.fetch(target.toString(), { method: 'POST', headers, body: request.body, signal: controller.signal })
-    const body = await response.text()
-    return { status: response.status, statusText: response.statusText, body: body.length > 8_000_000 ? body.slice(0, 8_000_000) : body }
+    const reader = response.body?.getReader()
+    if (!reader) {
+      const body = await response.text()
+      if (Buffer.byteLength(body, 'utf8') > MAX_AI_RESPONSE_BYTES) throw new Error('ui.aiResponseTooLarge')
+      if (request.requestId && !sender.isDestroyed()) sender.send('ai:chunk', request.requestId, body)
+      return { status: response.status, statusText: response.statusText, body }
+    }
+    const decoder = new TextDecoder()
+    let body = ''
+    let receivedBytes = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      receivedBytes += value.byteLength
+      if (receivedBytes > MAX_AI_RESPONSE_BYTES) { await reader.cancel(); throw new Error('ui.aiResponseTooLarge') }
+      const chunk = decoder.decode(value, { stream: true })
+      body += chunk
+      if (chunk && request.requestId && !sender.isDestroyed()) sender.send('ai:chunk', request.requestId, chunk)
+    }
+    const tail = decoder.decode()
+    body += tail
+    if (tail && request.requestId && !sender.isDestroyed()) sender.send('ai:chunk', request.requestId, tail)
+    return { status: response.status, statusText: response.statusText, body }
   } catch (error) {
     if (activeRequest.abortReason === 'user') throw new Error('AI 请求已取消。')
     if (activeRequest.abortReason === 'timeout') throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
+    if (error instanceof Error && error.message === 'ui.aiResponseTooLarge') throw error
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   } finally {
     clearTimeout(timeout)
@@ -714,7 +738,7 @@ app.whenReady().then(async () => {
     if (typeof text !== 'string' || text.length > 5_000_000) throw new Error('复制内容无效或过长。')
     clipboard.writeText(text)
   })
-  ipcMain.handle('ai:request', (event, request: AiRequest) => { requireMainWindow(event.sender); return requestAiCompletion(request, event.sender.id) })
+  ipcMain.handle('ai:request', (event, request: AiRequest) => { requireMainWindow(event.sender); return requestAiCompletion(request, event.sender) })
   ipcMain.on('ai:cancel', (event, requestId: unknown) => {
     requireMainWindow(event.sender)
     if (typeof requestId !== 'string' || requestId.length < 1 || requestId.length > 200) return

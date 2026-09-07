@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
-  FULL_REVIEW_PRESETS, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiTimeoutSeconds, polishText,
+  FULL_REVIEW_PRESETS, loadAiSettings, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiMaxOutputTokens, normalizeAiTimeoutSeconds, parseAiResponseBody, polishText,
   promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage,
   AUTOMATIC_ANNOTATION_ISSUE_TYPES, isRetryableAutomaticAnnotationError
 } from './ai-polish'
@@ -45,6 +45,19 @@ describe('AI provider configuration', () => {
     expect(next.model).toBe(PROVIDER_PRESETS.bigmodel.model)
   })
 
+  it('uses current Claude and DeepSeek model names', () => {
+    expect(PROVIDER_PRESETS.claude.model).toBe('claude-sonnet-4-6')
+    expect(PROVIDER_PRESETS.deepseek.model).toBe('deepseek-v4-flash')
+  })
+
+  it.each([
+    ['claude', 'claude-3-5-sonnet-latest', PROVIDER_PRESETS.claude.baseUrl, PROVIDER_PRESETS.claude.model],
+    ['deepseek', 'deepseek-chat', `${PROVIDER_PRESETS.deepseek.baseUrl}/`, PROVIDER_PRESETS.deepseek.model]
+  ] as const)('migrates the retired %s model only on its official endpoint', (provider, model, baseUrl, expected) => {
+    vi.stubGlobal('localStorage', { getItem: vi.fn().mockReturnValue(JSON.stringify({ provider, model, baseUrl, apiKey: 'keep-me' })) })
+    expect(loadAiSettings()).toMatchObject({ provider, model: expected, apiKey: 'keep-me' })
+  })
+
   it('keeps a user-entered endpoint and model when changing providers', () => {
     const next = providerSettings({ ...defaultSettings, baseUrl: 'https://proxy.example/v1', model: 'my-model' }, 'bigmodel')
     expect(next.baseUrl).toBe('https://proxy.example/v1')
@@ -64,6 +77,13 @@ describe('AI provider configuration', () => {
     expect(normalizeAiTimeoutSeconds(5000)).toBe(3600)
     expect(normalizeAiTimeoutSeconds('invalid')).toBe(120)
   })
+
+  it('normalizes the shared reasoning and final-answer token budget', () => {
+    expect(defaultSettings.maxOutputTokens).toBe(16_384)
+    expect(normalizeAiMaxOutputTokens('32768')).toBe(32_768)
+    expect(normalizeAiMaxOutputTokens(20)).toBe(1_024)
+    expect(normalizeAiMaxOutputTokens(999_999)).toBe(131_072)
+  })
 })
 
 describe('polishText transport and response handling', () => {
@@ -73,8 +93,8 @@ describe('polishText transport and response handling', () => {
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(polishText({ ...settings, timeoutSeconds: 275 }, '改写', '原文')).resolves.toBe('第一段第二段')
-    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key', accept: 'text/event-stream' }), timeoutMs: 275_000 }))
-    expect(JSON.parse(aiRequest.mock.calls[0][0].body).stream).toBe(true)
+    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key', accept: 'text/event-stream' }), timeoutMs: 275_000 }), expect.any(Function))
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ stream: true, max_completion_tokens: 16_384 })
   })
 
   it('collects OpenAI-compatible event streams so gateways receive early response bytes', async () => {
@@ -87,6 +107,44 @@ describe('polishText transport and response handling', () => {
     await expect(polishText(settings, '改写', '原文')).resolves.toBe('流式回复')
   })
 
+  it('reports streamed reasoning and answer text before completion', async () => {
+    const chunks = [
+      'data: {"choices":[{"delta":{"reasoning_content":"先分析"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"最终回答"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+    ]
+    const aiRequest = vi.fn(async (_request, onChunk: (chunk: string) => void) => {
+      chunks.forEach(onChunk)
+      return { status: 200, statusText: 'OK', body: chunks.join('') }
+    })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    const progress: ReturnType<typeof parseAiResponseBody>[] = []
+    await expect(polishText(settings, '改写', '原文', (value) => progress.push(value))).resolves.toBe('最终回答')
+    expect(progress).toContainEqual(expect.objectContaining({ reasoning: '先分析', output: '' }))
+    expect(progress.at(-1)).toEqual({ reasoning: '先分析', output: '最终回答', received: true, truncated: false })
+  })
+
+  it('detects provider output truncation and does not return partial text', async () => {
+    const body = 'data: {"choices":[{"delta":{"content":"不完整"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'
+    vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body }) } })
+    expect(parseAiResponseBody(body)).toMatchObject({ output: '不完整', truncated: true })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('ui.aiResponseTruncated')
+  })
+
+  it('parses Claude thinking deltas and max-token stop events', () => {
+    const body = [
+      'event: content_block_delta',
+      'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Inspecting evidence."}}',
+      '',
+      'event: content_block_delta',
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Partial answer"}}',
+      '',
+      'event: message_delta',
+      'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}'
+    ].join('\n')
+    expect(parseAiResponseBody(body)).toEqual({ reasoning: 'Inspecting evidence.', output: 'Partial answer', received: true, truncated: true })
+  })
+
   it('falls back once when an older relay explicitly rejects streaming', async () => {
     const aiRequest = vi.fn()
       .mockResolvedValueOnce({ status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: { message: 'Unsupported parameter: stream' } }) })
@@ -97,6 +155,17 @@ describe('polishText transport and response handling', () => {
     expect(JSON.parse(aiRequest.mock.calls[0][0].body).stream).toBe(true)
     expect(JSON.parse(aiRequest.mock.calls[1][0].body).stream).toBeUndefined()
     expect(aiRequest.mock.calls[1][0].headers.accept).toBe('application/json')
+  })
+
+  it('removes an explicitly rejected output-limit field without looping', async () => {
+    const aiRequest = vi.fn()
+      .mockResolvedValueOnce({ status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: { message: 'Unknown parameter: max_completion_tokens' } }) })
+      .mockResolvedValueOnce({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: 'Relay default limit' } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(polishText(settings, '改写', '原文')).resolves.toBe('Relay default limit')
+    expect(aiRequest).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).max_completion_tokens).toBe(16_384)
+    expect(JSON.parse(aiRequest.mock.calls[1][0].body).max_completion_tokens).toBeUndefined()
   })
 
   it('explains rate limits and quota failures instead of exposing only the status code', async () => {
@@ -151,6 +220,7 @@ describe('Lab document review and annotation suggestion transport', () => {
     expect(payload.messages[1].content).toContain('Review every section.')
     expect(payload.messages[1].content).toContain('--- Page 1 ---\nWhole document')
     expect(payload.max_tokens).toBeUndefined()
+    expect(payload.max_completion_tokens).toBe(16_384)
   })
 
   it('sends an OpenAI-compatible PDF file as base64 file input', async () => {
@@ -171,6 +241,17 @@ describe('Lab document review and annotation suggestion transport', () => {
     await expect(reviewDocument(claude, 'Inspect layout.', { name: 'draft.pdf', bytes: new Uint8Array([37, 80, 68, 70]) }, 'file', 'en')).resolves.toBe('Claude review')
     const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
     expect(payload.messages[0].content[0]).toEqual(expect.objectContaining({ type: 'document', source: expect.objectContaining({ type: 'base64', media_type: 'application/pdf', data: 'JVBERg==' }) }))
+    expect(payload).toMatchObject({ max_tokens: 16_384, thinking: { type: 'adaptive' }, output_config: { effort: 'low' } })
+  })
+
+  it('keeps DeepSeek thinking visible while limiting runaway reasoning effort', async () => {
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { reasoning_content: 'Reasoning', content: 'Answer' } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    const deepseek = { ...settings, provider: 'deepseek' as const, baseUrl: PROVIDER_PRESETS.deepseek.baseUrl, model: PROVIDER_PRESETS.deepseek.model }
+    const progress: ReturnType<typeof parseAiResponseBody>[] = []
+    await expect(polishText(deepseek, 'Rewrite.', 'Original.', (value) => progress.push(value))).resolves.toBe('Answer')
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low', max_tokens: 16_384 })
+    expect(progress.at(-1)?.reasoning).toBe('Reasoning')
   })
 
   it('collects Claude event streams as well as OpenAI-compatible streams', async () => {
@@ -236,7 +317,7 @@ describe('automatic annotation transport', () => {
       language: 'en'
     }, 'auto-page-1')).resolves.toEqual(modelResult)
 
-    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'auto-page-1' }))
+    expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'auto-page-1' }), expect.any(Function))
     const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
     const prompt = payload.messages[1].content as string
     expect(prompt).toContain('FOCUSED CATEGORY (typos_formatting)')
@@ -261,6 +342,7 @@ describe('automatic annotation transport', () => {
     expect(prompt).toContain('Rolling summary.')
     expect(prompt).toContain('"targetBlocks":[{"blockId":"p1-b1","text":"This are unclear."}]')
     expect(prompt).not.toContain('"rect"')
+    expect(payload.response_format).toEqual({ type: 'json_object' })
   })
 
   it.each([
@@ -276,6 +358,18 @@ describe('automatic annotation transport', () => {
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail, language: 'en' })).resolves.toEqual(result)
     expect(JSON.parse(aiRequest.mock.calls[0][0].body).messages[1].content).toContain(promptRule)
+  })
+
+  it('falls back once when a relay explicitly rejects JSON mode', async () => {
+    const result = { version: 1, contextSummary: '', findings: [] }
+    const aiRequest = vi.fn()
+      .mockResolvedValueOnce({ status: 400, statusText: 'Bad Request', body: JSON.stringify({ error: { message: 'Unsupported parameter: response_format' } }) })
+      .mockResolvedValueOnce({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', language: 'en' })).resolves.toEqual(result)
+    expect(aiRequest).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).response_format).toEqual({ type: 'json_object' })
+    expect(JSON.parse(aiRequest.mock.calls[1][0].body).response_format).toBeUndefined()
   })
 
   it.each(AUTOMATIC_ANNOTATION_ISSUE_TYPES)('keeps the %s pass focused on exactly that issue category', async (issueType) => {
@@ -329,6 +423,7 @@ describe('automatic annotation transport', () => {
     ['请求失败（401）：身份验证失败。', false],
     ['已达到模型设置中的响应超时时间，软件已停止等待。', false],
     ['AI 请求已取消。', false],
+    ['ui.aiResponseTruncated', false],
     ['ui.automaticAnnotationRequestInvalid', false]
   ])('classifies bounded automatic retries for %s', (error, expected) => {
     expect(isRetryableAutomaticAnnotationError(new Error(error))).toBe(expected)

@@ -115,7 +115,7 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.unmount())
   })
 
-  it('keeps the shortcut keycap in the launch button and persists a custom timeout', async () => {
+  it('keeps the shortcut keycap and persists timeout and output-token controls', async () => {
     const root = createRoot(container)
     await act(async () => root.render(<AnnotationLab selection={selection} platform="win32" onAdd={() => undefined} onCopy={() => undefined} />))
     const launch = container.querySelector<HTMLButtonElement>('.annotation-lab-launch')!
@@ -127,12 +127,53 @@ describe('AnnotationLab settings and availability', () => {
     expect(timeout.value).toBe('120')
     expect(timeout.min).toBe('5')
     expect(timeout.max).toBe('3600')
+    const outputTokens = container.querySelector<HTMLInputElement>('input[max="131072"]')!
+    expect(outputTokens.value).toBe('16384')
+    expect(outputTokens.min).toBe('1024')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(timeout, '275')
       timeout.dispatchEvent(new Event('input', { bubbles: true }))
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(outputTokens, '32768')
+      outputTokens.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.annotation-lab-settings footer button')].find((button) => button.textContent === '保存')!.click())
     expect(JSON.parse(localStorage.getItem('pdfuck.ai-settings.v1') || '{}').timeoutSeconds).toBe(275)
+    expect(JSON.parse(localStorage.getItem('pdfuck.ai-settings.v1') || '{}').maxOutputTokens).toBe(32_768)
+    await act(async () => root.unmount())
+  })
+
+  it('shows provider reasoning and generated text in the shared live-activity panel', async () => {
+    const polish = vi.spyOn(aiPolish, 'polishText').mockImplementation(async (_settings, _instruction, _text, onProgress) => {
+      onProgress?.({ reasoning: '先核对语义和语气。', output: '正在组织改写。', received: true, truncated: false })
+      return '最终改写。'
+    })
+    const root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab selection={selection} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-lab-launch')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.ai-polish-window button.primary.wide')!.click())
+    expect(polish).toHaveBeenCalledTimes(1)
+    const activity = container.querySelector('.ai-stream-activity')!
+    expect(activity.textContent).toContain('服务商返回的思考过程')
+    expect(activity.textContent).toContain('先核对语义和语气。')
+    expect(activity.textContent).toContain('正在组织改写。')
+    await act(async () => root.unmount())
+  })
+
+  it('shows the submitted input summary while the model has not returned its first byte', async () => {
+    const response = deferred<string>()
+    vi.spyOn(aiPolish, 'polishText').mockReturnValue(response.promise)
+    const root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab selection={selection} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-lab-launch')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.ai-polish-window button.primary.wide')!.click())
+    const activity = container.querySelector('.ai-stream-activity')!
+    expect(activity.textContent).toContain('请求已提交，等待模型首次输出')
+    expect(activity.textContent).toContain('本次送入模型的内容')
+    expect(activity.textContent).toContain('gpt-4o-mini')
+    expect(activity.textContent).toContain('当前选区（13 个字符）')
+    expect(activity.textContent).toContain('润色提示词')
+    expect(activity.textContent).not.toContain('正在连接模型')
+    await act(async () => { response.resolve('完成'); await response.promise })
     await act(async () => root.unmount())
   })
 
@@ -434,6 +475,21 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.unmount())
   })
 
+  it('does not replay a truncated automatic-annotation response', async () => {
+    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
+    automaticIssues('typos_formatting')
+    const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockRejectedValue(new Error('ui.aiResponseTruncated'))
+    const root = createRoot(container)
+    await act(async () => root.render(<AnnotationLab getAutomaticAnnotationPages={async () => [automaticPage(0, 'mistkae')]} onAddAutomaticAnnotations={() => undefined} onAdd={() => undefined} onCopy={() => undefined} />))
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
+    await flushWork()
+    expect(annotate).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('最终回答被截断')
+    expect(container.querySelector('.automatic-annotation-controls')?.textContent).toContain('重试本页')
+    await act(async () => root.unmount())
+  })
+
   it('updates progress page by page, pauses after the active page, and resumes from the next page', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
     automaticIssues('sentence_flow')
@@ -446,6 +502,11 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
     await flushWork()
     expect(annotate).toHaveBeenCalledTimes(1)
+    const activity = container.querySelector('.automatic-annotation-window .ai-stream-activity')!
+    expect(activity.textContent).toContain('请求已提交，等待模型首次输出')
+    expect(activity.textContent).toContain('第 1 页 · 1 个文本块')
+    expect(activity.textContent).toContain('句间衔接与逻辑关系')
+    expect(activity.textContent).not.toContain('正在连接模型')
 
     const pause = [...container.querySelectorAll<HTMLButtonElement>('.automatic-annotation-controls button')].find((button) => button.textContent === '暂停')!
     await act(async () => pause.click())

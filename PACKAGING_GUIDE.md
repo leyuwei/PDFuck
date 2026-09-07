@@ -22,8 +22,12 @@ Windows（建议在 Windows 上构建）：
 
 新增 `npm run test:popups-ui` 与 `npm run test:eps-vector`，已接入两个平台的源码与最终包发布流程。前者覆盖 16 种菜单边缘情形、top layer、12 位批注人颜色、小屏幕拖动与缩小恢复、多文档画布隔离、自定义检查要求重启持久化；后者验证源范例全部 147 个非空白文字字符保留为文字、路径保留、修改后页面、旋转、分页命名与取消导出。功能回归只使用模拟 AI，不发送真实文档到外部服务。
 
+2.0.20 的实验室 AI 请求会将 SSE 从主进程、预加载桥逐块送到对应文档的界面，显示服务商实际返回的思考与回答；默认最大输出为 16,384 Token，并可在 1,024–131,072 之间配置。发布验证必须覆盖截断识别且不得自动重放截断、超时或取消请求，自动批注 JSON 模式的安全兼容降级，以及四项 AI 功能共用的实时状态面板。`test:ai-smoke` 断言首个思考块在请求 Promise 完成前到达；`test:lab-features-ui` 在真实窗口检查思考面板。`test:window-tabs` 还须用相似文件名验证 Unicode 字素簇不会被拆开、共同开头用满剩余宽度并只在溢出时省略、差异被突出、共同结尾被折叠且完整名称仍可访问。
 
-- Node.js 22 或更高版本。
+2.0.21 将实验室的首包等待拆分为“准备内容”和“请求已提交，等待模型首次输出”，不得继续用“正在连接模型”覆盖整个等待期。四项 AI 功能在首包前必须显示冻结的安全请求摘要，至少标明模型与输入范围，不得显示 API Key 或伪造推理。`test:lab-features-ui` 会让本地服务故意延迟首个 SSE 字节，先验证等待状态和摘要，再验证真实思考流。
+
+
+- Node.js 22.4 或更高版本（测试命令会关闭 Node 自带的实验性 Web Storage，避免覆盖 jsdom 的 `localStorage`）。
 - 使用仓库锁文件安装依赖：`npm ci`。
 - macOS 的 `.app`、DMG、Apple 签名和公证应在 macOS 上完成。
 - Windows 的 NSIS 安装包和 Windows 签名应在 Windows 上完成。不要把跨平台构建成功等同于已经在目标系统验证。
@@ -53,13 +57,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.17
+.\scripts\package-windows.ps1 2.0.21
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.17
+bash scripts/package-macos.sh 2.0.21
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -124,7 +128,7 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 2.0.15 实验室浮窗 / Lab Windows：自动批注的问题类型标题、说明、操作按钮和 12 张选项卡不得重叠，通用工具面板的 `label` 外边距不得泄漏进卡片网格，标准窗口宽度下不得出现被裁切的半行。智能润色、全文评价、自动批注和批注建议在滚动到底部后，标题必须仍位于浮窗内并可拖动；自由画板标题必须固定在不可滚动的第一行。The issue title, explanation, actions, and 12 cards must not overlap or inherit generic tool-label margins. AI Polish, Full Review, Automatic Annotation, and Annotation Suggestions must keep a draggable title visible at the bottom of their scroll ranges; the Drawing Board title remains in its fixed first row.
 
-打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.17 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
+打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.21 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
 
 涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 

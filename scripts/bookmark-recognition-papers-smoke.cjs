@@ -27,6 +27,14 @@ const papers = [
   }
 ]
 
+async function closeApp(app) {
+  let timer
+  const closed = app.close().then(() => true, () => true)
+  const graceful = await Promise.race([closed, new Promise((resolve) => { timer = setTimeout(() => resolve(false), 5000) })])
+  clearTimeout(timer)
+  if (!graceful && app.process().exitCode === null) { app.process().kill(); await closed }
+}
+
 async function recognize(paper) {
   assert.ok(fs.existsSync(paper.file), `missing real-paper fixture: ${paper.file}`)
   const userData = path.join(root, 'tmp', `bookmark-recognition-${paper.key}-user`)
@@ -59,7 +67,7 @@ async function recognize(paper) {
     await page.screenshot({ path: screenshot, fullPage: true })
     return { paper: paper.key, topLevel, candidates: rows.length, screenshot }
   } finally {
-    await app.close().catch(() => undefined)
+    await closeApp(app)
     fs.rmSync(userData, { recursive: true, force: true })
   }
 }

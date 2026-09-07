@@ -8,8 +8,9 @@ const { PDFDocument, StandardFonts, degrees } = require('pdf-lib')
 
 async function main() {
   const root = path.resolve(__dirname, '..')
+  const version = require(path.join(root, 'package.json')).version
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfuck-eps-vector-'))
-  const output = path.join(root, 'output', 'eps-2.0.17')
+  const output = path.join(root, 'output', `eps-${version}`)
   await fs.mkdir(output, { recursive: true })
   const fixture = path.join(root, 'tmp', 'try-eps.pdf')
   const source = new Uint8Array(await fs.readFile(fixture))
@@ -46,7 +47,7 @@ async function main() {
     // Export an edited and rotated page as well, exercising page suffixes and writeback.
     const edited = await PDFDocument.load(source)
     const crop = edited.getPage(0).getCropBox()
-    edited.getPage(0).drawText('Edited vector 2.0.17', { x: crop.x + 5, y: crop.y + 5, size: 8, font: await edited.embedFont(StandardFonts.Helvetica) })
+    edited.getPage(0).drawText(`Edited vector ${version}`, { x: crop.x + 5, y: crop.y + 5, size: 8, font: await edited.embedFont(StandardFonts.Helvetica) })
     edited.getPage(0).setRotation(degrees(90))
     const editedBytes = await edited.save()
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, path.join(output, 'edited.eps'))
@@ -55,7 +56,7 @@ async function main() {
     const editedPdf = path.join(output, 'edited-roundtrip.pdf')
     execFileSync('gs', ['-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-dEPSCrop', '-dAutoRotatePages=/None', `-sOutputFile=${editedPdf}`, editedPaths[0]])
     const editedResult = await inspect(await fs.readFile(editedPdf))
-    assert.ok(editedResult.text.includes('Editedvector2.0.17'))
+    assert.ok(editedResult.text.includes(`Editedvector${version}`))
     assert.ok(Math.abs(editedResult.viewport.width - original.viewport.height) < 2)
     assert.ok(Math.abs(editedResult.viewport.height - original.viewport.width) < 2)
     // A canceled save must create no output.

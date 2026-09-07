@@ -320,3 +320,11 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .theme-dark .recent-list::-webkit-scrollbar-thumb:hover { background: #6c809c; background-clip: padding-box; }
 
 .context-menu[popover] { position: fixed; inset: auto; margin: 0; z-index: 2147483647; max-width: calc(100vw - 16px); overflow: auto; -webkit-app-region: no-drag; }
+
+.window-tab-distinctive { width: 100%; display: inline-flex; align-items: baseline; }
+.window-tab-prefix { min-width: 2.5em; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7e899e; }
+.window-tab-common { color: #929caf; }
+.window-tab-distinctive mark { min-width: 1em; max-width: 55%; flex: 0 1 auto; padding: 1px 3px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; background: #fff0a8; color: #5b4200; font-weight: 800; }
+.window-tab-distinctive mark.empty { color: #90752c; font-style: italic; }
+.window-tab.current .window-tab-distinctive mark { background: #ffe37a; color: #473500; }
+.theme-dark .window-tab-distinctive mark { background: #665720; color: #fff0a7; }

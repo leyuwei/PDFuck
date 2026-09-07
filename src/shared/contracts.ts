@@ -194,7 +194,7 @@ export interface DesktopApi {
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>
-  aiRequest(request: AiRequest): Promise<AiResponse>
+  aiRequest(request: AiRequest, onChunk?: (chunk: string) => void): Promise<AiResponse>
   cancelAiRequest(requestId: string): void
   checkForUpdates(): Promise<UpdateCheckResult>
   skipUpdateVersion(version: string): Promise<void>

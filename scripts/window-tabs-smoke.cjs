@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..')
 const version = require(path.join(root, 'package.json')).version
 const entry = path.join(root, 'out/main/index.js')
 const pdfPath = path.join(root, 'tmp', 'Scheduling0821m.pdf')
-const secondaryPdfPath = path.join(root, 'tmp', 'window-tabs-secondary.pdf')
+const secondaryPdfPath = path.join(root, 'tmp', 'Scheduling0821m-revised.pdf')
 const userData = path.join(root, 'tmp', 'window-tabs-smoke-user')
 
 async function main() {
@@ -56,6 +56,16 @@ async function main() {
     await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), secondaryPdfPath)
     await page.locator('.window-tab').nth(1).waitFor({ timeout: 60000 })
     assert.equal(await page.locator('.window-tab').count(), 2, 'opening another PDF should create a second tab')
+    assert.deepEqual(await page.locator('.window-tab mark').allTextContents(), ['∅', '-revised'], 'similar tab names must hide shared text and emphasize only the distinguishing region')
+    const distinctiveLayout = await page.locator('.window-tab').evaluateAll((tabs) => tabs.map((tab) => {
+      const prefix = tab.querySelector('.window-tab-prefix').getBoundingClientRect()
+      const mark = tab.querySelector('mark').getBoundingClientRect()
+      const name = tab.querySelector('.window-tab-name').getBoundingClientRect()
+      return { prefixText: tab.querySelector('.window-tab-prefix').textContent, prefixWidth: prefix.width, markRight: mark.right, nameRight: name.right }
+    }))
+    assert.ok(distinctiveLayout.every((layout) => layout.prefixText === 'Scheduling0821m' && layout.prefixWidth >= 20 && layout.markRight <= layout.nameRight + 1), `similar tabs must show as much filename beginning as fits without hiding the highlighted difference: ${JSON.stringify(distinctiveLayout)}`)
+    const accessibleTabTitles = await page.locator('.window-tab').evaluateAll((tabs) => tabs.map((tab) => ({ title: tab.getAttribute('title'), label: tab.getAttribute('aria-label') })))
+    assert.ok(accessibleTabTitles[0].title.startsWith('Scheduling0821m.pdf') && accessibleTabTitles[0].label.includes('Scheduling0821m.pdf'), 'the complete filename must remain available to pointer and assistive-technology users')
     await page.waitForTimeout(300)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
     const closeManyDialog = page.getByRole('alertdialog')
@@ -114,7 +124,7 @@ async function main() {
     await firstTab.dispatchEvent('dragstart', { dataTransfer })
     await secondTab.dispatchEvent('dragenter', { dataTransfer })
     assert.equal(await page.locator('.drop-overlay').count(), 0, 'an internal tab drag must not activate the external-file drop overlay')
-    assert.equal(await page.locator('.window-tab').first().getAttribute('title').then((value) => value?.startsWith('window-tabs-secondary.pdf')), true, 'tab drag should reorder the source tab after its target')
+    assert.equal(await page.locator('.window-tab').first().getAttribute('title').then((value) => value?.startsWith('Scheduling0821m-revised.pdf')), true, 'tab drag should reorder the source tab after its target')
 
     const detachedWindow = app.waitForEvent('window')
     await firstTab.dispatchEvent('dragend', { dataTransfer, clientX: -20, clientY: -20, screenX: 600, screenY: 420 })
@@ -160,7 +170,7 @@ async function main() {
     assert.equal(await page.locator('.document-transfer-overlay').count(), 0, 'the return-to-tabs overlay should clear after a successful transfer')
 
     const redetachTransfer = await page.evaluateHandle(() => new DataTransfer())
-    const returnedTab = page.locator('.window-tab').filter({ hasText: 'Scheduling0821m.pdf' })
+    const returnedTab = page.locator('.window-tab[title^="Scheduling0821m.pdf"]')
     const replacementDetachedWindow = app.waitForEvent('window')
     await returnedTab.dispatchEvent('dragstart', { dataTransfer: redetachTransfer })
     await returnedTab.dispatchEvent('dragend', { dataTransfer: redetachTransfer, clientX: -20, clientY: -20, screenX: 700, screenY: 460 })
