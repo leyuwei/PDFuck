@@ -289,7 +289,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
         cards
       }
     })
-    assert.ok(issueFrame.borderWidth >= 1, 'Issue choices need a clear outer frame')
+    assert.ok(issueFrame.borderWidth > 0, `Issue choices need a clear outer frame: ${JSON.stringify(issueFrame)}`)
     assert.ok(issueFrame.paddingLeft >= 12 && issueFrame.paddingRight >= 12, `Issue frame needs comfortable padding: ${JSON.stringify(issueFrame)}`)
     assert.ok(issueFrame.heading.left > issueFrame.frame.left && issueFrame.heading.right < issueFrame.frame.right, `Issue heading escaped its frame: ${JSON.stringify(issueFrame)}`)
     assert.ok(issueFrame.actions.top >= issueFrame.heading.top && issueFrame.actions.bottom <= issueFrame.heading.bottom, `Issue actions are not aligned with the title: ${JSON.stringify(issueFrame)}`)

@@ -4,8 +4,21 @@ const path = require('node:path')
 const os = require('node:os')
 const { execFileSync } = require('node:child_process')
 const { _electron: electron } = require('playwright')
-const { PDFDocument, StandardFonts, degrees } = require('pdf-lib')
+const { PDFDocument, StandardFonts, degrees, rgb } = require('pdf-lib')
 const ghostscript = process.platform === 'win32' ? 'gswin64c' : 'gs'
+
+async function createFixture(file, version) {
+  const document = await PDFDocument.create(), page = document.addPage([460, 340])
+  const font = await document.embedFont(StandardFonts.Helvetica)
+  page.setCropBox(20, 20, 420, 300)
+  page.drawText(`PDFuck EPS vector export ${version}`, { x: 35, y: 285, size: 16, font })
+  for (let row = 0; row < 8; row += 1) {
+    page.drawText(`Series ${row + 1}: vector labels and editable text`, { x: 35, y: 255 - row * 26, size: 10, font })
+    for (let column = 0; column < 4; column += 1) page.drawLine({ start: { x: 290 + column * 26, y: 258 - row * 26 }, end: { x: 304 + column * 26, y: 258 - row * 26 }, thickness: 2, color: rgb(row / 8, column / 4, .55) })
+  }
+  page.drawRectangle({ x: 20, y: 20, width: 420, height: 300, borderWidth: .5 })
+  await fs.writeFile(file, await document.save())
+}
 
 async function main() {
   const root = path.resolve(__dirname, '..')
@@ -13,7 +26,12 @@ async function main() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfuck-eps-vector-'))
   const output = path.join(root, 'output', `eps-${version}`)
   await fs.mkdir(output, { recursive: true })
-  const fixture = process.env.PDFUCK_EPS_FIXTURE || path.join(root, 'tmp', 'try-eps.pdf')
+  const requestedFixture = process.env.PDFUCK_EPS_FIXTURE || path.join(root, 'tmp', 'try-eps.pdf')
+  const fixture = await fs.access(requestedFixture).then(() => requestedFixture).catch(async () => {
+    const generated = path.join(directory, 'eps-vector-fixture.pdf')
+    await createFixture(generated, version)
+    return generated
+  })
   const source = new Uint8Array(await fs.readFile(fixture))
   const app = await electron.launch({ executablePath: process.env.PDFUCK_SMOKE_EXECUTABLE || require('electron'), args: process.env.PDFUCK_SMOKE_EXECUTABLE ? [`--user-data-dir=${directory}`, fixture] : [path.join(root, 'out/main/index.js'), fixture], env: { ...process.env, PDFUCK_TEST_USER_DATA: directory } })
   try {
