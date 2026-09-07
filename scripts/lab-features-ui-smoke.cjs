@@ -73,23 +73,25 @@ async function selectPageText(page, pageIndex) {
 async function verifyStickyDraggableHeader(page, windowLocator, name) {
   await windowLocator.evaluate((element) => {
     element.style.maxHeight = '220px'
-    element.scrollTop = element.scrollHeight
+    const body = element.querySelector(':scope > .window-scroll-body')
+    body.scrollTop = body.scrollHeight
   })
   await page.waitForTimeout(50)
   const layout = await windowLocator.evaluate((element) => {
+    const body = element.querySelector(':scope > .window-scroll-body')
     const dialog = element.getBoundingClientRect()
     const header = element.querySelector(':scope > header').getBoundingClientRect()
     return {
       dialog: { top: dialog.top, bottom: dialog.bottom },
       header: { top: header.top, bottom: header.bottom },
-      scrollTop: element.scrollTop,
-      scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight,
-      position: getComputedStyle(element.querySelector(':scope > header')).position
+      scrollTop: body.scrollTop,
+      scrollHeight: body.scrollHeight,
+      clientHeight: body.clientHeight,
+      bodyTop: body.getBoundingClientRect().top, headingBottom: header.bottom
     }
   })
   assert.ok(layout.scrollHeight > layout.clientHeight && layout.scrollTop > 0, `${name} must have a scrollable test state: ${JSON.stringify(layout)}`)
-  assert.equal(layout.position, 'sticky', `${name} title must use the shared sticky header`)
+  assert.ok(layout.bodyTop >= layout.headingBottom - 1, `${name} scrollbar must begin below its title: ${JSON.stringify(layout)}`)
   assert.ok(layout.header.top >= layout.dialog.top - 1 && layout.header.bottom <= layout.dialog.bottom + 1, `${name} title left the visible window after scrolling: ${JSON.stringify(layout)}`)
 
   const before = await windowLocator.boundingBox()
@@ -108,7 +110,7 @@ async function verifyStickyDraggableHeader(page, windowLocator, name) {
   await page.mouse.move(movedHeader.x + Math.min(80, movedHeader.width / 3) + 28, movedHeader.y + movedHeader.height / 2 + 16, { steps: 5 })
   await page.mouse.up()
   await windowLocator.evaluate((element) => {
-    element.scrollTop = 0
+    element.querySelector(':scope > .window-scroll-body').scrollTop = 0
     element.style.removeProperty('max-height')
   })
 }
@@ -132,9 +134,9 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await page.locator('.annotation-lab-tools > button').count(), 5)
     assert.equal(await page.locator('.annotation-lab-tools kbd').count(), 1, 'Only AI Polish should display a shortcut')
     const typography = await page.evaluate(() => {
-      const standard = document.querySelector('.tool-panel section > .tool-button')
+      const standard = document.querySelector('.tool-panel .tool-panel-section .window-scroll-body > .tool-button')
       const lab = document.querySelector('.annotation-lab-tools > .tool-button')
-      const standardHeading = document.querySelector('.tool-panel section > h3')
+      const standardHeading = document.querySelector('.tool-panel .tool-panel-section .window-scroll-body > h3')
       const labHeading = document.querySelector('.annotation-lab-heading h3')
       const style = (element) => {
         const computed = getComputedStyle(element)
@@ -209,7 +211,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await progress.getAttribute('role'), 'progressbar')
     const countdown = await progress.locator('header span').textContent()
     const remaining = Number(countdown.match(/\d+/)?.[0])
-    assert.ok(remaining >= 118 && remaining <= 120, `Expected countdown to start from configured 120 seconds, got ${countdown}`)
+    assert.ok(remaining >= 238 && remaining <= 240, `Expected countdown to include the 240-second recovery budget, got ${countdown}`)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-progress-${releaseVersion}.png`) })
     await page.locator('.full-review-window').getByRole('button', { name: '缩小到工具栏', exact: true }).click()
     assert.equal(await page.locator('.full-review-window').count(), 0)
@@ -351,8 +353,8 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.lab-preferences.v1')).annotationSuggestionsEnabled), true)
 
     const annotation = page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).first()
-    await annotation.locator('.annotation-settings-button').click()
-    await annotation.locator('.annotation-ai-suggestion').click()
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()
     await verifyStickyDraggableHeader(page, page.locator('.annotation-suggestion-window'), 'Annotation suggestion')
     console.log('[lab-smoke] annotation suggestion collector opened')
@@ -391,8 +393,8 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await persist.check()
     assert.equal(await persist.isChecked(), true)
     await page.locator('.annotation-suggestion-window > header button[aria-label="关闭"]').click()
-    await annotation.locator('.annotation-settings-button').click()
-    await annotation.locator('.annotation-ai-suggestion').click()
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()
     assert.equal(await page.locator('.suggestion-contexts article').count(), 2, 'Persisted contexts must load for another suggestion in the same document')
     assert.equal(await page.locator('.suggestion-persist input').isChecked(), true)
@@ -415,11 +417,12 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await originalTab.click()
     await annotation.locator('.annotation-reply-preview').waitFor()
     assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
-    await annotation.locator('.annotation-settings-button').click()
-    assert.ok((await annotation.locator('.annotation-current-reply').innerText()).includes('Align the conclusion.'))
-    assert.equal(await annotation.locator('.custom-reply-row textarea').inputValue(), suggestionMarkdown)
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-reply-section > summary').click()
+    assert.ok((await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText()).includes('Align the conclusion.'))
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-suggestion-reply-${releaseVersion}.png`) })
-    await annotation.locator('.annotation-settings-title button').click()
+    await page.locator('.annotation-dialog .modal-actions button.primary').click()
     await page.locator('.quick-save').click()
     await page.waitForFunction(() => document.querySelector('.quick-save')?.hasAttribute('disabled'))
 
@@ -446,9 +449,10 @@ async function verifyPersistedSuggestionReply(userData, pdf) {
     const annotation = page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).first()
     await annotation.locator('.annotation-reply-preview').waitFor({ timeout: 10000 })
     assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
-    await annotation.locator('.annotation-settings-button').click()
-    assert.equal(await annotation.locator('.custom-reply-row textarea').inputValue(), suggestionMarkdown)
-    assert.ok((await annotation.locator('.annotation-current-reply').innerText()).includes('Align the conclusion.'))
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-reply-section > summary').click()
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
+    assert.ok((await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText()).includes('Align the conclusion.'))
     console.log('[lab-smoke] saved AI reply restored after reopening the PDF')
   } finally {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)

@@ -3,11 +3,11 @@ import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
   FULL_REVIEW_PRESETS, loadAiSettings, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiMaxOutputTokens, normalizeAiTimeoutSeconds, parseAiResponseBody, polishText,
   promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage,
-  AUTOMATIC_ANNOTATION_ISSUE_TYPES, isRetryableAutomaticAnnotationError
+  AUTOMATIC_ANNOTATION_ISSUE_TYPES
 } from './ai-polish'
 import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('AI prompt language', () => {
   it('selects prompts from the dominant script', () => {
@@ -121,7 +121,7 @@ describe('polishText transport and response handling', () => {
     const progress: ReturnType<typeof parseAiResponseBody>[] = []
     await expect(polishText(settings, '改写', '原文', (value) => progress.push(value))).resolves.toBe('最终回答')
     expect(progress).toContainEqual(expect.objectContaining({ reasoning: '先分析', output: '' }))
-    expect(progress.at(-1)).toEqual({ reasoning: '先分析', output: '最终回答', received: true, truncated: false })
+    expect(progress.at(-1)).toMatchObject({ reasoning: '先分析', output: '最终回答', received: true, truncated: false })
   })
 
   it('detects provider output truncation and does not return partial text', async () => {
@@ -173,11 +173,14 @@ describe('polishText transport and response handling', () => {
     await expect(polishText(settings, '改写', '原文')).rejects.toThrow('请求过于频繁或账户额度不足')
   })
 
-  it('explains 524 relay timeouts without replaying a long, potentially billable request', async () => {
-    const aiRequest = vi.fn().mockResolvedValue({ status: 524, statusText: 'A timeout occurred', body: '<!DOCTYPE html><html><body>cloud gateway trace</body></html>' })
+  it('recovers a transient gateway timeout after backoff', async () => {
+    vi.useFakeTimers()
+    const aiRequest = vi.fn().mockResolvedValueOnce({ status: 524, statusText: 'Timeout', body: '' }).mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: 'Recovered' } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('这通常不是本软件的响应超时')
-    expect(aiRequest).toHaveBeenCalledTimes(1)
+    const result = polishText(settings, '改写', '原文')
+    await vi.runAllTimersAsync()
+    await expect(result).resolves.toBe('Recovered')
+    expect(aiRequest).toHaveBeenCalledTimes(2)
   })
 
   it.each([
@@ -185,17 +188,16 @@ describe('polishText transport and response handling', () => {
     [403, '服务拒绝了请求'],
     [404, '没有找到模型或接口路径'],
     [413, '发送内容超过了服务商限制'],
-    [502, '暂时不可用'],
-    [504, '响应超时']
   ])('classifies HTTP %s into an actionable diagnostic', async (status, expected) => {
     vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockResolvedValue({ status, statusText: 'Error', body: '<html>opaque proxy page</html>' }) } })
     await expect(polishText(settings, '改写', '原文')).rejects.toThrow(expected)
   })
 
-  it('keeps the local configured timeout distinct from an upstream 524 timeout', async () => {
-    const localTimeout = '已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。'
-    vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockRejectedValue(new Error(localTimeout)) } })
-    await expect(polishText(settings, '改写', '原文')).rejects.toThrow(localTimeout)
+  it('reports cancellation without retrying', async () => {
+    const aiRequest = vi.fn().mockRejectedValue(new Error('AI 请求已取消。'))
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('ui.aiRequestWasCanceled')
+    expect(aiRequest).toHaveBeenCalledOnce()
   })
 
   it('preserves a concise provider diagnostic for unknown status codes', async () => {
@@ -203,14 +205,13 @@ describe('polishText transport and response handling', () => {
     await expect(polishText(settings, '改写', '原文')).rejects.toThrow('请求失败（418）：provider-specific diagnostic')
   })
 
-  it('converts transport failures into a stable diagnostic error', async () => {
+  it('stops repeated network failures at the recovery deadline', async () => {
+    vi.useFakeTimers()
     vi.stubGlobal('window', { desktop: { aiRequest: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) } })
-    await expect(polishText(settings, '改写', '原文')).rejects.toThrow('无法连接模型服务')
+    const result = expect(polishText({ ...settings, timeoutSeconds: 5 }, '改写', '原文')).rejects.toThrow('ui.aiRecoveryStopped')
+    await vi.runAllTimersAsync()
+    await result
   })
-})
-
-describe('Lab document review and annotation suggestion transport', () => {
-  const settings = { ...defaultSettings, apiKey: 'test-key' }
 
   it('sends all extracted page text with the selected full-review prompt', async () => {
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: 'Review result' } }] }) })
@@ -410,22 +411,8 @@ describe('automatic annotation transport', () => {
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [], issueType: 'clarity_style', detail: 'brief' })).rejects.toThrow('ui.noExtractableTextForAutomaticAnnotation')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', intensity: 'extreme' as never })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
     await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'custom', customIssue: '  ', detail: 'brief' })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
-    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', retryAttempt: 4 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
-    expect(aiRequest).toHaveBeenCalledTimes(1)
+    await expect(autoAnnotatePage(settings, { pageIndex: 0, blocks: [block], issueType: 'clarity_style', detail: 'brief', retryAttempt: -1 })).rejects.toThrow('ui.automaticAnnotationRequestInvalid')
+    expect(aiRequest).toHaveBeenCalledTimes(2)
   })
 
-  it.each([
-    ['ui.automaticAnnotationResponseInvalid', true],
-    ['模型未返回可显示的内容，请检查模型、额度或接口兼容性。', true],
-    ['请求失败（429）：请求过于频繁。', true],
-    ['请求失败（503）：服务暂时不可用。', true],
-    ['无法连接模型服务，请检查接口地址、网络或证书。', true],
-    ['请求失败（401）：身份验证失败。', false],
-    ['已达到模型设置中的响应超时时间，软件已停止等待。', false],
-    ['AI 请求已取消。', false],
-    ['ui.aiResponseTruncated', false],
-    ['ui.automaticAnnotationRequestInvalid', false]
-  ])('classifies bounded automatic retries for %s', (error, expected) => {
-    expect(isRetryableAutomaticAnnotationError(new Error(error))).toBe(expected)
-  })
 })

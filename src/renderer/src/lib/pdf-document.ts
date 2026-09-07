@@ -1,3 +1,4 @@
+import { normalizeMarks, readMarks, richTextHtml, type TextMark } from './annotation-rich-text'
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, type PDFFont, type PDFPage
@@ -751,11 +752,13 @@ export class PdfDocumentModel {
       const reason = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReason'))) || undefined
       const replyStatus = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyStatus'))) as AnnotationReplyStatus
       const replyContent = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReply')))
-      const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent } : undefined
+      const replyMarks = readMarks(replyContent, decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyMarks'))))
+      const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent, ...(replyMarks.length ? { marks: replyMarks } : {}) } : undefined
       return [{
         id, groupId, pageIndex: entry.pageIndex, kind,
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
+        marks: readMarks(decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))), decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckMarks')))),
         ...(reason ? { reason } : {}),
         color,
         reply,
@@ -880,7 +883,7 @@ export class PdfDocumentModel {
     return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
   }
 
-  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason }: PreparedAnnotation): string {
+  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason, marks }: PreparedAnnotation): string {
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const bounds = rectUnion(normalized)
     const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
@@ -890,6 +893,10 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('Subtype'), PDFName.of(subtypeFor(kind)))
     dictionary.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(bounds, geometry)))
     dictionary.set(PDFName.of('Contents'), pdfString(content))
+    if (marks?.length) {
+      dictionary.set(PDFName.of('PDFuckMarks'), pdfString(JSON.stringify(normalizeMarks(content, marks))))
+      dictionary.set(PDFName.of('RC'), pdfString(`<body xmlns="http://www.w3.org/1999/xhtml"><p>${richTextHtml(content, marks)}</p></body>`))
+    }
     dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
     if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
@@ -924,14 +931,15 @@ export class PdfDocumentModel {
     }
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string): Promise<string> {
-    const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason }])
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string, marks?: TextMark[]): Promise<string> {
+    const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason, marks }])
     return id
   }
 
   async updateAnnotation(id: string, content: string): Promise<void> {
     const dict = this.findAnnotation(id).dict
     dict.set(PDFName.of('Contents'), pdfString(content))
+    dict.delete(PDFName.of('PDFuckMarks')); dict.delete(PDFName.of('RC'))
     dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     await this.commit()
   }
@@ -953,10 +961,12 @@ export class PdfDocumentModel {
   private setAnnotationReply(dict: PDFDict, reply?: AnnotationReply): void {
     if (reply?.content.trim()) {
       dict.set(PDFName.of('PDFuckReplyStatus'), PDFName.of(reply.status))
-      dict.set(PDFName.of('PDFuckReply'), pdfString(reply.content.trim()))
+      dict.set(PDFName.of('PDFuckReply'), pdfString(reply.content))
+      dict.set(PDFName.of('PDFuckReplyMarks'), pdfString(JSON.stringify(normalizeMarks(reply.content, reply.marks))))
     } else {
       dict.delete(PDFName.of('PDFuckReplyStatus'))
       dict.delete(PDFName.of('PDFuckReply'))
+      dict.delete(PDFName.of('PDFuckReplyMarks'))
     }
   }
 
@@ -980,11 +990,17 @@ export class PdfDocumentModel {
     await this.commit()
   }
 
-  async updateAnnotationProperties(id: string, content: string, color: string, reply?: AnnotationReply): Promise<void> {
-    const dict = this.findAnnotation(id).dict
-    dict.set(PDFName.of('Contents'), pdfString(content))
-    this.setAnnotationColor(dict, color); this.setAnnotationReply(dict, reply)
-    dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+  async updateAnnotationProperties(id: string, content: string, color: string, reply?: AnnotationReply, marks?: TextMark[]): Promise<void> {
+    const entry = this.findAnnotation(id)
+    const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
+    const entries = groupId ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId) : [entry]
+    for (const { dict } of entries) {
+      dict.set(PDFName.of('Contents'), pdfString(content))
+      dict.set(PDFName.of('PDFuckMarks'), pdfString(JSON.stringify(normalizeMarks(content, marks))))
+      dict.set(PDFName.of('RC'), pdfString(`<body xmlns="http://www.w3.org/1999/xhtml"><p>${richTextHtml(content, marks)}</p></body>`))
+      this.setAnnotationColor(dict, color); this.setAnnotationReply(dict, reply)
+      dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    }
     await this.commit()
   }
 

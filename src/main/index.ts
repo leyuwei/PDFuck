@@ -142,14 +142,20 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
     controller.abort()
   }
   const timeout = setTimeout(() => abort('timeout'), timeoutMs)
+  let phase: 'first' | 'stream' = 'first'
+  let watchdog = setTimeout(() => abort('timeout'), Math.min(timeoutMs, Math.max(45_000, timeoutMs / 3)))
+  const senderClosed = () => abort('user')
+  sender.once('destroyed', senderClosed)
   try {
     const response = await net.fetch(target.toString(), { method: 'POST', headers, body: request.body, signal: controller.signal })
+    const retryAfter = response.headers.get('retry-after')
+    const retryAfterMs = retryAfter ? Math.max(0, /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) : undefined
     const reader = response.body?.getReader()
     if (!reader) {
       const body = await response.text()
       if (Buffer.byteLength(body, 'utf8') > MAX_AI_RESPONSE_BYTES) throw new Error('ui.aiResponseTooLarge')
       if (request.requestId && !sender.isDestroyed()) sender.send('ai:chunk', request.requestId, body)
-      return { status: response.status, statusText: response.statusText, body }
+      return { status: response.status, statusText: response.statusText, body, ...(Number.isFinite(retryAfterMs) ? { retryAfterMs } : {}) }
     }
     const decoder = new TextDecoder()
     let body = ''
@@ -157,6 +163,9 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
+      phase = 'stream'
+      clearTimeout(watchdog)
+      watchdog = setTimeout(() => abort('timeout'), Math.min(timeoutMs, Math.max(30_000, timeoutMs / 4)))
       receivedBytes += value.byteLength
       if (receivedBytes > MAX_AI_RESPONSE_BYTES) { await reader.cancel(); throw new Error('ui.aiResponseTooLarge') }
       const chunk = decoder.decode(value, { stream: true })
@@ -166,14 +175,18 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
     const tail = decoder.decode()
     body += tail
     if (tail && request.requestId && !sender.isDestroyed()) sender.send('ai:chunk', request.requestId, tail)
-    return { status: response.status, statusText: response.statusText, body }
+    return { status: response.status, statusText: response.statusText, body, ...(Number.isFinite(retryAfterMs) ? { retryAfterMs } : {}) }
   } catch (error) {
     if (activeRequest.abortReason === 'user') throw new Error('AI 请求已取消。')
-    if (activeRequest.abortReason === 'timeout') throw new Error('已达到模型设置中的响应超时时间，软件已停止等待。请缩短输入、改用更快的模型，或在确认服务商允许更长请求后调大超时。')
+    if (activeRequest.abortReason === 'timeout') throw new Error(phase === 'first' ? 'ui.aiFirstOutputTimeout' : 'ui.aiStreamIdleTimeout')
     if (error instanceof Error && error.message === 'ui.aiResponseTooLarge') throw error
+    const detail = error instanceof Error ? error.message : String(error)
+    if (/ERR_CERT|CERT_|certificate/iu.test(detail)) throw new Error('ui.aiCertificateFailure')
+    if (/ENOTFOUND|ERR_NAME_NOT_RESOLVED/iu.test(detail)) throw new Error('ui.aiDnsFailure')
     throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
   } finally {
-    clearTimeout(timeout)
+    clearTimeout(timeout); clearTimeout(watchdog)
+    sender.removeListener('destroyed', senderClosed)
     if (requestKey && activeAiRequests.get(requestKey) === activeRequest) activeAiRequests.delete(requestKey)
   }
 }

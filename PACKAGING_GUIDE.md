@@ -18,11 +18,18 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
-2.0.17 的矢量 EPS 导出使用 Poppler/Cairo 的 `pdftocairo`，发布机器和目标电脑均需安装 Poppler，或在应用资源 `poppler/bin` 中提供对应平台运行时。macOS 可用 `brew install poppler`。`test:eps-vector` 还需要 Ghostscript (`gs`) 和 `pdftoppm`，用于对 `tmp/try-eps.pdf` 的 EPS 结果回读、逐字和矢量路径检查。不得回退到整页位图 EPS。透明度受 PostScript 格式限制，由 Cairo 在必要的局部区域处理。
+2.0.24 扩展 `test:annotation-editor-ui`：通过数字、英文和中文文字截图比较验证斜体实际显示与快捷键取消，检查颜色和格式按钮同排同尺寸、默认折叠回复、无多余图标/提示，以及颜色、正文与回复样式在折叠状态保存后重开。使用已有测试入口与成品回归，不增加依赖。
 
-新增 `npm run test:popups-ui` 与 `npm run test:eps-vector`，已接入两个平台的源码与最终包发布流程。前者覆盖 16 种菜单边缘情形、top layer、12 位批注人颜色、小屏幕拖动与缩小恢复、多文档画布隔离、自定义检查要求重启持久化；后者验证源范例全部 147 个非空白文字字符保留为文字、路径保留、修改后页面、旋转、分页命名与取消导出。功能回归只使用模拟 AI，不发送真实文档到外部服务。
+2.0.23 新增 `test:annotation-dialog-ui`，接入 Windows/macOS 的源码与最终包流程。真实窗口验证 AI 建议按钮横排、标题栏避让、拖动不移动原生窗口、窗口缩小后的定位、部分可见文字双击、正文/回复/说明入口，以及连续 12 次通过关闭按钮、背景和 Escape 关闭并重开。富文本内容不变时必须保留文字节点，避免第一次点击选中后第二次点击失去目标。
 
-2.0.20 的实验室 AI 请求会将 SSE 从主进程、预加载桥逐块送到对应文档的界面，显示服务商实际返回的思考与回答；默认最大输出为 16,384 Token，并可在 1,024–131,072 之间配置。发布验证必须覆盖截断识别且不得自动重放截断、超时或取消请求，自动批注 JSON 模式的安全兼容降级，以及四项 AI 功能共用的实时状态面板。`test:ai-smoke` 断言首个思考块在请求 Promise 完成前到达；`test:lab-features-ui` 在真实窗口检查思考面板。`test:window-tabs` 还须用相似文件名验证 Unicode 字素簇不会被拆开、共同开头用满剩余宽度并只在溢出时省略、差异被突出、共同结尾被折叠且完整名称仍可访问。
+2.0.22 新增 `test:annotation-editor-ui`，与 `test:ai-smoke` 一起接入 Windows/macOS 的源码和最终包流程。验证双击统一编辑、移除旧列表入口、4550 字多行完整展开、标题下方滚动、四种局部样式与回复样式保存重开；AI 单元回归覆盖超过三次临时失败后成功、取消退避、预算扩充、结构修复、分批保全输入和重复引文位置。AI 恢复时限为配置超时的两倍，最低 30 秒、最高 5 分钟，不重放批注写回。未运行真实外部模型付费请求。
+
+
+2.0.17 的矢量 EPS 导出使用 Poppler/Cairo 的 `pdftocairo`，发布机器和目标电脑均需安装 Poppler，或在应用资源 `poppler/bin` 中提供对应平台运行时。macOS 可用 `brew install poppler`。`test:eps-vector` 还需要 Ghostscript (`gs`) 和 `pdftoppm`，用于对 `tmp/try-eps.pdf` 的 EPS 结果回读、逐字和矢量路径检查。该可选样例缺失时，测试会自动生成含文字、矢量、透明度、旋转与编辑内容的 PDF；报告必须注明实际样例和字符数。不得回退到整页位图 EPS。透明度受 PostScript 格式限制，由 Cairo 在必要的局部区域处理。
+
+新增 `npm run test:popups-ui` 与 `npm run test:eps-vector`，已接入两个平台的源码与最终包发布流程。前者覆盖 16 种菜单边缘情形、top layer、12 位批注人颜色、小屏幕拖动与缩小恢复、多文档画布隔离、自定义检查要求重启持久化；后者验证源范例全部非空白文字字符保留为文字、路径保留、修改后页面、旋转、分页命名与取消导出。功能回归只使用模拟 AI，不发送真实文档到外部服务。
+
+2.0.20 的实验室 AI 请求会将 SSE 从主进程、预加载桥逐块送到对应文档的界面，显示服务商实际返回的思考与回答；默认最大输出为 16,384 Token，并可在 1,024–131,072 之间配置。2.0.22 起发布验证覆盖截断识别、预算调整和分批恢复；取消请求不得重放，自动批注 JSON 模式的安全兼容降级，以及四项 AI 功能共用的实时状态面板。`test:ai-smoke` 断言首个思考块在请求 Promise 完成前到达；`test:lab-features-ui` 在真实窗口检查思考面板。`test:window-tabs` 还须用相似文件名验证 Unicode 字素簇不会被拆开、共同开头用满剩余宽度并只在溢出时省略、差异被突出、共同结尾被折叠且完整名称仍可访问。
 
 2.0.21 将实验室的首包等待拆分为“准备内容”和“请求已提交，等待模型首次输出”，不得继续用“正在连接模型”覆盖整个等待期。四项 AI 功能在首包前必须显示冻结的安全请求摘要，至少标明模型与输入范围，不得显示 API Key 或伪造推理。`test:lab-features-ui` 会让本地服务故意延迟首个 SSE 字节，先验证等待状态和摘要，再验证真实思考流。
 
@@ -57,13 +64,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.21
+.\scripts\package-windows.ps1 2.0.24
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.21
+bash scripts/package-macos.sh 2.0.24
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -120,7 +127,7 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 `test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及十种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、包含自动批注与自由画板的五功能按钮及快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、切换标签期间仍定向到原文档的 AI 回复写回、回复行与设置区可见性，以及保存重开后的回复持久化；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
 
-2.0.13 自动批注 / Automatic Annotation：发布验证必须覆盖全文与当前选区两种范围，以及 12 类完整且可持久化的问题清单：错别字/格式、语法、清晰度与地道表达、术语一致性、句间衔接、段落主旨、事实/引证/论据、数学推理、跨段落/章节一致性、章节结构、段落/章节重组、论文贡献。每种勾选问题必须单独完成一轮逐页请求，并在新问题轮次开始时清空上一类的滚动摘要；进度须同时显示问题轮次、名称、页码和总检查量。文档开头、邻近段落、跨页文字及本轮持续更新的篇章提纲只能作为上下文，选区任务不得在范围外落注。结构问题须说明影响并给出移动、合并、拆分、补桥、重排或补证据等具体动作。六类结果（高亮、替换、删除、下划线、插入文字、自由批注）均须可保存、重开和一次撤销；“仅修订文本 / 简短说明 / 详细说明”必须直接写入批注内容。精确原文锚点必须覆盖完整命中范围。宽松、均衡（默认）、严格三档必须持久化且不得按配额凑批注。前三次可重试模型失败不得显示人工决策，第四次失败后才显示重试/跳过/结束；写回失败不可自动重放，重试中结束后迟到响应不可落注。还应验证暂停、继续、结束及首次隐私与版权确认。Release validation must cover all 12 persistent issue choices, one complete page pass per selected issue with a reset per-issue rolling summary, scope-safe context, concrete restructuring advice, exact-quote geometry, all six persisted annotation types, three persistent intensity levels without quotas, automatic retries, single writeback, pause/resume/end controls, and the one-time privacy and copyright confirmation.
+2.0.13 自动批注 / Automatic Annotation：发布验证必须覆盖全文与当前选区两种范围，以及 12 类完整且可持久化的问题清单：错别字/格式、语法、清晰度与地道表达、术语一致性、句间衔接、段落主旨、事实/引证/论据、数学推理、跨段落/章节一致性、章节结构、段落/章节重组、论文贡献。每种勾选问题必须单独完成一轮逐页请求，并在新问题轮次开始时清空上一类的滚动摘要；进度须同时显示问题轮次、名称、页码和总检查量。文档开头、邻近段落、跨页文字及本轮持续更新的篇章提纲只能作为上下文，选区任务不得在范围外落注。结构问题须说明影响并给出移动、合并、拆分、补桥、重排或补证据等具体动作。六类结果（高亮、替换、删除、下划线、插入文字、自由批注）均须可保存、重开和一次撤销；“仅修订文本 / 简短说明 / 详细说明”必须直接写入批注内容。精确原文锚点必须覆盖完整命中范围。宽松、均衡（默认）、严格三档必须持久化且不得按配额凑批注。2.0.22 不再固定重试三次：按故障类型调整参数、预算或输入分批，在有界总时限内恢复，无法恢复再显示重试/跳过/结束；写回失败不可自动重放，重试中结束后迟到响应不可落注。还应验证暂停、继续、结束及首次隐私与版权确认。Release validation must cover all 12 persistent issue choices, one complete page pass per selected issue with a reset per-issue rolling summary, scope-safe context, concrete restructuring advice, exact-quote geometry, all six persisted annotation types, three persistent intensity levels without quotas, automatic retries, single writeback, pause/resume/end controls, and the one-time privacy and copyright confirmation.
 
 `test:creative-tools-ui` 会在真实 Electron 窗口先验证自由画板三个控件分组等高对齐、操作提示可见、按浮窗自身宽度响应式重排且无溢出，再验证绘制、移动、缩放、画笔粗细/颜色、PNG 导出和加入当前页；同时遍历箭头、椭圆、方框及线宽、透明边框/填充、线型、箭头大小/样式，并拦截完全不可见图形。之后保存、重启并确认三个生成对象都恢复为可编辑图片。Windows/macOS 发布脚本会在源码态与最终打包程序上各执行一次，并把 PNG/PDF 视觉检查产物保存在 `output/playwright/`。
 

@@ -74,7 +74,7 @@ async function main() {
     assert.equal(cancellation.survivorResponse.status, 200)
     assert.match(cancellation.survivorResponse.body, /survived/)
     assert.equal(cancellation.reusedResponse.status, 200)
-    assert.match(cancellation.timeoutMessage, /响应超时时间/)
+    assert.match(cancellation.timeoutMessage, /aiFirstOutputTimeout/)
     assert.doesNotMatch(cancellation.timeoutMessage, /已取消/)
     console.log(JSON.stringify({ status: result.status, endpoint: `${baseUrl}/chat/completions`, body: result.body, cancellation }))
   } finally {

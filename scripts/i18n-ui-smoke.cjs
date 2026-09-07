@@ -240,10 +240,10 @@ async function main() {
     await documentPage.click({ button: 'right', position: { x: 220, y: 170 } })
     await page.locator('.context-menu').getByText('Nota', { exact: true }).click()
     const annotationDialog = page.locator('.annotation-dialog')
-    await annotationDialog.locator('textarea').fill('Author smoke annotation')
+    await annotationDialog.locator('.rich-editor-content').fill('Author smoke annotation')
     await annotationDialog.getByRole('button', { name: 'Confirmar', exact: true }).click()
     await page.locator('.annotation-row .annotation-author-badge').getByText('Revisor Uno', { exact: true }).waitFor()
-    assert.equal(await page.locator('.annotation-header').evaluate((element) => element.children.length), 5, 'author badges must not add a list column')
+    assert.equal(await page.locator('.annotation-header').evaluate((element) => element.children.length), 4, 'author badges must not add a list column')
     const authoredRow = page.locator('.annotation-row').filter({ hasText: 'Author smoke annotation' }).first()
     const authorLayout = await authoredRow.evaluate((row) => {
       const content = row.querySelector('.annotation-content'), author = row.querySelector('.annotation-author-meta'), value = row.querySelector('.annotation-content-value')

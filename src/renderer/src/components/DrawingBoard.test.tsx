@@ -64,7 +64,7 @@ describe('DrawingBoard', () => {
     expect(context.lineWidth).toBe(12)
     expect(context.lineTo).toHaveBeenCalledWith(80, 90)
 
-    const actions = container.querySelectorAll<HTMLButtonElement>('.drawing-board-window > footer button')
+    const actions = container.querySelectorAll<HTMLButtonElement>('.drawing-board-window footer button')
     await act(async () => actions[0].click())
     expect(onExportPng).toHaveBeenCalledWith(expect.any(Uint8Array))
     await act(async () => actions[1].click())

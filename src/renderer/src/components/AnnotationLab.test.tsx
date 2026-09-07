@@ -376,7 +376,7 @@ describe('AnnotationLab settings and availability', () => {
 
     expect(annotate).toHaveBeenCalledTimes(2)
     const firstRequest = annotate.mock.calls[0][1]
-    expect(firstRequest).toMatchObject({ pageIndex: 1, issueType: 'cross_context_consistency', detail: 'detailed', intensity: 'strict', retryAttempt: 0 })
+    expect(firstRequest).toMatchObject({ pageIndex: 1, issueType: 'cross_context_consistency', detail: 'detailed', intensity: 'strict' })
     expect(firstRequest.blocks.map((block) => block.text)).toEqual(['SelectedFirst'])
     expect(firstRequest.opening).toContain('OpeningContext')
     expect(firstRequest.previous).toContain('OpeningContext')
@@ -420,41 +420,7 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.unmount())
   })
 
-  it('retries a rejected model response three times with unique request ids and writes only the accepted result', async () => {
-    localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
-    automaticIssues('typos_formatting')
-    const page = automaticPage(0, 'mistkae')
-    const responses = Array.from({ length: 4 }, () => deferred<AutomaticAnnotationModelResponse>())
-    let call = 0
-    const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockImplementation(() => responses[call++].promise)
-    const onAddAutomaticAnnotations = vi.fn()
-    const root = createRoot(container)
-    await act(async () => root.render(<AnnotationLab getAutomaticAnnotationPages={async () => [page]} onAddAutomaticAnnotations={onAddAutomaticAnnotations} onAdd={() => undefined} onCopy={() => undefined} />))
-    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-annotation-launch')!.click())
-    await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
-    await flushWork()
-
-    for (let index = 0; index < 3; index += 1) {
-      await act(async () => { responses[index].reject(new Error('ui.automaticAnnotationResponseInvalid')); await responses[index].promise.catch(() => undefined) })
-      await flushWork()
-      expect(annotate).toHaveBeenCalledTimes(index + 2)
-      expect(container.querySelector('.automatic-annotation-progress')?.textContent).toContain(`自动重试 ${index + 1}/3`)
-      expect(container.querySelector('.automatic-annotation-controls')?.textContent).not.toContain('重试本页')
-    }
-
-    await act(async () => {
-      responses[3].resolve(automaticResponse(0, [{ action: 'replace', blockId: 'p1-b1', quote: 'mistkae', occurrence: 0, insertSide: null, replacementText: 'mistake', reason: 'Correct the spelling.' }]))
-      await responses[3].promise
-    })
-    await flushWork()
-    expect(annotate.mock.calls.map((entry) => entry[1].retryAttempt)).toEqual([0, 1, 2, 3])
-    expect(new Set(annotate.mock.calls.map((entry) => entry[2])).size).toBe(4)
-    expect(onAddAutomaticAnnotations).toHaveBeenCalledTimes(1)
-    expect(container.querySelector('.automatic-annotation-progress.complete')).not.toBeNull()
-    await act(async () => root.unmount())
-  })
-
-  it('asks for a decision only after all three automatic retries fail', async () => {
+  it('asks for a decision when shared recovery reports failure', async () => {
     localStorage.setItem('pdfuck.lab.full-review-consent.v1', 'accepted')
     automaticIssues('typos_formatting')
     const annotate = vi.spyOn(aiPolish, 'autoAnnotatePage').mockRejectedValue(new Error('ui.automaticAnnotationResponseInvalid'))
@@ -464,13 +430,13 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
     await flushWork()
 
-    expect(annotate).toHaveBeenCalledTimes(4)
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('自动重试 3 次仍失败')
+    expect(annotate).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('返回')
     expect(container.querySelector('.automatic-annotation-controls')?.textContent).toContain('重试本页')
     expect(container.querySelector('.automatic-annotation-controls')?.textContent).toContain('跳过本页')
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.automatic-annotation-controls button')].find((button) => button.textContent === '跳过本页')!.click())
     await flushWork()
-    expect(annotate).toHaveBeenCalledTimes(4)
+    expect(annotate).toHaveBeenCalledTimes(1)
     expect(container.querySelector('.automatic-annotation-progress.complete')).not.toBeNull()
     await act(async () => root.unmount())
   })
@@ -549,6 +515,8 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.automatic-start')!.click())
     await flushWork()
     await act(async () => { first.reject(new Error('ui.automaticAnnotationResponseInvalid')); await first.promise.catch(() => undefined) })
+    await flushWork()
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.automatic-annotation-controls button')].find((button) => button.textContent === '重试本页')!.click())
     await flushWork()
     expect(annotate).toHaveBeenCalledTimes(2)
     const requestId = annotate.mock.calls[1][2]

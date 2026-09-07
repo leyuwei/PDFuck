@@ -65,7 +65,7 @@ async function main() {
           assert.ok(geometry.maxRight < 301, `neighboring column: ${JSON.stringify(geometry)}`)
           const live = frames.filter(f => f.count)
           assert.ok(live.length > 10 && frames.slice(frames.findIndex(f => f.count)).every(f => f.count), 'live selection disappeared')
-          assert.ok(live.every(f => f.maxRight < 301 / 612), 'live selection crossed column gutter')
+          assert.ok(live.every(f => f.maxRight < 301 / 612), `live selection crossed column gutter: ${JSON.stringify({ page: test.page, highZoom, reverse, from, to, frames: live.filter(f => f.maxRight >= 301 / 612) })}`)
           await doc.focus()
           await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
           const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
@@ -74,7 +74,7 @@ async function main() {
           assert.equal(normalize(copied), normalize(test.text), `page ${test.page}: clipboard`)
           const screenshot = path.join(root, 'output', 'playwright', `selection-test3-${version}-page-${test.page}-${highZoom ? 'high' : 'normal'}-${reverse ? 'reverse' : 'forward'}.png`)
           fs.mkdirSync(path.dirname(screenshot), { recursive: true })
-          await page.screenshot({ path: screenshot })
+          await page.screenshot({ path: screenshot }).catch(error => { error.message = `page ${test.page}, highZoom=${highZoom}, reverse=${reverse}: ${error.message}`; throw error })
           reports.push({ page: test.page, zoom: await page.locator('.zoom-value').textContent(), reverse, geometry, frames: live.length, copied, screenshot })
         }
       }

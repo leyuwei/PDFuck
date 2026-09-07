@@ -174,6 +174,7 @@ export interface AiRequest {
 }
 
 export interface AiResponse {
+  retryAfterMs?: number
   status: number
   statusText: string
   body: string

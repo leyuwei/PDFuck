@@ -21,7 +21,7 @@
 }
 
 .shape-creator-modal > header,
-.shape-creator-modal > footer {
+.shape-creator-modal .window-scroll-body > footer {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -64,11 +64,11 @@
 .shape-creator-color-control input[type="checkbox"] { width: 14px; height: 14px; margin: 0; accent-color: var(--theme-accent, #5575de); }
 .shape-creator-message { margin: -2px 20px 12px; padding: 8px 10px; border-radius: 7px; background: #fff6dc; color: #8a681e; font-size: 10px; }
 .shape-creator-message.error { background: #fff0f2; color: #aa3b47; }
-.shape-creator-modal > footer { justify-content: flex-end; border-top: 1px solid #e5e9f0; border-bottom: 0; }
+.shape-creator-modal .window-scroll-body > footer { justify-content: flex-end; border-top: 1px solid #e5e9f0; border-bottom: 0; }
 
 .theme-dark .shape-creator-modal { border-color: #475a73; background: #1c2738; color: #e7eef9; }
 .theme-dark .shape-creator-modal > header,
-.theme-dark .shape-creator-modal > footer { border-color: #40516a; background: #202c3e; }
+.theme-dark .shape-creator-modal .window-scroll-body > footer { border-color: #40516a; background: #202c3e; }
 .theme-dark .shape-creator-modal h2 { color: #eef4fd; }
 .theme-dark .shape-creator-modal header p,
 .theme-dark .shape-creator-preview > span { color: #afbdd0; }

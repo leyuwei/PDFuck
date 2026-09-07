@@ -45,8 +45,11 @@ async function compositionCommit(locator, value) {
   await locator.evaluate((element, text) => {
     element.focus()
     element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'composition' }))
-    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
-    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, text)
+    if (element.isContentEditable) element.textContent = text
+    else {
+      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+      Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, text)
+    }
     element.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertCompositionText', isComposing: true }))
     element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: text }))
   }, value)
@@ -91,7 +94,7 @@ async function main() {
     await page.locator('.nav-rail').getByRole('button', { name: '批注', exact: true }).click()
     await page.locator('.tool-panel .tool-button').filter({ hasText: '自由批注' }).click()
     await page.locator('.pdf-page').first().click({ position: { x: 140, y: 150 } })
-    const firstAnnotationInput = page.locator('.annotation-dialog textarea')
+    const firstAnnotationInput = page.locator('.annotation-dialog .rich-editor-content')
     await firstAnnotationInput.waitFor()
     await firstAnnotationInput.fill('Duplicate delete regression')
     await page.locator('.annotation-dialog').getByRole('button', { name: '确定', exact: true }).click()
@@ -112,15 +115,15 @@ async function main() {
     // After the duplicate deletion, a new annotation must still accept real
     // typing, a native window focus round-trip, and a CJK composition commit.
     await page.locator('.pdf-page').first().click({ position: { x: 240, y: 210 } })
-    const annotationInput = page.locator('.annotation-dialog textarea')
+    const annotationInput = page.locator('.annotation-dialog .rich-editor-content')
     await annotationInput.waitFor()
     await annotationInput.pressSequentially('Native input 123')
-    assert.equal(await annotationInput.inputValue(), 'Native input 123')
+    assert.equal(await annotationInput.innerText(), 'Native input 123')
     await refocusNativeWindow(app)
     await page.waitForTimeout(120)
     assert.equal(await annotationInput.evaluate((element) => document.activeElement === element), true, 'native window refocus lost the annotation editor')
     await compositionCommit(annotationInput, '中文组合输入正常')
-    assert.equal(await annotationInput.inputValue(), '中文组合输入正常')
+    assert.equal(await annotationInput.innerText(), '中文组合输入正常')
     await page.locator('.annotation-dialog').getByRole('button', { name: '取消', exact: true }).click()
 
     await page.locator('.nav-rail').getByRole('button', { name: '编辑', exact: true }).click()

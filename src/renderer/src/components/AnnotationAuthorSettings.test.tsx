@@ -26,7 +26,7 @@ describe('annotation author controls', () => {
       { id: 'a', pageIndex: 0, kind: 'highlight', author: 'Alice', content: 'First', color: '#ffdd45', rects: [] },
       { id: 'b', pageIndex: 1, kind: 'note', author: 'Bob', content: 'Second', color: '#e68b13', rects: [] }
     ]} />))
-    expect(container.querySelector('.annotation-header')?.children).toHaveLength(5)
+    expect(container.querySelector('.annotation-header')?.children).toHaveLength(4)
     const badges = [...container.querySelectorAll<HTMLElement>('.annotation-author-badge')]
     expect(badges.map((badge) => badge.textContent)).toEqual(['Alice', 'Bob'])
     expect(badges[0].getAttribute('style')).not.toBe(badges[1].getAttribute('style'))

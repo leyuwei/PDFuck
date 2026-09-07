@@ -13,6 +13,14 @@ function keyForChinese(value: string): TranslationKey {
 }
 
 describe('interface translations', () => {
+  it('localizes AI transport failures after the Electron error envelope in all languages', () => {
+    for (const language of INTERFACE_LANGUAGES) {
+      setInterfaceLanguage(language)
+      expect(translateUiText("Error invoking remote method 'ai:request': Error: ui.aiFirstOutputTimeout")).toBe(translateMessage(language, 'ui.aiFirstOutputTimeout'))
+      expect(ui('ui.richTextHint')).not.toContain('ui.')
+    }
+  })
+
   it('resolves every semantic message code in all ten supported languages', () => {
     for (const [key, translations] of Object.entries(messages) as Array<[TranslationKey, (typeof messages)[TranslationKey]]>) {
       expect(key).toMatch(/^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+$/)

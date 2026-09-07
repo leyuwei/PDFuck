@@ -16,7 +16,7 @@ async function createFixture(file, version) {
     page.drawText(`Series ${row + 1}: vector labels and editable text`, { x: 35, y: 255 - row * 26, size: 10, font })
     for (let column = 0; column < 4; column += 1) page.drawLine({ start: { x: 290 + column * 26, y: 258 - row * 26 }, end: { x: 304 + column * 26, y: 258 - row * 26 }, thickness: 2, color: rgb(row / 8, column / 4, .55) })
   }
-  page.drawRectangle({ x: 20, y: 20, width: 420, height: 300, borderWidth: .5 })
+  page.drawRectangle({ x: 20, y: 20, width: 420, height: 300, borderWidth: .5, borderColor: rgb(0, 0, 0) })
   await fs.writeFile(file, await document.save())
 }
 

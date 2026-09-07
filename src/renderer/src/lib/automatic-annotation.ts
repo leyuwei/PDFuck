@@ -150,7 +150,7 @@ function noInsertedSpace(left: string, right: string): boolean {
 }
 
 /** Preserve every non-whitespace source character so model quotes remain resolvable. */
-function blockText(words: WordBox[]): string {
+export function blockText(words: WordBox[]): string {
   let value = ''
   for (const word of words) {
     const text = word.text.replace(/[\t\r\n\u00a0 ]+/gu, ' ').trim()

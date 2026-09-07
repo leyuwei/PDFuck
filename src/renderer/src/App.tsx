@@ -1,3 +1,4 @@
+import type { TextMark } from './lib/annotation-rich-text'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
 import { activeBookmarkIdForPosition, BookmarkPanel } from './components/BookmarkPanel'
@@ -1001,11 +1002,11 @@ export default function App() {
     setImageDraft(undefined)
     setStatus('已取消添加图片')
   }, [imageDraft])
-  const addSelectionAnnotations = useCallback(async (kind: AnnotationKind, value: TextSelection, content = '', color?: string, fallbackPageIndex = currentPage) => {
+  const addSelectionAnnotations = useCallback(async (kind: AnnotationKind, value: TextSelection, content = '', color?: string, fallbackPageIndex = currentPage, marks?: TextMark[]) => {
     const segments = value.segments?.length ? value.segments : [{ pageIndex: fallbackPageIndex, text: value.text, rects: value.rects }]
     await mutate(async (model) => {
       const groupId = segments.length > 1 ? `pdfuck-group-${Date.now()}-${crypto.randomUUID()}` : undefined
-      for (const segment of segments) await model.addAnnotation(segment.pageIndex, kind, segment.rects, content, undefined, color, groupId, preferences.annotationAuthor)
+      for (const segment of segments) await model.addAnnotation(segment.pageIndex, kind, segment.rects, content, undefined, color, groupId, preferences.annotationAuthor, undefined, marks)
     }, segments.length > 1 ? `已在 ${segments.length} 页添加${translateMessage('zh', KIND_LABEL[kind])}` : `${translateMessage('zh', KIND_LABEL[kind])}已添加`, false)
   }, [currentPage, mutate, preferences.annotationAuthor])
 
@@ -1029,27 +1030,40 @@ export default function App() {
       await mutate((modelValue) => modelValue.replacePageText(action.pageIndex, edit.region.sourceRects, edit.text, edit.style, image, replacementRect, edit.backgroundColor), '页面文字已更新；可继续点击当前页其他文本块')
     } else if (action.tool === 'highlight' && action.selection) {
       const annotation = await askAnnotation({ kind: 'highlight', optional: true }); if (annotation === null || !originIsActive()) return
-      await addSelectionAnnotations('highlight', action.selection, annotation.content, annotation.color, action.pageIndex)
+      await addSelectionAnnotations('highlight', action.selection, annotation.content, annotation.color, action.pageIndex, annotation.marks)
     } else if (action.tool === 'replace' && action.selection) {
       const annotation = await askAnnotation({ kind: 'replace' }); if (annotation === null || !originIsActive()) return
-      await addSelectionAnnotations('replace', action.selection, annotation.content, annotation.color, action.pageIndex)
+      await addSelectionAnnotations('replace', action.selection, annotation.content, annotation.color, action.pageIndex, annotation.marks)
     } else if (action.tool === 'delete_text' && action.selection) await addSelectionAnnotations('delete', action.selection, '标记删除', undefined, action.pageIndex)
     else if (action.tool === 'underline' && action.selection) await addSelectionAnnotations('underline', action.selection, '', undefined, action.pageIndex)
     else if ((action.tool === 'note' || action.tool === 'insert') && action.point) {
       const kind: AnnotationKind = action.tool
       const annotation = await askAnnotation({ kind }); if (annotation === null || !originIsActive()) return
-      await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], annotation.content, action.point, annotation.color, undefined, preferences.annotationAuthor), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
+      await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], annotation.content, action.point, annotation.color, undefined, preferences.annotationAuthor, undefined, annotation.marks), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
     }
   }, [addSelectionAnnotations, mutate, preferences.annotationAuthor])
 
+  const requestAnnotationSuggestion = useCallback((annotation: AnnotationRecord) => {
+    const related = annotation.groupId ? annotations.filter((candidate) => candidate.groupId === annotation.groupId) : [annotation]
+    setAnnotationSuggestionRequest({
+      documentId: activeDocumentIdRef.current,
+      token: nextAnnotationSuggestionToken.current++,
+      annotationId: annotation.id,
+      annotationContent: annotation.content,
+      pageIndex: annotation.pageIndex,
+      kind: annotation.kind,
+      anchors: related.map((candidate) => ({ pageIndex: candidate.pageIndex, rects: candidate.rects.map((rect) => ({ ...rect })) }))
+    })
+  }, [annotations])
   const editAnnotation = useCallback(async (annotation: AnnotationRecord) => {
     if (encrypted) return
     setModule('annotate'); setToolPanelCollapsed(false); setTool('none')
     const model = modelRef.current, documentId = activeDocumentIdRef.current
-    const value = await askAnnotation({ kind: annotation.kind, initial: annotation.content, initialColor: annotation.color, reply: annotation.reply, optional: true, edit: true })
+    const value = await askAnnotation({ kind: annotation.kind, annotationId: annotation.id, initial: annotation.content, marks: annotation.marks, initialColor: annotation.color, reply: annotation.reply, optional: true, edit: true })
     if (value === null || modelRef.current !== model || activeDocumentIdRef.current !== documentId) return
-    await mutate((model) => model.updateAnnotationProperties(annotation.id, value.content, value.color, value.reply), '批注内容、颜色和回复已更新', false)
-  }, [encrypted, mutate])
+    await mutate((model) => model.updateAnnotationProperties(annotation.id, value.content, value.color, value.reply, value.marks), '批注内容、颜色和回复已更新', false)
+    if (value.suggest) requestAnnotationSuggestion({ ...annotation, content: value.content, marks: value.marks, color: value.color, reply: value.reply })
+  }, [encrypted, mutate, requestAnnotationSuggestion])
 
   const handleSelectionChange = useCallback((pageIndex: number, value?: TextSelection) => {
     setSelection(value ? bindTextSelectionToPage(pageIndex, value) : undefined)
@@ -1158,18 +1172,6 @@ export default function App() {
     setAnnotationSuggestionsEnabled(enabled); saveAnnotationSuggestionsEnabled(enabled)
     if (!enabled) setAnnotationSuggestionRequest(undefined)
   }, [])
-  const requestAnnotationSuggestion = useCallback((annotation: AnnotationRecord) => {
-    const related = annotation.groupId ? annotations.filter((candidate) => candidate.groupId === annotation.groupId) : [annotation]
-    setAnnotationSuggestionRequest({
-      documentId: activeDocumentIdRef.current,
-      token: nextAnnotationSuggestionToken.current++,
-      annotationId: annotation.id,
-      annotationContent: annotation.content,
-      pageIndex: annotation.pageIndex,
-      kind: annotation.kind,
-      anchors: related.map((candidate) => ({ pageIndex: candidate.pageIndex, rects: candidate.rects.map((rect) => ({ ...rect })) }))
-    })
-  }, [annotations])
   const consumeAnnotationSuggestionRequest = useCallback((token: number) => {
     setAnnotationSuggestionRequest((current) => current?.token === token ? undefined : current)
   }, [])
@@ -1211,10 +1213,6 @@ export default function App() {
     setSelectedAnnotation(undefined); setSelectedAnnotationIds([]); setFocusedAnnotation(undefined)
     performAnnotationDeletion(selectedGroups.map((group) => group.representative), selectedGroups.flatMap((group) => group.trackedIds), (deleted) => `已删除 ${deleted} 条批注，可按 Ctrl/⌘Z 撤销`)
   }, [annotations, performAnnotationDeletion])
-  const inlineEditAnnotation = useCallback(async (id: string, content: string) => {
-    const model = modelRef.current, documentId = activeDocumentIdRef.current; if (!model) return
-    try { await runDocumentOperation(documentId, async () => { await model.updateAnnotation(id, content); syncModel('批注内容已在列表中更新', false, model, documentId) }) } catch (error) { showError(error) }
-  }, [runDocumentOperation, showError, syncModel])
   const recolorAnnotation = useCallback(async (id: string, color: string) => {
     await mutate((model) => model.updateAnnotationColor(id, color), '批注颜色已更新', false)
   }, [mutate])
@@ -1442,12 +1440,12 @@ export default function App() {
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} />{moduleName(key)}</button>)}<small>PDFuck<br />v{APP_VERSION}</small></nav>
       <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
       {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} imageDraftBusy={imagePlacementBusy} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationReply={(annotation, reply) => void replyAnnotation(annotation.id, reply)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={(draft) => { if (!pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) setImageDraft(draft) }} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
-      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} aiSuggestionsEnabled={annotationSuggestionsEnabled} onAiSuggestion={requestAnnotationSuggestion} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={inlineEditAnnotation} onColor={recolorAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
+      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} imageDraftBusy={imagePlacementBusy} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={(draft) => { if (!pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) setImageDraft(draft) }} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui("ui.dropToOpenPdf")}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
     {draggingDocumentTransfer && <div className="document-transfer-overlay"><div><b>{ui("ui.dropToMoveIntoDocumentTabs")}</b><span>{ui("ui.theCurrentPdfWillReturnHereFromItsSeparateWindow")}</span></div></div>}
-    {dialog?.type === 'annotation' && <AnnotationDialog state={dialog.value} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
+    {dialog?.type === 'annotation' && <AnnotationDialog aiSuggestionsEnabled={annotationSuggestionsEnabled} state={dialog.value} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {dialog?.type === 'page_numbers' && <PageNumberDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void mutate((model) => model.addPageNumbers(value, (text, rect, style) => styledTextRaster(text, rect, { text, style })), '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销') }} onDelete={() => { setDialog(null); void mutate((model) => model.deletePageNumbers(), '已删除添加的页码，可按 Ctrl/⌘Z 撤销') }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}

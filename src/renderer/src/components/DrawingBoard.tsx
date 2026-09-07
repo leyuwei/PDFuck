@@ -1,3 +1,4 @@
+import { ScrollWindow } from './ScrollWindow'
 import { floatingTop, clampFloatingPosition } from '../lib/floating-window'
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import './drawing-board.css'
@@ -79,7 +80,7 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
   const descriptionId = useId()
   const canvasHintId = useId()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const windowRef = useRef<HTMLElement>(null)
+  const windowRef = useRef<HTMLDivElement>(null)
   const stroke = useRef<{ pointerId: number } | undefined>(undefined)
   const stopWindowDrag = useRef<() => void>(() => undefined)
   const [brushSize, setBrushSize] = useState(6)
@@ -208,7 +209,7 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
     stopWindowDrag.current = stop
   }
 
-  return <section ref={windowRef} hidden={hidden} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
+  return <ScrollWindow ref={windowRef} hidden={hidden} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
     <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
       <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output dir="ltr" aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
@@ -218,5 +219,5 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
     <div className="drawing-board-surface-heading"><b>{labels.drawingArea}</b><span><i aria-hidden="true">⤢</i>{labels.moveResizeHint}</span></div>
     <div className={`drawing-board-surface${hasInk ? ' has-ink' : ''}`}><canvas ref={canvasRef} width={INITIAL_WIDTH} height={INITIAL_HEIGHT} tabIndex={0} aria-label={labels.drawingArea} aria-describedby={!hasInk ? canvasHintId : undefined} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={endStroke} onPointerCancel={endStroke} onLostPointerCapture={endStroke} /><div id={canvasHintId} className="drawing-board-empty"><DrawingBoardIcon size={30} /><b>{labels.startDrawingHere}</b><small>{labels.drawingHint}</small></div></div>
     <footer><span role="alert">{error}</span><button type="button" disabled={!hasInk || Boolean(busy)} onClick={() => void run('export')}>{labels.exportPng}</button><button type="button" className="primary" disabled={!hasInk || Boolean(busy)} onClick={() => void run('add')}>{labels.addToPage}</button></footer>
-  </section>
+  </ScrollWindow>
 }

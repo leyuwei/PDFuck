@@ -17,30 +17,55 @@ describe('AnnotationPanel AI suggestion trigger', () => {
   beforeEach(() => { setInterfaceLanguage('en'); container = document.createElement('div'); document.body.append(container) })
   afterEach(() => { container.remove(); setInterfaceLanguage('zh') })
 
-  it('only requests AI suggestions from the explicit annotation-settings button', async () => {
+  it('opens the shared editor on content double-click without inline editors or row settings', async () => {
     const root = createRoot(container)
-    const onAiSuggestion = vi.fn()
-    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[annotation]} aiSuggestionsEnabled onAiSuggestion={onAiSuggestion} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
+    const onEdit = vi.fn()
+    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[annotation]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={onEdit} onReply={async () => undefined} onDelete={() => undefined} />))
 
-    await act(async () => container.querySelector('.annotation-row')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
-    expect(onAiSuggestion).not.toHaveBeenCalled()
-
-    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-settings-button')!.click())
-    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-ai-suggestion')!.click())
-    expect(onAiSuggestion).toHaveBeenCalledTimes(1)
-    expect(onAiSuggestion).toHaveBeenCalledWith(annotation)
+    await act(async () => container.querySelector('.annotation-content-value')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(onEdit).toHaveBeenCalledOnce()
+    expect(onEdit).toHaveBeenCalledWith(annotation)
+    expect(container.querySelector('textarea')).toBeNull()
+    expect(container.querySelector('.annotation-settings-button')).toBeNull()
     await act(async () => root.unmount())
   })
 
-  it('shows a multiline custom reply in both the annotation row and reply settings', async () => {
+  it('opens from reply and reason text and keeps pointer-selected rows still', async () => {
+    const root = createRoot(container), onEdit = vi.fn()
+    const scroll = vi.fn()
+    const originalScroll = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scroll
+    const item = { ...annotation, reason: 'Reason text', reply: { status: 'custom' as const, content: 'Reply text' } }
+    const render = async (selectedId?: string) => act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[item]} selectedId={selectedId} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={onEdit} onReply={async () => undefined} onDelete={() => undefined} />))
+    try {
+      await render()
+      for (const selector of ['.annotation-content-value', '.annotation-reply-preview', '.annotation-reason']) {
+        await act(async () => container.querySelector(selector)!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+      }
+      expect(onEdit).toHaveBeenCalledTimes(3)
+      const textNode = container.querySelector('.annotation-content-value')!.firstElementChild!.firstElementChild!
+      await act(async () => textNode.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      await render(item.id)
+      expect(scroll).not.toHaveBeenCalled()
+      expect(textNode.isConnected).toBe(true)
+      expect(container.querySelector('.annotation-content-value')!.firstElementChild!.firstElementChild).toBe(textNode)
+      await render()
+      await render(item.id)
+      expect(scroll).toHaveBeenCalledOnce()
+    } finally {
+      await act(async () => root.unmount())
+      HTMLElement.prototype.scrollIntoView = originalScroll
+    }
+  })
+
+  it('shows a multiline custom reply in the annotation row', async () => {
     const root = createRoot(container)
     const reply = '## AI suggestion\n\n- Clarify the method.\n- Align the conclusion.'
-    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ ...annotation, reply: { status: 'custom', content: reply } }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
+    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ ...annotation, reply: { status: 'custom', content: reply } }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
 
     expect(container.querySelector('.annotation-reply-preview')?.textContent).toContain('AI suggestion')
-    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-settings-button')!.click())
-    expect(container.querySelector('.annotation-current-reply')?.textContent).toContain('Align the conclusion.')
-    expect(container.querySelector<HTMLTextAreaElement>('.custom-reply-row textarea')?.value).toBe(reply)
+    expect(container.querySelector('.annotation-reply-preview')?.textContent).toContain('Align the conclusion.')
+    expect(container.querySelector('.annotation-row-settings')).toBeNull()
     await act(async () => root.unmount())
   })
 
@@ -48,7 +73,7 @@ describe('AnnotationPanel AI suggestion trigger', () => {
     const root = createRoot(container)
     const content = 'Use the corrected term.'
     const reason = 'The original term conflicts with the definition.'
-    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ ...annotation, kind: 'replace', content, reason }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onColor={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
+    await act(async () => root.render(<AnnotationPanel collapsed={false} annotationAuthor="PDFuck" showAnnotationAuthors={false} theme="light" accent="#5575de" annotations={[{ ...annotation, kind: 'replace', content, reason }]} onAuthorSettings={() => undefined} onToggle={() => undefined} onSelect={() => undefined} onEdit={async () => undefined} onReply={async () => undefined} onDelete={() => undefined} />))
 
     expect(container.querySelector('.annotation-content-value')?.textContent).toBe(content)
     expect(container.querySelector('.annotation-content-value')?.textContent).not.toContain(reason)

@@ -21,6 +21,8 @@ describe('AnnotationDialog focus', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    document.queryCommandState = () => false
+    document.queryCommandValue = () => ''
     container = document.createElement('div')
     document.body.append(container)
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0))
@@ -39,7 +41,7 @@ describe('AnnotationDialog focus', () => {
       root.render(<AnnotationDialog state={{ kind: 'note' }} onCancel={() => undefined} onSubmit={() => undefined} />)
       await new Promise((resolve) => window.setTimeout(resolve, 60))
     })
-    const textarea = container.querySelector('textarea')!
+    const textarea = container.querySelector<HTMLElement>('.rich-editor-content')!
     const cancel = [...container.querySelectorAll('button')].find((button) => button.textContent === '取消')!
     expect(document.activeElement).toBe(textarea)
 
@@ -54,12 +56,48 @@ describe('AnnotationDialog focus', () => {
     textarea.focus()
     await act(async () => {
       textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'zhong' }))
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(textarea, '中文输入')
+      textarea.textContent = '中文输入'
       textarea.dispatchEvent(new InputEvent('input', { bubbles: true, data: '中文输入', inputType: 'insertCompositionText', isComposing: true }))
       textarea.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文输入' }))
     })
-    expect(textarea.value).toBe('中文输入')
+    expect(textarea.textContent).toBe('中文输入')
 
+    await act(async () => root.unmount())
+  })
+
+  it('keeps colors in the content toolbar and existing replies collapsed without losing them', async () => {
+    const root = createRoot(container), onSubmit = vi.fn()
+    const reply = { status: 'custom' as const, content: 'Existing reply', marks: [{ start: 0, end: 8, italic: true }] }
+    await act(async () => root.render(<AnnotationDialog state={{ kind: 'note', edit: true, initial: 'Saved', reply }} onCancel={() => undefined} onSubmit={onSubmit} />))
+    expect(container.querySelector('.annotation-dialog-heading > span')).toBeNull()
+    expect(container.querySelector('.window-scroll-body > p')).toBeNull()
+    expect(container.querySelector('.rich-editor-toolbar .annotation-color-picker')).not.toBeNull()
+    expect(container.querySelector<HTMLDetailsElement>('.annotation-reply-section')!.open).toBe(false)
+    await act(async () => container.querySelector<HTMLButtonElement>('.modal-actions .primary')!.click())
+    expect(onSubmit.mock.calls[0][0].reply).toEqual(reply)
+    await act(async () => root.unmount())
+  })
+
+  it('closes via the header, background click or Escape but not an inside-to-background gesture', async () => {
+    const root = createRoot(container), onCancel = vi.fn(), onSubmit = vi.fn()
+    await act(async () => root.render(<AnnotationDialog state={{ kind: 'note', edit: true, initial: 'Saved' }} onCancel={onCancel} onSubmit={onSubmit} aiSuggestionsEnabled />))
+    const backdrop = container.querySelector<HTMLElement>('.annotation-dialog-backdrop')!
+    const editor = container.querySelector<HTMLElement>('.rich-editor-content')!
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-dialog-close')!.click())
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      editor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+      backdrop.click()
+    })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      backdrop.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+      backdrop.click()
+    })
+    expect(onCancel).toHaveBeenCalledTimes(2)
+    await act(async () => editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(onCancel).toHaveBeenCalledTimes(3)
+    expect(onSubmit).not.toHaveBeenCalled()
     await act(async () => root.unmount())
   })
 

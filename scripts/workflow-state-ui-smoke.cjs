@@ -122,8 +122,8 @@ async function verifyDocumentWorkflow(userData, pdf) {
 
     const suggestionToggle = page.locator('.annotation-suggestion-toggle')
     if (await suggestionToggle.getAttribute('aria-pressed') !== 'true') await suggestionToggle.click()
-    await page.locator('.annotation-row').first().locator('.annotation-settings-button').click()
-    await page.locator('.annotation-row').first().locator('.annotation-ai-suggestion').click()
+    await page.locator('.annotation-row').first().locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
     await page.waitForSelector('.annotation-suggestion-window', { timeout: 10000 })
     const automaticContext = page.locator('.suggestion-auto-context article')
     await automaticContext.waitFor({ timeout: 10000 })
@@ -145,7 +145,7 @@ async function verifyDocumentWorkflow(userData, pdf) {
     assert.ok(activeModule.includes('批注'), `Annotation double-click did not activate Annotate: ${activeModule}`)
     assert.equal(await page.locator('.annotation-panel').count(), 1)
     assert.equal(await page.locator('.annotation-suggestion-window').count(), 0, 'Annotation double-click must not replay an old AI suggestion request')
-    await page.locator('.annotation-dialog .modal-actions button').first().click()
+    await page.locator('.annotation-dialog .modal-actions').getByRole('button', { name: '取消', exact: true }).click()
 
     await nav(page, '保存')
     const dirtySave = page.locator('.tool-panel-action').filter({ hasText: '保存 PDF' }).first()

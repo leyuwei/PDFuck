@@ -1,3 +1,5 @@
+import { textSelectionForQuery } from './text-layout'
+import { AiFailureError, classifyAiFailure, classifyAiResponse, type AiFailure } from './ai-recovery'
 import type { AiResponse } from '../../../shared/contracts'
 import { translateMessage, type InterfaceLanguage, type TranslationKey } from '../../../shared/i18n-catalogue'
 import {
@@ -6,6 +8,7 @@ import {
   MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS,
   MAX_AUTOMATIC_ANNOTATION_PAGE_CHARS,
   parseAutomaticAnnotationResponse,
+  blockText,
   type AutomaticAnnotationBlock,
   type AutomaticAnnotationDetail,
   type AutomaticAnnotationIntensity,
@@ -22,7 +25,7 @@ export const MIN_AI_MAX_OUTPUT_TOKENS = 1_024
 export const MAX_AI_MAX_OUTPUT_TOKENS = 131_072
 
 export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number; maxOutputTokens: number }
-export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean }
+export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean; requestId?: string; recovery?: { kind: AiFailure; attempt: number; action: 'retry' | 'parameters' | 'budget' | 'split' | 'structure'; delayMs?: number } }
 export type AiProgressCallback = (progress: AiStreamProgress) => void
 export type AiLanguage = InterfaceLanguage
 export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
@@ -270,9 +273,9 @@ function responseDetail(response: Pick<AiResponse, 'statusText' | 'body'>): stri
   return (plainBody || response.statusText || '服务未返回详细原因').slice(0, 300)
 }
 
-function responseError(response: Pick<AiResponse, 'status' | 'statusText' | 'body'>): Error {
+function responseError(response: AiResponse): Error {
   const key = FRIENDLY_HTTP_ERRORS[response.status]
-  return new Error(`请求失败（${response.status}）：${key ? translateMessage('zh', key) : responseDetail(response)}`)
+  return new AiFailureError(classifyAiResponse(response.status, response.body), `请求失败（${response.status}）：${key ? translateMessage('zh', key) : responseDetail(response)}`, response.status, response.retryAfterMs)
 }
 
 async function sendRequest(url: string, headers: Record<string, string>, body: string, timeoutMs: number, requestId?: string, onChunk?: (chunk: string) => void): Promise<AiResponse> {
@@ -383,76 +386,118 @@ function reasoningControlsUnsupported(response: AiResponse): boolean {
   return /thinking|reasoning_effort|output_config/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|invalid|不支持|未知|未识别|无效/iu.test(detail)
 }
 
-async function requestOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>, requestId?: string, onProgress?: AiProgressCallback, structured = false): Promise<string> {
-  let response: AiResponse
-  const url = endpoint(settings)
-  const timeoutMs = normalizeAiTimeoutSeconds(settings.timeoutSeconds) * 1000
+export function aiRecoveryTimeoutSeconds(timeout: number): number { return Math.min(300, Math.max(30, normalizeAiTimeoutSeconds(timeout) * 2)) }
+
+const recoveryControllers = new Map<string, AbortController>()
+const recoveryDeadlines = new Map<string, number>()
+export function cancelAiRequest(requestId?: string): void {
+  if (!requestId) return
+  recoveryControllers.get(requestId)?.abort()
+  if (typeof window !== 'undefined') window.desktop?.cancelAiRequest?.(requestId)
+}
+
+async function requestOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>, requestId?: string, onProgress?: AiProgressCallback, structured = false, validate?: (text: string) => unknown, splitOnTimeout = false): Promise<string> {
+  const url = endpoint(settings), timeoutMs = normalizeAiTimeoutSeconds(settings.timeoutSeconds) * 1000
   const activeRequestId = requestId?.trim() || crypto.randomUUID()
-  let responseBody = ''
-  let progressTimer: ReturnType<typeof setTimeout> | undefined
-  let lastProgressAt = 0
-  const publishProgress = () => {
-    progressTimer = undefined
-    lastProgressAt = Date.now()
-    onProgress?.(parseAiResponseBody(responseBody))
-  }
-  const receiveChunk = (chunk: string) => {
-    responseBody += chunk
-    if (!onProgress) return
-    const delay = 80 - (Date.now() - lastProgressAt)
-    if (delay <= 0) publishProgress()
-    else if (progressTimer === undefined) progressTimer = setTimeout(publishProgress, delay)
-  }
+  const ownsController = !recoveryControllers.has(activeRequestId)
+  const controller = recoveryControllers.get(activeRequestId) || new AbortController()
+  recoveryControllers.set(activeRequestId, controller)
+  const deadline = recoveryDeadlines.get(activeRequestId) || Date.now() + aiRecoveryTimeoutSeconds(settings.timeoutSeconds) * 1000
   let requestPayload: Record<string, unknown> = {
     ...payload,
     ...(settings.provider === 'deepseek' ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
     ...(claude && /(?:^|[-_.])4[-_.]?6(?:[-_.]|$)/u.test(String(payload.model)) ? { thinking: { type: 'adaptive' }, output_config: { effort: 'low' } } : {}),
-    ...(claude ? { max_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }
-      : settings.provider === 'openai' ? { max_completion_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }
-        : { max_tokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }),
+    [!claude && settings.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens']: normalizeAiMaxOutputTokens(settings.maxOutputTokens),
     ...(structured && !claude ? { response_format: { type: 'json_object' } } : {})
   }
-  let useStream = true
+  let attemptTimeoutMs = timeoutMs
+  let tokenCeiling = MAX_AI_MAX_OUTPUT_TOKENS
+  let useStream = true, attempt = 0, transientFailures = 0, repairedStructure = false, changedLimitKey = false
+  let recovery: AiStreamProgress['recovery']
+  const publish = (progress: AiStreamProgress) => onProgress?.({ ...progress, requestId: activeRequestId, recovery })
+  const announce = (kind: AiFailure, action: NonNullable<AiStreamProgress['recovery']>['action'], delayMs = 0) => {
+    recovery = { kind, action, attempt: attempt + 1, delayMs }
+    publish({ reasoning: '', output: '', received: false, truncated: false })
+  }
+  const wait = (ms: number) => new Promise<void>((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')) }
+    const timer = setTimeout(() => { controller.signal.removeEventListener('abort', abort); resolve() }, ms)
+    controller.signal.addEventListener('abort', abort, { once: true })
+    if (controller.signal.aborted) abort()
+  })
   try {
     for (;;) {
-      if (progressTimer !== undefined) { clearTimeout(progressTimer); progressTimer = undefined }
-      responseBody = ''
-      lastProgressAt = 0
-      response = await sendRequest(url, { ...headers, accept: useStream ? 'text/event-stream' : 'application/json' }, JSON.stringify(useStream ? { ...requestPayload, stream: true } : requestPayload), timeoutMs, activeRequestId, receiveChunk)
-      // Compatibility retries happen only after an immediate 400/422 validation response.
-      if (useStream && streamUnsupported(response)) { useStream = false; continue }
-      if (!claude && outputLimitUnsupported(response) && ('max_tokens' in requestPayload || 'max_completion_tokens' in requestPayload)) {
-        const { max_tokens: _maxTokens, max_completion_tokens: _maxCompletionTokens, ...compatible } = requestPayload
-        requestPayload = compatible
-        continue
-      }
-      if (structured && 'response_format' in requestPayload && jsonModeUnsupported(response)) {
-        const { response_format: _responseFormat, ...compatible } = requestPayload
-        requestPayload = compatible
-        structured = false
-        continue
-      }
-      if (('thinking' in requestPayload || 'reasoning_effort' in requestPayload || 'output_config' in requestPayload) && reasoningControlsUnsupported(response)) {
-        const { thinking: _thinking, reasoning_effort: _reasoningEffort, output_config: _outputConfig, ...compatible } = requestPayload
-        requestPayload = compatible
-        continue
-      }
-      break
+      if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
+      if (Date.now() >= deadline) throw new AiFailureError('timeout', 'ui.aiRecoveryStopped')
+      attempt += 1
+      publish({ reasoning: '', output: '', received: false, truncated: false })
+      if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
+      let body = '', firstChunk = true, timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const response = await sendRequest(url, { ...headers, accept: useStream ? 'text/event-stream' : 'application/json' }, JSON.stringify(useStream ? { ...requestPayload, stream: true } : requestPayload), Math.min(attemptTimeoutMs, deadline - Date.now()), activeRequestId, (chunk) => {
+          body += chunk
+          if (firstChunk) { firstChunk = false; publish(parseAiResponseBody(body)); return }
+          if (!timer) timer = setTimeout(() => { timer = undefined; publish(parseAiResponseBody(body)) }, 80)
+        })
+        if (timer) { clearTimeout(timer); timer = undefined }
+        if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
+        if (useStream && streamUnsupported(response)) { useStream = false; announce('configuration', 'parameters'); continue }
+        if (outputLimitUnsupported(response)) {
+          const key = 'max_completion_tokens' in requestPayload ? 'max_completion_tokens' : 'max_tokens'
+          const detail = responseDetail(response)
+          const maximum = /(?:at most|maximum|less than or equal to|<=|至多|最大)[^\d]{0,30}(\d[\d,]*)/iu.exec(detail)?.[1]
+          const limit = maximum ? Number(maximum.replace(/,/g, '')) : 0
+          if (limit > 0 && limit < Number(requestPayload[key])) { requestPayload[key] = limit; tokenCeiling = Math.min(tokenCeiling, limit); announce('budget', 'parameters'); continue }
+          if (!claude && !changedLimitKey && /unsupported|not supported|unknown|不支持/iu.test(detail)) {
+            requestPayload[key === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens'] = requestPayload[key]
+            delete requestPayload[key]; changedLimitKey = true; announce('configuration', 'parameters'); continue
+          }
+          if (!claude && key in requestPayload) { delete requestPayload[key]; announce('configuration', 'parameters'); continue }
+        }
+        if ('response_format' in requestPayload && jsonModeUnsupported(response)) { delete requestPayload.response_format; announce('configuration', 'parameters'); continue }
+        if (('thinking' in requestPayload || 'reasoning_effort' in requestPayload || 'output_config' in requestPayload) && reasoningControlsUnsupported(response)) {
+          delete requestPayload.thinking; delete requestPayload.reasoning_effort; delete requestPayload.output_config; announce('configuration', 'parameters'); continue
+        }
+        if ([400,422].includes(response.status) && 'temperature' in requestPayload && /temperature/iu.test(responseDetail(response))) { delete requestPayload.temperature; announce('configuration', 'parameters'); continue }
+        if (response.status < 200 || response.status >= 300) throw responseError(response)
+        const progress = parseAiResponseBody(response.body)
+        publish(progress)
+        if (progress.truncated) {
+          if (!('max_tokens' in requestPayload) && !('max_completion_tokens' in requestPayload)) throw new AiFailureError('budget', 'ui.aiResponseTruncated')
+          const key = 'max_completion_tokens' in requestPayload ? 'max_completion_tokens' : 'max_tokens'
+          const previous = Number(requestPayload[key]) || normalizeAiMaxOutputTokens(settings.maxOutputTokens)
+          if (previous < tokenCeiling) {
+            requestPayload[key] = Math.min(tokenCeiling, previous * 2)
+            announce('budget', 'budget'); continue
+          }
+          throw new AiFailureError('budget', 'ui.aiResponseTruncated')
+        }
+        if (!progress.output.trim()) throw new AiFailureError('structure', '模型未返回可显示的内容，请检查模型、额度或接口兼容性。')
+        if (validate) {
+          try { validate(progress.output.trim()) }
+          catch (cause) { throw new AiFailureError('structure', cause instanceof Error ? cause.message : String(cause)) }
+        }
+        return progress.output.trim()
+      } catch (cause) {
+        if (timer) clearTimeout(timer)
+        const kind = controller.signal.aborted ? 'cancelled' : classifyAiFailure(cause)
+        if (kind === 'cancelled') throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
+        if (kind === 'structure' && !repairedStructure) {
+          repairedStructure = true
+          requestPayload = { ...requestPayload, messages: [...(requestPayload.messages as unknown[]), { role: 'user', content: 'The previous response was empty or failed the required schema. Return a complete response following the original instructions and schema exactly. Do not add fences or commentary to JSON. Re-check field names, types and source block IDs.' }] }
+          announce(kind, 'structure'); continue
+        }
+        if (!['network', 'rate', 'service', 'timeout'].includes(kind)) throw cause
+        // A timed-out structured page can be divided without discarding any source block.
+        if (kind === 'timeout' && splitOnTimeout) throw new AiFailureError(kind, cause instanceof Error ? cause.message : String(cause))
+        if (kind === 'timeout') { attemptTimeoutMs = Math.max(attemptTimeoutMs, Math.min(180_000, attemptTimeoutMs * 2)); announce(kind, 'parameters') }
+        const delayMs = Math.max(Math.min(8000, 500 * 2 ** Math.min(transientFailures++, 4)), cause instanceof AiFailureError ? cause.retryAfterMs || 0 : 0)
+        if (Date.now() + delayMs >= deadline) throw new AiFailureError(kind, 'ui.aiRecoveryStopped')
+        announce(kind, 'retry', delayMs)
+        await wait(delayMs)
+      } finally { if (timer) clearTimeout(timer) }
     }
-  } catch (error) {
-    if (progressTimer !== undefined) clearTimeout(progressTimer)
-    if (error instanceof Error && /failed to fetch|networkerror|load failed/iu.test(error.message)) throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
-    if (error instanceof Error && error.message) throw error
-    throw new Error('无法连接模型服务，请检查接口地址、网络或证书。')
-  }
-  if (progressTimer !== undefined) clearTimeout(progressTimer)
-  if (response.status < 200 || response.status >= 300) throw responseError(response)
-  const progress = parseAiResponseBody(response.body)
-  onProgress?.(progress)
-  if (progress.truncated) throw new Error('ui.aiResponseTruncated')
-  const normalizedOutput = progress.output
-  if (!normalizedOutput.trim()) throw new Error('模型未返回可显示的内容，请检查模型、额度或接口兼容性。')
-  return normalizedOutput.trim()
+  } finally { if (ownsController) recoveryControllers.delete(activeRequestId) }
 }
 
 function systemInstruction(language: AiLanguage): string {
@@ -478,12 +523,44 @@ function safePdfName(value: string): string {
   return normalized.toLowerCase().endsWith('.pdf') ? normalized : `${normalized}.pdf`
 }
 
+async function requestTextOutput(settings: AiSettings, payload: Record<string, unknown>, claude: boolean, headers: Record<string, string>, preservedInstruction: string, onProgress?: AiProgressCallback): Promise<string> {
+  const requestId = crypto.randomUUID()
+  recoveryControllers.set(requestId, new AbortController())
+  recoveryDeadlines.set(requestId, Date.now() + aiRecoveryTimeoutSeconds(settings.timeoutSeconds) * 1000)
+  const run = async (current: Record<string, unknown>): Promise<string> => {
+    const messages = current.messages as Array<{ role: string; content: unknown }>
+    const reverseIndex = [...messages].reverse().findIndex((message) => message.role === 'user' && typeof message.content === 'string')
+    const index = reverseIndex < 0 ? -1 : messages.length - 1 - reverseIndex
+    const input = index >= 0 ? String(messages[index].content) : ''
+    try {
+      if (input.length > 32_000) throw new AiFailureError('input', 'ui.aiRecovery.input')
+      return await requestOutput(settings, current, claude, headers, requestId, onProgress, false, undefined, input.length >= 2000)
+    } catch (cause) {
+      const kind = classifyAiFailure(cause)
+      if (!['input', 'timeout', 'budget'].includes(kind) || input.length < 2000 || Date.now() >= recoveryDeadlines.get(requestId)! || recoveryControllers.get(requestId)?.signal.aborted) throw cause
+      // Keep the original instructions with every part; only partition source text.
+      const prefix = preservedInstruction + '\n\n'
+      const source = Array.from(input.slice(prefix.length))
+      if (source.length < 1600) throw cause
+      const middle = Math.ceil(source.length / 2)
+      onProgress?.({ reasoning: '', output: '', received: false, truncated: false, requestId, recovery: { kind, action: 'split', attempt: 1 } })
+      const results: string[] = []
+      for (const part of [source.slice(0, middle), source.slice(middle)]) {
+        const divided = messages.map((message, position) => position === index ? { ...message, content: prefix + part.join('') } : message)
+        results.push(await run({ ...current, messages: divided }))
+      }
+      return results.join('\n\n')
+    }
+  }
+  try { return await run(payload) } finally { recoveryControllers.delete(requestId); recoveryDeadlines.delete(requestId) }
+}
+
 export async function polishText(settings: AiSettings, instruction: string, text: string, onProgress?: AiProgressCallback): Promise<string> {
   const { model, claude, headers } = requestCredentials(settings)
   const language = detectAiLanguage(text)
-  return requestOutput(settings, claude
+  return requestTextOutput(settings, claude
     ? { model, messages: [{ role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }], temperature: 0.25 }, claude, headers, undefined, onProgress)
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }], temperature: 0.25 }, claude, headers, instruction, onProgress)
 }
 
 export async function reviewDocument(settings: AiSettings, instruction: string, document: FullReviewDocument, mode: FullReviewSendMode, language: AiLanguage, onProgress?: AiProgressCallback): Promise<string> {
@@ -493,9 +570,9 @@ export async function reviewDocument(settings: AiSettings, instruction: string, 
     const text = document.text?.trim()
     if (!text) throw new Error('没有提取到可发送的文档文字。若文档是扫描件，请改用直接发送 PDF 文件。')
     const label = language === 'zh' ? '文档全文' : 'Full document text'
-    return requestOutput(settings, claude
+    return requestTextOutput(settings, claude
       ? { model, messages: [{ role: 'user', content: `${instruction}\n\n${label}：\n${text}` }] }
-      : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${label}：\n${text}` }], temperature: 0.15 }, claude, headers, undefined, onProgress)
+      : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${label}：\n${text}` }], temperature: 0.15 }, claude, headers, instruction, onProgress)
   }
   if (!document.bytes.length) throw new Error('当前 PDF 文件内容为空，无法发送。')
   if (document.bytes.length > MAX_AI_PDF_BYTES) throw new Error('PDF 文件超过 40 MB，无法直接发送。请选择发送转换后的文档文字。')
@@ -503,9 +580,9 @@ export async function reviewDocument(settings: AiSettings, instruction: string, 
   const content = claude
     ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: instruction }]
     : [{ type: 'file', file: { filename: name, file_data: `data:application/pdf;base64,${base64}` } }, { type: 'text', text: instruction }]
-  return requestOutput(settings, claude
+  return requestTextOutput(settings, claude
     ? { model, messages: [{ role: 'user', content }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content }], temperature: 0.15 }, claude, headers, undefined, onProgress)
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content }], temperature: 0.15 }, claude, headers, instruction, onProgress)
 }
 
 export async function suggestForAnnotation(settings: AiSettings, instruction: string, annotation: string, contexts: string[], language: AiLanguage, onProgress?: AiProgressCallback): Promise<string> {
@@ -522,9 +599,9 @@ export async function suggestForAnnotation(settings: AiSettings, instruction: st
   }
   const label = labels[language]
   const input = `${instruction}\n\n${label.annotation}：\n${normalizedAnnotation}\n\n${normalizedContexts.map((context, index) => `${label.contexts} ${index + 1}：\n${context}`).join('\n\n')}`
-  return requestOutput(settings, claude
+  return requestTextOutput(settings, claude
     ? { model, messages: [{ role: 'user', content: input }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: input }], temperature: 0.2 }, claude, headers, undefined, onProgress)
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: input }], temperature: 0.2 }, claude, headers, `${instruction}\n\n${label.annotation}：\n${normalizedAnnotation}`, onProgress)
 }
 
 function limitedAutomaticContext(value?: string): string {
@@ -587,14 +664,21 @@ INPUT_JSON
 ${JSON.stringify(input)}`
 }
 
+export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnotatePageRequest, requestId: string = crypto.randomUUID(), onProgress?: AiProgressCallback): Promise<AutomaticAnnotationModelResponse> {
+  recoveryControllers.set(requestId, new AbortController())
+  recoveryDeadlines.set(requestId, Date.now() + aiRecoveryTimeoutSeconds(settings.timeoutSeconds) * 1000)
+  try { return await autoAnnotatePageAttempt(settings, request, requestId, onProgress) }
+  finally { recoveryControllers.delete(requestId); recoveryDeadlines.delete(requestId) }
+}
+
 /** Send one bounded page request and return only a schema-validated model result. */
-export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnotatePageRequest, requestId?: string, onProgress?: AiProgressCallback): Promise<AutomaticAnnotationModelResponse> {
+async function autoAnnotatePageAttempt(settings: AiSettings, request: AutoAnnotatePageRequest, requestId?: string, onProgress?: AiProgressCallback): Promise<AutomaticAnnotationModelResponse> {
   if (!Number.isInteger(request.pageIndex) || request.pageIndex < 0) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!AUTOMATIC_ANNOTATION_ISSUE_TYPES.includes(request.issueType)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.issueType === 'custom' && (typeof request.customIssue !== 'string' || !request.customIssue.trim() || request.customIssue.length > 4000)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!['revision', 'brief', 'detailed'].includes(request.detail)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.intensity !== undefined && !['lenient', 'balanced', 'strict'].includes(request.intensity)) throw new Error('ui.automaticAnnotationRequestInvalid')
-  if (request.retryAttempt !== undefined && (!Number.isInteger(request.retryAttempt) || request.retryAttempt < 0 || request.retryAttempt > 3)) throw new Error('ui.automaticAnnotationRequestInvalid')
+  if (request.retryAttempt !== undefined && (!Number.isInteger(request.retryAttempt) || request.retryAttempt < 0)) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (!request.blocks.length) throw new Error('ui.noExtractableTextForAutomaticAnnotation')
   if (request.blocks.length > MAX_AUTOMATIC_ANNOTATION_BLOCKS_PER_PAGE) throw new Error('ui.automaticAnnotationRequestInvalid')
   if (request.blocks.some((block) => block.pageIndex !== request.pageIndex || !block.id.trim() || !block.text.trim())) throw new Error('ui.automaticAnnotationRequestInvalid')
@@ -605,21 +689,46 @@ export async function autoAnnotatePage(settings: AiSettings, request: AutoAnnota
   const language = request.language || detectAiLanguage(request.blocks.map((block) => block.text).join('\n'))
   const instruction = automaticAnnotationInstruction(request, language)
   const { model, claude, headers } = requestCredentials(settings)
-  const output = await requestOutput(settings, claude
+  try {
+    const output = await requestOutput(settings, claude
     ? { model, system: systemInstruction(language), messages: [{ role: 'user', content: instruction }] }
-    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: instruction }], temperature: 0.1 }, claude, headers, requestId?.trim() || undefined, onProgress, true)
-  return parseAutomaticAnnotationResponse(output, request.blocks, request.detail)
-}
-
-/** Retry only failures that another model call can plausibly repair. */
-export function isRetryableAutomaticAnnotationError(cause: unknown): boolean {
-  const value = cause instanceof Error ? cause.message : String(cause)
-  if (value === 'ui.automaticAnnotationRequestInvalid' || value === 'ui.noExtractableTextForAutomaticAnnotation' || value === 'ui.aiRequestWasCanceled' || value === 'ui.aiResponseTruncated') return false
-  if (/AI 请求已取消|已达到模型设置中的响应超时时间|请先(?:在模型设置中填写 API Key|选择或填写模型名称|填写接口地址)|接口地址(?:无效|只支持)/u.test(value)) return false
-  const status = /请求失败[（(](\d+)[）)]/u.exec(value)?.[1]
-  if (status) {
-    const code = Number(status)
-    return code === 408 || code === 429 || code >= 500
+    : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: instruction }], temperature: 0.1 }, claude, headers, requestId?.trim() || undefined, onProgress, true, (text) => parseAutomaticAnnotationResponse(text, request.blocks, request.detail), request.blocks.length > 1 || (request.blocks[0].text.length >= 800 && request.blocks[0].words.length > 1))
+    return parseAutomaticAnnotationResponse(output, request.blocks, request.detail)
+  } catch (cause) {
+    const kind = classifyAiFailure(cause)
+    if (recoveryControllers.get(requestId || '')?.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
+    if (Date.now() >= (recoveryDeadlines.get(requestId || '') || Infinity)) throw cause
+    if (!['input', 'timeout', 'budget', 'structure'].includes(kind)) throw cause
+    const groups: typeof request.blocks[] = []
+    if (request.blocks.length > 1) {
+      const middle = Math.ceil(request.blocks.length / 2)
+      groups.push(request.blocks.slice(0, middle), request.blocks.slice(middle))
+    } else {
+      const block = request.blocks[0]
+      if (Array.from(block.text).length < 800 || block.words.length < 2) throw cause
+      const middle = Math.ceil(block.words.length / 2)
+      for (const words of [block.words.slice(0, middle), block.words.slice(middle)]) groups.push([{ ...block, words, text: blockText(words) }])
+    }
+    onProgress?.({ reasoning: '', output: '', received: false, truncated: false, requestId, recovery: { kind, action: 'split', attempt: (request.retryAttempt || 0) + 1 } })
+    const results: AutomaticAnnotationModelResponse[] = []
+    for (const blocks of groups) {
+      const result = await autoAnnotatePageAttempt(settings, { ...request, blocks, opening: undefined, previous: undefined, next: undefined, contextSummary: undefined, retryAttempt: (request.retryAttempt || 0) + 1 }, requestId, onProgress)
+      if (request.blocks.length === 1) {
+        // Rebase repeated quotes by their exact PDF geometry, including nested splits.
+        const options = { caseSensitive: true, ignoreWhitespace: true, includeAllMatchedWords: true }
+        for (const finding of result.findings) {
+          const target = textSelectionForQuery(blocks[0].words, finding.quote, { ...options, occurrence: finding.occurrence })
+          let occurrence = 0
+          for (; occurrence <= 99; occurrence++) {
+            const original = textSelectionForQuery(request.blocks[0].words, finding.quote, { ...options, occurrence })
+            if (original && JSON.stringify(original.rects) === JSON.stringify(target?.rects)) break
+          }
+          if (occurrence > 99) throw new AiFailureError('structure', 'ui.automaticAnnotationRequestInvalid')
+          finding.occurrence = occurrence
+        }
+      }
+      results.push(result)
+    }
+    return { version: 1, contextSummary: Array.from(results.map((result) => result.contextSummary).join('\n')).slice(0, MAX_AUTOMATIC_ANNOTATION_CONTEXT_CHARS).join(''), findings: results.flatMap((result) => result.findings) }
   }
-  return true
 }

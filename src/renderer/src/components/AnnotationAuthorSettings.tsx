@@ -1,3 +1,4 @@
+import { ScrollWindow } from './ScrollWindow'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { annotationAuthorColors, MAX_ANNOTATION_AUTHOR_LENGTH, normalizeAnnotationAuthor } from '../lib/annotation-author'
@@ -18,7 +19,7 @@ interface Props {
 export function AnnotationAuthorSettings({ author, showAuthors, theme, accent, onSave }: Props) {
   useInterfaceLanguage()
   const trigger = useRef<HTMLButtonElement>(null)
-  const windowRef = useRef<HTMLElement>(null)
+  const windowRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | undefined>(undefined)
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(author)
@@ -72,7 +73,7 @@ export function AnnotationAuthorSettings({ author, showAuthors, theme, accent, o
 
   return <>
     <button ref={trigger} type="button" className="annotation-author-button" aria-expanded={open} aria-haspopup="dialog" title={ui("ui.setAnnotationAuthor")} onClick={() => setOpen((value) => !value)}><AuthorGlyph /><span>{ui("ui.author")}</span></button>
-    {open && createPortal(<section ref={windowRef} className={`annotation-author-window${theme === 'dark' ? ' theme-dark' : ''}`} style={{ ...position, '--app-accent': accent } as CSSProperties} role="dialog" aria-modal="false" aria-label={ui("ui.annotationAuthor")}>
+    {open && createPortal(<ScrollWindow ref={windowRef} className={`annotation-author-window${theme === 'dark' ? ' theme-dark' : ''}`} style={{ ...position, '--app-accent': accent } as CSSProperties} role="dialog" aria-modal="false" aria-label={ui("ui.annotationAuthor")}>
       <header onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag} title={ui("ui.dragAnnotationAuthorWindow")}><div><span><AuthorGlyph size={18} /></span><div><b>{ui("ui.annotationAuthor")}</b><small>{ui("ui.usedForNewAnnotations")}</small></div></div><button type="button" aria-label={ui("ui.closeAnnotationAuthorSettings")} title={ui("ui.close")} onPointerDown={(event) => event.stopPropagation()} onClick={() => setOpen(false)}>×</button></header>
       <div className="annotation-author-body">
         <label className={`annotation-author-name${valid ? '' : ' invalid'}`}><span>{ui("ui.authorName")}</span><input autoFocus value={name} maxLength={MAX_ANNOTATION_AUTHOR_LENGTH} placeholder={ui("ui.enterAnAuthorName")} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); save() } }} /><small>{ui("ui.theNameIsSavedOnThisDeviceAndWrittenInto")}</small></label>
@@ -80,6 +81,6 @@ export function AnnotationAuthorSettings({ author, showAuthors, theme, accent, o
         <div className="annotation-author-preview"><span>{ui("ui.listPreview")}</span><b className="annotation-author-badge" style={badgeStyle} title={normalized}><i />{normalized}</b><small>{ui("ui.eachAuthorReceivesAStableColourForQuickIdentification")}</small></div>
       </div>
       <footer><button type="button" onClick={() => setOpen(false)}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!valid} onClick={save}>{ui("ui.saveSettings")}</button></footer>
-    </section>, document.body)}
+    </ScrollWindow>, document.body)}
   </>
 }

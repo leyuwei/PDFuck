@@ -39,7 +39,24 @@ Copyright © 2026 github@leyuwei
 - **Export for delivery**: Select pages with ranges such as `1-3, 5, 8-10`, odd/even filters, inversion, or individual toggles, then export combined or separate PDF files, PNG, JPG, or EPS. Raster DPI is entered directly without preset clamping; values that exceed the device's safe canvas capacity produce an explicit error instead of being silently changed.
 - **Automatic update check**: Packaged builds can compare the installed version with the latest GitHub Release and let you download, postpone, or skip a release.
 
-## What's New in 2.0.21
+## What's New in 2.0.24
+
+- The annotation editor keeps colors beside text-format buttons, starts with replies collapsed, and removes the extra hint and drag icon.
+- Italic text now displays correctly even when the chosen font has no italic face. This applies to annotation text, replies, and their list previews; button and shortcut toggling are checked against rendered pixels.
+
+## What's New in 2.0.23
+
+- The annotation editor's AI suggestion button keeps a normal horizontal label. Its draggable header stays below the application title bar, with a direct close button and background-click/Escape dismissal.
+- Double-clicking annotation text, replies, or reasons reliably opens the editor. Selecting a partly visible row no longer scrolls it away, and unchanged rich text keeps its original text nodes between clicks.
+
+## What's New in 2.0.22
+
+- Window titles now sit outside their scrolling content, including Lab tools, settings, the drawing board, shape creator, and editing dialogs.
+- Double-click an annotation's content to open the shared Edit Annotation dialog. Inline editing and the right-hand row settings button have been removed; AI revision advice is available in the dialog.
+- Annotation bodies and replies expand for long, multiline text. Select text to apply bold, italic, underline, or highlight using the compact toolbar or Ctrl/⌘+B, I, U, and Shift+H. Formatting survives PDF save/reopen and undo/redo; controls support all ten interface languages.
+- Shared AI recovery diagnoses transient connection/service failures, rate limits, timeouts, input limits, output truncation, and invalid structure. It backs off, adjusts rejected parameters, raises output budgets within supported limits, or splits large inputs, with visible recovery status and cancellation. Recovery uses a bounded time window instead of a fixed three-retry rule. Authentication, exhausted account credit, and certificate errors require user intervention.
+
+### Earlier improvements in 2.0.21
 
 - The Lab no longer labels the entire first-token wait as “Connecting.” It now distinguishes request preparation from a submitted request that is waiting for the model's first output, then switches to reasoning or answer generation only after actual response bytes arrive.
 - The live panel is never blank while work is active. Before the first model output it shows a frozen, safe summary of what was submitted: model, selection/document representation, page and text-block scope, issue type, context count, and a bounded prompt preview. API keys and fabricated reasoning are never displayed.
@@ -325,7 +342,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **针对论文的轻量语法检查**：标出常见英文拼写错误、重复单词和主谓一致问题，并把每一处结果定位回原文上下文；它是审稿辅助，不会把整篇文档改写成不可控的“AI 文风”。
 - **直接改 PDF 原文，而不是盖一层白框**：PDF.js 会把被拆散的同行文字合并成自然文本块；编辑时继承原字体、字号、粗斜体和对齐方式，再从页面取样文字色与背景色，改完的文字仍是可移动、可再次编辑的 PDF 对象。
 - **批注是审稿工作流，不是装饰层**：高亮、替换、删除、下划线、便笺和插入六类批注都能携带文字说明；批注内容、颜色、位置和回复会随 PDF 保存，重开文档仍可继续编辑。
-- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落、跨页文字和持续更新的篇章提纲辅助判断；12 类问题可自由勾选并持久化，每类都会独立完成一轮逐页 AI 审查，文字细节、段落与篇章结构、数学、论据及论文贡献不会互相挤占。可选宽松、均衡或严格力度，按修复方式综合使用六类批注，格式错误或临时服务错误最多自动重试三次后再询问用户。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
+- **自动批注仍由用户掌控**：可审阅全文或仅审阅当前选区，并以文档开头、邻近段落、跨页文字和持续更新的篇章提纲辅助判断；12 类问题可自由勾选并持久化，每类都会独立完成一轮逐页 AI 审查，文字细节、段落与篇章结构、数学、论据及论文贡献不会互相挤占。可选宽松、均衡或严格力度，按修复方式综合使用六类批注，可恢复错误按原因调整请求并在总时限内重试，无法恢复时再询问用户。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，过程可暂停、继续或结束，首次运行须明确确认隐私与版权风险。
 - **批注人清楚可辨，列表仍然干净**：可在可移动的“批注人”浮窗中持久保存本机审阅者姓名，今后的新批注会把姓名写入 PDF；单一外显开关可在批注正文上方显示稳定配色的紧凑标签，正文仍独占完整内容列宽度，也不会额外增加列表列。
 - **快捷键提示遵循当前系统**：所有功能按钮统一使用右侧键帽样式，并自动切换 Windows 与 macOS 的按键习惯；编辑模块八项主功能也补齐了与批注工具一致的简洁线性图标。
 - **字符级批注，半行文字也不丢精度**：单击得到字符间光标，拖动只选择真正命中的字符；跨行、半词和中英文混排都能精确标记，替换线与插入箭头会吸附到真实字符边界。选中文字后，页面浮动工具栏和右键菜单都能直接创建批注。
@@ -342,7 +359,24 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - **为交付而不是炫技设计**：页码选择器支持 `1-3, 5, 8-10`、奇偶页、反选和逐页点选，可将当前修改后的指定页面合并或拆分导出为 PDF、PNG、JPG、EPS；栅格 DPI 由用户直接输入，不再被预设值实时纠正。
 - **启动时检查更新**：打包版本会对比 GitHub Releases 的最新版本，发现更新后可选择立即下载、稍后提醒或跳过该版本。
 
-## 2.0.21 新增与完善
+## 2.0.24 新增与修复
+
+- 编辑批注颜色与格式按钮同排，回复默认折叠，删去多余提示和标题栏拖动图标。
+- 修复字体缺少原生斜体时按钮看似无效的问题，覆盖批注正文、回复和列表预览，并验证按钮、快捷键、实际文字显示和保存重开。
+
+## 2.0.23 新增与修复
+
+- 修复编辑批注中的 AI 建议按钮文字竖排；弹窗拖动与缩放始终避开软件标题栏，支持右上角关闭、点击背景和 Escape 关闭。
+- 正文、回复与说明均可双击打开编辑；修复首次点击导致条目跳动，以及富文本节点重建导致双击失灵的问题。
+
+## 2.0.22 新增与完善
+
+- 所有工具窗口和弹窗将标题与滚动内容分开，滚动条从标题下方开始。
+- 双击批注内容统一打开“编辑批注”弹窗，删除列表原位编辑和右侧设置按钮；批注建议入口移入弹窗。
+- 正文与回复按实际内容展开，支持超长、多行内容；选中文字后可使用工具栏或 Ctrl/⌘+B、I、U、Shift+H 设置粗体、斜体、下划线和高亮。样式随 PDF 保存、重开及撤销恢复，支持十种界面语言。
+- AI 按故障原因自适应恢复：退避等待、兼容参数调整、输出预算扩充、输入分批、返回结构纠正；不再固定重试三次。界面显示恢复原因和动作，可随时取消。恢复总时限为设置超时的两倍，至少 30 秒、至多 5 分钟；密钥、余额、证书等不可自动修复的问题会明确报错。分批批注仍校验原文和重复引文位置，结果完整后才写入。
+
+### 2.0.21 改进
 
 - 实验室不再把整个首 Token 等待阶段都错误显示成“正在连接模型”。现在会明确区分“正在准备发送内容”和“请求已提交，等待模型首次输出”，只有收到真实响应字节后才切换为思考或回答生成状态。
 - AI 工作期间实时面板不再留空。首个模型输出到达前会显示冻结的安全请求摘要，包括模型、选区或文档发送方式、页码与文本块范围、检查类型、上下文数量和有限长度的提示词预览；不会显示 API Key，也不会伪造模型思考。
@@ -386,7 +420,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 自动定位直接保留精确命中的完整原文范围，包括较宽的中间行与公式片段，不再套用鼠标拖选的流域裁剪而漏掉词语。
 - “自动批注”可审阅全文或严格限定在当前选区内，文档开头、邻近段落与跨页内容只辅助理解，不会扩大批注落点。
 - 批注力度可选“宽松 / 均衡（默认）/ 严格”；档位只调整问题覆盖范围，不设置批注数量指标、不降低证据门槛，也不会为了凑数制造问题。
-- 模型返回无效格式或遇到可重试的服务错误时，会显示进度并自动重试最多三次；全部失败后才询问用户重试本页、跳过或结束。批注写回失败不会自动重放，避免重复落笔。
+- 模型返回无效格式或遇到可恢复错误时，会显示原因、调整请求并在总时限内重试；无法恢复时询问用户重试本页、跳过或结束。批注写回失败不会自动重放，避免重复落笔。
 - 六类工具按问题的修复方式选用：可靠的局部修改才使用替换、删除或插入；涉及上下文、结构、逻辑、证据或贡献表达且无法安全代改的问题，会果断使用高亮、下划线或自由批注。
 - 任务可随时暂停、继续或结束，首次使用前须确认隐私与版权风险。
 - 十种界面语言的操作提示均已简化并统一为两行以内；便签与插入文字不再共用含义不符的提示。
@@ -513,7 +547,7 @@ PDFuck is released under the [MIT License](LICENSE). Issues, suggestions, and pu
 - 列表选中的批注会自动滚动到页面中央，按实际文字行分段显示紧致聚焦框，并在约 1 秒后消失；
 - 删除批注会立即执行，不再二次确认；误删可用 `Ctrl/⌘Z` 撤销。
 - 左侧“批注”工具栏将“实验室”作为与“文本批注”“位置批注”一致的标准工具分组，标题不再带多余上下分隔线，模型设置齿轮位于分组标题右侧；智能润色、全文评价和批注建议共用同一连接与超时设置，只有智能润色显示 `Ctrl/⌘I` 快捷键。
-- “自动批注”可处理全文或严格限定在当前选区；文档开头、邻近段落、跨页内容与篇章提纲可辅助判断，但不会扩大写入范围。系统分别审阅文字正确性、段落主旨与衔接、章节及全文组织，对无法安全代改的结构问题给出具体重组动作。宽松、均衡、严格三档控制覆盖程度而不规定数量；系统按修复方式选择高亮、替换、删除、下划线、插入文字和自由批注，模型格式错误或可重试服务错误会自动重试最多三次，耗尽后才让用户决定。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，精确原文锚点保留全部命中词语。任务可暂停、继续或结束；首次使用沿用全文评价的隐私与版权确认。
+- “自动批注”可处理全文或严格限定在当前选区；文档开头、邻近段落、跨页内容与篇章提纲可辅助判断，但不会扩大写入范围。系统分别审阅文字正确性、段落主旨与衔接、章节及全文组织，对无法安全代改的结构问题给出具体重组动作。宽松、均衡、严格三档控制覆盖程度而不规定数量；系统按修复方式选择高亮、替换、删除、下划线、插入文字和自由批注，模型格式错误或可恢复错误会按原因调整请求并在总时限内重试，无法恢复时让用户决定。“仅修订文本 / 简短说明 / 详细说明”均直接写入批注内容，精确原文锚点保留全部命中词语。任务可暂停、继续或结束；首次使用沿用全文评价的隐私与版权确认。
 - 自由画板是批注实验室的第五项工具；浮窗可移动和拖动改大小，画笔、颜色、画布操作等高对齐并带有清晰的绘制与缩放提示，缩窄画板时会自行重排且不溢出。完成后可导出透明 PNG，或作为可编辑图片直接加入当前 PDF 页。
 - 每个 PDF 标签拥有相互隔离、持续挂载的 AI 会话；打开新 PDF 或手动切换标签时，原文档的 AI 浮窗只会暂时隐藏，请求和倒计时继续运行，切回后会恢复原进度、错误或返回结果，不会把内容串到当前 PDF。
 - “全文评价”首次使用时必须勾选数据风险声明，复选框说明保持同行且声明卡片与浮窗边界留有一致间距；可发送带逐页标记的全文文字或当前 PDF 文件，并从五语预置审稿提示词中选择或自行修改。请求期间会按用户设置的超时时间显示进度条和剩余秒数。

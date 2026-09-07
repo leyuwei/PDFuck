@@ -1,3 +1,5 @@
+import type { TextMark } from './lib/annotation-rich-text'
+
 export type ModuleKey = 'view' | 'edit' | 'annotate' | 'save'
 export type ViewMode = 'continuous' | 'single'
 
@@ -36,6 +38,7 @@ export interface AnnotationRecord {
   kind: AnnotationKind
   author: string
   content: string
+  marks?: TextMark[]
   /** Optional explanation kept separate from replacement/insertion text. */
   reason?: string
   color: string
@@ -47,6 +50,7 @@ export interface AnnotationRecord {
 export interface AnnotationReply {
   status: AnnotationReplyStatus
   content: string
+  marks?: TextMark[]
 }
 
 export interface TextStyle {
@@ -79,6 +83,7 @@ export interface AddAnnotationRequest {
   kind: AnnotationKind
   rects: PdfRect[]
   content?: string
+  marks?: TextMark[]
   point?: PdfPoint
   color?: string
   groupId?: string

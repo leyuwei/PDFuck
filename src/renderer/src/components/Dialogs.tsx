@@ -1,3 +1,7 @@
+import { useFloatingWindow } from '../lib/floating-window'
+import { ScrollWindow } from './ScrollWindow'
+import { AnnotationRichEditor } from './AnnotationRichText'
+import type { TextMark } from '../lib/annotation-rich-text'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, PageNumberSettings, TextStyle } from '../types'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
@@ -16,8 +20,8 @@ function localizedFontLabel(label: string): string {
 
 function printScaleLabel(value: number): string { return `${value}%` }
 
-export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
-export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply }
+export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; marks?: TextMark[]; annotationId?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
+export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply; marks?: TextMark[]; suggest?: boolean }
 
 function useDeferredFocus<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -27,32 +31,19 @@ function useDeferredFocus<T extends HTMLElement>() {
   return ref
 }
 
-export function AnnotationDialog({ state, onCancel, onSubmit }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void }) {
+export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabled }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void; aiSuggestionsEnabled?: boolean }) {
   const [value, setValue] = useState(state.initial || '')
+  const [marks, setMarks] = useState<TextMark[]>(state.marks || [])
   const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
   const [reply, setReply] = useState<AnnotationReply | undefined>(state.reply)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const drag = useRef<{ pointerId: number; x: number; y: number; offset: { x: number; y: number } } | undefined>(undefined)
-  const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
+  const floating = useFloatingWindow(true)
+  const backgroundPointer = useRef(false)
   const labels: Record<AnnotationKind, string> = { highlight: ui("ui.highlightDescription"), note: ui("ui.annotationContent"), replace: ui("ui.replaceWith"), insert: ui("ui.insertText"), delete: ui("ui.deletionMark"), underline: ui("ui.underlineDescription"), ai_polish: ui("ui.aiPolish") }
-  const submit = () => onSubmit({ content: value.trim(), color, reply })
-  const beginDrag = (event: React.PointerEvent) => { if (event.button !== 0) return; event.preventDefault(); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, offset }; event.currentTarget.setPointerCapture(event.pointerId) }
-  const moveDrag = (event: React.PointerEvent) => { if (!drag.current || drag.current.pointerId !== event.pointerId) return; event.preventDefault(); setOffset({ x: drag.current.offset.x + event.clientX - drag.current.x, y: drag.current.offset.y + event.clientY - drag.current.y }) }
-  const finishDrag = (event: React.PointerEvent) => {
-    if (drag.current?.pointerId !== event.pointerId) return
-    drag.current = undefined
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-  useEffect(() => {
-    const cancelDrag = () => { drag.current = undefined }
-    window.addEventListener('blur', cancelDrag)
-    return () => window.removeEventListener('blur', cancelDrag)
-  }, [])
-  return <div className="modal-backdrop"><div className="modal annotation-dialog" role="dialog" aria-modal="true" aria-labelledby="annotation-dialog-title" style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}><div className="annotation-dialog-heading" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={(event) => { if (drag.current?.pointerId === event.pointerId) drag.current = undefined }}><h2 id="annotation-dialog-title">{state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2><span title={ui("ui.dragToolbar")}>⠿</span></div><p>{state.optional ? ui("ui.addAnOptionalNoteAndChooseAVisibleMarkerColor") : ui("ui.enterTheAnnotationContentAndChooseASuitableMarkerColor")}</p>
-    <textarea ref={textareaRef} autoFocus value={value} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.focus({ preventScroll: true }) }} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && (state.optional || value.trim())) submit() }} />
-    <AnnotationColorPicker color={color} onChange={setColor} />
-    {state.edit && <AnnotationReplyPicker reply={reply} onChange={setReply} />}
-    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={submit}>{ui("ui.confirm")}</button></div></div></div>
+  const submit = (suggest = false) => onSubmit({ content: value, marks, color, reply, suggest })
+  return <div className="modal-backdrop annotation-dialog-backdrop" onPointerDown={(event) => { backgroundPointer.current = event.button === 0 && event.target === event.currentTarget }} onPointerCancel={() => { backgroundPointer.current = false }} onClick={(event) => { if (backgroundPointer.current && event.target === event.currentTarget) onCancel(); backgroundPointer.current = false }} onKeyDownCapture={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); onCancel() } }}><ScrollWindow ref={floating.ref} className="modal annotation-dialog" role="dialog" aria-modal="true" aria-labelledby="annotation-dialog-title" style={floating.style}><div className="annotation-dialog-heading" {...floating.dragHandlers}><h2 id="annotation-dialog-title">{state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2><button type="button" className="annotation-dialog-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
+    <AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
+    {state.edit && <details className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
+    <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={() => submit(true)}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></ScrollWindow></div>
 }
 
 export interface TextDialogValue { text: string; style: TextStyle }
@@ -61,14 +52,14 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
   const [text, setText] = useState(initial?.text || '')
   const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'Arial', size: 16, color: '#182033', bold: false, italic: false, align: 'left', lineHeight: 1.25 })
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
-  return <div className="modal-backdrop"><div className="modal text-dialog"><h2>{edit ? ui("ui.editText") : ui("ui.addText")}</h2><p>{ui("ui.setTheTextAndItsDisplayFormatDragItOn")}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
+  return <div className="modal-backdrop"><ScrollWindow className="modal text-dialog"><h2>{edit ? ui("ui.editText") : ui("ui.addText")}</h2><p>{ui("ui.setTheTextAndItsDisplayFormatDragItOn")}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
     <div className="format-grid"><label>{ui("ui.font")}<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label>
       <label>{ui("ui.fontSize")}<input type="number" min="6" max="144" value={style.size} onChange={(event) => setStyle({ ...style, size: Number(event.target.value) })} /></label>
       <label>{ui("ui.color")}<input type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
       <label>{ui("ui.alignment")}<select value={style.align} onChange={(event) => setStyle({ ...style, align: event.target.value as TextStyle['align'] })}><option value="left">{ui("ui.left")}</option><option value="center">{ui("ui.center")}</option><option value="right">{ui("ui.right")}</option></select></label>
       <label>{ui("ui.lineSpacing")}<select value={style.lineHeight || 1.25} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> {ui("ui.bold")}</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> {ui("ui.italic")}</button></div>
-    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></div></div>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></ScrollWindow></div>
 }
 
 export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { initial?: PageNumberSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: PageNumberSettings): void; onDelete(): void }) {
@@ -78,7 +69,7 @@ export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, 
   const separator = totalMatch?.[1] ?? ' / '
   const error = validatePageNumberTemplate(settings.template)
   const update = <K extends keyof PageNumberSettings,>(key: K, value: PageNumberSettings[K]) => setSettings((current) => ({ ...current, [key]: value }))
-  return <div className="modal-backdrop page-number-backdrop"><div className="modal page-number-dialog" role="dialog" aria-modal="true" aria-labelledby="page-number-title">
+  return <div className="modal-backdrop page-number-backdrop"><ScrollWindow className="modal page-number-dialog" role="dialog" aria-modal="true" aria-labelledby="page-number-title">
     <header className="page-number-heading"><span aria-hidden="true">#</span><div><h2 id="page-number-title">{ui("ui.addPageNumbers")}</h2><p>{ui("ui.relativeMarginsAdaptAutomaticallyToPortraitLandscapeAndMixedPage")}</p></div></header>
     {existingCount > 0 && <div className="page-number-existing"><b>{ui("ui.existingPageNumbersFound")}</b><span>{t('pageNumbers.existing', { count: existingCount })}</span></div>}
     <section className="page-number-section"><h3>{ui("ui.pageNumberContent")}</h3><div className="segmented page-number-presets"><button type="button" className={preset === 'page' ? 'active' : ''} onClick={() => update('template', '{page}')}>{ui("ui.pageOnly")}</button><button type="button" className={preset === 'total' ? 'active' : ''} onClick={() => update('template', `{page}${separator}{total}`)}>{ui("ui.pageTotal")}</button><button type="button" className={preset === 'custom' ? 'active' : ''} onClick={() => { if (preset !== 'custom') update('template', ui("ui.pagePageOfTotal")) }}>{ui("ui.customTemplate")}</button></div>
@@ -89,12 +80,12 @@ export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, 
     <section className="page-number-section page-number-position"><h3>{ui("ui.position")}</h3><label><span>{ui("ui.horizontalAlignment")}</span><div className="segmented"><button type="button" className={settings.horizontal === 'left' ? 'active' : ''} onClick={() => update('horizontal', 'left')}>{ui("ui.left3")}</button><button type="button" className={settings.horizontal === 'center' ? 'active' : ''} onClick={() => update('horizontal', 'center')}>{ui("ui.center")}</button><button type="button" className={settings.horizontal === 'right' ? 'active' : ''} onClick={() => update('horizontal', 'right')}>{ui("ui.right3")}</button></div></label><label><span>{ui("ui.verticalPosition")}</span><div className="segmented"><button type="button" className={settings.vertical === 'top' ? 'active' : ''} onClick={() => update('vertical', 'top')}>{ui("ui.pageTop")}</button><button type="button" className={settings.vertical === 'bottom' ? 'active' : ''} onClick={() => update('vertical', 'bottom')}>{ui("ui.pageBottom")}</button></div></label><div className="page-number-offsets"><label>{ui("ui.distanceFromEdge")}<span><input type="number" min="0" max="30" step="0.5" value={settings.edgeOffsetPercent} onChange={(event) => update('edgeOffsetPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label><label>{ui("ui.sideSafeMargin")}<span><input type="number" min="0" max="30" step="0.5" value={settings.sideMarginPercent} onChange={(event) => update('sideMarginPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label></div></section>
     <div className="page-number-preview"><small>{ui("ui.livePreview")}</small><div style={{ color: settings.color, fontFamily: fontCssFamily(settings.font), fontSize: `${Math.max(10, Math.min(24, settings.size))}px`, fontWeight: settings.bold ? 700 : 400, fontStyle: settings.italic ? 'italic' : 'normal', textAlign: settings.horizontal }}>{formatPageNumber(settings.template, Math.min(3, pageCount), pageCount)}</div></div>
     <div className="modal-actions page-number-actions">{existingCount > 0 && <button type="button" className="danger" onClick={onDelete}>{ui("ui.removeExistingPageNumbers")}</button>}<span /><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={Boolean(error)} onClick={() => onSubmit(settings)}>{existingCount > 0 ? ui("ui.updatePageNumbers") : ui("ui.addPageNumbers2")}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function SaveAsRequiredDialog({ target, onCancel, onSaveAs }: { target: string; onCancel(): void; onSaveAs(): void }) {
   const fileName = target.split(/[\\/]/).at(-1) || ui("ui.currentPdf")
-  return <div className="modal-backdrop save-as-required-backdrop"><div className="modal save-as-required-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-required-title"><div className="save-as-required-symbol" aria-hidden="true">!</div><div className="save-as-required-copy"><small>{ui("ui.aNewSaveLocationIsRequired")}</small><h2 id="save-as-required-title">{ui("ui.thisFileCannotBeSavedHere")}</h2><p><b>{fileName}</b> {ui("ui.theFileMayBeReadOnlyInUseByAnother")}</p></div><div className="save-as-required-note"><b>{ui("ui.yourChangesRemainInThisWindow")}</b><span>{ui("ui.saveToAnotherLocationTheOriginalFileWillNotBe")}</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.donTSaveYet")}</button><button type="button" className="primary" onClick={onSaveAs}>{ui("ui.chooseAnotherLocation")}</button></div></div></div>
+  return <div className="modal-backdrop save-as-required-backdrop"><ScrollWindow className="modal save-as-required-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-required-title"><header className="save-as-required-heading"><div className="save-as-required-symbol" aria-hidden="true">!</div><div className="save-as-required-copy"><small>{ui("ui.aNewSaveLocationIsRequired")}</small><h2 id="save-as-required-title">{ui("ui.thisFileCannotBeSavedHere")}</h2><p><b>{fileName}</b> {ui("ui.theFileMayBeReadOnlyInUseByAnother")}</p></div></header><div className="save-as-required-note"><b>{ui("ui.yourChangesRemainInThisWindow")}</b><span>{ui("ui.saveToAnotherLocationTheOriginalFileWillNotBe")}</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.donTSaveYet")}</button><button type="button" className="primary" onClick={onSaveAs}>{ui("ui.chooseAnotherLocation")}</button></div></ScrollWindow></div>
 }
 
 export interface PdfPasswordDialogState {
@@ -120,23 +111,23 @@ export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPas
     setPassword('')
     onSubmit(value)
   }
-  return <div className="modal-backdrop password-backdrop"><div className="modal password-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-password-title">
+  return <div className="modal-backdrop password-backdrop"><ScrollWindow className="modal password-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-password-title">
     <div className="password-heading"><span className="password-lock" aria-hidden="true">{ui("ui.lock")}</span><div><small>{ui("ui.protectedPdf")}</small><h2 id="pdf-password-title">{ui("ui.enterPassword")}</h2></div></div>
     <div className="password-file"><span>PDF</span><div><b>{state.fileName}</b><small>{ui("ui.theEncryptedDocumentWillOpenReadOnly")}</small></div></div>
     <p className={invalid ? 'password-message invalid' : 'password-message'}>{message}</p>
     <label className="password-field"><span>{ui("ui.password")}</span><div><input ref={inputRef} type={visible ? 'text' : 'password'} value={password} autoComplete="off" spellCheck={false} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') submit() }} /><button type="button" onClick={() => setVisible((value) => !value)}>{visible ? ui("ui.hide") : ui("ui.show")}</button></div></label>
     <label className="remember-password"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span><b>{ui("ui.savePasswordOnThisDevice")}</b><small>{ui("ui.encryptedWithSystemSecureStorageAndTriedAutomaticallyNextTime")}</small></span></label>
     <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!password.length} onClick={submit}>{ui("ui.unlockOpen")}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function SecureStorageNoticeDialog({ onCancel, onContinue }: { onCancel(): void; onContinue(): void }) {
-  return <div className="modal-backdrop secure-storage-backdrop"><div className="modal secure-storage-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-storage-title">
+  return <div className="modal-backdrop secure-storage-backdrop"><ScrollWindow className="modal secure-storage-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-storage-title">
     <div className="secure-storage-heading"><span className="secure-storage-icon" aria-hidden="true">{ui("ui.lock")}</span><div><small>{ui("ui.encryptedPdf")}</small><h2 id="secure-storage-title">{ui("ui.useLocalSecureStorage")}</h2></div></div>
     <p>{ui("ui.thisDocumentIsPasswordProtectedContinuingLetsPdfuckTryThe")}</p>
     <div className="secure-storage-note"><b>{ui("ui.youMaySeeASystemSecurityPrompt")}</b><span>{ui("ui.thisIsANormalMacosKeychainOrWindowsCredentialPrompt")}</span></div>
     <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.skipAndEnterManually")}</button><button type="button" className="primary" onClick={onContinue}>{ui("ui.continue")}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }: { pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
@@ -144,11 +135,11 @@ export function PageDeleteDialog({ pageCount, currentPage, onCancel, onSubmit }:
   const replace = (pages: number[]) => setSelected(new Set(pages))
   const toggle = (page: number) => setSelected((current) => { const next = new Set(current); next.has(page) ? next.delete(page) : next.add(page); return next })
   const allSelected = selected.size === pageCount
-  return <div className="modal-backdrop"><div className="modal page-delete-dialog"><h2>{ui("ui.deletePages")}</h2><p>{ui("ui.choosePagesToDeleteAtLeastOnePageMustRemain")}</p>
+  return <div className="modal-backdrop"><ScrollWindow className="modal page-delete-dialog"><h2>{ui("ui.deletePages")}</h2><p>{ui("ui.choosePagesToDeleteAtLeastOnePageMustRemain")}</p>
     <div className="page-delete-shortcuts"><button onClick={() => replace([currentPage])}>{ui("ui.currentPage")}</button><button onClick={() => replace(Array.from({ length: pageCount }, (_, index) => index).filter((index) => index % 2 === 0))}>{ui("ui.oddPages")}</button><button onClick={() => replace(Array.from({ length: pageCount }, (_, index) => index).filter((index) => index % 2 === 1))}>{ui("ui.evenPages")}</button><button onClick={() => replace([])}>{ui("ui.clear2")}</button></div>
     <div className="page-delete-grid">{Array.from({ length: pageCount }, (_, page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{selected.has(page) ? ui("ui.remove") : ui("ui.keep")}</small></button>)}</div>
     <div className={`page-delete-summary${allSelected ? ' invalid' : ''}`}>{allSelected ? ui("ui.youCannotDeleteEveryPageLeaveAtLeastOnePage") : t('page.deleteSummary', { remove: selected.size, keep: pageCount - selected.size })}</div>
-    <div className="modal-actions"><button onClick={onCancel}>{ui("ui.cancel")}</button><button className="danger" disabled={!selected.size || allSelected} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{ui("ui.deleteSelectedPages")}</button></div></div></div>
+    <div className="modal-actions"><button onClick={onCancel}>{ui("ui.cancel")}</button><button className="danger" disabled={!selected.size || allSelected} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{ui("ui.deleteSelectedPages")}</button></div></ScrollWindow></div>
 }
 
 const PAGE_MANAGER_WINDOW_SIZE = 20
@@ -329,7 +320,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     movePageBy(page, event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
   }
 
-  return <div className="modal-backdrop page-manager-backdrop"><div className="modal page-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
+  return <div className="modal-backdrop page-manager-backdrop"><ScrollWindow className="modal page-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
     <header className="page-manager-heading">
       <div className="page-manager-title-mark"><PageManagerIcon name="pages" /></div>
       <div className="page-manager-heading-copy"><h2 id="page-manager-title">{t('page.managerTitle')}</h2><p>{t('page.managerDescription')}</p></div>
@@ -396,7 +387,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
       <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : hasChanges ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>
       <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t('page.managerCancel')}</button><button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept, Object.fromEntries(Object.entries(rotations).filter(([page, rotation]) => kept.includes(Number(page)) && normalizedPageRotation(rotation) !== 0)))}>{t('page.managerApply')}</button></div>
     </footer>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function PageSelectionDialog({ purpose: _purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
@@ -416,14 +407,14 @@ export function PageSelectionDialog({ purpose: _purpose, pageCount, currentPage,
   const title = ui("ui.selectPagesToExport")
   const action = t('page.export')
   const valid = selected.size > 0 && invalid.length === 0
-  return <div className="modal-backdrop"><div className="modal page-selection-dialog">
+  return <div className="modal-backdrop"><ScrollWindow className="modal page-selection-dialog">
     <div className="page-selection-heading"><span className="page-selection-icon export" aria-hidden="true">⇩</span><div><h2>{title}</h2><p>{ui("ui.clickPagesDirectlyOrEnterNonContiguousPageNumbersAnd")}</p></div></div>
     <label className={`page-range-input${invalid.length ? ' invalid' : ''}`}><span>{ui("ui.pageRange")}</span><div><input autoFocus value={manual} placeholder={ui("ui.forExample135810")} onChange={(event) => changeManual(event.target.value)} onBlur={() => { if (!invalid.length) setManual(compactPageSelection([...selected])) }} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter' && valid) onSubmit([...selected].sort((a, b) => a - b)) }} /><small>{invalid.length ? t('page.rangeInvalid', { value: invalid.join('、') }) : ui("ui.commasSpacesAndHyphensAreSupportedPagesNeedNotBe")}</small></div></label>
     <div className="page-selection-shortcuts"><button className={isAll ? 'active' : ''} onClick={() => replace(allPages)}>{ui("ui.all")}</button><button className={selected.size === 1 && selected.has(currentPage) ? 'active' : ''} onClick={() => replace([currentPage])}>{ui("ui.currentPage")}</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 0))}>{ui("ui.oddPages")}</button><button onClick={() => replace(allPages.filter((page) => page % 2 === 1))}>{ui("ui.evenPages")}</button><button onClick={() => replace(allPages.filter((page) => !selected.has(page)))}>{ui("ui.invert")}</button><button onClick={() => replace([])}>{ui("ui.clear2")}</button></div>
     <div className="page-selection-grid">{allPages.map((page) => <button key={page} className={selected.has(page) ? 'selected' : ''} onClick={() => toggle(page)} aria-pressed={selected.has(page)}><span>{page + 1}</span><small>{page === currentPage ? ui("ui.currentPage") : selected.has(page) ? ui("ui.selected2") : ui("ui.notSelected")}</small></button>)}</div>
     <div className={`page-selection-summary${!valid ? ' invalid' : ''}`}><b>{selected.size ? t('page.selected', { count: selected.size }) : ui("ui.noPagesSelected")}</b><span>{invalid.length ? ui("ui.correctThePageRangeToContinue") : selected.size ? compactPageSelection([...selected]) : t('page.selectForAction', { action })}</span></div>
     <div className="modal-actions"><button onClick={onCancel}>{ui("ui.cancel")}</button><button className="primary" disabled={!valid} onClick={() => onSubmit([...selected].sort((a, b) => a - b))}>{t('page.action', { action, count: selected.size || '' })}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 220, maxHeight = 280): { thumbnails: Record<number, string>; sizes: Record<number, { width: number; height: number }>; failed: Set<number> } {
@@ -604,7 +595,7 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
   }
   const setPreset = (nextRows: number, nextColumns: number) => { setRows(nextRows); setColumns(nextColumns); setSheetIndex(0) }
   const isAll = selected.size === pageCount
-  return <div className="modal-backdrop print-modal-backdrop"><div className="modal print-options-dialog"><div className="print-dialog-heading"><div className="print-heading-copy"><span className="print-heading-icon" aria-hidden="true">⎙</span><div><h2>{ui("ui.printSettingsPreview")}</h2><p>{t('print.overview', { pages: pages.length, sheets: sheetCount })}</p></div></div><button type="button" aria-label={ui("ui.closePrintSettings")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
+  return <div className="modal-backdrop print-modal-backdrop"><ScrollWindow className="modal print-options-dialog"><div className="print-dialog-heading"><div className="print-heading-copy"><span className="print-heading-icon" aria-hidden="true">⎙</span><div><h2>{ui("ui.printSettingsPreview")}</h2><p>{t('print.overview', { pages: pages.length, sheets: sheetCount })}</p></div></div><button type="button" aria-label={ui("ui.closePrintSettings")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
     <div className="print-dialog-body"><aside className="print-controls">
       <section className="print-control-section print-printer-section"><header><b>{ui("ui.printer")}</b><button type="button" className="print-printer-refresh" disabled={printersLoading} aria-label={ui("ui.refreshPrinters")} title={ui("ui.refreshPrinters")} onClick={onRefreshPrinters}><span aria-hidden="true">↻</span></button></header>
         <div className={`print-printer-picker${printerError || (!printersLoading && !printers.length) ? ' unavailable' : ''}`}><span className="print-printer-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 14h10v7H7z" /></svg></span><div>{printersLoading ? <span className="print-printer-state">{ui("ui.findingPrinters")}</span> : printers.length ? <><select className="print-printer-select" aria-label={ui("ui.printer")} value={printerName} onChange={(event) => changePrinter(event.target.value)}>{printers.map((printer) => <option key={printer.name} value={printer.name} data-duplex={String(printer.supportsDuplex)}>{printer.displayName}{printer.isDefault ? ` · ${ui("ui.default")}` : ''}</option>)}</select>{selectedPrinter?.description && <small>{selectedPrinter.description}</small>}</> : <span className="print-printer-state">{ui("ui.noAvailablePrintersFound")}</span>}</div></div>
@@ -633,16 +624,16 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
       <footer><span>{multiPage ? `${rows} × ${columns} ${ui("ui.layout")}` : t('print.onePerSheet')} · {scale}%</span><b>{t('print.summary', { size: pageSize, orientation: resolvedOrientation === 'landscape' ? ui("ui.landscape") : ui("ui.portrait"), duplex: duplex === 'simplex' ? ui("ui.singleSided") : ui("ui.doubleSided") })}</b></footer>
     </section></div>
     <div className="modal-actions print-dialog-actions"><span className={!valid ? 'invalid' : ''}>{invalid.length ? ui("ui.correctThePageRangeToContinue") : !pages.length ? ui("ui.noPagesSelected") : printersLoading ? ui("ui.findingPrinters") : !selectedPrinter ? ui("ui.selectAnAvailablePrinter") : t('print.layout', { pages: pages.length, sheets: sheetCount })}</span><button onClick={onCancel}>{ui("ui.cancel")}</button><button className="primary" disabled={!valid} onClick={() => onSubmit(pages, options, printerName)}>{ui("ui.sendToPrinter")}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function UpdateDialog({ update, onLater, onSkip, onDownload }: { update: UpdateCheckResult & { status: 'available' }; onLater(): void; onSkip(): void; onDownload(): void }) {
-  return <div className="modal-backdrop update-backdrop"><div className="modal update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
-    <div className="update-symbol" aria-hidden="true"><span>↑</span></div>
-    <div className="update-copy"><small>{ui("ui.pdfuckUpdateCheck")}</small><h2 id="update-title">{t('update.availableTitle', { version: update.latestVersion || '' })}</h2><p>{t('update.description', { current: update.currentVersion })}</p></div>
+  return <div className="modal-backdrop update-backdrop"><ScrollWindow className="modal update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+    <header className="update-heading"><div className="update-symbol" aria-hidden="true"><span>↑</span></div>
+    <div className="update-copy"><small>{ui("ui.pdfuckUpdateCheck")}</small><h2 id="update-title">{t('update.availableTitle', { version: update.latestVersion || '' })}</h2><p>{t('update.description', { current: update.currentVersion })}</p></div></header>
     <div className="update-version"><span>{t('update.current', { version: update.currentVersion })}</span><i>→</i><span>{t('update.latest', { version: update.latestVersion || '' })}</span></div>
     <div className="update-actions"><button type="button" onClick={onSkip}>{ui("ui.doNotRemindMeAboutThisVersion")}</button><span /><button type="button" onClick={onLater}>{ui("ui.remindMeLater")}</button><button type="button" className="primary" onClick={onDownload}>{ui("ui.download")}</button></div>
-  </div></div>
+  </ScrollWindow></div>
 }
 
 export function Toast({ message }: { message: string }) {
@@ -658,7 +649,7 @@ export function OpenPdfDialog({ recent, onCancel, onOpen, onBrowse }: { recent: 
     const locale = { zh: 'zh-CN', en: 'en-US', ja: 'ja-JP', ru: 'ru-RU', es: 'es-ES', fr: 'fr-FR', de: 'de-DE', pt: 'pt-BR', ko: 'ko-KR', ar: 'ar-SA' }[language]
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
-  return <div className="modal-backdrop"><div className="modal open-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="open-pdf-title"><h2 id="open-pdf-title">{ui("ui.openPdf")}</h2><p>{ui("ui.continueWithARecentFileOrBrowseFilesOnThis")}</p><div className="open-pdf-recent recent-list">{recent.length ? recent.map((item) => <button key={item.path} type="button" className="recent-item open-pdf-recent-item" title={item.path} onClick={() => onOpen(item.path)}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty open-pdf-empty"><span>⌁</span><b>{ui("ui.noRecentlyOpenedPdfsYet")}</b></div>}</div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" onClick={onBrowse}>{ui("ui.browsePdfFiles")}</button></div></div></div>
+  return <div className="modal-backdrop"><ScrollWindow className="modal open-pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="open-pdf-title"><h2 id="open-pdf-title">{ui("ui.openPdf")}</h2><p>{ui("ui.continueWithARecentFileOrBrowseFilesOnThis")}</p><div className="open-pdf-recent recent-list">{recent.length ? recent.map((item) => <button key={item.path} type="button" className="recent-item open-pdf-recent-item" title={item.path} onClick={() => onOpen(item.path)}><span className="recent-pdf-icon">PDF</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty open-pdf-empty"><span>⌁</span><b>{ui("ui.noRecentlyOpenedPdfsYet")}</b></div>}</div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" onClick={onBrowse}>{ui("ui.browsePdfFiles")}</button></div></ScrollWindow></div>
 }
 
 export type MergeInsertion = { position: 'start' | 'end' | 'before' | 'after'; page?: number }
@@ -686,15 +677,15 @@ export function MergeFilesDialog({ files, pageCount, creating, onCancel, onSubmi
           : ui("ui.filesWillBeInsertedAfterPagePage").replace('{page}', String(target))
         : ui("ui.enterAValidTargetPageNumber")
   const submit = () => onSubmit({ files: ordered, insertion: creating ? undefined : { position, page: position === 'before' || position === 'after' ? target : undefined } })
-  return <div className="modal-backdrop"><div className="modal merge-files-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-files-title"><div className="merge-files-heading"><span aria-hidden="true">+</span><div><h2 id="merge-files-title">{ui("ui.mergePdfFromFiles")}</h2><p>{creating ? ui("ui.arrangeImportedFilesThenCreateANewMergedPdf") : ui("ui.chooseTheInsertionPointFirstThenArrangeImportedFiles")}</p></div></div>
+  return <div className="modal-backdrop"><ScrollWindow className="modal merge-files-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-files-title"><div className="merge-files-heading"><span aria-hidden="true">+</span><div><h2 id="merge-files-title">{ui("ui.mergePdfFromFiles")}</h2><p>{creating ? ui("ui.arrangeImportedFilesThenCreateANewMergedPdf") : ui("ui.chooseTheInsertionPointFirstThenArrangeImportedFiles")}</p></div></div>
     {!creating && <section className="merge-placement"><div><b>{ui("ui.insertionPoint")}</b><small>{ui("ui.countPages").replace('{count}', String(pageCount))}</small></div><div className="merge-placement-options" role="radiogroup" aria-label={ui("ui.insertionPoint")}><button type="button" role="radio" aria-checked={position === 'start'} className={position === 'start' ? 'active' : ''} onClick={() => setPosition('start')}>{ui("ui.beginningOfDocument")}</button><button type="button" role="radio" aria-checked={position === 'end'} className={position === 'end' ? 'active' : ''} onClick={() => setPosition('end')}>{ui("ui.endOfDocument")}</button><button type="button" role="radio" aria-checked={position === 'before'} className={position === 'before' ? 'active' : ''} onClick={() => setPosition('before')}>{ui("ui.beforeAPage")}</button><button type="button" role="radio" aria-checked={position === 'after'} className={position === 'after' ? 'active' : ''} onClick={() => setPosition('after')}>{ui("ui.afterAPage")}</button></div>{(position === 'before' || position === 'after') && <label className={`merge-target-page${targetValid ? '' : ' invalid'}`}><span>{ui("ui.targetPage")}</span><div className="merge-target-page-field"><div className="merge-page-input"><input autoFocus aria-label={ui("ui.targetPage")} type="text" inputMode="numeric" pattern="[0-9]*" value={targetPage} onChange={(event) => setTargetPage(event.target.value.replace(/\D/g, ''))} /><i>{ui("ui.page")}</i></div><b>{position === 'before' ? ui("ui.insertBeforeThisPage") : ui("ui.insertAfterThisPage")}</b></div><small>{targetValid ? ui("ui.enterANumberFrom1ToCount").replace('{count}', String(pageCount)) : ui("ui.enterAPageNumberFrom1ToCount").replace('{count}', String(pageCount))}</small></label>}</section>}
     <section className="merge-source-order"><div className="merge-section-heading"><div><b>{ui("ui.importedFileOrder")}</b><small>{ui("ui.dragCardsOrUseTheArrowButtonsPagesWithinEach")}</small></div><span>{ui("ui.countFiles").replace('{count}', String(ordered.length))}</span></div><div className="merge-source-list">{ordered.map((file, index) => <article key={`${file.name}-${index}`} className="merge-source-item" draggable onDragStart={(event) => { setDraggedIndex(index); event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => setDraggedIndex(undefined)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedIndex !== undefined) move(draggedIndex, index); setDraggedIndex(undefined) }}><span className="merge-source-grip" aria-hidden="true">⠿</span><span className="merge-source-number">{index + 1}</span><div><b title={file.name}>{file.name}</b><small>{(file.sourceFormat || file.format).toUpperCase()} · {ui("ui.keepTheSourcePageOrder")}</small></div><div className="merge-source-actions"><button type="button" disabled={index === 0} aria-label={ui("ui.moveFileUp")} title={ui("ui.moveFileUp")} onClick={() => move(index, index - 1)}>↑</button><button type="button" disabled={index === ordered.length - 1} aria-label={ui("ui.moveFileDown")} title={ui("ui.moveFileDown")} onClick={() => move(index, index + 1)}>↓</button></div></article>)}</div></section>
-    <div className={`merge-outcome${valid ? '' : ' invalid'}`}><b>{placementSummary}</b><span>{ui("ui.afterConfirmationFilesWillBeInsertedTogetherInTheOrder")}</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!valid} onClick={submit}>{creating ? ui("ui.createMergedPdf") : ui("ui.confirmMerge")}</button></div></div></div>
+    <div className={`merge-outcome${valid ? '' : ' invalid'}`}><b>{placementSummary}</b><span>{ui("ui.afterConfirmationFilesWillBeInsertedTogetherInTheOrder")}</span></div><div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!valid} onClick={submit}>{creating ? ui("ui.createMergedPdf") : ui("ui.confirmMerge")}</button></div></ScrollWindow></div>
 }
 
 export function ConfirmDialog({ message, title, confirmLabel, destructive = false, onCancel, onConfirm }: { message: string; title?: string; confirmLabel?: string; destructive?: boolean; onCancel(): void; onConfirm(): void }) {
   const cancelRef = useDeferredFocus<HTMLButtonElement>()
-  return <div className={`modal-backdrop${destructive ? ' unsaved-close-backdrop' : ''}`}><div className={`modal${destructive ? ' unsaved-close-dialog' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message"><h2 id="confirm-dialog-title">{title || (destructive ? ui("ui.unsavedChanges") : ui("ui.pleaseConfirm"))}</h2><p id="confirm-dialog-message">{message}</p><div className="modal-actions"><button ref={cancelRef} type="button" className={destructive ? 'unsaved-close-cancel' : undefined} onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className={destructive ? 'unsaved-close-confirm' : 'primary'} onClick={onConfirm}>{confirmLabel || (destructive ? ui("ui.closeAnyway") : ui("ui.confirm"))}</button></div></div></div>
+  return <div className={`modal-backdrop${destructive ? ' unsaved-close-backdrop' : ''}`}><ScrollWindow className={`modal${destructive ? ' unsaved-close-dialog' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message"><h2 id="confirm-dialog-title">{title || (destructive ? ui("ui.unsavedChanges") : ui("ui.pleaseConfirm"))}</h2><p id="confirm-dialog-message">{message}</p><div className="modal-actions"><button ref={cancelRef} type="button" className={destructive ? 'unsaved-close-cancel' : undefined} onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className={destructive ? 'unsaved-close-confirm' : 'primary'} onClick={onConfirm}>{confirmLabel || (destructive ? ui("ui.closeAnyway") : ui("ui.confirm"))}</button></div></ScrollWindow></div>
 }
 
 export type UnsavedCloseDecision = 'cancel' | 'save' | 'discard'
@@ -703,7 +694,7 @@ export type UnsavedCloseDecision = 'cancel' | 'save' | 'discard'
 export function UnsavedCloseDialog({ message, title, discardLabel, saveLabel, onDecision }: { message: string; title?: string; discardLabel?: string; saveLabel?: string; onDecision(decision: UnsavedCloseDecision): void }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   useEffect(() => { cancelRef.current?.focus() }, [])
-  return <div className="modal-backdrop unsaved-close-backdrop"><div className="modal unsaved-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-close-title" aria-describedby="unsaved-close-message"><h2 id="unsaved-close-title">{title || ui("ui.unsavedChanges")}</h2><p id="unsaved-close-message">{message}</p><div className="modal-actions unsaved-close-actions"><button ref={cancelRef} type="button" className="unsaved-close-cancel" onClick={() => onDecision('cancel')}>{ui("ui.cancel")}</button><button type="button" className="unsaved-close-save primary" onClick={() => onDecision('save')}>{saveLabel || ui("ui.saveAndClose")}</button><button type="button" className="unsaved-close-confirm" onClick={() => onDecision('discard')}>{discardLabel || ui("ui.closeWithoutSaving")}</button></div></div></div>
+  return <div className="modal-backdrop unsaved-close-backdrop"><ScrollWindow className="modal unsaved-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-close-title" aria-describedby="unsaved-close-message"><h2 id="unsaved-close-title">{title || ui("ui.unsavedChanges")}</h2><p id="unsaved-close-message">{message}</p><div className="modal-actions unsaved-close-actions"><button ref={cancelRef} type="button" className="unsaved-close-cancel" onClick={() => onDecision('cancel')}>{ui("ui.cancel")}</button><button type="button" className="unsaved-close-save primary" onClick={() => onDecision('save')}>{saveLabel || ui("ui.saveAndClose")}</button><button type="button" className="unsaved-close-confirm" onClick={() => onDecision('discard')}>{discardLabel || ui("ui.closeWithoutSaving")}</button></div></ScrollWindow></div>
 }
 
 export function ErrorDialog({ message, onClose }: { message: string; onClose(): void }) {
@@ -715,5 +706,5 @@ export function ErrorDialog({ message, onClose }: { message: string; onClose(): 
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
     }
   }, [])
-  return <div className="modal-backdrop error-dialog-backdrop"><div className="modal error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="error-dialog-title" aria-describedby="error-dialog-message"><div className="error-dialog-heading"><span aria-hidden="true">!</span><h2 id="error-dialog-title">{ui("ui.actionFailed")}</h2></div><p id="error-dialog-message">{message}</p><div className="modal-actions"><button ref={closeRef} type="button" className="primary" onClick={onClose}>{ui("ui.confirm")}</button></div></div></div>
+  return <div className="modal-backdrop error-dialog-backdrop"><ScrollWindow className="modal error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="error-dialog-title" aria-describedby="error-dialog-message"><div className="error-dialog-heading"><span aria-hidden="true">!</span><h2 id="error-dialog-title">{ui("ui.actionFailed")}</h2></div><p id="error-dialog-message">{message}</p><div className="modal-actions"><button ref={closeRef} type="button" className="primary" onClick={onClose}>{ui("ui.confirm")}</button></div></ScrollWindow></div>
 }

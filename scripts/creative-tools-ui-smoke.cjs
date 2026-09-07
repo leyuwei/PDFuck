@@ -296,7 +296,7 @@ async function verifyDrawingBoard(app, page) {
   await app.evaluate(({ dialog }, file) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: file })
   }, artifacts.drawingExport)
-  const footerButtons = drawingWindow.locator('> footer button')
+  const footerButtons = drawingWindow.locator('.window-scroll-body > footer button')
   assert.equal(await footerButtons.count(), 2)
   await footerButtons.first().click()
   await waitForFile(artifacts.drawingExport)
@@ -368,7 +368,7 @@ async function verifyShapeCreator(page) {
   const outlineTransparent = colorControls.nth(0).locator('input[type="checkbox"]')
   const fill = colorControls.nth(1).locator('input[type="color"]')
   const fillTransparent = colorControls.nth(1).locator('input[type="checkbox"]')
-  const createButton = dialog.locator('> footer button.primary')
+  const createButton = dialog.locator('.window-scroll-body > footer button.primary')
   assert.equal(await outlineTransparent.isChecked(), false)
   assert.equal(await fillTransparent.isChecked(), true)
 
@@ -421,7 +421,7 @@ async function verifyCrossDocumentCommit(app, page, secondaryFixture) {
   await shapeButton.click()
   const dialog = page.locator('.shape-creator-modal[role="dialog"]')
   await dialog.waitFor()
-  await dialog.locator('> footer button.primary').click()
+  await dialog.locator('.window-scroll-body > footer button.primary').click()
   await dialog.waitFor({ state: 'detached' })
   await page.locator('.pdf-page[data-page="0"] .image-draft').waitFor()
 

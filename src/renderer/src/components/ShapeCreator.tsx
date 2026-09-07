@@ -1,3 +1,4 @@
+import { ScrollWindow } from './ScrollWindow'
 import { useEffect, useId, useRef, useState } from 'react'
 import './shape-creator.css'
 
@@ -187,7 +188,7 @@ export function ShapeCreator({ labels, onCancel, onCreate }: ShapeCreatorProps) 
   }
 
   return <div className="shape-creator-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel() }}>
-    <div className="shape-creator-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
+    <ScrollWindow className="shape-creator-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
       <header><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div><button type="button" disabled={busy} onClick={onCancel} aria-label={labels.cancel}>×</button></header>
       <div className="shape-creator-layout">
         <section className="shape-creator-preview" aria-label={labels.preview}><span>{labels.preview}</span><div><canvas ref={canvasRef} /></div></section>
@@ -209,6 +210,6 @@ export function ShapeCreator({ labels, onCancel, onCreate }: ShapeCreatorProps) 
       {!visible && <p className="shape-creator-message" role="alert">{labels.nothingVisible}</p>}
       {failed && <p className="shape-creator-message error" role="alert">{labels.encodeFailed}</p>}
       <footer><button type="button" disabled={busy} onClick={onCancel}>{labels.cancel}</button><button type="button" className="primary" disabled={!visible || busy} onClick={() => void create()}>{busy ? labels.encoding : labels.addToPage}</button></footer>
-    </div>
+    </ScrollWindow>
   </div>
 }
