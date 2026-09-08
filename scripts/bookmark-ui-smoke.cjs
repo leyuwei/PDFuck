@@ -102,7 +102,7 @@ async function main() {
     assert.ok(resizedWidth > initialWidth + 35, `bookmark sidebar must be resizable (${initialWidth} -> ${resizedWidth})`)
 
     await panel.getByRole('button', { name: '增大书签字号' }).click()
-    assert.match(await panel.getAttribute('style'), /13px/u, 'bookmark font-size control must update the panel')
+    assert.match(await panel.getAttribute('style'), /var\(--ui-font-title\)/u, 'bookmark font-size control must update the panel')
     const search = panel.getByRole('textbox', { name: '搜索书签' })
     await search.fill('Scope')
     assert.equal(await panel.locator('.bookmark-row').count(), 2, 'search must retain a matching bookmark and its ancestor')

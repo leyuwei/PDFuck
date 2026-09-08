@@ -94,7 +94,7 @@ describe('ToolPanel theme colours', () => {
     expect([...container.querySelectorAll<HTMLButtonElement>('.segmented button')].slice(2).every((button) => !button.disabled)).toBe(true)
     expect((container.querySelector('.language-select select') as HTMLSelectElement).disabled).toBe(false)
     expect((container.querySelector('[aria-label="设置PDF 纸张背景"]') as HTMLButtonElement).disabled).toBe(true)
-    expect([...container.querySelectorAll<HTMLButtonElement>('.tool-action-button')].every((button) => button.disabled)).toBe(true)
+    expect([...container.querySelectorAll<HTMLButtonElement>('.tool-action-button:not(.interface-size-action)')].every((button) => button.disabled)).toBe(true)
 
     await act(async () => root.render(<ToolPanel {...common} module="edit" />))
     const editActions = [...container.querySelectorAll<HTMLButtonElement>('.tool-button, .tool-panel-action')]

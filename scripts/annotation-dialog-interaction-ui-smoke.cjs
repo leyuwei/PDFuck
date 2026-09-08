@@ -102,6 +102,7 @@ async function main() {
       await page.screenshot({ path: path.join(root, `output/playwright/annotation-dialog-interaction-${version}.png`) })
       await close()
     }
+    if (!diagnose) await require('./annotation-layout-ui-checks.cjs')(app, page, version)
     console.log(JSON.stringify({ version, diagnose, checks }, null, 2))
     if (!diagnose) assert.ok(checks.every(item => item.passed), JSON.stringify(checks.filter(item => !item.passed)))
   } finally {

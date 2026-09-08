@@ -1,0 +1,95 @@
+/* PDFuck VI: exactly three UI text sizes. See docs/VI-TYPOGRAPHY.md. */
+:root { --ui-font-small: 11px; --ui-font-body: 13px; --ui-font-title: 17px; font-size: var(--ui-font-body); }
+body { font-size: var(--ui-font-body); line-height: 1.45; }
+button, input, select, textarea { line-height: 1.35; }
+.app-shell h1, .app-shell h2, .app-shell h3, .modal h1, .modal h2, .modal h3 { font-size: var(--ui-font-title); line-height: 1.35; }
+.tool-panel .tool-button strong, .tool-panel-action strong, .tool-panel .tool-action-button, .rich-editor-toolbar > b { font-size: var(--ui-font-body); }
+.tool-panel .tool-button small, .tool-panel-action small, .modal small { font-size: var(--ui-font-small); }
+.tool-panel .tool-button small, .tool-panel-action small { display: block; overflow: visible; -webkit-line-clamp: unset; min-height: 0; }
+:root { --ui-tool-panel-width: clamp(260px, 21vw, 320px); --ui-nav-width: clamp(76px, calc(var(--ui-font-body) * 6), 112px); }
+.left-dock:not(.collapsed) { width: calc(var(--ui-nav-width) + var(--ui-tool-panel-width)); flex-basis: calc(var(--ui-nav-width) + var(--ui-tool-panel-width)); }
+.left-dock.collapsed, .nav-rail { width: var(--ui-nav-width); flex-basis: var(--ui-nav-width); }
+.left-dock { transition: none; }
+.nav-rail { flex-shrink: 0; }
+.nav-rail button { height: auto; min-height: 76px; flex: none; padding: 12px 6px; }
+.nav-module-label { min-width: 0; max-width: 100%; font-size: var(--ui-font-small); line-height: 1.4; text-align: center; white-space: normal; overflow-wrap: anywhere; }
+.tool-panel { width: var(--ui-tool-panel-width); flex-basis: var(--ui-tool-panel-width); padding: 18px 14px; }
+.tool-panel .tool-button, .tool-panel-action { height: auto; min-height: 58px; }
+.tool-panel .window-scroll-body { scrollbar-gutter: stable; }
+.tool-panel .segmented button { white-space: normal; overflow-wrap: anywhere; height: auto; }
+.annotation-header, .annotation-row { grid-template-columns: 20px 28px 82px minmax(0, 1fr) 28px; }
+.annotation-summary-grid button { height: auto; min-height: 52px; }
+.annotation-summary-grid button span { overflow-wrap: anywhere; }
+.rich-editor-toolbar { row-gap: 8px; }
+.tool-panel .interface-size-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.interface-size-action > span { min-width: 0; }
+.interface-size-action > output { flex: none; max-width: 48%; padding: 3px 8px; border-radius: 6px; background: var(--theme-accent-faint, #f1f4fb); color: var(--theme-accent-strong, #3157d5); font-size: var(--ui-font-small); text-align: center; white-space: normal; overflow-wrap: anywhere; }
+.interface-size-backdrop, .interface-size-backdrop * { -webkit-app-region: no-drag; }
+.interface-size-dialog.scroll-window { position: fixed; width: min(580px, calc(100vw - 40px)); padding: 0; max-height: var(--floating-max-height); }
+.interface-size-dialog > header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #d6deeb; cursor: move; touch-action: none; }
+.interface-size-dialog > header h2 { flex: 1; min-width: 0; margin: 0; }
+.interface-size-dialog > header button { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; font-size: var(--ui-font-title); }
+.interface-size-dialog > .window-scroll-body { padding: 18px 20px; }
+.interface-size-options { display: flex; flex-wrap: wrap; }
+.interface-size-options button { flex: 1; padding: 10px; font-size: var(--ui-font-body); }
+.interface-size-preview { display: grid; gap: 12px; margin: 18px 0; padding: 18px; border: 1px solid #d6deeb; border-radius: 8px; }
+.interface-size-preview h3, .interface-size-preview p { margin: 0; }
+.interface-size-preview small { font-size: var(--ui-font-small); }
+.interface-size-dialog .modal-actions { flex-wrap: wrap; }
+
+small { font-size: var(--ui-font-small); }
+h1, h2, h3, h4, h5, h6 { font-size: var(--ui-font-title); }
+.titlebar-tools button { height: auto; min-height: 32px; max-height: 50px; padding-block: 5px; }
+
+.tool-panel h2, .tool-panel h3 { min-width: 0; overflow-wrap: anywhere; }
+.annotation-lab-heading > div { min-width: 0; }
+.annotation-lab-heading .annotation-lab-settings-trigger { flex: none; }
+
+.window-tab-icon { width: auto; min-width: 2.5em; height: auto; line-height: 1.4; padding: 1px 4px; }
+.app-shell { grid-template-rows: 58px auto minmax(0, 1fr) 27px; }
+.window-manager-bar { height: auto; min-height: 46px; padding-block: 6px; }
+.window-manager-heading { height: auto; align-self: stretch; gap: 8px; padding-inline-end: 12px; }
+.window-manager-heading em { display: flex; align-items: center; justify-content: center; flex: none; min-width: 1.75em; height: 1.75em; padding-inline: .35em; border-radius: 999px; line-height: 1; font-variant-numeric: tabular-nums; }
+.window-tabs { align-items: center; padding-block: 1px; }
+.window-tab { height: auto; padding: 6px 8px; gap: 8px; }
+.window-tab-name { line-height: 1.4; }
+.window-tab-close { display: grid; place-items: center; }
+
+.tool-panel .tool-button, .tool-panel .tool-panel-action, .tool-panel .tool-action-button { padding: 14px 12px; margin-bottom: 14px; }
+.tool-panel .tool-button-copy { gap: 6px; }
+.app-shell .tool-panel h3 { font-size: var(--ui-font-body); font-weight: 650; letter-spacing: 0; margin-block: 28px 14px; }
+.app-shell .tool-panel .annotation-lab-heading h3 { margin: 0; }
+.tool-panel .annotation-lab-heading { margin-bottom: 14px; }
+.tool-panel .annotation-lab-tools { gap: 14px; }
+.tool-panel .annotation-lab-tools .annotation-lab-launch.tool-button { padding: 14px 12px; margin: 0; }
+.annotation-line-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+/* Text-bearing boxes grow with their role; parent tracks must allow that growth. */
+.annotation-author-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.annotation-expand em, .bookmark-expand em, .bookmark-page, .temporary-document-warning > span {
+  flex: none; width: auto; min-width: 1.75em; height: auto; min-height: 1.75em; padding: .15em .35em;
+  display: grid; place-items: center; line-height: 1.35; border-radius: 999px; font-variant-numeric: tabular-nums;
+}
+.annotation-panel.collapsed, .bookmark-panel.collapsed { width: max-content; min-width: 46px; max-width: none; flex: 0 0 auto; }
+.annotation-expand, .bookmark-expand { width: auto; min-width: 100%; }
+.menu-delete-icon, .menu-copy-icon, .menu-text-edit-icon, .menu-column-boundary-icon {
+  flex: none; width: auto; height: auto; min-width: 1.5em; min-height: 1.5em; padding: .1em; line-height: 1.35;
+}
+.print-heading-icon, .bookmark-recognition-icon, .temporary-document-warning > span { flex-shrink: 0; }
+.annotation-panel-glyph, .bookmark-panel-glyph { flex: none; width: 1.75em; height: 1.75em; line-height: 1.35; }
+.page-manager-original-badge, .page-manager-current-badge { max-width: calc(50% - 12px); }
+.page-manager-rotation-badge, .page-manager-removed-badge { max-width: calc(100% - 16px); }
+.page-manager-original-badge, .page-manager-current-badge, .page-manager-rotation-badge, .page-manager-removed-badge { line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
+.page-manager-removed-badge svg { flex: none; }
+
+.annotation-custom-color span svg { display: block; width: 75%; height: 75%; }
+
+/* Controls in the same group share content metrics at every font preset. */
+.annotation-toolbar .annotation-author-button, .annotation-toolbar .annotation-line-toggle { height: auto; min-height: 28px; padding: 5px 7px; line-height: 1.35; }
+.annotation-line-toggle .annotation-line-label { font-size: inherit; line-height: inherit; }
+.reading-tools { display: grid; grid-auto-rows: 1fr; gap: 14px; }
+.tool-panel .reading-tools .tool-action-button { margin: 0; }
+.search-pdf-action kbd { margin-block: -5px; }
+.auto-hide-scrollbar { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.auto-hide-scrollbar[data-scrollbar-visible], .auto-hide-scrollbar:active { scrollbar-color: var(--muted, #78849a) transparent; }
+@media (forced-colors: active) { .auto-hide-scrollbar { scrollbar-color: auto; } }

@@ -30,7 +30,7 @@ describe('BookmarkPanel', () => {
     expect(container.querySelector('.bookmark-list')?.textContent).not.toContain('Conclusion')
     const increase = container.querySelector<HTMLButtonElement>('[aria-label="增大书签字号"]')!
     await act(async () => increase.click())
-    expect(container.querySelector('.bookmark-panel')?.getAttribute('style')).toContain('13px')
+    expect(container.querySelector('.bookmark-panel')?.getAttribute('style')).toContain('var(--ui-font-title)')
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, ''); search.dispatchEvent(new Event('input', { bubbles: true })) })
     const title = container.querySelector<HTMLButtonElement>('[data-bookmark-id="two"] .bookmark-title')!
     await act(async () => title.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))

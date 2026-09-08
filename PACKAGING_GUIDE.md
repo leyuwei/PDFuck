@@ -18,6 +18,20 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+test3 与 Scheduling0826m 的长时间 CDP 拖拽回归使用关闭后台节流的隐藏 Electron 窗口，避免共享桌面鼠标移动混入拖选；selection-temporal-ui 记录异常帧的视口指针及页面几何。保留实时选区连续性与分栏断言。
+
+2.0.30 的 annotation-dialog-interaction-ui-smoke 调用 annotation-layout-ui-checks，覆盖十语言 × 四字号的选项字重、编辑区随窗口增长、窄窗换行、同窗 AI 返回与取消草稿。lab-features-ui-smoke 检查同窗上下文选择、生成、填入回复草稿、确认及 PDF 保存重开。新脚本由现有源码/成品发布检查执行，不需新增依赖。
+
+2.0.29 继续扩展 typography-ui-smoke：toolbar-ui-checks 检查阅读工具等高、批注人/单双行等高及四模块滚动条闲置/唤醒/原生拖动。ScrollWindow 单元测试覆盖计时重置、拖动保护、卸载清理和默认不启用。
+
+2.0.28 的 typography-ui-smoke 额外执行 text-badge-ui-checks，对欢迎页/打开弹窗检查四字号 × 十语言 × 两主题，并验证密码 PDF、作者、计数、菜单和页面状态徽标样式标本。源码和成品均运行；需要保留这两个脚本。
+
+2.0.27 将标准预设调整为 11/13/17px（存储标识保持 14），小标题降为正文档。字号回归增加十语言导航文字 Range 边界、展开/收起宽度、分组标题层级与单行/多行 SVG 切换，保留全部 160 组组合检查。
+
+2.0.26 扩展现有字号检查为四档预设 × 十种语言 × 四个模块，共 160 组组合；检查当前设置显示、取消/保存同步、窗口控制按钮完整高度、标签上下留白与对齐、1/12/123 计数居中、14px 工具按钮间距，以及编辑入口无省略号。较小档为 10/12/16px，仍保持辅助/正文/标题三种角色。
+
+2.0.25 新增 `test:typography` 与 `test:typography-ui`：前者接入 build，拒绝三档变量以外的 CSS 界面字号（保留不可见 PDF 文字映射）；后者接入源码和成品验证，覆盖字号全局预览/取消/确认/重启、PDF 缩放独立、四模块统一滚动、长译文/RTL/大字号、小窗口及父容器裁切。规范见 `docs/VI-TYPOGRAPHY.md`。批注和书签 S/M/L 只能引用统一的三档字号。
+
 2.0.24 扩展 `test:annotation-editor-ui`：通过数字、英文和中文文字截图比较验证斜体实际显示与快捷键取消，检查颜色和格式按钮同排同尺寸、默认折叠回复、无多余图标/提示，以及颜色、正文与回复样式在折叠状态保存后重开。使用已有测试入口与成品回归，不增加依赖。
 
 2.0.23 新增 `test:annotation-dialog-ui`，接入 Windows/macOS 的源码与最终包流程。真实窗口验证 AI 建议按钮横排、标题栏避让、拖动不移动原生窗口、窗口缩小后的定位、部分可见文字双击、正文/回复/说明入口，以及连续 12 次通过关闭按钮、背景和 Escape 关闭并重开。富文本内容不变时必须保留文字节点，避免第一次点击选中后第二次点击失去目标。
@@ -64,13 +78,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.24
+.\scripts\package-windows.ps1 2.0.29
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.24
+bash scripts/package-macos.sh 2.0.29
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

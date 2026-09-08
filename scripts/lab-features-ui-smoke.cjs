@@ -55,6 +55,8 @@ async function configure(userData, baseUrl) {
 }
 
 async function selectPageText(page, pageIndex) {
+  const temporaryNotice = page.locator('.temporary-document-warning button')
+  if (await temporaryNotice.isVisible()) await temporaryNotice.click()
   const pageRoot = page.locator(`.pdf-page[data-page="${pageIndex}"]`)
   await pageRoot.scrollIntoViewIfNeeded()
   const pageBox = await pageRoot.boundingBox()
@@ -67,7 +69,13 @@ async function selectPageText(page, pageIndex) {
   assert.ok(box && box.width > 2 && box.height > 2, `Expected selectable text on page ${pageIndex + 1}`)
   await page.mouse.dblclick(box.x + Math.min(box.width - 1, Math.max(2, box.width * 0.25)), box.y + box.height / 2)
   const expected = pageIndex === 0 ? 'First' : 'Second'
-  await page.waitForFunction((value) => document.querySelector('footer')?.textContent?.includes(`已选择：${value}`), expected, { timeout: 5000 })
+  try {
+    await page.waitForFunction((value) => document.querySelector('footer')?.textContent?.includes(`已选择：${value}`), expected, { timeout: 5000 })
+  } catch (error) {
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-selection-failure-${releaseVersion}.png`) })
+    console.error('selection geometry', await page.evaluate(({ x, y }) => ({ x, y, hit: document.elementFromPoint(x, y)?.outerHTML.slice(0, 500), footer: document.querySelector('footer')?.textContent }), { x: box.x + Math.min(box.width - 1, Math.max(2, box.width * 0.25)), y: box.y + box.height / 2 }))
+    throw error
+  }
 }
 
 async function verifyStickyDraggableHeader(page, windowLocator, name) {
@@ -356,7 +364,8 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await annotation.locator('.annotation-content-value').dblclick()
     await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()
-    await verifyStickyDraggableHeader(page, page.locator('.annotation-suggestion-window'), 'Annotation suggestion')
+    assert.equal(await page.locator('.annotation-dialog .annotation-suggestion-inline').count(), 1, 'AI must stay inside the existing editor')
+    assert.equal(await page.locator('.annotation-suggestion-window.scroll-window').count(), 0)
     console.log('[lab-smoke] annotation suggestion collector opened')
 
     const automaticContextSwitch = page.locator('.suggestion-auto-context [role="switch"]')
@@ -372,7 +381,8 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await automaticContextSlider.dispatchEvent('change')
     await page.waitForFunction(() => document.querySelector('.automatic-context-level output')?.textContent?.includes('5 / 5'))
 
-    const collectorHeader = await page.locator('.annotation-suggestion-window > header').boundingBox()
+    await page.locator('.annotation-dialog').evaluate(element => { element.style.width = '550px' })
+    const collectorHeader = await page.locator('.annotation-dialog > .annotation-dialog-heading').boundingBox()
     assert.ok(collectorHeader, 'Expected a draggable suggestion window header')
     await page.mouse.move(collectorHeader.x + collectorHeader.width / 2, collectorHeader.y + collectorHeader.height / 2)
     await page.mouse.down()
@@ -392,7 +402,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await persist.isDisabled(), false)
     await persist.check()
     assert.equal(await persist.isChecked(), true)
-    await page.locator('.annotation-suggestion-window > header button[aria-label="关闭"]').click()
+    await page.locator('.annotation-dialog .annotation-dialog-close').click()
     await annotation.locator('.annotation-content-value').dblclick()
     await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
     await page.locator('.annotation-suggestion-window').waitFor()
@@ -410,8 +420,12 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await page.locator('.annotation-suggestion-window .ai-polish-actions button').first().click()
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), suggestionMarkdown)
     const addToReply = page.locator('.annotation-suggestion-window .ai-polish-actions button.primary')
-    assert.equal(await addToReply.textContent(), '添加到回复')
+    assert.equal(await addToReply.textContent(), '填入回复草稿')
     await addToReply.click()
+    assert.equal(await page.locator('.annotation-dialog').count(), 1)
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
+    assert.equal(await annotation.locator('.annotation-reply-preview').count(), 0, 'Using AI advice must only update the draft until confirmed')
+    await page.locator('.annotation-dialog .modal-actions button.primary').click()
     await switchTab.click()
     assert.equal(await page.locator('.annotation-reply-preview').count(), 0, 'A reply writeback must never leak into the document switched to during the save')
     await originalTab.click()

@@ -1,5 +1,6 @@
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
+import type { AnnotationSuggestionEditor } from './AnnotationLab'
 import { AnnotationRichEditor } from './AnnotationRichText'
 import type { TextMark } from '../lib/annotation-rich-text'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -14,6 +15,10 @@ import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, printPaperSize, print
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, validatePageNumberTemplate } from '../lib/page-numbers'
 
+function LockIcon() {
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3" /></svg>
+}
+
 function localizedFontLabel(label: string): string {
   return label.endsWith('（原文字体）') ? `${label.slice(0, -6)} (${ui("ui.originalFont")})` : translateUiText(label)
 }
@@ -21,7 +26,7 @@ function localizedFontLabel(label: string): string {
 function printScaleLabel(value: number): string { return `${value}%` }
 
 export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; marks?: TextMark[]; annotationId?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
-export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply; marks?: TextMark[]; suggest?: boolean }
+export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply; marks?: TextMark[] }
 
 function useDeferredFocus<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -31,19 +36,40 @@ function useDeferredFocus<T extends HTMLElement>() {
   return ref
 }
 
-export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabled }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void; aiSuggestionsEnabled?: boolean }) {
+export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabled, onSuggest, onSuggestionEnd }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void; aiSuggestionsEnabled?: boolean; onSuggest?(value: AnnotationDialogResult, editor: AnnotationSuggestionEditor): void; onSuggestionEnd?(): void }) {
   const [value, setValue] = useState(state.initial || '')
   const [marks, setMarks] = useState<TextMark[]>(state.marks || [])
   const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
   const [reply, setReply] = useState<AnnotationReply | undefined>(state.reply)
+  const [suggesting, setSuggesting] = useState(false)
+  const suggestionHost = useRef<HTMLDivElement>(null)
+  const replySection = useRef<HTMLDetailsElement>(null)
   const floating = useFloatingWindow(true)
+  const returnToEditor = () => { setSuggesting(false); onSuggestionEnd?.() }
+  useEffect(() => () => onSuggestionEnd?.(), [onSuggestionEnd])
+  useLayoutEffect(() => {
+    const body = floating.ref.current?.querySelector('.window-scroll-body')
+    if (body) body.scrollTop = 0
+    if (suggesting) floating.ref.current?.querySelector<HTMLButtonElement>('.annotation-suggestion-back')?.focus()
+    else floating.ref.current?.querySelector<HTMLElement>('.rich-editor-content')?.focus({ preventScroll: true })
+  }, [suggesting])
   const backgroundPointer = useRef(false)
   const labels: Record<AnnotationKind, string> = { highlight: ui("ui.highlightDescription"), note: ui("ui.annotationContent"), replace: ui("ui.replaceWith"), insert: ui("ui.insertText"), delete: ui("ui.deletionMark"), underline: ui("ui.underlineDescription"), ai_polish: ui("ui.aiPolish") }
-  const submit = (suggest = false) => onSubmit({ content: value, marks, color, reply, suggest })
-  return <div className="modal-backdrop annotation-dialog-backdrop" onPointerDown={(event) => { backgroundPointer.current = event.button === 0 && event.target === event.currentTarget }} onPointerCancel={() => { backgroundPointer.current = false }} onClick={(event) => { if (backgroundPointer.current && event.target === event.currentTarget) onCancel(); backgroundPointer.current = false }} onKeyDownCapture={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); onCancel() } }}><ScrollWindow ref={floating.ref} className="modal annotation-dialog" role="dialog" aria-modal="true" aria-labelledby="annotation-dialog-title" style={floating.style}><div className="annotation-dialog-heading" {...floating.dragHandlers}><h2 id="annotation-dialog-title">{state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2><button type="button" className="annotation-dialog-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
-    <AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
-    {state.edit && <details className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
-    <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={() => submit(true)}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></ScrollWindow></div>
+  const draft = () => ({ content: value, marks, color, reply })
+  const submit = () => onSubmit(draft())
+  const suggest = () => {
+    if (!suggestionHost.current || !onSuggest) return
+    setSuggesting(true)
+    onSuggest(draft(), { element: suggestionHost.current, close: returnToEditor, apply(content) {
+      setReply({ status: 'custom', content })
+      if (replySection.current) replySection.current.open = true
+      returnToEditor()
+    } })
+  }
+  return <div className={`modal-backdrop annotation-dialog-backdrop${suggesting ? ' annotation-suggestion-mode' : ''}`} onPointerDown={(event) => { backgroundPointer.current = event.button === 0 && event.target === event.currentTarget }} onPointerCancel={() => { backgroundPointer.current = false }} onClick={(event) => { if (!suggesting && backgroundPointer.current && event.target === event.currentTarget) onCancel(); backgroundPointer.current = false }} onKeyDownCapture={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); if (suggesting) returnToEditor(); else onCancel() } }}><ScrollWindow ref={floating.ref} className="modal annotation-dialog" role="dialog" aria-modal={!suggesting} aria-labelledby="annotation-dialog-title" style={floating.style}><div className="annotation-dialog-heading" {...floating.dragHandlers}><h2 id="annotation-dialog-title">{suggesting ? ui("ui.annotationSuggestions") : state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2>{suggesting && <button type="button" className="annotation-suggestion-back" onClick={returnToEditor}>{ui("ui.backToAnnotationEditor")}</button>}<button type="button" className="annotation-dialog-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
+    <div className="annotation-editor-fields" hidden={suggesting}><AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
+    {state.edit && <details ref={replySection} className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
+    <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={suggest}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></div><div className="annotation-suggestion-stage" hidden={!suggesting}><p className="annotation-suggestion-draft-hint">{ui("ui.annotationSuggestionDraftHint")}</p><div ref={suggestionHost} /></div></ScrollWindow></div>
 }
 
 export interface TextDialogValue { text: string; style: TextStyle }
@@ -112,7 +138,7 @@ export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPas
     onSubmit(value)
   }
   return <div className="modal-backdrop password-backdrop"><ScrollWindow className="modal password-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-password-title">
-    <div className="password-heading"><span className="password-lock" aria-hidden="true">{ui("ui.lock")}</span><div><small>{ui("ui.protectedPdf")}</small><h2 id="pdf-password-title">{ui("ui.enterPassword")}</h2></div></div>
+    <div className="password-heading"><span className="password-lock" aria-hidden="true"><LockIcon /></span><div><small>{ui("ui.protectedPdf")}</small><h2 id="pdf-password-title">{ui("ui.enterPassword")}</h2></div></div>
     <div className="password-file"><span>PDF</span><div><b>{state.fileName}</b><small>{ui("ui.theEncryptedDocumentWillOpenReadOnly")}</small></div></div>
     <p className={invalid ? 'password-message invalid' : 'password-message'}>{message}</p>
     <label className="password-field"><span>{ui("ui.password")}</span><div><input ref={inputRef} type={visible ? 'text' : 'password'} value={password} autoComplete="off" spellCheck={false} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') submit() }} /><button type="button" onClick={() => setVisible((value) => !value)}>{visible ? ui("ui.hide") : ui("ui.show")}</button></div></label>
@@ -123,7 +149,7 @@ export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPas
 
 export function SecureStorageNoticeDialog({ onCancel, onContinue }: { onCancel(): void; onContinue(): void }) {
   return <div className="modal-backdrop secure-storage-backdrop"><ScrollWindow className="modal secure-storage-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-storage-title">
-    <div className="secure-storage-heading"><span className="secure-storage-icon" aria-hidden="true">{ui("ui.lock")}</span><div><small>{ui("ui.encryptedPdf")}</small><h2 id="secure-storage-title">{ui("ui.useLocalSecureStorage")}</h2></div></div>
+    <div className="secure-storage-heading"><span className="secure-storage-icon" aria-hidden="true"><LockIcon /></span><div><small>{ui("ui.encryptedPdf")}</small><h2 id="secure-storage-title">{ui("ui.useLocalSecureStorage")}</h2></div></div>
     <p>{ui("ui.thisDocumentIsPasswordProtectedContinuingLetsPdfuckTryThe")}</p>
     <div className="secure-storage-note"><b>{ui("ui.youMaySeeASystemSecurityPrompt")}</b><span>{ui("ui.thisIsANormalMacosKeychainOrWindowsCredentialPrompt")}</span></div>
     <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.skipAndEnterManually")}</button><button type="button" className="primary" onClick={onContinue}>{ui("ui.continue")}</button></div>

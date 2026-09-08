@@ -272,6 +272,32 @@ describe('AnnotationLab settings and availability', () => {
     await act(async () => root.unmount())
   })
 
+  it('keeps embedded AI errors recoverable and cancels late results when the editor leaves the stage', async () => {
+    const response = deferred<string>(), cancelled = vi.spyOn(aiPolish, 'cancelAiRequest').mockImplementation(() => undefined)
+    const suggest = vi.spyOn(aiPolish, 'suggestForAnnotation').mockRejectedValueOnce(new Error('Network unavailable')).mockImplementation((_settings, _instruction, _annotation, _contexts, _language, progress) => {
+      progress?.({ requestId: 'inline-test', received: false, output: '', reasoning: '', truncated: false })
+      return response.promise
+    })
+    const element = document.createElement('div'); container.append(element)
+    const editor = { element, apply: vi.fn(), close: vi.fn() }, onAddSuggestion = vi.fn(), root = createRoot(container.appendChild(document.createElement('div')))
+    const request = { token: 30, annotationId: 'note-1', annotationContent: 'Draft note', pageIndex: 0, embedded: true, ...suggestionGeometry }
+    const props = { selection, onAdd: vi.fn(), onCopy: vi.fn(), onAddSuggestion }
+    await act(async () => root.render(<AnnotationLab {...props} suggestionRequest={request} suggestionEditor={editor} />))
+    await act(async () => element.querySelector<HTMLButtonElement>('.capture-context-button')!.click())
+    await act(async () => element.querySelector<HTMLButtonElement>('button.primary.wide')!.click())
+    expect(element.querySelector('.ai-polish-error')?.textContent).toBe('Network unavailable')
+    expect(editor.apply).not.toHaveBeenCalled()
+    await act(async () => element.querySelector<HTMLButtonElement>('button.primary.wide')!.click())
+    expect(suggest).toHaveBeenCalledTimes(2)
+    await act(async () => root.render(<AnnotationLab {...props} />))
+    expect(cancelled).toHaveBeenCalledWith('inline-test')
+    await act(async () => response.resolve('Late response'))
+    expect(container.querySelector('.annotation-suggestion-window')).toBeNull()
+    expect(editor.apply).not.toHaveBeenCalled()
+    expect(onAddSuggestion).not.toHaveBeenCalled()
+    await act(async () => root.unmount())
+  })
+
   it('writes the generated suggestion through the explicit Add to Reply action', async () => {
     const root = createRoot(container)
     const reply = '## AI suggestion\n\n- Clarify the method.'

@@ -8,7 +8,7 @@ export function AnnotationColorPicker({ color, onChange, compact = false }: { co
   const t = ui
   return <div className={`annotation-color-picker${compact ? ' compact' : ''}`}><span className="annotation-control-label">{t("ui.color")}</span><div className="annotation-swatches">
     {ANNOTATION_PALETTE.map((item) => <button type="button" key={item.color} className={color.toLowerCase() === item.color ? 'active' : ''} style={{ backgroundColor: item.color }} title={t(item.label)} aria-label={`${t("ui.annotationColor")}${t(item.label)}`} onClick={() => onChange(item.color)} />)}
-    <label className="annotation-custom-color" title={t("ui.customColor")}><input type="color" aria-label={t("ui.customAnnotationColor")} value={color} onChange={(event) => onChange(event.target.value)} /><span>＋</span></label>
+    <label className="annotation-custom-color" title={t("ui.customColor")}><input type="color" aria-label={t("ui.customAnnotationColor")} value={color} onChange={(event) => onChange(event.target.value)} /><span aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 6h8M6 2v8" /></svg></span></label>
   </div></div>
 }
 

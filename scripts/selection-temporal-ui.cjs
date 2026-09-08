@@ -20,6 +20,8 @@ async function traceSelectionMove(page, documentPage, from, to) {
           minTop: Math.min(...rects.map((rect) => rect.top)),
           maxBottom: Math.max(...rects.map((rect) => rect.bottom)),
           targetPage,
+          clientX: pointer.x, clientY: pointer.y,
+          pageLeft: pageBox.left, pageTop: pageBox.top, pageWidth: pageBox.width,
           pointerX: pointer.x - pageBox.left,
           pointerY: pointer.y - pageBox.top
         } : { count: 0, targetPage })

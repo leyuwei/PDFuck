@@ -38,13 +38,15 @@ async function verifyEmptyDocumentState(userData) {
 
     const viewState = await page.evaluate(() => ({
       layout: [...document.querySelectorAll('.tool-panel .segmented:first-of-type button')].map((button) => button.disabled),
-      reading: [...document.querySelectorAll('.tool-action-button')].map((button) => button.disabled),
+      reading: [...document.querySelectorAll('.tool-action-button:not(.interface-size-action)')].map((button) => button.disabled),
+      interfaceSize: document.querySelector('.interface-size-action')?.disabled,
       language: document.querySelector('.language-select select')?.disabled,
       documentColor: document.querySelector('[aria-label="设置PDF 纸张背景"]')?.disabled,
       appColor: document.querySelector('[aria-label="设置软件主题色"]')?.disabled
     }))
     assert.deepEqual(viewState.layout, [true, true])
     assert.ok(viewState.reading.length >= 4 && viewState.reading.every(Boolean))
+    assert.equal(viewState.interfaceSize, false)
     assert.equal(viewState.language, false)
     assert.equal(viewState.documentColor, true)
     assert.equal(viewState.appColor, false)
@@ -135,7 +137,7 @@ async function verifyDocumentWorkflow(userData, pdf) {
     assert.ok((await page.locator('.automatic-context-state').innerText()).includes('已关闭'))
     await automaticSwitch.click()
     await automaticContext.waitFor({ timeout: 10000 })
-    await page.locator('.annotation-suggestion-window > header button[aria-label="关闭"]').click()
+    await page.locator('.annotation-dialog .annotation-dialog-close').click()
     assert.equal(await page.locator('.annotation-suggestion-window').count(), 0, 'Explicit suggestion window should close normally')
 
     await nav(page, '查看')

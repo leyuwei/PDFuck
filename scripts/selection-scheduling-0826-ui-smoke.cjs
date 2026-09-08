@@ -23,6 +23,8 @@ async function main() {
   try {
     const page = await app.firstWindow()
     await page.setViewportSize({ width: 1400, height: 1000 })
+    // Keep long renderer drags independent of the user's desktop pointer.
+    await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows()[0]; window.webContents.setBackgroundThrottling(false); window.hide() })
     await page.waitForSelector('.pdf-page', { timeout: 60000 })
 
     const dragFlow = async ({ pageIndex, startText, endText, startBand, endBand, side, include, exclude, temporal = false }) => {
@@ -49,7 +51,6 @@ async function main() {
         }, (points.start.x + points.start.width / 2 + points.end.x + points.end.width / 2) / 2)
         points.start.x -= horizontalShift; points.end.x -= horizontalShift
       }
-      await page.bringToFront()
       const from = { x: points.start.x + 1, y: points.start.y + points.start.height / 2 }
       const to = { x: points.end.x + points.end.width - 1, y: points.end.y + points.end.height / 2 }
       if (temporal) {
@@ -153,7 +154,7 @@ async function main() {
       const from = { x: anchors.lower.x + anchors.lower.width - 1, y: anchors.lower.y + anchors.lower.height / 2 }
       const to = { x: anchors.upper.x + 1, y: anchors.upper.y + anchors.upper.height / 2 }
       assert.ok([from, to].every((point) => point.x > 0 && point.x < anchors.viewport.width && point.y > 0 && point.y < anchors.viewport.height), `reverse page-gap anchors are outside the viewport: ${JSON.stringify({ from, to, viewport: anchors.viewport })}`)
-      await page.bringToFront(); await page.mouse.move(from.x, from.y); await page.waitForTimeout(50)
+      await page.mouse.move(from.x, from.y); await page.waitForTimeout(50)
       assert.equal(await page.evaluate((point) => document.elementFromPoint(point.x, point.y)?.closest?.('.pdf-page')?.dataset.page, from), String(lowerIndex), 'reverse page-gap drag did not start on the lower page')
       await page.mouse.down()
       const frames = await traceSelectionMove(page, lowerPage, from, to)

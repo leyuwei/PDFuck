@@ -3,7 +3,7 @@
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AnnotationDialog, ConfirmDialog, ErrorDialog, MergeFilesDialog, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog, UnsavedCloseDialog } from './Dialogs'
+import { AnnotationDialog, ConfirmDialog, ErrorDialog, MergeFilesDialog, OpenPdfDialog, PdfPasswordDialog, SecureStorageNoticeDialog, PageManagerDialog, PageNumberDialog, PrintDialog, SaveAsRequiredDialog, UnsavedCloseDialog } from './Dialogs'
 import { setInterfaceLanguage } from '../lib/i18n'
 
 vi.mock('../lib/pdfjs', () => ({
@@ -33,6 +33,18 @@ describe('AnnotationDialog focus', () => {
     setInterfaceLanguage('zh')
     container.remove()
     vi.unstubAllGlobals()
+  })
+
+  it('uses language-independent vector locks in both password prompts', async () => {
+    const root = createRoot(container)
+    for (const language of ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar'] as const) {
+      setInterfaceLanguage(language)
+      await act(async () => root.render(<><PdfPasswordDialog state={{ fileName: 'locked.pdf', reason: 'required' }} onCancel={() => undefined} onSubmit={() => undefined} /><SecureStorageNoticeDialog onCancel={() => undefined} onContinue={() => undefined} /></>))
+      const icons = [...container.querySelectorAll('.password-lock, .secure-storage-icon')]
+      expect(icons).toHaveLength(2)
+      expect(icons.every(icon => icon.querySelector('svg') && !icon.textContent)).toBe(true)
+    }
+    await act(async () => root.unmount())
   })
 
   it('focuses the editor initially without stealing focus or interrupting IME composition later', async () => {
@@ -72,10 +84,36 @@ describe('AnnotationDialog focus', () => {
     expect(container.querySelector('.annotation-dialog-heading > span')).toBeNull()
     expect(container.querySelector('.window-scroll-body > p')).toBeNull()
     expect(container.querySelector('.rich-editor-toolbar .annotation-color-picker')).not.toBeNull()
+    expect(container.querySelector('.annotation-custom-color span')?.textContent).toBe('')
+    expect(container.querySelector('.annotation-custom-color span svg')).not.toBeNull()
     expect(container.querySelector<HTMLDetailsElement>('.annotation-reply-section')!.open).toBe(false)
     await act(async () => container.querySelector<HTMLButtonElement>('.modal-actions .primary')!.click())
     expect(onSubmit.mock.calls[0][0].reply).toEqual(reply)
     await act(async () => root.unmount())
+  })
+
+  it('keeps AI suggestions and returning edits in a draft until explicitly confirmed', async () => {
+    const root = createRoot(container), onSubmit = vi.fn(), onSuggest = vi.fn(), onEnd = vi.fn()
+    const initialMarks = [{ start: 0, end: 5, italic: true }]
+    await act(async () => root.render(<AnnotationDialog state={{ kind: 'note', edit: true, initial: 'Draft', marks: initialMarks, initialColor: '#123456', reply: { status: 'custom', content: 'Old reply' } }} onCancel={() => undefined} onSubmit={onSubmit} aiSuggestionsEnabled onSuggest={onSuggest} onSuggestionEnd={onEnd} />))
+    const editor = container.querySelector('.annotation-dialog')
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-ai-suggestion')!.click())
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(container.querySelector('.annotation-dialog')).toBe(editor)
+    expect(container.querySelector<HTMLElement>('.annotation-editor-fields')!.hidden).toBe(true)
+    expect(onSuggest.mock.calls[0][0]).toMatchObject({ content: 'Draft', color: '#123456', marks: initialMarks })
+    await act(async () => onSuggest.mock.calls[0][1].close())
+    expect(container.querySelector<HTMLElement>('.annotation-editor-fields')!.hidden).toBe(false)
+    expect(container.querySelector('.rich-editor-content')!.textContent).toBe('Draft')
+    await act(async () => container.querySelector<HTMLButtonElement>('.annotation-ai-suggestion')!.click())
+    await act(async () => onSuggest.mock.calls[1][1].apply('AI suggestion'))
+    expect(container.querySelector<HTMLDetailsElement>('.annotation-reply-section')!.open).toBe(true)
+    expect(container.querySelector('.annotation-reply-picker .rich-editor-content')!.textContent).toBe('AI suggestion')
+    expect(onSubmit).not.toHaveBeenCalled()
+    await act(async () => container.querySelector<HTMLButtonElement>('.modal-actions .primary')!.click())
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ content: 'Draft', color: '#123456', marks: initialMarks, reply: { status: 'custom', content: 'AI suggestion' } })
+    await act(async () => root.unmount())
+    expect(onEnd).toHaveBeenCalledTimes(3)
   })
 
   it('closes via the header, background click or Escape but not an inside-to-background gesture', async () => {

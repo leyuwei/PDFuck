@@ -15,7 +15,8 @@ async function main() {
   const reports = []
   try {
     const page = await app.firstWindow()
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000))
+    // CDP still drives real renderer events; hiding isolates long drags from desktop mouse movement.
+    await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows()[0]; window.setSize(1600, 1000); window.webContents.setBackgroundThrottling(false); window.hide() })
     await page.locator('.pdf-page').first().waitFor({ timeout: 60000 })
     for (const highZoom of [false, true]) {
       if (highZoom) {
@@ -33,7 +34,6 @@ async function main() {
         await doc.scrollIntoViewIfNeeded()
         await doc.locator('.text-map span').first().waitFor({ timeout: 60000 })
         await doc.locator('.text-map span').filter({ hasText: new RegExp(`^${test.first}$`) }).first().evaluate(el => el.scrollIntoView({ block: 'center', inline: 'nearest' }))
-        await page.bringToFront()
         for (const reverse of [false, true]) {
           await doc.focus()
           await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))
@@ -64,7 +64,7 @@ async function main() {
           assert.ok(geometry.expectedCount >= test.text.split(' ').length - 2)
           assert.ok(geometry.maxRight < 301, `neighboring column: ${JSON.stringify(geometry)}`)
           const live = frames.filter(f => f.count)
-          assert.ok(live.length > 10 && frames.slice(frames.findIndex(f => f.count)).every(f => f.count), 'live selection disappeared')
+          assert.ok(live.length > 10 && frames.slice(frames.findIndex(f => f.count)).every(f => f.count), `live selection disappeared: ${JSON.stringify({ page: test.page, highZoom, reverse, from, to, frames })}`)
           assert.ok(live.every(f => f.maxRight < 301 / 612), `live selection crossed column gutter: ${JSON.stringify({ page: test.page, highZoom, reverse, from, to, frames: live.filter(f => f.maxRight >= 301 / 612) })}`)
           await doc.focus()
           await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')

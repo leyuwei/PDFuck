@@ -327,7 +327,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {annotation.kind === 'note' && <span className="note-pin">●</span>}
     {annotation.kind === 'insert' && <span className="insert-caret" aria-hidden="true" />}
-    {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 25 }}>{t('annotation.current')}</span></>}
+    {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 7 }}>{t('annotation.current')}</span></>}
   </div>
 }
 
