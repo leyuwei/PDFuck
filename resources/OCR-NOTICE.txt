@@ -1,0 +1,9 @@
+Local OCR uses Tesseract.js and Tesseract.js-core (Apache-2.0).
+https://github.com/naptha/tesseract.js
+https://github.com/naptha/tesseract.js-core
+
+Language models: https://github.com/naptha/tessdata (4.0.0; Japanese: 4.0.0_best_int),
+derived from https://github.com/tesseract-ocr/tessdata and tessdata_best (Apache-2.0).
+The @tesseract.js-data npm distribution wrappers are MIT licensed.
+Model versions and package integrity hashes are pinned in package-lock.json.
+The Apache-2.0 license is included in LICENSE-TESSERACT.txt.

@@ -110,7 +110,7 @@ async function verifyDocumentWorkflow(userData, pdf) {
 
     await page.locator('.annotation-lab-settings-trigger').click()
     const timeout = page.locator('.ai-timeout-input input')
-    assert.equal(await timeout.inputValue(), '120')
+    assert.equal(await timeout.inputValue(), '600')
     await timeout.fill('275')
     await page.locator('.annotation-lab-settings footer button.primary').click()
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.ai-settings.v1')).timeoutSeconds), 275)

@@ -71,18 +71,18 @@ describe('AI provider configuration', () => {
   })
 
   it('normalizes custom response timeouts to the supported range', () => {
-    expect(defaultSettings.timeoutSeconds).toBe(120)
+    expect(defaultSettings.timeoutSeconds).toBe(600)
     expect(normalizeAiTimeoutSeconds('275')).toBe(275)
     expect(normalizeAiTimeoutSeconds(1)).toBe(5)
     expect(normalizeAiTimeoutSeconds(5000)).toBe(3600)
-    expect(normalizeAiTimeoutSeconds('invalid')).toBe(120)
+    expect(normalizeAiTimeoutSeconds('invalid')).toBe(600)
   })
 
   it('normalizes the shared reasoning and final-answer token budget', () => {
-    expect(defaultSettings.maxOutputTokens).toBe(16_384)
+    expect(defaultSettings.maxOutputTokens).toBe(65_536)
     expect(normalizeAiMaxOutputTokens('32768')).toBe(32_768)
     expect(normalizeAiMaxOutputTokens(20)).toBe(1_024)
-    expect(normalizeAiMaxOutputTokens(999_999)).toBe(131_072)
+    expect(normalizeAiMaxOutputTokens(999_999)).toBe(262_144)
   })
 })
 
@@ -94,7 +94,7 @@ describe('polishText transport and response handling', () => {
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(polishText({ ...settings, timeoutSeconds: 275 }, '改写', '原文')).resolves.toBe('第一段第二段')
     expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key', accept: 'text/event-stream' }), timeoutMs: 275_000 }), expect.any(Function))
-    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ stream: true, max_completion_tokens: 16_384 })
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ stream: true, max_completion_tokens: 65_536 })
   })
 
   it('collects OpenAI-compatible event streams so gateways receive early response bytes', async () => {
@@ -164,7 +164,7 @@ describe('polishText transport and response handling', () => {
     vi.stubGlobal('window', { desktop: { aiRequest } })
     await expect(polishText(settings, '改写', '原文')).resolves.toBe('Relay default limit')
     expect(aiRequest).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(aiRequest.mock.calls[0][0].body).max_completion_tokens).toBe(16_384)
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body).max_completion_tokens).toBe(65_536)
     expect(JSON.parse(aiRequest.mock.calls[1][0].body).max_completion_tokens).toBeUndefined()
   })
 
@@ -221,7 +221,7 @@ describe('polishText transport and response handling', () => {
     expect(payload.messages[1].content).toContain('Review every section.')
     expect(payload.messages[1].content).toContain('--- Page 1 ---\nWhole document')
     expect(payload.max_tokens).toBeUndefined()
-    expect(payload.max_completion_tokens).toBe(16_384)
+    expect(payload.max_completion_tokens).toBe(65_536)
   })
 
   it('sends an OpenAI-compatible PDF file as base64 file input', async () => {
@@ -242,16 +242,16 @@ describe('polishText transport and response handling', () => {
     await expect(reviewDocument(claude, 'Inspect layout.', { name: 'draft.pdf', bytes: new Uint8Array([37, 80, 68, 70]) }, 'file', 'en')).resolves.toBe('Claude review')
     const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
     expect(payload.messages[0].content[0]).toEqual(expect.objectContaining({ type: 'document', source: expect.objectContaining({ type: 'base64', media_type: 'application/pdf', data: 'JVBERg==' }) }))
-    expect(payload).toMatchObject({ max_tokens: 16_384, thinking: { type: 'adaptive' }, output_config: { effort: 'low' } })
+    expect(payload).toMatchObject({ max_tokens: 65_536, thinking: { type: 'adaptive' } })
   })
 
-  it('keeps DeepSeek thinking visible while limiting runaway reasoning effort', async () => {
+  it('keeps DeepSeek thinking visible at the user-selected effort', async () => {
     const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { reasoning_content: 'Reasoning', content: 'Answer' } }] }) })
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    const deepseek = { ...settings, provider: 'deepseek' as const, baseUrl: PROVIDER_PRESETS.deepseek.baseUrl, model: PROVIDER_PRESETS.deepseek.model }
+    const deepseek = { ...settings, provider: 'deepseek' as const, baseUrl: PROVIDER_PRESETS.deepseek.baseUrl, model: PROVIDER_PRESETS.deepseek.model, thinking: 'enabled' as const, reasoningEffort: 'high' as const }
     const progress: ReturnType<typeof parseAiResponseBody>[] = []
     await expect(polishText(deepseek, 'Rewrite.', 'Original.', (value) => progress.push(value))).resolves.toBe('Answer')
-    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low', max_tokens: 16_384 })
+    expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'high', max_tokens: 65_536 })
     expect(progress.at(-1)?.reasoning).toBe('Reasoning')
   })
 

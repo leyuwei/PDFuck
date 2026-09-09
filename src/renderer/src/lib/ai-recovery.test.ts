@@ -52,8 +52,8 @@ describe('adaptive AI recovery', () => {
       .mockResolvedValueOnce({ status: 400, body: 'max_tokens unsupported' })
       .mockResolvedValue(response('partial', 'length'))
     vi.stubGlobal('window', { desktop: { aiRequest } })
-    await expect(polishText(settings, 'Rewrite', 'Source')).rejects.toThrow('ui.aiResponseTruncated')
-    expect(aiRequest).toHaveBeenCalledTimes(3)
+    await expect(polishText(settings, 'Rewrite', 'Source')).rejects.toThrow('400')
+    expect(aiRequest).toHaveBeenCalledTimes(2)
   })
 
   it('splits oversized annotation requests while retaining every source block', async () => {

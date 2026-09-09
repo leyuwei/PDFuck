@@ -45,7 +45,7 @@ async function configure(userData, baseUrl) {
     await page.waitForSelector('.titlebar', { timeout: 60000 })
     await page.evaluate(({ baseUrl }) => {
       localStorage.clear()
-      localStorage.setItem('pdfuck.ai-settings.v1', JSON.stringify({ provider: 'custom', baseUrl, apiKey: 'lab-smoke-key', model: 'lab-smoke-model', timeoutSeconds: 120 }))
+      localStorage.setItem('pdfuck.ai-settings.v1', JSON.stringify({ provider: 'custom', baseUrl, apiKey: 'lab-smoke-key', model: 'lab-smoke-model', timeoutSeconds: 600 }))
     }, { baseUrl })
     console.log('[lab-smoke] model settings prepared')
   } finally {
@@ -121,6 +121,39 @@ async function verifyStickyDraggableHeader(page, windowLocator, name) {
     element.querySelector(':scope > .window-scroll-body').scrollTop = 0
     element.style.removeProperty('max-height')
   })
+}
+
+async function verifyActivityLayout(activity) {
+  const failures = await activity.evaluate(card => {
+    const originalStyle = card.getAttribute('style'), parent = card.parentElement, originalClass = parent.className
+    const body = card.querySelector('.ai-stream-activity-body'), actions = card.querySelector('.ai-stream-actions')
+    const failures = []
+    try {
+      for (const dark of [false, true]) for (const direction of ['ltr', 'rtl']) for (const fonts of [[10, 12, 16], [11, 13, 17], [14, 16, 20], [16, 18, 22]]) for (const width of [280, 440]) {
+        parent.classList.toggle('theme-dark', dark)
+        card.style.width = `${width}px`; card.style.direction = direction
+        ;['small', 'body', 'title'].forEach((role, index) => card.style.setProperty(`--ui-font-${role}`, `${fonts[index]}px`))
+        const cardBox = card.getBoundingClientRect(), bodyBox = body.getBoundingClientRect()
+        const sections = [...body.querySelectorAll('section')]
+        if (parseFloat(getComputedStyle(body).borderTopWidth) || sections.some(section => parseFloat(getComputedStyle(section).borderBottomWidth))) failures.push('redundant inner divider')
+        if (sections.some(section => parseFloat(getComputedStyle(section).paddingTop) < 12 || getComputedStyle(section).backgroundColor === getComputedStyle(card).backgroundColor)) failures.push('request/reasoning blocks need distinct backgrounds and padding')
+        if (body.scrollWidth > body.clientWidth + 1) failures.push(`horizontal overflow ${direction}/${fonts}/${width}`)
+        const summary = card.querySelector('summary'), status = summary.querySelector('span').getBoundingClientRect(), title = summary.querySelector('b').getBoundingClientRect()
+        if ((status.top < title.bottom - .5 && status.bottom > title.top + .5 && status.left < title.right - .5 && status.right > title.left + .5) || status.left < cardBox.left || status.right > cardBox.right) failures.push('status overlaps heading or card')
+        if (parseFloat(getComputedStyle(summary.querySelector('b')).fontSize) !== fonts[0]) failures.push('activity heading must use the same small type as progress')
+        if (actions) {
+          const button = actions.querySelector('button').getBoundingClientRect()
+          if (button.top < bodyBox.bottom - .5 || cardBox.bottom - button.bottom < 13.5 || button.left - cardBox.left < 13.5 || cardBox.right - button.right < 13.5) failures.push('cancel touches content or card edge')
+          if (width === 440 && button.width >= bodyBox.width * .75) failures.push('cancel stretches across the card')
+        }
+      }
+    } finally {
+      if (originalStyle === null) card.removeAttribute('style'); else card.setAttribute('style', originalStyle)
+      parent.className = originalClass
+    }
+    return failures
+  })
+  assert.deepEqual(failures, [], 'AI activity spacing must survive both themes, RTL, four font sizes and narrow cards')
 }
 
 async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
@@ -213,13 +246,14 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.ok(waitingActivity.includes('lab-smoke-model'), 'The first-byte wait must identify the selected model')
     assert.ok(waitingActivity.includes('已转换的文档文字'), 'The first-byte wait must identify the sent document representation')
     assert.equal(waitingActivity.includes('正在连接模型'), false, 'A submitted request must not be labelled as still connecting')
+    await verifyActivityLayout(liveActivity)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-first-output-wait-${releaseVersion}.png`) })
     await liveActivity.getByText('服务商返回的思考过程', { exact: true }).waitFor()
     assert.ok((await liveActivity.innerText()).includes('Checking the document structure'), 'The Lab must expose provider reasoning while the request is still running')
     assert.equal(await progress.getAttribute('role'), 'progressbar')
     const countdown = await progress.locator('header span').textContent()
     const remaining = Number(countdown.match(/\d+/)?.[0])
-    assert.ok(remaining >= 238 && remaining <= 240, `Expected countdown to include the 240-second recovery budget, got ${countdown}`)
+    assert.ok(remaining >= 1198 && remaining <= 1200, `Expected countdown to include the 1200-second recovery budget, got ${countdown}`)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-progress-${releaseVersion}.png`) })
     await page.locator('.full-review-window').getByRole('button', { name: '缩小到工具栏', exact: true }).click()
     assert.equal(await page.locator('.full-review-window').count(), 0)
@@ -344,6 +378,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     const automaticControls = automaticWindow.locator('.automatic-annotation-controls')
     await automaticControls.getByText('暂停', { exact: true }).waitFor()
     await automaticControls.getByText('结束', { exact: true }).waitFor()
+    await verifyActivityLayout(automaticWindow.locator('.ai-stream-activity'))
     await automaticControls.getByText('暂停', { exact: true }).click()
     await automaticControls.getByText('继续', { exact: true }).waitFor()
     await automaticControls.getByText('继续', { exact: true }).click()
@@ -416,6 +451,8 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await page.getByText('ANNOTATION SUGGESTION RESULT', { exact: true }).waitFor({ timeout: 15000 })
     assert.equal(await page.locator('.annotation-suggestion-window .ai-markdown h2').textContent(), 'ANNOTATION SUGGESTION RESULT')
     assert.equal(await page.locator('.annotation-suggestion-window .ai-markdown ol li').count(), 2)
+    await page.locator('.annotation-suggestion-window .ai-stream-activity summary').click()
+    await verifyActivityLayout(page.locator('.annotation-suggestion-window .ai-stream-activity'))
     console.log('[lab-smoke] annotation suggestion response received')
     await page.locator('.annotation-suggestion-window .ai-polish-actions button').first().click()
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), suggestionMarkdown)

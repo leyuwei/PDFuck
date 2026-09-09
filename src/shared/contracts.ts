@@ -1,3 +1,4 @@
+import type { OcrPageRequest, OcrPageResult } from './ocr'
 import type { InterfaceLanguage } from './i18n-catalogue'
 
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
@@ -185,6 +186,8 @@ export interface DesktopApi {
   openPdf(): Promise<OpenedPdf | null>
   choosePdfImports(): Promise<PdfImportFile[] | null>
   chooseImage(): Promise<ImageImportFile | null>
+  recognizeOcrPage(request: OcrPageRequest, onProgress: (value: number) => void): Promise<OcrPageResult>
+  cancelOcr(jobId: string): void
   readPdf(path: string): Promise<OpenedPdf>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
   openPdfFolder(path: string): Promise<void>

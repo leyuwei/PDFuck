@@ -57,6 +57,7 @@ try {
   Invoke-Native -Command 'node' -Arguments @('scripts/typography-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/workflow-state-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/lab-features-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/ai-settings-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/popups-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/eps-vector-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/creative-tools-ui-smoke.cjs')
@@ -67,6 +68,7 @@ try {
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:bookmark-recognition-papers')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:page-text-edit-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:page-manager-input-ui')
+  Invoke-Native -Command 'node' -Arguments @('scripts/ocr-ui-smoke.cjs')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-ui')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:selection-scheduling-0826')
@@ -126,6 +128,7 @@ try {
   Invoke-Native -Command 'node' -Arguments @('scripts/typography-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/workflow-state-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/lab-features-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/ai-settings-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/popups-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/eps-vector-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/creative-tools-ui-smoke.cjs')
@@ -134,6 +137,7 @@ try {
   Invoke-Native -Command 'node' -Arguments @('scripts/bookmark-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/bookmark-recognition-papers-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/page-manager-input-ui-smoke.cjs')
+  Invoke-Native -Command 'node' -Arguments @('scripts/ocr-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/selection-scheduling-0826-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/selection-test2-ui-smoke.cjs')
   Invoke-Native -Command 'node' -Arguments @('scripts/selection-test3-ui-smoke.cjs')
@@ -162,7 +166,7 @@ try {
     executableProductVersion = $fileVersion
     artifacts = @($hashes | ForEach-Object { [ordered]@{ file = $_.Path; bytes = (Get-Item -LiteralPath $_.Path).Length; sha256 = $_.Hash } })
     signatures = $signatures
-    tests = @('typography', 'typography-ui', 'packaged-typography-ui', 'annotation-dialog-ui', 'packaged-annotation-dialog-ui', 'ai-smoke', 'annotation-editor-ui', 'packaged-ai-smoke', 'packaged-annotation-editor-ui', 'popups-ui', 'eps-vector', 'packaged-popups-ui', 'packaged-eps-vector', 'typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'workflow-state-ui', 'lab-features-ui', 'creative-tools-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'bookmarks-ui', 'bookmark-recognition-papers', 'page-text-edit-ui', 'page-manager-input-ui', 'selection-scheduling', 'selection-scheduling-ui', 'selection-scheduling-0826', 'selection-scheduling-0826-ui', 'selection-test2', 'selection-test2-ui', 'selection-test3', 'selection-test3-ui', 'selection-m91474', 'selection-scheduling-inline', 'citations-scheduling-0826', 'reading-navigation-ui', 'selection-chinese', 'selection-chinese-ui', 'selection-bc', 'selection-bc-ui', 'heavy-image-page-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-workflow-state-ui', 'packaged-lab-features-ui', 'packaged-creative-tools-ui', 'packaged-print-ui', 'packaged-window-tabs', 'packaged-bookmark-recognition-papers', 'packaged-bookmarks-ui', 'packaged-page-manager-input-ui', 'packaged-selection-scheduling-0826-ui', 'packaged-selection-test2-ui', 'packaged-selection-test3-ui', 'packaged-reading-navigation-ui', 'packaged-selection-chinese-ui', 'packaged-selection-bc-ui', 'packaged-heavy-image-page-ui')
+    tests = @('ai-settings-ui', 'packaged-ai-settings-ui', 'ocr-ui', 'packaged-ocr-ui', 'typography', 'typography-ui', 'packaged-typography-ui', 'annotation-dialog-ui', 'packaged-annotation-dialog-ui', 'ai-smoke', 'annotation-editor-ui', 'packaged-ai-smoke', 'packaged-annotation-editor-ui', 'popups-ui', 'eps-vector', 'packaged-popups-ui', 'packaged-eps-vector', 'typecheck', 'unit', 'i18n-catalogue', 'i18n-ui', 'workflow-state-ui', 'lab-features-ui', 'creative-tools-ui', 'print-native-cjs', 'print-ui', 'window-tabs', 'bookmarks-ui', 'bookmark-recognition-papers', 'page-text-edit-ui', 'page-manager-input-ui', 'selection-scheduling', 'selection-scheduling-ui', 'selection-scheduling-0826', 'selection-scheduling-0826-ui', 'selection-test2', 'selection-test2-ui', 'selection-test3', 'selection-test3-ui', 'selection-m91474', 'selection-scheduling-inline', 'citations-scheduling-0826', 'reading-navigation-ui', 'selection-chinese', 'selection-chinese-ui', 'selection-bc', 'selection-bc-ui', 'heavy-image-page-ui', 'packaged-native-backend', 'packaged-release-ui', 'packaged-workflow-state-ui', 'packaged-lab-features-ui', 'packaged-creative-tools-ui', 'packaged-print-ui', 'packaged-window-tabs', 'packaged-bookmark-recognition-papers', 'packaged-bookmarks-ui', 'packaged-page-manager-input-ui', 'packaged-selection-scheduling-0826-ui', 'packaged-selection-test2-ui', 'packaged-selection-test3-ui', 'packaged-reading-navigation-ui', 'packaged-selection-chinese-ui', 'packaged-selection-bc-ui', 'packaged-heavy-image-page-ui')
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
   Write-Host "Windows release passed build, regression, packaged-app, version and hash checks." -ForegroundColor Green

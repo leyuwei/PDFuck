@@ -1,6 +1,8 @@
-.ai-polish-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
-.ai-polish-actions button { min-width: 104px; height: 38px; }
+.ai-polish-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.ai-polish-actions button { min-width: 104px; max-width: 100%; min-height: 38px; height: auto; overflow-wrap: anywhere; }
 .ai-polish-actions button.primary { min-width: 130px; }
+.ai-polish-window textarea, .annotation-suggestion-inline textarea, .ai-model-settings textarea { padding: 10px 12px; border: 1px solid #dce3ef; border-radius: 8px; background: #fff; line-height: 1.55; resize: vertical; }
+.theme-dark .ai-polish-window textarea, .theme-dark .annotation-suggestion-inline textarea, .theme-dark .ai-model-settings textarea { border-color: #40516a; background: #202c3e; }
 /* Floating controls must never enter Electron's native title-bar drag region. */
 .annotation-lab[hidden], .drawing-board-window[hidden] { display: none !important; }
 .annotation-lab .ai-polish-window { z-index: 90; top: 96px; bottom: auto; max-height: min(640px, var(--floating-max-height, calc(100vh - 112px))); max-width: calc(100vw - 16px); overscroll-behavior: contain; -webkit-app-region: no-drag; }
@@ -21,25 +23,86 @@
 .annotation-lab-settings > header { position: sticky; top: -16px; padding: 8px 0; background: inherit; z-index: 2; }
 .annotation-lab-settings > header > b { flex: 1; }
 
-.ai-stream-activity { margin: 10px 0; border: 1px solid #d8e1f4; border-radius: 9px; background: #f7f9ff; overflow: hidden; }
-.ai-stream-activity > summary { min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #53617a; cursor: pointer; list-style: none; }
+.ai-stream-activity { margin: 16px 0; border: 1px solid #d8e1f4; border-radius: 12px; background: #f7f9ff; overflow: hidden; }
+.ai-stream-activity > summary { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px; color: #53617a; cursor: pointer; list-style: none; line-height: 1.5; overflow-wrap: anywhere; }
+.ai-stream-activity[open] > summary { border-bottom: 1px solid #e2e8f3; }
 .ai-stream-activity > summary::-webkit-details-marker { display: none; }
 .ai-stream-activity > summary > i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #7d8aa4; }
 .ai-stream-activity.active > summary > i { background: #5575de; box-shadow: 0 0 0 4px #5575de1f; animation: ai-stream-pulse 1.25s ease-in-out infinite; }
-.ai-stream-activity > summary > b { font-size: var(--ui-font-small); }
-.ai-stream-activity > summary > span { margin-left: auto; font-size: var(--ui-font-small); }
-.ai-stream-activity-body { display: grid; gap: 8px; max-height: 220px; padding: 0 10px 10px; overflow: auto; border-top: 1px solid #e4e9f4; }
-.ai-stream-activity-body section { min-width: 0; padding-top: 8px; }
-.ai-stream-activity-body section > b { display: block; margin-bottom: 4px; color: #66728a; font-size: var(--ui-font-small); }
-.ai-stream-request { padding-bottom: 8px; border-bottom: 1px solid #e4e9f4; }
+.ai-stream-activity > summary > b { min-width: 0; font-size: var(--ui-font-small); }
+.ai-stream-activity > summary > span { flex: 1 1 200px; margin-inline-start: auto; text-align: end; font-size: var(--ui-font-small); }
+.ai-stream-activity-body { display: grid; gap: 12px; max-height: 240px; padding: 14px; overflow: auto; }
+.ai-stream-activity-body section { min-width: 0; margin: 0; padding: 12px; border: 0; border-radius: 8px; background: #fff; }
+.ai-stream-activity-body section > b { display: block; margin-bottom: 8px; color: #53617a; font-size: var(--ui-font-small); }
+.ai-stream-actions { display: flex; justify-content: flex-end; padding: 0 14px 14px; }
+.ai-stream-actions > button { min-width: 88px; max-width: 100%; min-height: 36px; height: auto; overflow-wrap: anywhere; }
+.ai-stream-activity-body > p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
 .ai-stream-request > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; color: #53617a; font-size: var(--ui-font-small); }
-.ai-stream-request > div > span { font-weight: 700; }.ai-stream-request bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-stream-request ul { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 18px; color: #657189; font-size: var(--ui-font-small); line-height: 1.4; }
+.ai-stream-request > div > span { font-weight: 700; }.ai-stream-request bdi { overflow-wrap: anywhere; }
+.ai-stream-request ul { display: grid; gap: 6px; margin: 8px 0 0; padding-inline-start: 18px; color: #657189; font-size: var(--ui-font-small); line-height: 1.55; overflow-wrap: anywhere; }
 .ai-stream-activity-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #303a4e; font: var(--ui-font-small)/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.ai-stream-activity-body small { padding-top: 8px; color: #7a8499; line-height: 1.45; }
+.ai-stream-activity-body small { color: #657189; line-height: 1.5; }
 .theme-dark .ai-stream-activity { border-color: #3b4964; background: #252c39; }
-.theme-dark .ai-stream-activity-body { border-color: #39445a; }
-.theme-dark .ai-stream-request { border-color: #39445a; }.theme-dark .ai-stream-request > div, .theme-dark .ai-stream-request ul { color: #bdc8d8; }
+.theme-dark .ai-stream-activity[open] > summary { border-color: #39445a; }
+.theme-dark .ai-stream-activity-body section { background: #1c2738; }
+.theme-dark .ai-stream-activity > summary, .theme-dark .ai-stream-activity-body section > b, .theme-dark .ai-stream-activity-body small, .theme-dark .ai-stream-request > div, .theme-dark .ai-stream-request ul { color: #bdc8d8; }
 .theme-dark .ai-stream-activity-body pre { color: #e2e7f1; }
 @keyframes ai-stream-pulse { 50% { opacity: .48; transform: scale(.76); } }
 @media (prefers-reduced-motion: reduce) { .ai-stream-activity.active > summary > i { animation: none; } }
+
+.annotation-lab .annotation-lab-settings-backdrop[hidden] { display: none; }
+.annotation-lab .annotation-lab-settings.ai-model-settings { position: fixed; left: max(16px, calc((100vw - 980px) / 2)); top: 96px; right: auto; bottom: auto; width: min(980px, calc(100vw - 32px)); max-height: var(--floating-max-height, calc(100vh - 112px)); padding: 0; overflow: hidden; border-radius: 16px; }
+.annotation-lab .ai-model-settings > header { position: static; margin: 0; padding: 16px 20px; border-bottom: 1px solid #dce3ef; background: inherit; cursor: move; }
+.annotation-lab .ai-model-settings > header > b { font-size: var(--ui-font-title); line-height: 1.4; }
+.annotation-lab .ai-model-settings > .window-scroll-body { padding: 18px 20px 0; }
+.annotation-lab .ai-settings-intro { display: grid; gap: 12px; margin-bottom: 24px; }
+.annotation-lab .ai-settings-intro .lab-settings-note { margin: 0; color: #657189; font-size: var(--ui-font-small); line-height: 1.65; }
+.annotation-lab .ai-active-model { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 16px; background: #f6f8fb; border: 1px solid #e2e7ef; border-radius: 12px; }
+.annotation-lab .ai-active-model > span { max-width: 100%; padding: 4px 9px; border-radius: 6px; background: #e5f2ea; color: #246047; font-size: var(--ui-font-small); line-height: 1.5; overflow-wrap: anywhere; }
+.annotation-lab .ai-active-model > div { flex: 1 1 220px; min-width: 0; display: grid; gap: 4px; }
+.annotation-lab .ai-active-model bdi { font-size: var(--ui-font-body); font-weight: 650; overflow-wrap: anywhere; }
+.annotation-lab .ai-active-model small { color: #657189; overflow-wrap: anywhere; }
+.annotation-lab .ai-settings-layout { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); align-items: start; gap: 20px; }
+.annotation-lab .ai-profile-list { display: grid; gap: 8px; }
+.annotation-lab .ai-profile-list > button { display: grid; gap: 5px; width: 100%; height: auto; min-width: 0; padding: 12px; text-align: start; border-radius: 10px; }
+.annotation-lab .ai-profile-list b, .annotation-lab .ai-profile-list small { overflow-wrap: anywhere; }
+.annotation-lab .ai-profile-list small { font-size: var(--ui-font-small); font-weight: 400; opacity: .8; }
+.annotation-lab .ai-profile-list .selected { border-color: var(--theme-accent, #5575de); background: color-mix(in srgb, var(--theme-accent, #5575de) 9%, white); box-shadow: inset 3px 0 var(--theme-accent, #5575de); }
+.annotation-lab .ai-profile-list button > span { justify-self: start; padding: 2px 6px; border-radius: 5px; color: #246047; background: #dcefe2; font-size: var(--ui-font-small); }
+.annotation-lab .ai-profile-list .ai-add-profile { display: block; text-align: center; border-style: dashed; }
+.annotation-lab .ai-profile-form { min-width: 0; }
+.annotation-lab .ai-profile-heading { display: flex; align-items: end; gap: 10px; margin-bottom: 16px; }
+.annotation-lab .ai-profile-heading > label { flex: 1; }
+.annotation-lab .ai-profile-heading > button { flex: 0 1 160px; min-height: 36px; height: auto; padding: 7px 10px; }
+.annotation-lab .ai-model-settings .ai-profile-form label { display: grid; gap: 6px; min-width: 0; margin: 0; color: inherit; font-size: var(--ui-font-body); line-height: 1.45; font-weight: 400; }
+.annotation-lab .ai-profile-form fieldset, .annotation-lab .ai-advanced-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; min-width: 0; margin: 0 0 16px; padding: 16px; border: 1px solid #dce3ef; border-radius: 10px; }
+.annotation-lab .ai-profile-form legend { padding: 0 6px; font-size: var(--ui-font-body); font-weight: 650; }
+.annotation-lab .ai-model-settings input, .annotation-lab .ai-model-settings select, .annotation-lab .ai-model-settings textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; height: auto; padding: 7px 9px; font-size: var(--ui-font-body); line-height: 1.45; }
+.annotation-lab .ai-model-settings .ai-field-wide { grid-column: 1 / -1; }
+.annotation-lab .ai-model-settings small { line-height: 1.5; font-weight: 400; font-size: var(--ui-font-small); }
+.annotation-lab .ai-key-field { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.annotation-lab .ai-key-field > input { flex: 1; }
+.annotation-lab .ai-key-field > button { flex-shrink: 0; min-width: 52px; height: auto; padding: 4px 8px; }
+.annotation-lab .ai-model-settings .ai-profile-form label.ai-checkbox { display: flex; align-items: start; gap: 8px; }
+.annotation-lab .ai-model-settings .ai-checkbox > input { width: 16px; min-height: 16px; height: 16px; margin-top: 3px; flex: none; }
+.annotation-lab .ai-advanced { margin-bottom: 16px; }
+.annotation-lab .ai-advanced > summary { padding: 10px 0; font-weight: 650; cursor: pointer; }
+.annotation-lab .ai-model-settings textarea { min-height: 100px; resize: vertical; }
+.annotation-lab .ai-model-settings .ai-profile-form footer { position: sticky; bottom: 0; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 0; padding: 14px 0; background: #fff; border-top: 1px solid #dce3ef; z-index: 1; }
+.annotation-lab .ai-model-settings .ai-profile-form footer > button { min-height: 36px; height: auto; padding: 7px 12px; }
+.theme-dark .annotation-lab .ai-active-model { background: #263448; border-color: #40516a; }
+.theme-dark .annotation-lab .ai-active-model > span { background: #20392f; color: #b3e6cd; }
+.theme-dark .annotation-lab .ai-active-model small, .theme-dark .annotation-lab .ai-settings-intro .lab-settings-note { color: #bdc8d8; }
+.theme-dark .annotation-lab .ai-profile-list .selected { background: #2c3a54; }
+.theme-dark .annotation-lab .ai-profile-list button > span { color: #b3e6cd; background: #20392f; }
+.theme-dark .annotation-lab .ai-profile-form fieldset, .theme-dark .annotation-lab .ai-advanced-body, .theme-dark .annotation-lab .ai-model-settings > header, .theme-dark .annotation-lab .ai-model-settings .ai-profile-form footer { border-color: #40516a; }
+.theme-dark .annotation-lab .ai-model-settings .ai-profile-form footer { background: #202c3e; }
+@media (max-width: 760px) {
+.annotation-lab .ai-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.annotation-lab .ai-profile-list { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.annotation-lab .ai-profile-heading { flex-wrap: wrap; }
+}
+@media (max-width: 520px) {
+.annotation-lab .ai-profile-form fieldset, .annotation-lab .ai-advanced-body { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+.annotation-lab .ai-model-settings > .window-scroll-body { padding: 12px 12px 0; }
+}

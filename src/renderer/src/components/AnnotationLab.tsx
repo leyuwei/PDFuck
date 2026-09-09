@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { PageTextSelection } from '../lib/page-text-selection'
 import { AnnotationIcon } from './AnnotationIcon'
 import {
-  AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, FULL_REVIEW_PRESETS,
-  loadAiSettings, localizedPrompt, MAX_AI_MAX_OUTPUT_TOKENS, MAX_AI_TIMEOUT_SECONDS, MIN_AI_MAX_OUTPUT_TOKENS, MIN_AI_TIMEOUT_SECONDS, normalizeAiMaxOutputTokens, normalizeAiTimeoutSeconds,
-  autoAnnotatePage, AUTOMATIC_ANNOTATION_ISSUE_TYPES, aiRecoveryTimeoutSeconds, cancelAiRequest, polishText, promptForLanguage, providerSettings, reviewDocument, saveAiSettings, suggestForAnnotation,
+  AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, detectAiLanguage, FULL_REVIEW_PRESETS,
+  loadAiSettings, localizedPrompt,
+  autoAnnotatePage, AUTOMATIC_ANNOTATION_ISSUE_TYPES, aiRecoveryTimeoutSeconds, cancelAiRequest, polishText, promptForLanguage, reviewDocument, suggestForAnnotation,
   type AiLanguage, type AiSettings, type AiStreamProgress, type AutomaticAnnotationIssueType, type FullReviewDocument, type FullReviewSendMode
 } from '../lib/ai-polish'
 import { normalizeCopiedText } from '../lib/clipboard-text'
@@ -32,6 +32,8 @@ import {
   type AutomaticAnnotationDetail, type AutomaticAnnotationDraft, type AutomaticAnnotationIntensity, type AutomaticAnnotationPage,
   type AutomaticAnnotationSourcePage
 } from '../lib/automatic-annotation'
+import { AiSettingsDialog } from './AiSettingsDialog'
+import { AI_SETTINGS_EVENT } from '../lib/ai-settings'
 import './annotation-lab.css'
 
 export const FULL_REVIEW_CONSENT_KEY = 'pdfuck.lab.full-review-consent.v1'
@@ -167,14 +169,14 @@ function AiActivity({ progress, busy }: { progress: AiActivityState; busy: boole
   return <details className={`ai-stream-activity${busy ? ' active' : ''}`} open={busy}>
     <summary><i aria-hidden="true" /><b>{ui('ui.aiLiveActivity')}</b><span aria-live="polite">{status}</span></summary>
     <div className="ai-stream-activity-body">
-      {busy && progress.requestId && <button type="button" onClick={() => cancelAiRequest(progress.requestId)}>{ui('ui.cancel')}</button>}
       {progress.recovery && <p role="status">{ui('ui.aiRecovering')} · {ui(`ui.aiRecovery.${progress.recovery.kind}`)} · {ui(`ui.aiRecoveryAction.${progress.recovery.action}`)} ({progress.recovery.attempt})</p>}
-      {progress.request && <section className="ai-stream-request"><b>{ui('ui.modelRequestContents')}</b><div><span>{ui('ui.model')}</span><bdi>{progress.request.model}</bdi></div><ul>{progress.request.details.map((detail, index) => <li key={index} dir="auto">{detail}</li>)}</ul></section>}
+      {progress.request && <section className="ai-stream-request"><b>{ui('ui.modelRequestContents')}</b><div><span>{ui('ui.model')}</span><bdi>{progress.request.model}</bdi></div><ul>{progress.request.details.map((detail, index) => <li key={index}><bdi dir="auto">{detail}</bdi></li>)}</ul></section>}
       {!progress.request && !progress.received && <small>{ui('ui.preparingModelRequest')}</small>}
-      {progress.reasoning && <section><b>{ui('ui.modelReasoning')}</b><pre dir="auto">{progress.reasoning}</pre></section>}
-      {progress.output && <section><b>{ui('ui.liveResponse')}</b><pre dir="auto">{progress.output}</pre></section>}
+      {progress.reasoning && <section><b>{ui('ui.modelReasoning')}</b><pre dir="auto">{progress.reasoning.length > 24000 ? '…' + progress.reasoning.slice(-24000) : progress.reasoning}</pre></section>}
+      {progress.output && <section><b>{ui('ui.liveResponse')}</b><pre dir="auto">{progress.output.length > 32000 ? '…' + progress.output.slice(-32000) : progress.output}</pre></section>}
       {progress.received && !progress.reasoning && <small>{ui('ui.reasoningUnavailableHint')}</small>}
     </div>
+    {busy && progress.requestId && <div className="ai-stream-actions"><button type="button" onClick={() => cancelAiRequest(progress.requestId)}>{ui('ui.cancel')}</button></div>}
   </details>
 }
 
@@ -341,10 +343,11 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
     if (automaticAiRequestId.current) cancelAiRequest(automaticAiRequestId.current)
   }, [])
 
-  const persistSettings = () => {
-    const normalized = { ...settings, timeoutSeconds: normalizeAiTimeoutSeconds(settings.timeoutSeconds), maxOutputTokens: normalizeAiMaxOutputTokens(settings.maxOutputTokens) }
-    setSettings(normalized); saveAiSettings(normalized); setSettingsOpen(false)
-  }
+  useEffect(() => {
+    const refresh = () => setSettings(loadAiSettings())
+    window.addEventListener(AI_SETTINGS_EVENT, refresh); window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener(AI_SETTINGS_EVENT, refresh); window.removeEventListener('storage', refresh) }
+  }, [])
   const openFullReview = () => openWindow('review')
   const openAutomaticAnnotation = () => {
     if (!automaticActive) setAutomaticScope('document')
@@ -605,14 +608,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
       <button type="button" className="tool-button with-icon annotation-lab-launch drawing-board-launch" data-window-state={windowState('drawing')} disabled={disabled || !onAddDrawing || !onExportDrawing} onClick={() => openWindow('drawing')}><DrawingBoardIcon /><span className="tool-button-copy"><strong>{t("ui.freeDrawingBoard")}</strong><small>{t("ui.drawFreelyOnAResizableCanvasThenExportOrAddToCurrentPage")}</small></span></button>
     </div>
 
-    {settingsOpen && <div className="annotation-lab-settings-backdrop" role="presentation" onPointerDown={() => setSettingsOpen(false)}><ScrollWindow className="annotation-lab-settings" role="dialog" aria-modal="true" aria-label={t("ui.labModelSettings")} onPointerDown={(event) => event.stopPropagation()}><header><b>{t("ui.labModelSettings")}</b><button type="button" aria-label={t("ui.minimizeLabWindow")} onClick={() => { setSettingsMinimized(true); setSettingsOpen(false) }}>−</button><button type="button" onClick={() => setSettingsOpen(false)} aria-label={t("ui.closeModelSettings")}>×</button></header>
-      <p className="lab-settings-note">{t("ui.aiPolishFullDocumentReviewAndAnnotationSuggestionsShareThis")}</p>
-      <label>{t("ui.provider")}<select value={settings.provider} onChange={(event) => setSettings(providerSettings(settings, event.target.value as AiSettings['provider']))}><option value="openai">{t("ui.openaiRelay")}</option><option value="claude">{t("ui.claudeRelay")}</option><option value="bigmodel">BigModel Plan</option><option value="doubao">Doubao</option><option value="deepseek">DeepSeek</option><option value="kimi">KIMI</option><option value="custom">{t("ui.customOpenaiCompatible")}</option></select></label>
-      <label>{t("ui.apiEndpoint")}<input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} /></label><label>{t("ui.apiKey")}<input type="password" value={settings.apiKey} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} /></label><label>{t("ui.model")}<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} /></label>
-      <label>{t("ui.responseTimeout")}<span className="ai-timeout-input"><input type="number" min={MIN_AI_TIMEOUT_SECONDS} max={MAX_AI_TIMEOUT_SECONDS} step={1} value={settings.timeoutSeconds} onChange={(event) => setSettings({ ...settings, timeoutSeconds: Number(event.target.value) })} /><span>{t("ui.sec")}</span></span><small>{t("ui.maximumWaitTimeTheDefaultIs120Seconds")}</small></label>
-      <label>{t("ui.maxOutputTokens")}<input type="number" min={MIN_AI_MAX_OUTPUT_TOKENS} max={MAX_AI_MAX_OUTPUT_TOKENS} step={1024} value={settings.maxOutputTokens} onChange={(event) => setSettings({ ...settings, maxOutputTokens: Number(event.target.value) })} /><small>{t("ui.maxOutputTokensHint")}</small></label>
-      <footer><button type="button" onClick={() => setSettings(defaultSettings)}>{t("ui.restoreDefaults")}</button><button type="button" className="primary" onClick={persistSettings}>{t("ui.save")}</button></footer>
-    </ScrollWindow></div>}
+    {(settingsOpen || settingsMinimized) && <AiSettingsDialog minimized={settingsMinimized} onClose={() => { setSettingsOpen(false); setSettingsMinimized(false) }} onMinimize={() => { setSettingsOpen(false); setSettingsMinimized(true) }} onSaved={() => setSettings(loadAiSettings())} />}
 
     {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
 

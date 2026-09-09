@@ -18,6 +18,18 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.33 优化实验室窗口排版：当前模型摘要、说明和表单分层留白；共享 AI 过程卡片去除内部重复分隔线，取消按钮独立排列，统一结果与自动批注操作间距。`test:ai-settings-ui` 的 80 组检查增加摘要间距和文本边界断言；`test:lab-features-ui` 检查真实等待、自动批注和建议结果卡片在双主题、RTL、四字号和窄宽度下的分隔线、状态及取消按钮布局。验收记录见 `docs/VALIDATION-2.0.33.md`。
+
+2.0.33 本次交付按用户明确要求缩减为 UI 范围验收：保留已完成的源码检查，直接使用 `electron-builder` 生成 Windows 产物，成品复测模型设置与实验室窗口，并核验包内版本和文件哈希；不宣称完成全部 65 项发布检查。常规完整发布仍使用下文脚本。
+
+2.0.32 升级 OCR 和实验室模型设置。OCR 继续使用锁定语言包，除日文保留 `4.0.0_best_int` 外采用 `4.0.0` 模型；资源体积增大，许可证随包复制。新增自动纠斜、低置信度复识别、CJK 伪空格整理与 RTL 文字层/框选修复。`test:ocr-ui` 记录 11 种语言各自原文的字符错误率，保留已知俄文大小写误判与韩英混排限制，增加正负倾斜坐标与中文/阿拉伯语原样复制断言。
+
+OCR 宿主工作线程新增对 `pdf-lib` 的使用，`pdf-lib`、`@pdf-lib`、`pako`、`tslib` 及其嵌套依赖必须一并 `asarUnpack`；仅把引擎和工作线程解包会在成品出现 `Cannot find module 'pdf-lib'`，源码通过不能替代成品 OCR 检查。
+
+`test:ai-settings-ui` 已接入源码和成品发布流程，覆盖旧配置迁移、保存/激活分离、取消、JSON 校验、重启及十语言 × 四字号 × 双主题 80 组布局。AI 单元测试覆盖服务商 Thinking、禁用降级、输出预算协商、截断恢复与长 SSE；`test:ai-smoke` 增加真实 52 秒首包等待及 35 秒 Thinking 间隔，运行时间约一分钟。默认请求 600 秒/65,536 Token；恢复总时限为配置超时两倍，最高 7,200 秒，每组请求最多尝试 24 次。完整验收记录见 `docs/VALIDATION-2.0.32.md`。
+
+2.0.31 增加原位 OCR。`npm ci` 安装锁定的 Tesseract.js 与 11 个语言数据包，构建复制 `4.0.0_best_int` 模型及许可证到 `out/ocr`。OCR 工作线程、引擎依赖与语言数据必须解包到 `app.asar.unpacked`，最终包不得依赖开发目录或运行时下载。`test:ocr-ui` 已接入 Windows/macOS 的源码与成品回归，验证中英扫描、混合原生文字、旋转裁剪、重复识别、取消、原位框选复制、保存及页面像素一致性，并覆盖十语言 × 四字号。模型层单元测试覆盖四种旋转、失败不部分写入与撤销重做；工作线程测试覆盖输入校验、取消、异常、超时与重试。
+
 test3 与 Scheduling0826m 的长时间 CDP 拖拽回归使用关闭后台节流的隐藏 Electron 窗口，避免共享桌面鼠标移动混入拖选；selection-temporal-ui 记录异常帧的视口指针及页面几何。保留实时选区连续性与分栏断言。
 
 2.0.30 的 annotation-dialog-interaction-ui-smoke 调用 annotation-layout-ui-checks，覆盖十语言 × 四字号的选项字重、编辑区随窗口增长、窄窗换行、同窗 AI 返回与取消草稿。lab-features-ui-smoke 检查同窗上下文选择、生成、填入回复草稿、确认及 PDF 保存重开。新脚本由现有源码/成品发布检查执行，不需新增依赖。
@@ -78,13 +90,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.29
+.\scripts\package-windows.ps1 2.0.33
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.29
+bash scripts/package-macos.sh 2.0.33
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

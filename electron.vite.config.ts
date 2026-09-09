@@ -1,12 +1,26 @@
 import { copyFileSync, cpSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
+import { OCR_LANGUAGES } from './src/shared/ocr'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
-    build: { rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') } }
+    plugins: [externalizeDepsPlugin(), {
+      name: 'copy-ocr-assets',
+      buildStart() {
+        const ocrTarget = resolve(__dirname, 'out/ocr')
+        mkdirSync(ocrTarget, { recursive: true })
+        for (const language of Object.keys(OCR_LANGUAGES)) {
+          // The Japanese integer model preserves mixed Latin/digit text better in our raster corpus.
+          const model = language === 'jpn' ? '4.0.0_best_int' : '4.0.0'
+          copyFileSync(resolve(__dirname, `node_modules/@tesseract.js-data/${language}/${model}/${language}.traineddata.gz`), resolve(ocrTarget, `${language}.traineddata.gz`))
+        }
+        copyFileSync(resolve(__dirname, 'node_modules/tesseract.js/LICENSE.md'), resolve(ocrTarget, 'LICENSE-TESSERACT.txt'))
+        copyFileSync(resolve(__dirname, 'resources/OCR-NOTICE.txt'), resolve(ocrTarget, 'NOTICE.txt'))
+      }
+    }],
+    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), 'ocr-worker': resolve(__dirname, 'src/main/ocr-worker.ts') } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

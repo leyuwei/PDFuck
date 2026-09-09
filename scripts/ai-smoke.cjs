@@ -24,6 +24,12 @@ async function main() {
       response.once('close', () => clearTimeout(timer))
       return
     }
+    if (payload.model === 'slow-first-model' || payload.model === 'thinking-gap-model') {
+      if (payload.model === 'thinking-gap-model') response.write('data: {"choices":[{"delta":{"reasoning_content":"Thinking"}}]}\n\n')
+      const timer = setTimeout(() => response.end('data: {"choices":[{"delta":{"content":"Completed within configured timeout"},"finish_reason":"stop"}]}\n\n'), payload.model === 'slow-first-model' ? 52000 : 35000)
+      response.once('close', () => clearTimeout(timer))
+      return
+    }
     assert.equal(payload.model, 'smoke-model')
     response.write('data: {"choices":[{"delta":{"reasoning_content":"checking request"}}]}\n\n')
     await new Promise((resolve) => setTimeout(resolve, 80))
@@ -76,7 +82,13 @@ async function main() {
     assert.equal(cancellation.reusedResponse.status, 200)
     assert.match(cancellation.timeoutMessage, /aiFirstOutputTimeout/)
     assert.doesNotMatch(cancellation.timeoutMessage, /已取消/)
-    console.log(JSON.stringify({ status: result.status, endpoint: `${baseUrl}/chat/completions`, body: result.body, cancellation }))
+    const longThinking = await page.evaluate(async ({ baseUrl }) => {
+      const send = (model, timeoutMs) => window.desktop.aiRequest({ requestId: model, url: baseUrl + '/chat/completions', headers: { authorization: 'Bearer smoke-key' }, body: JSON.stringify({ model, stream: true }), timeoutMs })
+      const responses = await Promise.all([send('slow-first-model', 150000), send('thinking-gap-model', 120000)])
+      return responses.map(response => response.body)
+    }, { baseUrl })
+    assert.ok(longThinking.every(body => body.includes('Completed within configured timeout')), 'Full first-token and Thinking idle budgets must be respected')
+    console.log(JSON.stringify({ longThinking: true, status: result.status, endpoint: `${baseUrl}/chat/completions`, body: result.body, cancellation }))
   } finally {
     await app.close()
     await new Promise((resolve) => server.close(resolve))

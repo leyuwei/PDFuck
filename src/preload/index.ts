@@ -6,6 +6,13 @@ const api: DesktopApi = {
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   choosePdfImports: () => ipcRenderer.invoke('pdf:choose-imports'),
   chooseImage: () => ipcRenderer.invoke('image:choose'),
+  recognizeOcrPage: async (request, onProgress) => {
+    const listener = (_event: Electron.IpcRendererEvent, jobId: string, value: number) => { if (jobId === request.jobId) onProgress(value) }
+    ipcRenderer.on('ocr:progress', listener)
+    try { return await ipcRenderer.invoke('ocr:page', request) }
+    finally { ipcRenderer.removeListener('ocr:progress', listener) }
+  },
+  cancelOcr: jobId => ipcRenderer.send('ocr:cancel', jobId),
   readPdf: (path) => ipcRenderer.invoke('pdf:read', path),
   getPdfPassword: (credentialKey) => ipcRenderer.invoke('pdf:password-get', credentialKey),
   openPdfFolder: (path) => ipcRenderer.invoke('pdf:open-folder', path),

@@ -1,3 +1,4 @@
+import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import { ContextMenu } from './ContextMenu'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
@@ -1356,7 +1357,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       // PDF.js text items frequently carry leading/trailing whitespace. Trim
       // item boundaries before joining so insight rules do not report layout
       // artifacts as document grammar errors.
-      const text = content.items.filter((item): item is TextItem => 'str' in item).map((item) => item.str.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ')
+      const text = normalizeTextSpacing(content.items.filter((item): item is TextItem => 'str' in item).map((item) => item.str.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' '))
       let imageCount = 0
       let visualRects: PdfRect[] | undefined
       if (includeImages) {

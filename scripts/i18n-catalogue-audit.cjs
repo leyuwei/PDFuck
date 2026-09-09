@@ -107,6 +107,8 @@ function requireChineseValue(value, where) {
 const invariantVisibleCopy = new Set([
   'PDF', 'PDFuck', 'uck', 'v', '© 2026 github@leyuwei',
   'BigModel Plan', 'Doubao', 'DeepSeek', 'KIMI',
+  // Provider brands and literal API syntax are language-independent.
+  'OpenAI', 'Claude', 'Grok (xAI)', 'BigModel', 'Top P', 'model-id', '{"verbosity":"low"}',
   'A−', 'A＋', 'Aa', 'B', 'I',
   'A4', 'A3', 'A5', 'Letter', 'Legal', 'Tabloid',
   '简体中文', 'English', '日本語', 'Русский', 'Español', 'Français', 'Deutsch', 'Português', '한국어', 'العربية',

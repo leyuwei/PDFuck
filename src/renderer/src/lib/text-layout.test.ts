@@ -3,6 +3,25 @@ import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
 import { fitTextAdvances, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery } from './text-layout'
 
 describe('PDF text layout', () => {
+  it('selects Arabic words and partial characters from right to left with positive highlight widths', () => {
+    const items = [
+      { str: 'قراءة', dir: 'rtl', width: 50, height: 12, transform: [12, 0, 0, 12, 150, 700], fontName: 'f1' },
+      { str: 'النصوص', dir: 'rtl', width: 60, height: 12, transform: [12, 0, 0, 12, 80, 700], fontName: 'f1' }
+    ] as TextItem[]
+    const styles = { f1: { ascent: .8, descent: -.2, vertical: false, fontFamily: 'Arial' } as TextStyle }
+    const words = textItemsToWordBoxes(items, styles, [1, 0, 0, -1, 0, 792])
+    expect(words.map(word => word.text)).toEqual(['قراءة', 'النصوص'])
+    expect(textCaretAtPoint(words, { x: 201, y: 85 })?.offset).toBe(0)
+    const selection = textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 1, offset: 6 })!
+    expect(selection.text).toBe('قراءة النصوص')
+    expect(selection.rects.every(rect => rect.width > 0)).toBe(true)
+    expect(textSelectionBetween(words, { wordIndex: 0, offset: 0 }, { wordIndex: 0, offset: 2 })?.text).toBe('قر')
+    const mixed = textItemsToWordBoxes([{ ...items[0], str: 'نص 2026 عربي', width: 150 }], styles, [1, 0, 0, -1, 0, 792])
+    expect(mixed.map(word => word.text)).toEqual(['نص', '2026', 'عربي'])
+    expect(mixed[1].boundaries?.[0]).toBe(0)
+    expect(textSelectionBetween(mixed, { wordIndex: 0, offset: 0 }, { wordIndex: 2, offset: 4 })?.text).toBe('نص 2026 عربي')
+  })
+
   it('places selection above the PDF baseline using font ascent', () => {
     const item = { str: 'Hello world', width: 66, height: 12, transform: [12, 0, 0, 12, 40, 700], fontName: 'f1' } as TextItem
     const styles = { f1: { ascent: 0.75, descent: -0.25, vertical: false, fontFamily: 'serif' } as TextStyle }

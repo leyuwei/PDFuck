@@ -15,22 +15,13 @@ import {
   type AutomaticAnnotationModelResponse
 } from './automatic-annotation'
 
-export type AiProvider = 'openai' | 'claude' | 'bigmodel' | 'doubao' | 'deepseek' | 'kimi' | 'custom'
-
-export const DEFAULT_AI_TIMEOUT_SECONDS = 120
-export const MIN_AI_TIMEOUT_SECONDS = 5
-export const MAX_AI_TIMEOUT_SECONDS = 3600
-export const DEFAULT_AI_MAX_OUTPUT_TOKENS = 16_384
-export const MIN_AI_MAX_OUTPUT_TOKENS = 1_024
-export const MAX_AI_MAX_OUTPUT_TOKENS = 131_072
-
-export interface AiSettings { provider: AiProvider; baseUrl: string; apiKey: string; model: string; timeoutSeconds: number; maxOutputTokens: number }
-export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean; requestId?: string; recovery?: { kind: AiFailure; attempt: number; action: 'retry' | 'parameters' | 'budget' | 'split' | 'structure'; delayMs?: number } }
+export * from './ai-settings'
+import { normalizeAiTimeoutSeconds, normalizeAiMaxOutputTokens, MAX_AI_MAX_OUTPUT_TOKENS, aiGenerationParameters, type AiSettings } from './ai-settings'
+export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean; requestId?: string; recovery?: { kind: AiFailure; attempt: number; action: 'retry' | 'parameters' | 'budget' | 'split' | 'structure' | 'thinking'; delayMs?: number } }
 export type AiProgressCallback = (progress: AiStreamProgress) => void
 export type AiLanguage = InterfaceLanguage
 export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
 export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Partial<Record<AiLanguage, string>> & Record<'zh' | 'en' | 'ja' | 'ru' | 'es', string> }
-export interface AiProviderPreset { baseUrl: string; model: string }
 
 export type FullReviewSendMode = 'text' | 'file'
 export interface FullReviewDocument { name: string; bytes: Uint8Array; text?: string }
@@ -166,54 +157,6 @@ export function localizedPrompt(preset: LocalizedAiPromptPreset, language: AiLan
   return `${preset.prompts[language] || preset.prompts.en}\n\n${responseLanguageInstruction(language)}`
 }
 
-export const PROVIDER_PRESETS: Record<Exclude<AiProvider, 'custom'>, AiProviderPreset> = {
-  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-  claude: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-6' },
-  bigmodel: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5-air' },
-  doubao: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-1-6-250615' },
-  deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
-  kimi: { baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' }
-}
-
-const KEY = 'pdfuck.ai-settings.v1'
-export const defaultSettings: AiSettings = { provider: 'openai', ...PROVIDER_PRESETS.openai, apiKey: '', timeoutSeconds: DEFAULT_AI_TIMEOUT_SECONDS, maxOutputTokens: DEFAULT_AI_MAX_OUTPUT_TOKENS }
-
-export function normalizeAiTimeoutSeconds(value: unknown): number {
-  const timeout = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(timeout)) return DEFAULT_AI_TIMEOUT_SECONDS
-  return Math.round(Math.max(MIN_AI_TIMEOUT_SECONDS, Math.min(MAX_AI_TIMEOUT_SECONDS, timeout)))
-}
-
-export function normalizeAiMaxOutputTokens(value: unknown): number {
-  const tokens = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(tokens)) return DEFAULT_AI_MAX_OUTPUT_TOKENS
-  return Math.round(Math.max(MIN_AI_MAX_OUTPUT_TOKENS, Math.min(MAX_AI_MAX_OUTPUT_TOKENS, tokens)))
-}
-
-export function providerSettings(current: AiSettings, provider: AiProvider): AiSettings {
-  if (provider === 'custom') return { ...current, provider }
-  const oldPreset = current.provider === 'custom' ? undefined : PROVIDER_PRESETS[current.provider]
-  const untouched = !current.baseUrl.trim() || !current.model.trim() || (oldPreset && current.baseUrl.trim() === oldPreset.baseUrl && current.model.trim() === oldPreset.model)
-  return { ...current, provider, ...(untouched ? PROVIDER_PRESETS[provider] : {}) }
-}
-
-export function loadAiSettings(): AiSettings {
-  try {
-    const parsed = { ...defaultSettings, ...JSON.parse(localStorage.getItem(KEY) || '{}') } as AiSettings
-    parsed.timeoutSeconds = normalizeAiTimeoutSeconds(parsed.timeoutSeconds)
-    parsed.maxOutputTokens = normalizeAiMaxOutputTokens(parsed.maxOutputTokens)
-    const officialBaseUrl = parsed.provider === 'claude' || parsed.provider === 'deepseek' ? PROVIDER_PRESETS[parsed.provider].baseUrl : undefined
-    const retiredModel = parsed.provider === 'claude' ? 'claude-3-5-sonnet-latest' : parsed.provider === 'deepseek' ? 'deepseek-chat' : undefined
-    const replacementModel = parsed.provider === 'claude' ? PROVIDER_PRESETS.claude.model : parsed.provider === 'deepseek' ? PROVIDER_PRESETS.deepseek.model : undefined
-    if (officialBaseUrl && retiredModel && replacementModel && parsed.baseUrl.replace(/\/+$/u, '') === officialBaseUrl && parsed.model === retiredModel) parsed.model = replacementModel
-    // 1.16.8 could store BigModel with the OpenAI defaults after provider switching.
-    if (parsed.provider !== 'openai' && parsed.provider !== 'custom' && parsed.baseUrl === PROVIDER_PRESETS.openai.baseUrl && parsed.model === PROVIDER_PRESETS.openai.model) return { ...parsed, ...PROVIDER_PRESETS[parsed.provider] }
-    return parsed
-  } catch { return defaultSettings }
-}
-
-export function saveAiSettings(value: AiSettings): void { localStorage.setItem(KEY, JSON.stringify({ ...value, timeoutSeconds: normalizeAiTimeoutSeconds(value.timeoutSeconds), maxOutputTokens: normalizeAiMaxOutputTokens(value.maxOutputTokens) })) }
-
 export function endpoint(settings: AiSettings): string {
   const raw = settings.baseUrl.trim()
   if (!raw) throw new Error('请先填写接口地址。')
@@ -344,22 +287,57 @@ function responsePartsFromPayload(payload: Record<string, unknown>): Omit<AiStre
   return { reasoning, output, truncated }
 }
 
-/** Parse final and streaming OpenAI-compatible, DeepSeek, and Claude responses. */
-export function parseAiResponseBody(body: string): AiStreamProgress {
-  const direct = parseJson(body)
-  if (Object.keys(direct).length) return { ...responsePartsFromPayload(direct), received: Boolean(body) }
-  const result: AiStreamProgress = { reasoning: '', output: '', received: Boolean(body), truncated: false }
-  for (const rawLine of body.split(/\r?\n/gu)) {
-    const line = rawLine.trim()
-    if (!line || line.startsWith(':') || line.startsWith('event:') || line.startsWith('id:') || line.startsWith('retry:')) continue
-    const data = line.startsWith('data:') ? line.slice(5).trim() : line
-    if (!data || data === '[DONE]' || !data.startsWith('{')) continue
-    const part = responsePartsFromPayload(parseJson(data))
-    result.reasoning += part.reasoning
-    result.output += part.output
-    result.truncated ||= part.truncated
+/** Consume each SSE event once; long Thinking streams must not reparse their entire history. */
+export function createAiResponseParser() {
+  const result: AiStreamProgress = { reasoning: '', output: '', received: false, truncated: false }
+  let pending = '', eventData = '', streaming = false, complete = false, failure: AiFailureError | undefined
+  const consume = (data: string) => {
+    if (data === '[DONE]') { complete = true; return }
+    const payload = parseJson(data)
+    if (!Object.keys(payload).length) return
+    if (payload.error || payload.type === 'error') {
+      const body = JSON.stringify(payload), error = payload.error as { type?: string; code?: string } | undefined
+      const code = error?.type || error?.code || ''
+      const status = /overloaded|server|internal/i.test(code) ? 503 : /rate_limit/i.test(code) ? 429 : /auth/i.test(code) ? 401 : 400
+      failure = responseError({ status, statusText: '', body }) as AiFailureError
+    }
+    const part = responsePartsFromPayload(payload)
+    result.reasoning += part.reasoning; result.output += part.output; result.truncated ||= part.truncated
+    const choice = (payload.choices as Array<{ finish_reason?: string }> | undefined)?.[0]
+    const delta = payload.delta as { stop_reason?: string } | undefined
+    complete ||= Boolean(choice?.finish_reason || delta?.stop_reason || payload.stop_reason || payload.type === 'message_stop' || payload.type === 'response.completed')
   }
-  return result
+  const line = (raw: string) => {
+    const value = raw.trim()
+    if (!value) { if (eventData) { consume(eventData); eventData = '' }; return }
+    if (!value.startsWith('data:')) return
+    const data = value.slice(5).trim()
+    // Most providers use one JSON line per event; also accept multiline SSE data.
+    if (!eventData && (data === '[DONE]' || Object.keys(parseJson(data)).length)) consume(data)
+    else eventData += (eventData ? '\n' : '') + data
+  }
+  const parser = {
+    get streaming() { return streaming }, get complete() { return complete }, get failure() { return failure },
+    snapshot: (): AiStreamProgress => ({ ...result }),
+    push(chunk: string) {
+      result.received ||= Boolean(chunk); pending += chunk
+      if (!streaming && /^\s*(?:data:|event:|:|id:|retry:)/u.test(pending)) streaming = true
+      if (!streaming) return
+      let end: number
+      while ((end = pending.indexOf('\n')) >= 0) { const raw = pending.slice(0, end); pending = pending.slice(end + 1); line(raw) }
+    },
+    finish(): AiStreamProgress {
+      if (streaming) { if (pending) line(pending); if (eventData) consume(eventData) }
+      else { consume(pending); complete = true }
+      pending = ''; eventData = ''
+      return parser.snapshot()
+    }
+  }
+  return parser
+}
+
+export function parseAiResponseBody(body: string): AiStreamProgress {
+  const parser = createAiResponseParser(); parser.push(body); return parser.finish()
 }
 
 function streamUnsupported(response: AiResponse): boolean {
@@ -383,10 +361,10 @@ function jsonModeUnsupported(response: AiResponse): boolean {
 function reasoningControlsUnsupported(response: AiResponse): boolean {
   if (response.status !== 400 && response.status !== 422) return false
   const detail = responseDetail(response)
-  return /thinking|reasoning_effort|output_config/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|invalid|不支持|未知|未识别|无效/iu.test(detail)
+  return /thinking|reasoning_effort|output_config/iu.test(detail) && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|invalid|must be|cannot|requires|only|不支持|未知|未识别|无效/iu.test(detail)
 }
 
-export function aiRecoveryTimeoutSeconds(timeout: number): number { return Math.min(300, Math.max(30, normalizeAiTimeoutSeconds(timeout) * 2)) }
+export function aiRecoveryTimeoutSeconds(timeout: number): number { return Math.min(7200, Math.max(30, normalizeAiTimeoutSeconds(timeout) * 2)) }
 
 const recoveryControllers = new Map<string, AbortController>()
 const recoveryDeadlines = new Map<string, number>()
@@ -405,11 +383,25 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
   const deadline = recoveryDeadlines.get(activeRequestId) || Date.now() + aiRecoveryTimeoutSeconds(settings.timeoutSeconds) * 1000
   let requestPayload: Record<string, unknown> = {
     ...payload,
-    ...(settings.provider === 'deepseek' ? { thinking: { type: 'enabled' }, reasoning_effort: 'low' } : {}),
-    ...(claude && /(?:^|[-_.])4[-_.]?6(?:[-_.]|$)/u.test(String(payload.model)) ? { thinking: { type: 'adaptive' }, output_config: { effort: 'low' } } : {}),
+    ...aiGenerationParameters(settings),
     [!claude && settings.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens']: normalizeAiMaxOutputTokens(settings.maxOutputTokens),
     ...(structured && !claude ? { response_format: { type: 'json_object' } } : {})
   }
+  // Task defaults must not override provider-default sampling or Thinking constraints.
+  if (settings.temperature === undefined) delete requestPayload.temperature
+  const fitThinkingBudget = () => {
+    const thinking = requestPayload.thinking as { type?: string; budget_tokens?: number } | undefined
+    if (thinking?.type === 'enabled' && thinking.budget_tokens !== undefined) {
+      const total = Number(requestPayload.max_tokens ?? requestPayload.max_completion_tokens)
+      if (total < 2048) {
+        if (settings.allowThinkingFallback === false) throw new AiFailureError('configuration', 'aiSettings.thinkingBudgetConflict')
+        delete requestPayload.thinking
+      }
+      else requestPayload.thinking = { ...thinking, budget_tokens: Math.max(1024, Math.min(thinking.budget_tokens, total - 1024)) }
+    }
+  }
+  fitThinkingBudget()
+  let loweredThinking = false, changedThinkingMode = false
   let attemptTimeoutMs = timeoutMs
   let tokenCeiling = MAX_AI_MAX_OUTPUT_TOKENS
   let useStream = true, attempt = 0, transientFailures = 0, repairedStructure = false, changedLimitKey = false
@@ -428,16 +420,17 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
   try {
     for (;;) {
       if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
-      if (Date.now() >= deadline) throw new AiFailureError('timeout', 'ui.aiRecoveryStopped')
+      if (Date.now() >= deadline || attempt >= 24) throw new AiFailureError('timeout', 'ui.aiRecoveryStopped')
       attempt += 1
       publish({ reasoning: '', output: '', received: false, truncated: false })
       if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
-      let body = '', firstChunk = true, timer: ReturnType<typeof setTimeout> | undefined
+      const parser = createAiResponseParser()
+      let firstChunk = true, timer: ReturnType<typeof setTimeout> | undefined
       try {
         const response = await sendRequest(url, { ...headers, accept: useStream ? 'text/event-stream' : 'application/json' }, JSON.stringify(useStream ? { ...requestPayload, stream: true } : requestPayload), Math.min(attemptTimeoutMs, deadline - Date.now()), activeRequestId, (chunk) => {
-          body += chunk
-          if (firstChunk) { firstChunk = false; publish(parseAiResponseBody(body)); return }
-          if (!timer) timer = setTimeout(() => { timer = undefined; publish(parseAiResponseBody(body)) }, 80)
+          parser.push(chunk)
+          if (firstChunk) { firstChunk = false; publish(parser.snapshot()); return }
+          if (!timer) timer = setTimeout(() => { timer = undefined; publish(parser.snapshot()) }, 80)
         })
         if (timer) { clearTimeout(timer); timer = undefined }
         if (controller.signal.aborted) throw new AiFailureError('cancelled', 'ui.aiRequestWasCanceled')
@@ -445,30 +438,58 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
         if (outputLimitUnsupported(response)) {
           const key = 'max_completion_tokens' in requestPayload ? 'max_completion_tokens' : 'max_tokens'
           const detail = responseDetail(response)
-          const maximum = /(?:at most|maximum|less than or equal to|<=|至多|最大)[^\d]{0,30}(\d[\d,]*)/iu.exec(detail)?.[1]
-          const limit = maximum ? Number(maximum.replace(/,/g, '')) : 0
-          if (limit > 0 && limit < Number(requestPayload[key])) { requestPayload[key] = limit; tokenCeiling = Math.min(tokenCeiling, limit); announce('budget', 'parameters'); continue }
+          const maximum = /(?:at most|maximum(?:\s+(?:allowed|value|output))?|less than or equal to|<=|至多|最大)[^\d]{0,40}(\d[\d,]*)/iu.exec(detail)?.[1] || /(?:range|between)[^\d]*\d+[\s,]+(?:and\s+)?(\d[\d,]*)/iu.exec(detail)?.[1]
+          const range = /\[\s*\d+\s*,\s*(\d+)\s*\]/u.exec(detail)?.[1]
+          const limit = maximum || range ? Number((maximum || range)!.replace(/,/g, '')) : 0
+          if (limit > 0 && limit < Number(requestPayload[key])) { requestPayload[key] = limit; tokenCeiling = Math.min(tokenCeiling, limit); fitThinkingBudget(); announce('budget', 'parameters'); continue }
           if (!claude && !changedLimitKey && /unsupported|not supported|unknown|不支持/iu.test(detail)) {
             requestPayload[key === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens'] = requestPayload[key]
             delete requestPayload[key]; changedLimitKey = true; announce('configuration', 'parameters'); continue
           }
-          if (!claude && key in requestPayload) { delete requestPayload[key]; announce('configuration', 'parameters'); continue }
+          // Keep an explicit budget; never silently accept a provider's tiny default.
+          throw responseError(response)
         }
         if ('response_format' in requestPayload && jsonModeUnsupported(response)) { delete requestPayload.response_format; announce('configuration', 'parameters'); continue }
-        if (('thinking' in requestPayload || 'reasoning_effort' in requestPayload || 'output_config' in requestPayload) && reasoningControlsUnsupported(response)) {
-          delete requestPayload.thinking; delete requestPayload.reasoning_effort; delete requestPayload.output_config; announce('configuration', 'parameters'); continue
+        if (settings.allowThinkingFallback !== false && ('thinking' in requestPayload || 'reasoning_effort' in requestPayload || 'output_config' in requestPayload) && reasoningControlsUnsupported(response)) {
+          const detail = responseDetail(response), thinking = requestPayload.thinking as { type?: string } | undefined
+          if (!changedThinkingMode && claude && thinking && /thinking/iu.test(detail) && ['adaptive', 'enabled'].includes(thinking.type || '')) {
+            requestPayload.thinking = thinking.type === 'adaptive' ? { type: 'enabled', budget_tokens: settings.thinkingBudget || 16384 } : { type: 'adaptive' }
+            changedThinkingMode = true; fitThinkingBudget()
+          } else {
+            // Drop only the rejected control, preserving supported reasoning settings.
+            const controls = ['reasoning_effort', 'output_config', 'thinking'].filter(key => key in requestPayload)
+            const key = controls.find(key => detail.includes(key)) || controls[0]
+            delete requestPayload[key]
+          }
+          announce('configuration', 'thinking'); continue
         }
-        if ([400,422].includes(response.status) && 'temperature' in requestPayload && /temperature/iu.test(responseDetail(response))) { delete requestPayload.temperature; announce('configuration', 'parameters'); continue }
+        if ([400,422].includes(response.status)) {
+          const detail = responseDetail(response)
+          const rejected = Object.keys(requestPayload).find(key => !['model', 'messages', 'thinking', 'reasoning_effort', 'output_config', 'max_tokens', 'max_completion_tokens'].includes(key) && detail.includes(key))
+          if (rejected && /unsupported|not supported|unknown|unrecognized|unexpected|extra|additional|invalid|must be|only.*supported|不支持|无效/iu.test(detail)) { delete requestPayload[rejected]; announce('configuration', 'parameters'); continue }
+        }
         if (response.status < 200 || response.status >= 300) throw responseError(response)
-        const progress = parseAiResponseBody(response.body)
+        if (firstChunk) parser.push(response.body)
+        const progress = parser.finish()
         publish(progress)
-        if (progress.truncated) {
+        if (parser.failure) throw parser.failure
+        if (parser.streaming && !parser.complete && !progress.truncated) throw new AiFailureError('network', 'ui.aiStreamInterrupted')
+        if (progress.truncated || (progress.reasoning.trim() && !progress.output.trim())) {
           if (!('max_tokens' in requestPayload) && !('max_completion_tokens' in requestPayload)) throw new AiFailureError('budget', 'ui.aiResponseTruncated')
           const key = 'max_completion_tokens' in requestPayload ? 'max_completion_tokens' : 'max_tokens'
           const previous = Number(requestPayload[key]) || normalizeAiMaxOutputTokens(settings.maxOutputTokens)
           if (previous < tokenCeiling) {
             requestPayload[key] = Math.min(tokenCeiling, previous * 2)
             announce('budget', 'budget'); continue
+          }
+          if (settings.allowThinkingFallback !== false && !loweredThinking && (progress.reasoning || 'thinking' in requestPayload || 'reasoning_effort' in requestPayload)) {
+            loweredThinking = true
+            if (claude) {
+              if ((requestPayload.thinking as { type?: string } | undefined)?.type === 'enabled') requestPayload.thinking = { type: 'enabled', budget_tokens: 1024 }
+              else requestPayload.output_config = { effort: 'low' }
+            } else if (['deepseek', 'bigmodel', 'doubao', 'kimi'].includes(settings.provider)) { requestPayload.thinking = { type: 'disabled' }; delete requestPayload.reasoning_effort }
+            else requestPayload.reasoning_effort = 'low'
+            announce('budget', 'thinking'); continue
           }
           throw new AiFailureError('budget', 'ui.aiResponseTruncated')
         }
@@ -490,7 +511,7 @@ async function requestOutput(settings: AiSettings, payload: Record<string, unkno
         if (!['network', 'rate', 'service', 'timeout'].includes(kind)) throw cause
         // A timed-out structured page can be divided without discarding any source block.
         if (kind === 'timeout' && splitOnTimeout) throw new AiFailureError(kind, cause instanceof Error ? cause.message : String(cause))
-        if (kind === 'timeout') { attemptTimeoutMs = Math.max(attemptTimeoutMs, Math.min(180_000, attemptTimeoutMs * 2)); announce(kind, 'parameters') }
+        if (kind === 'timeout') { attemptTimeoutMs = Math.max(attemptTimeoutMs, Math.min(3_600_000, attemptTimeoutMs * 2)); announce(kind, 'parameters') }
         const delayMs = Math.max(Math.min(8000, 500 * 2 ** Math.min(transientFailures++, 4)), cause instanceof AiFailureError ? cause.retryAfterMs || 0 : 0)
         if (Date.now() + delayMs >= deadline) throw new AiFailureError(kind, 'ui.aiRecoveryStopped')
         announce(kind, 'retry', delayMs)
@@ -533,7 +554,6 @@ async function requestTextOutput(settings: AiSettings, payload: Record<string, u
     const index = reverseIndex < 0 ? -1 : messages.length - 1 - reverseIndex
     const input = index >= 0 ? String(messages[index].content) : ''
     try {
-      if (input.length > 32_000) throw new AiFailureError('input', 'ui.aiRecovery.input')
       return await requestOutput(settings, current, claude, headers, requestId, onProgress, false, undefined, input.length >= 2000)
     } catch (cause) {
       const kind = classifyAiFailure(cause)

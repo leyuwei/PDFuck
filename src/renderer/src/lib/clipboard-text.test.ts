@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { normalizeCopiedText } from './clipboard-text'
 
 describe('normalizeCopiedText', () => {
+  it('removes fragmented Chinese/Japanese gaps while preserving multilingual words and identifiers', () => {
+    expect(normalizeCopiedText('文 档 保持 原来 的 页 面 外观 。')).toBe('文档保持原来的页面外观。')
+    expect(normalizeCopiedText('「 日 本 語 」の テ ス ト')).toBe('「日本語」のテスト')
+    expect(normalizeCopiedText('使用 GPT-5.2 模型，识 别 率 98.5%')).toBe('使用 GPT-5.2 模型，识别率 98.5%')
+    for (const text of ['한국어 단어 사이 공백', 'العربية لغة جميلة', 'English words stay separate', 'français déjà vu', 'Русский текст', 'español con espacios', 'português com espaços', 'deutsche Wörter']) expect(normalizeCopiedText(text)).toBe(text)
+  })
   it('removes PDF line endings while keeping word boundaries', () => {
     expect(normalizeCopiedText('PDF copy\r\noften has\nline breaks.')).toBe('PDF copy often has line breaks.')
   })

@@ -34,6 +34,7 @@ interface Props {
   onAddImage?(): void
   onAddShape?(data: Uint8Array): void | Promise<void>
   onPageNumbers?(): void
+  onOcr?(): void
   onSave(saveAs?: boolean): void
   onPrint(): void
   printing: boolean
@@ -168,6 +169,7 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="crop" />} hint={ui("ui.dragToSelectTheAreaToKeep")}>{ui("ui.cropPage")}</ToolButton>
       <PanelAction disabled={readOnly} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui("ui.supportsPdfImagesEpsWordAndPowerpointOfficeDocumentsAre")}>{ui("ui.mergePdfFromFiles2")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui("ui.previewReorderRotateAndRemovePagesInABatch")}>{ui("ui.managePages")}</PanelAction><h3>{ui("ui.content")}</h3>
+      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="ocr" />} onClick={() => props.onOcr?.()} hint={ui('ocr.hint')}>{ui('ocr.title')}</PanelAction>
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="edit_text" />} hint={ui("ui.showTextBlocksOnThisPageAndClickOneTo")}>{ui("ui.editPageText")}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="add_text" />} hint={ui("ui.dragOutATextBoxThenSetItsContentAnd")}>{ui("ui.addTextToPage")}</ToolButton>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>

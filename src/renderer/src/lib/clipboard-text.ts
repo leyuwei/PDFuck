@@ -7,9 +7,11 @@ function joinWithoutInsertedSpace(left: string, right: string): boolean {
   return CONTINUOUS_SCRIPT.test(left) || CONTINUOUS_SCRIPT.test(right) || COMBINING_MARK.test(right) || OPENING.test(left) || CLOSING_OR_PUNCTUATION.test(right)
 }
 
+import { normalizeTextSpacing } from '../../../shared/text-spacing'
+
 /** Convert PDF line-wrapped text into clipboard text that reads like normal prose. */
 export function normalizeCopiedText(value: string): string {
-  const dehyphenated = value
+  const dehyphenated = normalizeTextSpacing(value)
     .replace(/\r\n?/g, '\n')
     .replace(/\u00ad/g, '')
     .replace(/(\p{L}{2,})-[ \t]*\n[ \t]*(?=\p{Ll}{2})/gu, '$1')

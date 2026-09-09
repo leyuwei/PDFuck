@@ -124,11 +124,11 @@ describe('AnnotationLab settings and availability', () => {
 
     await act(async () => container.querySelector<HTMLButtonElement>('.annotation-lab-settings-trigger')!.click())
     const timeout = container.querySelector<HTMLInputElement>('.ai-timeout-input input')!
-    expect(timeout.value).toBe('120')
+    expect(timeout.value).toBe('600')
     expect(timeout.min).toBe('5')
     expect(timeout.max).toBe('3600')
-    const outputTokens = container.querySelector<HTMLInputElement>('input[max="131072"]')!
-    expect(outputTokens.value).toBe('16384')
+    const outputTokens = container.querySelector<HTMLInputElement>('input[max="262144"]')!
+    expect(outputTokens.value).toBe('65536')
     expect(outputTokens.min).toBe('1024')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(timeout, '275')

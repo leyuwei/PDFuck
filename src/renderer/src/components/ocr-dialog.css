@@ -1,0 +1,22 @@
+.ocr-dialog.scroll-window { position: fixed; width: min(640px, calc(100vw - 40px)); max-height: var(--floating-max-height); padding: 0; -webkit-app-region: no-drag; }
+.ocr-dialog > header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #d6deeb; cursor: move; touch-action: none; }
+.ocr-dialog > header h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ocr-dialog > header button { flex: none; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; font-size: var(--ui-font-title); }
+.ocr-dialog > .window-scroll-body { padding: 18px 20px; }
+.ocr-description, .ocr-field small { color: #758198; font-size: var(--ui-font-small); font-weight: 400; line-height: 1.5; }
+.ocr-description { margin: 0 0 18px; }
+.ocr-dialog fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
+.ocr-field { display: grid; gap: 8px; min-width: 0; }
+.ocr-field > span { font-size: var(--ui-font-body); font-weight: 650; }
+.ocr-field input, .ocr-field select { width: 100%; min-width: 0; min-height: 38px; padding: 8px 10px; border: 1px solid #d6deeb; border-radius: 8px; background: #fff; color: inherit; font-size: var(--ui-font-body); }
+.ocr-field input[aria-invalid="true"] { border-color: #b83b47; }
+.ocr-dialog .page-selection-shortcuts { margin: 10px 0 20px; padding: 0; }
+.ocr-status { overflow-wrap: anywhere; }
+.ocr-status:empty { display: none; }
+.ocr-status p, .ocr-error { font-size: var(--ui-font-body); line-height: 1.5; }
+.ocr-status progress { display: block; width: 100%; accent-color: var(--app-accent); }
+.ocr-error { color: #b83b47; }
+.theme-dark .ocr-dialog > header { border-color: #475a73; }
+.theme-dark .ocr-field input, .theme-dark .ocr-field select { border-color: #475a73; background: #202d40; }
+.theme-dark .ocr-description, .theme-dark .ocr-field small { color: #afbdd0; }
+.theme-dark .ocr-error { color: #ffacb7; }

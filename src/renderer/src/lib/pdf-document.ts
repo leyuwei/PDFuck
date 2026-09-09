@@ -1,3 +1,5 @@
+import type { OcrLayer } from '../../../shared/ocr'
+import { multiplyMatrix } from './page-coordinates'
 import { normalizeMarks, readMarks, richTextHtml, type TextMark } from './annotation-rich-text'
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
@@ -125,6 +127,21 @@ function kindFor(dict: PDFDict, document: PDFDocument): AnnotationKind | null {
 interface AnnotationEntry { dict: PDFDict; ref?: PDFRef; index: number; page: PDFPage; pageIndex: number }
 interface PreparedAnnotation extends AddAnnotationRequest { page: PDFPage; geometry: PageGeometry; normalized: PdfRect[] }
 
+/** Remove only this application's OCR stream, leaving all original page content intact. */
+function removeOcrLayer(page: PDFPage): void {
+  const marker = page.node.lookupMaybe(PDFName.of('PDFuckOCR'), PDFDict)
+  if (!marker) return
+  const stream = marker.get(PDFName.of('Stream'))
+  const contents = page.node.Contents()
+  if (contents instanceof PDFArray) {
+    // Clone before editing: imported pages can share their content arrays.
+    const next = contents.clone()
+    for (let index = next.size() - 1; index >= 0; index--) if (next.get(index) === stream) next.remove(index)
+    page.node.set(PDFName.Contents, next)
+  }
+  page.node.delete(PDFName.of('PDFuckOCR'))
+}
+
 const ANNOTATION_KINDS = new Set<AnnotationKind>(['highlight', 'note', 'replace', 'insert', 'delete', 'underline', 'ai_polish'])
 
 export class PdfDocumentModel {
@@ -199,6 +216,49 @@ export class PdfDocumentModel {
     const page = this.document.getPage(pageIndex)
     const crop = page.getCropBox()
     return page.getRotation().angle % 180 === 0 ? { width: crop.width, height: crop.height } : { width: crop.height, height: crop.width }
+  }
+
+  async ocrSource(pageIndices: number[]): Promise<Uint8Array> {
+    const source = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+    for (const index of pageIndices) {
+      if (!Number.isInteger(index) || index < 0 || index >= this.pageCount) throw new Error('ocr.invalidRequest')
+      removeOcrLayer(source.getPage(index))
+    }
+    return Uint8Array.from(await source.save({ useObjectStreams: false }))
+  }
+
+  async applyOcrLayers(layers: OcrLayer[], signal?: AbortSignal): Promise<void> {
+    if (!layers.length) return
+    const candidate = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+    const seen = new Set<number>()
+    for (const { pageIndex, pdf } of layers) {
+      if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= this.pageCount || seen.has(pageIndex)) throw new Error('ocr.invalidRequest')
+      seen.add(pageIndex)
+      const page = candidate.getPage(pageIndex), geometry = pageGeometry(page)
+      const textPdf = await PDFDocument.load(pdf, { updateMetadata: false })
+      if (textPdf.getPageCount() !== 1) throw new Error('ocr.invalidResult')
+      const [embedded] = await candidate.embedPages([textPdf.getPage(0)])
+      await embedded.embed()
+      const rotated = geometry.rotation % 180 !== 0
+      const width = rotated ? geometry.height : geometry.width, height = rotated ? geometry.width : geometry.height
+      const matrix = multiplyMatrix(inverseMatrix(pageViewportMatrix(geometry)), [width / embedded.width, 0, 0, -height / embedded.height, 0, height])
+      if (matrix.some(value => !Number.isFinite(value))) throw new Error('ocr.invalidResult')
+      removeOcrLayer(page)
+      // A private resource dictionary prevents changes leaking across pages with inherited resources.
+      const resources = page.node.Resources()?.clone() || candidate.context.obj({})
+      const objects = resources.lookupMaybe(PDFName.XObject, PDFDict)?.clone() || candidate.context.obj({})
+      resources.set(PDFName.XObject, objects); page.node.set(PDFName.Resources, resources)
+      const name = page.node.newXObject('PDFuckOCR', embedded.ref)
+      const stream = candidate.context.register(candidate.context.flateStream(`q\n${matrix.join(' ')} cm\n${name.toString()} Do\nQ\n`))
+      page.node.addContentStream(stream)
+      page.node.set(PDFName.of('PDFuckOCR'), candidate.context.obj({ Stream: stream }))
+    }
+    // Serialize before touching the live model; a failed page cannot leave a partial result.
+    const next = Uint8Array.from(await candidate.save({ useObjectStreams: false, addDefaultPage: false }))
+    signal?.throwIfAborted()
+    this.undoStack.push(Uint8Array.from(this.currentBytes)); this.trimHistory(this.undoStack); this.redoStack = []
+    this.document = candidate; this.currentBytes = next
+    this.dirty = this.externallyDirty || !sameBytes(next, this.savedBytes)
   }
 
   private trimHistory(stack: Uint8Array<ArrayBufferLike>[]): void {

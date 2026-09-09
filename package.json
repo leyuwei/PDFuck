@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.30",
+  "version": "2.0.33",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -11,6 +11,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "node scripts/run-vitest.cjs run",
+    "test:ocr-ui": "electron-vite build && node scripts/ocr-ui-smoke.cjs",
     "test:typography": "node scripts/typography-audit.cjs",
     "test:typography-ui": "electron-vite build && node scripts/typography-ui-smoke.cjs",
     "test:annotation-dialog-ui": "electron-vite build && node scripts/annotation-dialog-interaction-ui-smoke.cjs",
@@ -60,7 +61,8 @@
     "test:selection-m91474": "node scripts/selection-m91474-smoke.cjs",
     "test:selection-m91474-ui": "electron-vite build && node scripts/selection-m91474-ui-smoke.cjs",
     "test:popups-ui": "electron-vite build && node scripts/popups-ui-smoke.cjs",
-    "test:eps-vector": "electron-vite build && node scripts/eps-vector-smoke.cjs"
+    "test:eps-vector": "electron-vite build && node scripts/eps-vector-smoke.cjs",
+    "test:ai-settings-ui": "electron-vite build && node scripts/ai-settings-ui-smoke.cjs"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
@@ -68,10 +70,22 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1"
+    "remark-gfm": "4.0.1",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@tesseract.js-data/ara": "1.0.0",
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/chi_tra": "1.0.0",
+    "@tesseract.js-data/deu": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/fra": "1.0.0",
+    "@tesseract.js-data/jpn": "1.0.0",
+    "@tesseract.js-data/kor": "1.0.0",
+    "@tesseract.js-data/por": "1.0.0",
+    "@tesseract.js-data/rus": "1.0.0",
+    "@tesseract.js-data/spa": "1.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -97,7 +111,11 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "node_modules/koffi/**/*"
+      "node_modules/koffi/**/*",
+      "node_modules/{tesseract.js,tesseract.js-core,wasm-feature-detect,zlibjs,node-fetch,is-url,regenerator-runtime,idb-keyval,bmp-js,tr46,webidl-conversions,whatwg-url}/**/*",
+      "node_modules/{pdf-lib,@pdf-lib,pako,tslib}/**/*",
+      "out/ocr/**/*",
+      "out/main/ocr-worker.js"
     ],
     "fileAssociations": [
       {

@@ -1,3 +1,5 @@
+import { cancelOcr, recognizeOcrPage } from './ocr'
+import type { OcrPageRequest } from '../shared/ocr'
 import { convertPdfToEps, findPdfToCairo } from './eps-export'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
@@ -118,7 +120,7 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
   if (!request || typeof request !== 'object' || typeof request.url !== 'string' || typeof request.body !== 'string') throw new Error('AI 请求无效。')
   if (request.requestId !== undefined && (typeof request.requestId !== 'string' || request.requestId.length < 1 || request.requestId.length > 200)) throw new Error('AI 请求无效。')
   if (Buffer.byteLength(request.body, 'utf8') > 64 * 1024 * 1024) throw new Error('AI 请求超过 64 MB。请缩短内容，或在全文评价中改用转换后的文档文字。')
-  const requestedTimeout = typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs) ? request.timeoutMs : 120_000
+  const requestedTimeout = typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs) ? request.timeoutMs : 600_000
   const timeoutMs = Math.round(Math.max(5_000, Math.min(3_600_000, requestedTimeout)))
   let target: URL
   try { target = new URL(request.url) } catch { throw new Error('接口地址无效，请检查 URL 是否完整（需以 http:// 或 https:// 开头）。') }
@@ -143,7 +145,7 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
   }
   const timeout = setTimeout(() => abort('timeout'), timeoutMs)
   let phase: 'first' | 'stream' = 'first'
-  let watchdog = setTimeout(() => abort('timeout'), Math.min(timeoutMs, Math.max(45_000, timeoutMs / 3)))
+  let watchdog = setTimeout(() => abort('timeout'), timeoutMs)
   const senderClosed = () => abort('user')
   sender.once('destroyed', senderClosed)
   try {
@@ -165,7 +167,7 @@ async function requestAiCompletion(request: AiRequest, sender: WebContents): Pro
       if (done) break
       phase = 'stream'
       clearTimeout(watchdog)
-      watchdog = setTimeout(() => abort('timeout'), Math.min(timeoutMs, Math.max(30_000, timeoutMs / 4)))
+      watchdog = setTimeout(() => abort('timeout'), timeoutMs)
       receivedBytes += value.byteLength
       if (receivedBytes > MAX_AI_RESPONSE_BYTES) { await reader.cancel(); throw new Error('ui.aiResponseTooLarge') }
       const chunk = decoder.decode(value, { stream: true })
@@ -557,6 +559,8 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
     event.preventDefault()
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })
+  const ocrOwner = window.webContents.id
+  window.webContents.once('destroyed', () => cancelOcr(ocrOwner))
   window.on('closed', () => {
     windowSessions.delete(webContentsId)
     for (const [transferId, transfer] of documentTransfers) if (transfer.source === session) clearDocumentTransfer(transferId)
@@ -610,6 +614,16 @@ app.whenReady().then(async () => {
     return
   }
   void refreshMacPdfAssociation()
+  ipcMain.handle('ocr:page', (event, request: OcrPageRequest) => {
+    requireMainWindow(event.sender)
+    return recognizeOcrPage(event.sender.id, request, join(__dirname.replace('app.asar', 'app.asar.unpacked'), '../ocr'), value => {
+      if (!event.sender.isDestroyed()) event.sender.send('ocr:progress', request.jobId, value)
+    })
+  })
+  ipcMain.on('ocr:cancel', (event, jobId: unknown) => {
+    requireMainWindow(event.sender)
+    if (typeof jobId === 'string') cancelOcr(event.sender.id, jobId)
+  })
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, "ui.openPdf"), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, "ui.pdfFiles"), extensions: ['pdf'] }] })

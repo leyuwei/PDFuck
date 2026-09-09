@@ -2,8 +2,9 @@ import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src
 import type { EditableTextRegion, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
+import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
-export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect }
+export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
@@ -16,7 +17,7 @@ function boundaryAt(word: WordBox, offset: number): number {
   const count = characterCount(word)
   const normalized = Math.max(0, Math.min(count, offset))
   const measured = word.boundaries?.[normalized]
-  return Number.isFinite(measured) ? measured! : word.rect.width * normalized / count
+  return Number.isFinite(measured) ? measured! : word.rect.width * (word.rtl ? 1 - normalized / count : normalized / count)
 }
 
 export function caretForTextPosition(words: WordBox[], position: TextPosition): TextCaret | undefined {
@@ -194,13 +195,14 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const rowY = (word: WordBox): number => visualY.get(word)!
   const endpointYGap = Math.abs(rowY(startWord) - rowY(endWord))
   const sameColumnBand = anchorColumn !== undefined && anchorColumn === focusColumn
+  const readingDirection = startWord.rtl || endWord.rtl ? -1 : 1
   const visualOrder = (left: WordBox, right: WordBox): number => {
     const height = Math.max(left.rect.height, right.rect.height, endpointHeight)
     const yDifference = rowY(left) - rowY(right)
     // Stacked parts at the same x read top-to-bottom, before the following prose.
     const horizontalOverlap = Math.min(left.rect.x + left.rect.width, right.rect.x + right.rect.width) - Math.max(left.rect.x, right.rect.x)
     if (Math.abs(yDifference) <= height * 0.55 && horizontalOverlap > Math.min(left.rect.width, right.rect.width) * 0.5) return left.rect.y - right.rect.y || left.rect.x - right.rect.x || left.order - right.order
-    return Math.abs(yDifference) <= height * 0.55 ? left.rect.x - right.rect.x || left.order - right.order : yDifference || left.rect.x - right.rect.x || left.order - right.order
+    return Math.abs(yDifference) <= height * 0.55 ? readingDirection * (left.rect.x - right.rect.x) || left.order - right.order : yDifference || readingDirection * (left.rect.x - right.rect.x) || left.order - right.order
   }
   const blockId = startWord.visualBlock !== undefined && startWord.visualBlock === endWord.visualBlock ? startWord.visualBlock : undefined
   // Older callers and synthetic documents may not carry visualBlock metadata.
@@ -283,7 +285,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     if (to <= from) continue
     pieces.push(chars.slice(from, to).join(''))
     const left = boundaryAt(word, from), right = boundaryAt(word, to)
-    rects.push({ x: word.rect.x + left, y: word.rect.y, width: Math.max(0, right - left), height: word.rect.height })
+    rects.push({ x: word.rect.x + Math.min(left, right), y: word.rect.y, width: Math.abs(right - left), height: word.rect.height })
     rectColumns.push(word.column)
     rectBaselines.push(word.baselineY)
   }
@@ -313,7 +315,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
       previous.x = Math.min(previous.x, rect.x); previous.width = right - previous.x; previous.height = Math.max(previous.height, rect.height)
     } else { lines.push({ ...rect }); lineColumns.push(column) }
   }
-  return { text: pieces.join(' '), rects: lines }
+  return { text: normalizeTextSpacing(pieces.join(' ')), rects: lines }
 }
 
 export function textSelectionForQuery(words: WordBox[], query: string, options: TextQueryOptions = {}): { text: string; rects: PdfRect[] } | undefined {
@@ -590,8 +592,11 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     for (const [matchIndex, match] of matches.entries()) {
       const start = Array.from(item.str.slice(0, match.index || 0)).length
       const wordCharacters = Array.from(match[0])
-      const offset = prefixAdvances[start] || 0
-      const width = Math.max(0.5, prefixAdvances[start + wordCharacters.length] - offset)
+      const logicalOffset = prefixAdvances[start] || 0
+      const width = Math.max(0.5, prefixAdvances[start + wordCharacters.length] - logicalOffset)
+      const rtl = item.dir === 'rtl'
+      const wordRtl = rtl && /[\p{Script=Arabic}\p{Script=Hebrew}]/u.test(match[0])
+      const offset = rtl ? fullWidth - logicalOffset - width : logicalOffset
       const direction = { x: Math.cos(angle), y: Math.sin(angle) }
       const down = { x: -Math.sin(angle), y: Math.cos(angle) }
       const corners = [
@@ -602,8 +607,8 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       ]
       const xs = corners.map((point) => point.x), ys = corners.map((point) => point.y)
       const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
-      const boundaries = wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || offset) - offset)
-      words.push({ text: match[0], order: order++, rect, boundaries: [0, ...boundaries], baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
+      const boundaries = [0, ...wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || logicalOffset) - logicalOffset)]
+      words.push({ text: match[0], order: order++, rect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
     }
   }
   // PDF.js generally follows content-stream order, but mathematical
@@ -817,6 +822,6 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   }
   const ordered = columns.flatMap((column) => column.runs
     .sort((left, right) => left.baselineY - right.baselineY || left.left - right.left)
-    .flatMap((run) => run.words))
+    .flatMap((run) => run.words.filter(word => word.rtl).length > run.words.length / 2 ? [...run.words].reverse() : run.words))
   return columns.flatMap((_column, columnIndex) => ordered.filter((word) => word.column === columnIndex))
 }
