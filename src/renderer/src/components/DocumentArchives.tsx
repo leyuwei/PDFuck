@@ -29,7 +29,7 @@ export function DocumentArchives({ snapshot, onRestore }: { snapshot: DocumentTa
     finally { setBusy(false); setOpen(true) }
   }
   return <div className="document-archives" ref={root} onKeyDown={event => { if (open && event.key === 'Escape') { event.stopPropagation(); close() } }}>
-    <button type="button" ref={trigger} className="window-manager-heading" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(value => !value)}><span className="windows-glyph" aria-hidden="true" />{ui('ui.documentTabs')}<em>{snapshot.documents.length}</em><span aria-hidden="true">⌄</span></button>
+    <button type="button" ref={trigger} className="window-manager-heading" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(value => !value)}><span className="windows-glyph" aria-hidden="true" />{ui('ui.documentTabs')}<em>{snapshot.documents.length}</em></button>
     {open && <div className="document-archives-popover" role="dialog" aria-labelledby="document-archives-title" aria-busy={busy}>
       <header><h2 id="document-archives-title">{ui('archives.title')}</h2><button type="button" onClick={close} aria-label={ui('ui.close')}>×</button></header>
       <div className="document-archives-body">

@@ -22,6 +22,7 @@ async function main() {
     await launch(files[0]); await page.locator('.pdf-page').first().waitFor()
     await app.evaluate(({ BrowserWindow }, file) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', file), files[1])
     await page.waitForFunction(() => document.querySelectorAll('.window-tab').length === 2)
+    assert.doesNotMatch(await page.locator('.document-archives > button').innerText(), /⌄/, 'Document tabs trigger must not show a down arrow')
     await open(); await save('论文阅读 · العربية')
     assert.equal(await page.locator('.archive-list article').count(), 1)
     await page.locator('.archive-actions button').first().click(); await save('长期项目 · Papers')
