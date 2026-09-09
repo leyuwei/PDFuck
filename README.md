@@ -21,6 +21,7 @@
 - **Windows**：从 [Releases](https://github.com/leyuwei/PDFuck/releases) 下载 `Windows-Setup.exe` 安装；`Windows.exe` 为便携版。
 - **macOS**：下载对应 DMG，将 PDFuck 拖入 Applications。各平台产物以 Releases 实际提供的文件为准。
 - **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。
+- **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
 - **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
 - **AI（可选）**：在“批注 → 实验室 → 模型设置”中保存多个命名配置，填写接口地址、API Key、模型名后点击“激活此模型”。顶部摘要显示实际使用的配置与模型；实时过程按请求、思考和回复分区显示。支持 OpenAI、Claude、Grok、BigModel、Doubao、DeepSeek、KIMI 和自定义兼容接口；保存其他配置不会切换当前模型。启用 AI 时，所选原文或全文会发送给激活的服务；普通编辑与 OCR 在本地执行。
 - **Thinking 与生成参数**：可配置思考模式/强度、Claude 思考预算、温度、Top P、惩罚、Seed 和高级 JSON。默认等待 600 秒、输出预算 65,536 Token，最多可设置 3,600 秒和 262,144 Token，实际受服务商限制。遇到明确不兼容参数会尝试恢复；输出截断先扩容，再按允许的 Thinking 降级或分批处理。可关闭 Thinking 降级；界面仅显示服务商实际返回的思考内容。
@@ -65,6 +66,8 @@ npm run build
 Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open a PDF to start; language, theme, and previewable interface font sizes are under **View**.
 
 **OCR** is under **Edit**: choose pages and a primary language. The engine and language data are bundled for offline use. Recognition can still need proofreading, particularly for noisy scans, formulas and mixed scripts.
+
+**Saved tab groups**: click **Document tabs** to save the current window’s file list under a name. Create multiple groups, rename or delete them, and reopen a group later. Existing tabs are kept and unavailable files are listed. Groups store file locations, not unsaved edits; save new documents to disk first.
 
 **AI is optional**: under **Annotations → Lab → Model settings**, save named configurations and explicitly activate one. The summary identifies the active configuration and model; live activity separates the request, reasoning and response. Providers include OpenAI, Claude, Grok, BigModel, Doubao, DeepSeek, KIMI and custom compatible endpoints. Saving an inactive configuration does not switch models. Configure Thinking mode/effort, Claude's thinking budget, sampling, penalties, Seed and advanced JSON. Defaults are 600 seconds and 65,536 output tokens; configurable maxima are 3,600 seconds and 262,144 tokens, subject to provider limits. Recovery handles rejected parameters and truncation; Thinking fallback can be disabled. Only reasoning actually returned by the provider is displayed. AI sends the selected text or document to the active provider; ordinary editing and OCR run locally.
 

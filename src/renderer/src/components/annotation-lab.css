@@ -5,7 +5,7 @@
 .theme-dark .ai-polish-window textarea, .theme-dark .annotation-suggestion-inline textarea, .theme-dark .ai-model-settings textarea { border-color: #40516a; background: #202c3e; }
 /* Floating controls must never enter Electron's native title-bar drag region. */
 .annotation-lab[hidden], .drawing-board-window[hidden] { display: none !important; }
-.annotation-lab .ai-polish-window { z-index: 90; top: 96px; bottom: auto; max-height: min(640px, var(--floating-max-height, calc(100vh - 112px))); max-width: calc(100vw - 16px); overscroll-behavior: contain; -webkit-app-region: no-drag; }
+.annotation-lab .ai-polish-window { z-index: 90; right: auto; top: 96px; bottom: auto; max-height: min(640px, var(--floating-max-height, calc(100vh - 112px))); max-width: calc(100vw - 16px); overscroll-behavior: contain; -webkit-app-region: no-drag; }
 .annotation-lab .ai-polish-window * { -webkit-app-region: no-drag; }
 .annotation-lab .lab-window-actions { flex: none; margin-left: auto; gap: 2px; }
 .annotation-lab .lab-window-actions button { width: 30px; height: 30px; padding: 0; }
@@ -14,6 +14,8 @@
 .theme-dark .annotation-lab-launch[data-window-state="minimized"], .theme-dark .annotation-lab-settings-trigger[data-window-state="minimized"] { background: #48391e; border-color: #c49a4b; }
 .automatic-custom-issue textarea { min-height: 70px; resize: vertical; max-height: 180px; }
 .annotation-lab .annotation-lab-settings-backdrop, .annotation-lab .lab-modal-backdrop { padding-top: 88px; }
+.annotation-lab .lab-modal-backdrop { place-items: end; padding: 120px 16px 36px; }
+.annotation-lab .lab-modal-backdrop .lab-disclaimer { max-height: calc(100dvh - 156px); }
 .annotation-lab .annotation-lab-settings, .annotation-lab .lab-disclaimer { max-height: calc(100vh - 112px); overflow: auto; -webkit-app-region: no-drag; }
 .tool-panel .drawing-board-window { z-index: 90; min-height: min(360px, calc(100vh - 112px)); max-height: calc(100vh - 112px); min-width: min(360px, calc(100vw - 16px)); -webkit-app-region: no-drag; }
 .drawing-board-window > header { flex-shrink: 0; }

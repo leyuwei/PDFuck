@@ -79,6 +79,10 @@ async function selectPageText(page, pageIndex) {
 }
 
 async function verifyStickyDraggableHeader(page, windowLocator, name) {
+  const corner = await windowLocator.evaluate(element => { const box = element.getBoundingClientRect(); return { right: innerWidth - box.right, bottom: innerHeight - box.bottom } })
+  assert.ok(Math.abs(corner.right - 16) < 2 && Math.abs(corner.bottom - 36) < 2, `${name} must open at bottom right: ${JSON.stringify(corner)}`)
+  const rtlCorner = await windowLocator.evaluate(element => { const direction = document.documentElement.dir; document.documentElement.dir = 'rtl'; const box = element.getBoundingClientRect(); document.documentElement.dir = direction; return { right: innerWidth - box.right, bottom: innerHeight - box.bottom } })
+  assert.ok(Math.abs(rtlCorner.right - 16) < 2 && Math.abs(rtlCorner.bottom - 36) < 2, `${name} must keep bottom-right placement in RTL: ${JSON.stringify(rtlCorner)}`)
   await windowLocator.evaluate((element) => {
     element.style.maxHeight = '220px'
     const body = element.querySelector(':scope > .window-scroll-body')

@@ -3,6 +3,7 @@ import type { DocumentTabsSnapshot } from '../../../shared/contracts'
 import { fileDirectory, stablePathColor } from '../lib/document-insights'
 import { writeDocumentTransfer } from '../lib/document-transfer'
 import { translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
+import { DocumentArchives } from './DocumentArchives'
 
 interface DetachPosition { x: number; y: number }
 
@@ -14,6 +15,7 @@ interface Props {
   onDetach(id: number, position: DetachPosition): void
   onBeginTransfer(id: number, transferId: string): void | boolean
   onTabDragStateChange(dragging: boolean): void
+  onRestoreArchive(paths: string[]): Promise<string[]>
 }
 
 /** Move one tab before another while preserving every unrelated item. */
@@ -68,7 +70,7 @@ export function distinctiveTabTitle(title: string, allTitles: string[]): Distinc
   }
 }
 
-export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDetach, onBeginTransfer, onTabDragStateChange }: Props) {
+export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDetach, onBeginTransfer, onTabDragStateChange, onRestoreArchive }: Props) {
   useInterfaceLanguage()
   const translatedTitles = snapshot.documents.map((document) => translateUiText(document.title))
   const tabsRef = useRef<HTMLDivElement>(null)
@@ -98,7 +100,7 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
     event.preventDefault(); onReorder(id, target.id)
   }
   return <section className="window-manager-bar" aria-label={ui("ui.pdfDocumentTabs")}>
-    <div className="window-manager-heading"><span className="windows-glyph" />{ui("ui.documentTabs")}<em>{snapshot.documents.length}</em></div>
+    <DocumentArchives snapshot={snapshot} onRestore={onRestoreArchive} />
     <div className="window-tabs" ref={tabsRef} onDragOver={(event) => event.preventDefault()}>
       {snapshot.documents.map((document, index) => {
         const current = document.id === snapshot.currentId

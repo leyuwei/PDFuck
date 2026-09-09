@@ -18,6 +18,8 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.34 修复打印左右滚动分区、移除模型设置最小化入口，将实验室窗口默认定位到右下角，新增文档标签档案。`test:document-archives-ui` 覆盖增改删、重启恢复、重复标签、缺失文件和 80 组多语言布局，已接入两平台常规源码/成品发布脚本；打印、模型设置、实验室、画板检查增加本次回归断言。本次沿用用户要求，执行构建与改动相关源码/成品测试，跳过 OCR、框选等无关大回归；范围详见 `docs/VALIDATION-2.0.34.md`。
+
 2.0.33 优化实验室窗口排版：当前模型摘要、说明和表单分层留白；共享 AI 过程卡片去除内部重复分隔线，取消按钮独立排列，统一结果与自动批注操作间距。`test:ai-settings-ui` 的 80 组检查增加摘要间距和文本边界断言；`test:lab-features-ui` 检查真实等待、自动批注和建议结果卡片在双主题、RTL、四字号和窄宽度下的分隔线、状态及取消按钮布局。验收记录见 `docs/VALIDATION-2.0.33.md`。
 
 2.0.33 本次交付按用户明确要求缩减为 UI 范围验收：保留已完成的源码检查，直接使用 `electron-builder` 生成 Windows 产物，成品复测模型设置与实验室窗口，并核验包内版本和文件哈希；不宣称完成全部 65 项发布检查。常规完整发布仍使用下文脚本。
@@ -90,13 +92,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.33
+.\scripts\package-windows.ps1 2.0.34
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.33
+bash scripts/package-macos.sh 2.0.34
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

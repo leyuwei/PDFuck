@@ -74,6 +74,8 @@ describe('DrawingBoard', () => {
   })
 
   it('starts empty, clears ink, and exposes native window resizing', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(720)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(560)
     const root = createRoot(container)
     await act(async () => root.render(<DrawingBoard labels={labels} onClose={() => undefined} onAddPng={() => undefined} onExportPng={() => undefined} />))
     const actions = [...container.querySelectorAll<HTMLButtonElement>('footer button')]

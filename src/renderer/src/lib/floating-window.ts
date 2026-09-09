@@ -12,19 +12,22 @@ export function clampFloatingPosition(left: number, top: number, width: number, 
   }
 }
 
-export function useFloatingWindow(active: unknown) {
+export function useFloatingWindow(active: unknown, bottomRight = false) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ left: number; top: number }>()
   const drag = useRef<{ x: number; y: number; left: number; top: number } | undefined>(undefined)
+  const moved = useRef(false)
   useLayoutEffect(() => {
     const element = ref.current
     if (!element || !active) return
+    moved.current = false
     const fit = () => {
       const bounds = element.getBoundingClientRect()
       const minTop = floatingTop()
-      element.style.setProperty('--floating-max-height', `${Math.max(100, window.innerHeight - minTop - 16)}px`)
+      element.style.setProperty('--floating-max-height', `${Math.max(100, window.innerHeight - minTop - (bottomRight ? 44 : 16))}px`)
       setPosition((current) => {
-        const next = clampFloatingPosition(current?.left ?? bounds.left, current?.top ?? bounds.top, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, minTop)
+        const anchored = bottomRight && !moved.current
+        const next = clampFloatingPosition(anchored ? window.innerWidth - element.offsetWidth - 16 : current?.left ?? bounds.left, anchored ? window.innerHeight - element.offsetHeight - 36 : current?.top ?? bounds.top, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, minTop)
         return current?.left === next.left && current.top === next.top ? current : next
       })
     }
@@ -33,7 +36,7 @@ export function useFloatingWindow(active: unknown) {
     observer?.observe(element)
     window.addEventListener('resize', fit)
     return () => { observer?.disconnect(); window.removeEventListener('resize', fit) }
-  }, [active])
+  }, [active, bottomRight])
   return { ref, style: position, dragHandlers: {
     onPointerDown(event: React.PointerEvent) {
       if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
@@ -44,6 +47,7 @@ export function useFloatingWindow(active: unknown) {
     },
     onPointerMove(event: React.PointerEvent) {
       if (!drag.current || !ref.current) return
+      moved.current = true
       const bounds = ref.current.getBoundingClientRect()
       setPosition(clampFloatingPosition(drag.current.left + event.clientX - drag.current.x, drag.current.top + event.clientY - drag.current.y, bounds.width, bounds.height, window.innerWidth, window.innerHeight, floatingTop()))
     },

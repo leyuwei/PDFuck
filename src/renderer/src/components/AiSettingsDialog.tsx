@@ -9,12 +9,12 @@ import { ui, translateUiText } from '../lib/i18n'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
 
-export function AiSettingsDialog({ minimized, onClose, onMinimize, onSaved }: { minimized: boolean; onClose(): void; onMinimize(): void; onSaved(): void }) {
+export function AiSettingsDialog({ onClose, onSaved }: { onClose(): void; onSaved(): void }) {
   const [library, setLibrary] = useState(loadAiProfiles)
   const [selectedId, setSelectedId] = useState(library.activeId)
   const [error, setError] = useState('')
   const [showKey, setShowKey] = useState(false)
-  const floating = useFloatingWindow(!minimized)
+  const floating = useFloatingWindow(true, true)
   const selected = library.profiles.find(profile => profile.id === selectedId)!
   const [active, setActive] = useState(() => library.profiles.find(profile => profile.id === library.activeId)!)
   const settings = selected.settings
@@ -37,7 +37,7 @@ export function AiSettingsDialog({ minimized, onClose, onMinimize, onSaved }: { 
     setLibrary(current => ({ ...current, profiles: [...current.profiles, { id, name: ui('aiSettings.newModel'), settings: { ...defaultSettings } }] }))
     setSelectedId(id); setShowKey(false); setError('')
   }
-  return <div className="annotation-lab-settings-backdrop" hidden={minimized} onPointerDown={event => { if (event.target === event.currentTarget) onClose() }} onKeyDown={event => {
+  return <div className="annotation-lab-settings-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) onClose() }} onKeyDown={event => {
     event.stopPropagation()
     if (event.key === 'Escape') { event.preventDefault(); onClose() }
     if (event.key === 'Tab') {
@@ -48,7 +48,7 @@ export function AiSettingsDialog({ minimized, onClose, onMinimize, onSaved }: { 
     }
   }}>
     <ScrollWindow ref={floating.ref} style={floating.style} className="annotation-lab-settings ai-model-settings" role="dialog" aria-modal="true" aria-labelledby="ai-model-settings-title">
-      <header {...floating.dragHandlers}><b id="ai-model-settings-title">{ui('ui.labModelSettings')}</b><button type="button" aria-label={ui('ui.minimizeLabWindow')} onClick={onMinimize}>−</button><button type="button" onClick={onClose} aria-label={ui('ui.closeModelSettings')}>×</button></header>
+      <header {...floating.dragHandlers}><b id="ai-model-settings-title">{ui('ui.labModelSettings')}</b><button type="button" onClick={onClose} aria-label={ui('ui.closeModelSettings')}>×</button></header>
       <div className="ai-settings-intro">
         <div className="ai-active-model"><span>{ui('aiSettings.activeModel')}</span><div><bdi>{active.name}</bdi><small dir="auto">{active.settings.model}</small></div></div>
         <p className="lab-settings-note">{ui('aiSettings.profilesHint')}</p>

@@ -167,6 +167,8 @@ async function verifyDrawingBoard(app, page) {
 
   const drawingWindow = page.locator('.drawing-board-window')
   await drawingWindow.waitFor()
+  const corner = await drawingWindow.evaluate(element => { const box = element.getBoundingClientRect(); return { right: innerWidth - box.right, bottom: innerHeight - box.bottom } })
+  assert.ok(Math.abs(corner.right - 16) < 2 && Math.abs(corner.bottom - 36) < 2, `Drawing board must start at bottom right: ${JSON.stringify(corner)}`)
   assert.equal(await drawingWindow.evaluate((element) => getComputedStyle(element).resize), 'both')
   const fixedTitle = await drawingWindow.evaluate((element) => ({
     overflow: getComputedStyle(element).overflow,

@@ -96,8 +96,8 @@
 .print-dialog-heading h2 { font-size: var(--ui-font-title); letter-spacing: 0; }
 .print-dialog-heading p { margin-top: 3px; font-size: var(--ui-font-small); }
 .print-dialog-heading > button { border-radius: 6px; }
-.print-dialog-body { min-height: 0; max-height: none; flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); background: #f7f8fa; }
-.print-controls { padding: 0 20px 20px; overflow: auto; border-right: 1px solid #dfe4eb; background: #fff; }
+.print-dialog-body { min-height: 0; max-height: none; flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); overflow: hidden; background: #f7f8fa; }
+.print-controls { min-height: 0; padding: 0 20px 20px; overflow: auto; border-right: 1px solid #dfe4eb; background: #fff; }
 .print-control-section { padding: 19px 0 20px; border-bottom: 1px solid #e8ebf0; }
 .print-control-section:last-child { border-bottom: 0; }
 .print-control-section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
@@ -170,7 +170,7 @@
 .print-layout-presets button { height: 29px; border-radius: 5px; }
 .print-options-grid.advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; padding-top: 12px; }
 .print-frame-toggle { margin-top: 12px; padding: 4px 0; }
-.print-preview { padding: 18px 22px 14px; background: #e7eaee; }
+.print-preview { min-height: 0; padding: 18px 22px 14px; background: #e7eaee; }
 .print-preview > header { height: 36px; margin-bottom: 12px; }
 .print-preview > header b { font-size: var(--ui-font-small); }
 .print-preview > header small { font-size: var(--ui-font-small); }

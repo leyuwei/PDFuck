@@ -42,7 +42,7 @@ describe('WindowManagerBar', () => {
       { ...snapshot.documents[0], title: '实验报告（中文）.pdf' },
       { ...snapshot.documents[1], title: '实验报告（英文）.pdf' }
     ] }
-    await act(async () => root.render(<WindowManagerBar snapshot={similar} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />))
+    await act(async () => root.render(<WindowManagerBar onRestoreArchive={async () => []} snapshot={similar} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />))
     const tabs = [...container.querySelectorAll<HTMLDivElement>('.window-tab')]
     expect(tabs[0].querySelector('mark')?.textContent).toBe('中')
     expect(tabs[1].querySelector('mark')?.textContent).toBe('英')
@@ -56,7 +56,7 @@ describe('WindowManagerBar', () => {
     const onReorder = vi.fn()
     const root = createRoot(container)
     await act(async () => {
-      root.render(<WindowManagerBar snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={onReorder} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />)
+      root.render(<WindowManagerBar onRestoreArchive={async () => []} snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={onReorder} onDetach={() => undefined} onBeginTransfer={() => undefined} onTabDragStateChange={() => undefined} />)
     })
     const activeTab = container.querySelector<HTMLDivElement>('.window-tab.current')!
     expect(activeTab.draggable).toBe(true)
@@ -73,7 +73,7 @@ describe('WindowManagerBar', () => {
     const root = createRoot(container)
     const onTabDragStateChange = vi.fn()
     await act(async () => {
-      root.render(<WindowManagerBar snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => false} onTabDragStateChange={onTabDragStateChange} />)
+      root.render(<WindowManagerBar onRestoreArchive={async () => []} snapshot={snapshot} onFocus={() => undefined} onClose={() => undefined} onReorder={() => undefined} onDetach={() => undefined} onBeginTransfer={() => false} onTabDragStateChange={onTabDragStateChange} />)
     })
     const dataTransfer = { setData: vi.fn(), effectAllowed: 'none' }
     const event = new Event('dragstart', { bubbles: true, cancelable: true })

@@ -83,7 +83,8 @@ async function waitForCapture(app, collection, count) {
 }
 
 async function openPrintDialog(page) {
-  await page.locator('.nav-rail button').nth(3).click()
+  const tab = page.locator('.nav-rail button').nth(3)
+  if (await tab.getAttribute('aria-expanded') !== 'true') await tab.click()
   await page.locator('.tool-panel-action').nth(2).click()
   await page.locator('.print-options-dialog').waitFor()
 }
@@ -114,6 +115,20 @@ async function controlFit(page, language) {
       }
     }))
   }, language)
+}
+
+async function verifyPrintScroll(page) {
+  const geometry = await page.locator('.print-options-dialog').evaluate(dialog => {
+    const controls = dialog.querySelector('.print-controls'), preview = dialog.querySelector('.print-preview'), paper = dialog.querySelector('.print-paper'), bounds = dialog.getBoundingClientRect()
+    const before = preview.getBoundingClientRect()
+    controls.scrollTop = controls.scrollHeight
+    const after = preview.getBoundingClientRect(), sheet = paper.getBoundingClientRect(), stage = dialog.querySelector('.print-paper-stage').getBoundingClientRect(), actions = dialog.querySelector('.print-dialog-actions').getBoundingClientRect()
+    const [paperWidth, paperHeight] = paper.style.aspectRatio.split('/').map(Number)
+    const result = { scrolling: controls.scrollTop > 0, stationary: before.top === after.top && before.height === after.height, outerOverflow: dialog.scrollHeight - dialog.clientHeight, visible: after.top >= bounds.top && after.bottom <= bounds.bottom && actions.bottom <= bounds.bottom, paperFits: sheet.width > 20 && sheet.height > 20 && sheet.left >= stage.left && sheet.right <= stage.right + 1 && sheet.top >= stage.top && sheet.bottom <= stage.bottom + 1, aspectRatio: Math.abs(sheet.width / sheet.height - paperWidth / paperHeight) < .02 }
+    controls.scrollTop = 0
+    return result
+  })
+  assert.ok(geometry.scrolling && geometry.stationary && geometry.outerOverflow <= 1 && geometry.visible && geometry.paperFits && geometry.aspectRatio, `Only print controls may scroll: ${JSON.stringify(geometry)}`)
 }
 
 async function main() {
@@ -148,6 +163,7 @@ async function main() {
     const controlResults = []
     for (const language of ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar']) {
       if (language !== 'zh') await switchLanguage(page, language)
+      await verifyPrintScroll(page)
       const printerSelect = page.locator('.print-printer-select')
       await printerSelect.waitFor({ timeout: 15000 })
       assert.deepEqual(await printerSelect.locator('option').evaluateAll((options) => options.map((option) => option.value)), [duplexPrinter.name, simplexPrinter.name], `${language}: deterministic printer names changed`)
@@ -194,6 +210,7 @@ async function main() {
     }
 
     const finalPreview = page.locator('.print-job-preview')
+    for (const size of [{ width: 900, height: 620 }, { width: 1100, height: 900 }, { width: 900, height: 760 }]) { await page.setViewportSize(size); await verifyPrintScroll(page) }
     await finalPreview.waitFor({ timeout: 30000 })
     const layoutWidths = await page.evaluate(() => {
       const body = document.querySelector('.print-dialog-body')

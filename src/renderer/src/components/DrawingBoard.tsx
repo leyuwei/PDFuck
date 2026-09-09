@@ -88,16 +88,17 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
   const [hasInk, setHasInk] = useState(false)
   const [busy, setBusy] = useState<'add' | 'export'>()
   const [error, setError] = useState('')
-  const [position, setPosition] = useState(() => ({ left: Math.max(12, (window.innerWidth - 720) / 2), top: Math.max(floatingTop(), (window.innerHeight - 560) / 2) }))
+  const [position, setPosition] = useState(() => ({ left: Math.max(16, window.innerWidth - 736), top: Math.max(floatingTop(), window.innerHeight - 596) }))
 
+  const moved = useRef(false)
   useEffect(() => () => stopWindowDrag.current(), [])
   useEffect(() => {
     if (hidden || !windowRef.current) return
     const element = windowRef.current
     const fit = () => {
-      element.style.maxHeight = `${Math.max(100, window.innerHeight - floatingTop() - 16)}px`
+      element.style.maxHeight = `${Math.max(100, window.innerHeight - floatingTop() - 44)}px`
       setPosition((current) => {
-        const next = clampFloatingPosition(current.left, current.top, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, floatingTop())
+        const next = clampFloatingPosition(moved.current ? current.left : window.innerWidth - element.offsetWidth - 16, moved.current ? current.top : window.innerHeight - element.offsetHeight - 36, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, floatingTop())
         return current.left === next.left && current.top === next.top ? current : next
       })
     }
@@ -178,6 +179,7 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
   const beginDrag = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
     event.preventDefault()
+    moved.current = true
     stopWindowDrag.current()
     const dragHandle = event.currentTarget
     dragHandle.setPointerCapture(event.pointerId)
