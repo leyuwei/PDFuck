@@ -26,6 +26,7 @@ Windows x64，2026-09-09。当前状态：构建及改动相关源码检查通�
 - `electron-builder --win` 已完成，安装版与便携版均为 2.0.34。
 - 档案、打印、模型设置、实验室功能和创作工具的五项相关 UI 成品检查全部通过；档案覆盖 80 组、模型设置覆盖 80 组，过程卡片覆盖 96 组。
 - 包内 ASAR 版本为 2.0.34、EXE 产品版本为 2.0.34.0；210 个构建文件与包内文件一致。
-- 安装版 `PDFuck-2.0.34-Windows-Setup.exe`：221,322,309 字节，SHA-256 `0FE4C9E7EF7F01CA62FE27BAFDF4748FED2D8B8A24EDDAF43ADE1B9000DFA5AA`。
-- 便携版 `PDFuck-2.0.34-Windows.exe`：221,111,172 字节，SHA-256 `4F2738FCF960C32FC466A7DE9D05263BC9408C83A22C678F0FC0A36141917B03`。
-- Windows 产物未签名；未实际安装/卸载，macOS 未在此 Windows 机器构建。按用户要求，未运行 OCR、框选等本次无关的大回归。
+- 2026-09-10 按用户要求基于其后续源码改动重新打包，未重跑任何测试；上述测试结果仅对应此前验收版本。
+- 安装版 `PDFuck-2.0.34-Windows-Setup.exe`：221,322,279 字节，SHA-256 `A0ACB29AD28EC46539104F7E291A010B46DABF1186431EE7BEAC79AC0A8D03BF`。
+- 便携版 `PDFuck-2.0.34-Windows.exe`：221,111,146 字节，SHA-256 `2CA8FA1FDDE626E1F205D5B99BB15B830C0A63BD82015E2D77003B7BB8F5E538`。
+- Windows 产物未签名；未实际安装/卸载，macOS 未在此 Windows 机器构建。按用户要求，未运行 OCR、框选等本次无关的大回归，也未重跑本轮的 UI 检查。
