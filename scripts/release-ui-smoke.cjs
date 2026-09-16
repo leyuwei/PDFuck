@@ -31,7 +31,12 @@ async function main() {
     page.setDefaultTimeout(60000)
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     await page.locator('.brand').waitFor()
-    assert.match(await page.locator('.brand').innerText(), new RegExp(`v${version.replace(/\./gu, '\\.')}$`), 'packaged UI version does not match package.json')
+    assert.equal(await page.locator('.brand').innerText(), 'PDFuck', 'titlebar must omit the version')
+    await page.locator('.about-trigger').click()
+    assert.ok((await page.locator('.about-dialog').innerText()).includes(require('../package.json').version), 'About must display the release version')
+    const aboutPosition = await page.locator('.about-trigger').evaluate(el => ({ bottom: el.getBoundingClientRect().bottom, railBottom: el.closest('.nav-rail').getBoundingClientRect().bottom }))
+    assert.ok(Math.abs(aboutPosition.railBottom - aboutPosition.bottom - 8) < 2, 'About belongs at the bottom of the navigation rail')
+    await page.locator('.about-dialog header button').click()
     await page.locator('.pdf-page').first().waitFor()
 
     const actualUserData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))

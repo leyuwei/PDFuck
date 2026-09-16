@@ -24,12 +24,14 @@ async function main() {
     const fontSize = () => page.evaluate(() => getComputedStyle(document.body).fontSize)
     const checkNavigation = async () => {
       const errors = await page.locator('.nav-rail button').evaluateAll(buttons => buttons.flatMap(button => {
-        const label = button.querySelector('.nav-module-label'), rail = button.parentElement.getBoundingClientRect(), box = button.getBoundingClientRect()
+        const label = button.querySelector('.nav-module-label') || button.querySelector('span:last-child'), rail = button.parentElement.getBoundingClientRect(), box = button.getBoundingClientRect()
         const range = document.createRange(); range.selectNodeContents(label)
         const clipped = [...range.getClientRects()].some(text => text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1)
-        return clipped || box.left < rail.left - 1 || box.right > rail.right + 1 || !button.getAttribute('aria-label') ? [button.outerHTML] : []
+        return clipped || box.left < rail.left - 1 || box.right > rail.right + 1 || !(button.getAttribute('aria-label') || button.textContent.trim()) ? [button.outerHTML] : []
       }))
       assert.deepEqual(errors, [], 'navigation labels must remain inside their buttons and rail')
+      const about = await page.locator('.about-trigger').evaluate(el => ({ bottom: el.getBoundingClientRect().bottom, railBottom: el.parentElement.getBoundingClientRect().bottom }))
+      assert.ok(Math.abs(about.railBottom - about.bottom - 8) < 2, 'About must stay at the rail bottom')
     }
     const open = () => page.locator('.interface-size-action').click()
     await open()

@@ -43,10 +43,15 @@ async function main() {
     await page.locator('.annotation-dialog .modal-actions .primary').click()
     await page.locator('.nav-rail button').nth(1).click()
     const open = async () => { await page.locator('.tool-panel-action').filter({ has: page.locator('.edit-tool-icon.ocr') }).click(); await page.locator('.ocr-dialog').waitFor() }
-    const close = async () => { await page.locator('.ocr-dialog > header button').click() }
+    const close = async () => { await page.locator('.ocr-dialog > header button').last().click() }
     const run = async range => {
       await open(); await page.locator('.ocr-field input').fill(range); await page.locator('.ocr-field select').selectOption('chi_sim')
       await page.locator('.ocr-dialog .primary').click()
+      await page.locator('.ocr-dialog > header button').first().click()
+      await page.locator('.ocr-dialog').waitFor({ state: 'hidden' })
+      await page.locator('.nav-rail button').nth(0).click()
+      await page.locator('.nav-rail button').nth(1).click()
+      await open()
       await page.waitForFunction(() => /已为|没有识别到/.test(document.querySelector('.ocr-status')?.textContent || '') || document.querySelector('.ocr-error'), null, { timeout: 240000 })
       assert.equal(await page.locator('.ocr-error').count(), 0, await page.locator('.ocr-dialog').innerText())
       const status = await page.locator('.ocr-status').innerText(); await close(); return status
@@ -211,6 +216,14 @@ async function main() {
     for (const locale of languages) {
       await page.locator('.nav-rail button').nth(0).click()
       await page.locator('.language-select select').selectOption(locale)
+      await page.locator('.about-trigger').click()
+      await page.locator('.about-dialog').waitFor()
+      assert.equal(await page.locator('.brand em').count(), 0)
+      assert.ok((await page.locator('.about-dialog').innerText()).includes(version))
+      const aboutLayout = await page.locator('.about-dialog .window-scroll-body').evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }))
+      assert.ok(aboutLayout.scroll <= aboutLayout.width + 1, `${locale} about overflow`)
+      await page.screenshot({ path: path.join(directory, `about-${locale}.png`) })
+      await page.locator('.about-dialog header button').click()
       for (const size of [12, 14, 16, 18]) {
         await page.evaluate(size => { localStorage.setItem('pdfuck.interface-size.v1', String(size)) }, size)
         await page.locator('.nav-rail button').nth(0).click(); await page.locator('.interface-size-action').click()

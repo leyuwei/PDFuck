@@ -22,7 +22,8 @@
 - **macOS**：下载对应 DMG，将 PDFuck 拖入 Applications。各平台产物以 Releases 实际提供的文件为准。
 - **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。
 - **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
-- **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
+- **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。点击窗口右上角“−”可缩小并继续识别，再次点击 OCR 工具恢复进度；“取消”会中断识别。
+- **关于**：左侧模块下方的“关于”展示当前版本、检查更新状态，并可打开项目官方 Releases 页面。
 - **AI（可选）**：在“批注 → 实验室 → 模型设置”中保存多个命名配置，填写接口地址、API Key、模型名后点击“激活此模型”。顶部摘要显示实际使用的配置与模型；实时过程按请求、思考和回复分区显示。支持 OpenAI、Claude、Grok、BigModel、Doubao、DeepSeek、KIMI 和自定义兼容接口；保存其他配置不会切换当前模型。启用 AI 时，所选原文或全文会发送给激活的服务；普通编辑与 OCR 在本地执行。
 - **Thinking 与生成参数**：可配置思考模式/强度、Claude 思考预算、温度、Top P、惩罚、Seed 和高级 JSON。默认等待 600 秒、输出预算 65,536 Token，最多可设置 3,600 秒和 262,144 Token，实际受服务商限制。遇到明确不兼容参数会尝试恢复；输出截断先扩容，再按允许的 Thinking 降级或分批处理。可关闭 Thinking 降级；界面仅显示服务商实际返回的思考内容。
 - **格式转换（可选）**：EPS 导入需要 Ghostscript；矢量 EPS 导出需要 Poppler 的 `pdftocairo`。Office 导入在 Windows 可使用本机 Microsoft Office，跨平台可使用 LibreOffice。macOS 可用 `brew install ghostscript poppler` 安装 EPS 工具。
@@ -65,7 +66,9 @@ npm run build
 
 Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open a PDF to start; language, theme, and previewable interface font sizes are under **View**.
 
-**OCR** is under **Edit**: choose pages and a primary language. The engine and language data are bundled for offline use. Recognition can still need proofreading, particularly for noisy scans, formulas and mixed scripts.
+**About**, below the module buttons, shows the current version, checks for updates and links to the official Releases page.
+
+**OCR** is under **Edit**: choose pages and a primary language. The engine and language data are bundled for offline use. Use “−” to minimize while recognition continues, then click the OCR tool again to restore progress; Cancel stops recognition. Recognition can still need proofreading, particularly for noisy scans, formulas and mixed scripts.
 
 **Saved tab groups**: click **Document tabs** to save the current window’s file list under a name. Create multiple groups, rename or delete them, and reopen a group later. Existing tabs are kept and unavailable files are listed. Groups store file locations, not unsaved edits; save new documents to disk first.
 

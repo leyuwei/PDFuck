@@ -16,7 +16,7 @@ it('uses the current page and language, and aborts on native close or unmount', 
   setInterfaceLanguage('ja')
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
-    await act(async () => root.render(<OcrDialog pageCount={10} currentPage={4} onClose={onClose} onRecognize={onRecognize} />))
+    await act(async () => root.render(<OcrDialog pageCount={10} currentPage={4} onMinimize={() => {}} onClose={onClose} onRecognize={onRecognize} />))
     expect(host.querySelector('select')?.value).toBe('jpn')
     expect(host.querySelector('input')?.value).toBe('1-10')
     await act(async () => host.querySelectorAll<HTMLButtonElement>('.page-selection-shortcuts button')[1].click())

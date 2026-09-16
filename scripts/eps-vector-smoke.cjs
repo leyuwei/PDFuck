@@ -37,7 +37,12 @@ async function main() {
   try {
     const page = await app.firstWindow()
     await page.locator('.brand').waitFor()
-    assert.ok((await page.locator('.brand').innerText()).includes(`v${require('../package.json').version}`), 'App version must match the release')
+    assert.equal(await page.locator('.brand').innerText(), 'PDFuck', 'titlebar must omit the version')
+    await page.locator('.about-trigger').click()
+    assert.ok((await page.locator('.about-dialog').innerText()).includes(require('../package.json').version), 'About must display the release version')
+    const aboutPosition = await page.locator('.about-trigger').evaluate(el => ({ bottom: el.getBoundingClientRect().bottom, railBottom: el.closest('.nav-rail').getBoundingClientRect().bottom }))
+    assert.ok(Math.abs(aboutPosition.railBottom - aboutPosition.bottom - 8) < 2, 'About belongs at the bottom of the navigation rail')
+    await page.locator('.about-dialog header button').click()
     const target = path.join(output, 'try-eps.eps')
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, target)
     await page.locator('.pdf-page').first().waitFor()

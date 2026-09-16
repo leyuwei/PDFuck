@@ -404,3 +404,7 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .rich-format-bold { font-weight: 700; }
 .rich-format-italic { font-style: italic; }
 .rich-format-underline { text-decoration: underline; }
+
+.nav-rail button.about-trigger { height: auto; min-height: 54px; flex-shrink: 0; margin: auto 8px 8px; padding: 8px 2px; gap: 4px; border: 0; border-radius: 8px; color: #a3afc6; font-size: var(--ui-font-small); overflow-wrap: anywhere; }
+.about-dialog .modal-actions { align-items: center; flex-wrap: wrap; gap: 12px; }
+.about-dialog a { color: var(--theme-accent-soft-ink); text-underline-offset: 3px; }

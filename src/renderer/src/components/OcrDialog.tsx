@@ -8,8 +8,8 @@ import { ScrollWindow } from './ScrollWindow'
 import { EditIcon } from './EditIcon'
 import './ocr-dialog.css'
 
-export function OcrDialog({ pageCount, currentPage, onClose, onRecognize }: {
-  pageCount: number; currentPage: number; onClose(): void
+export function OcrDialog({ pageCount, currentPage, hidden = false, onMinimize, onClose, onRecognize }: {
+  pageCount: number; currentPage: number; hidden?: boolean; onMinimize(): void; onClose(): void
   onRecognize(options: OcrOptions, signal: AbortSignal, progress: (value: OcrProgress) => void): Promise<number>
 }) {
   const locale = useInterfaceLanguage()
@@ -18,7 +18,7 @@ export function OcrDialog({ pageCount, currentPage, onClose, onRecognize }: {
   const [range, setRange] = useState(() => compactPageSelection(allPageIndices(pageCount)))
   const [busy, setBusy] = useState(false), [progress, setProgress] = useState<OcrProgress>()
   const [result, setResult] = useState<number>(), [error, setError] = useState('')
-  const controller = useRef<AbortController | undefined>(undefined), floating = useFloatingWindow(true)
+  const controller = useRef<AbortController | undefined>(undefined), floating = useFloatingWindow(!hidden)
   const parsed = parsePageSelection(range, pageCount), valid = parsed.pages.length > 0 && !parsed.invalid.length
   useEffect(() => {
     const detach = window.desktop.onWindowRequestClose(() => controller.current?.abort())
@@ -34,9 +34,11 @@ export function OcrDialog({ pageCount, currentPage, onClose, onRecognize }: {
       if (!active.signal.aborted) setError(String(reason).includes('ocr.timeout') ? ui('ocr.timeout') : ui('ocr.failed'))
     } finally { if (controller.current === active) { controller.current = undefined; setBusy(false) } }
   }
-  return <div className="modal-backdrop ocr-backdrop" onKeyDown={event => event.stopPropagation()} onClick={event => { if (event.target === event.currentTarget) close() }} onKeyDownCapture={event => { if (event.key === 'Escape') { event.stopPropagation(); close() } }}>
+  const dismiss = () => { if (busy) onMinimize(); else close() }
+  if (hidden) return null
+  return <div className="modal-backdrop ocr-backdrop" onKeyDown={event => event.stopPropagation()} onClick={event => { if (event.target === event.currentTarget) dismiss() }} onKeyDownCapture={event => { if (event.key === 'Escape') { event.stopPropagation(); dismiss() } }}>
     <ScrollWindow ref={floating.ref} style={floating.style} className="modal ocr-dialog" role="dialog" aria-modal="true" aria-labelledby="ocr-title">
-      <header {...floating.dragHandlers}><EditIcon kind="ocr" /><h2 id="ocr-title">{ui('ocr.title')}</h2><button type="button" aria-label={ui('ui.close')} onClick={close}>×</button></header>
+      <header {...floating.dragHandlers}><EditIcon kind="ocr" /><h2 id="ocr-title">{ui('ocr.title')}</h2><button type="button" aria-label={ui('ui.minimizeLabWindow')} title={ui('ui.minimizeLabWindow')} onClick={onMinimize}>−</button><button type="button" aria-label={ui('ui.close')} onClick={close}>×</button></header>
       <p className="ocr-description">{ui('ocr.description')}</p>
       <fieldset disabled={busy}>
         <label className="ocr-field"><span>{ui('ui.pageRange')}</span><input autoFocus dir="ltr" value={range} aria-invalid={!valid} placeholder={ui('ui.forExample135810')} onChange={event => { setRange(event.target.value); setResult(undefined) }} /><small>{parsed.invalid.length ? t('page.rangeInvalid', { value: parsed.invalid.join(', ') }) : t('page.selected', { count: parsed.pages.length })}</small></label>

@@ -19,7 +19,12 @@ async function main() {
   try {
     const page = await app.firstWindow()
     await page.locator('.pdf-page[data-page="1"]').waitFor({ timeout: 60000 })
-    assert.equal(await page.locator('.brand em').innerText(), `v${version}`, 'the tested build must display the package version')
+    assert.equal(await page.locator('.brand').innerText(), 'PDFuck', 'titlebar must omit the version')
+    await page.locator('.about-trigger').click()
+    assert.ok((await page.locator('.about-dialog').innerText()).includes(require('../package.json').version), 'About must display the release version')
+    const aboutPosition = await page.locator('.about-trigger').evaluate(el => ({ bottom: el.getBoundingClientRect().bottom, railBottom: el.closest('.nav-rail').getBoundingClientRect().bottom }))
+    assert.ok(Math.abs(aboutPosition.railBottom - aboutPosition.bottom - 8) < 2, 'About belongs at the bottom of the navigation rail')
+    await page.locator('.about-dialog header button').click()
     await page.getByRole('button', { name: '单页查看', exact: true }).click()
     assert.equal(await page.locator('.page-stack.single .pdf-page').count(), 1, 'single-page mode must render exactly one whole page at a time')
     const singleViewer = page.locator('.viewer')

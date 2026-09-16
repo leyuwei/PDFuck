@@ -93,13 +93,14 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     let latestVersion = testVersion
     let releaseUrl = releasesPage
     if (!latestVersion) {
-      const response = await net.fetch(releasesApi, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PDFuck/${currentVersion}`, 'X-GitHub-Api-Version': '2022-11-28' } })
+      const response = await net.fetch(releasesApi, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PDFuck/${currentVersion}`, 'X-GitHub-Api-Version': '2022-11-28' } })
       if (!response.ok) return { status: 'unavailable', currentVersion }
       const release = await response.json() as { tag_name?: unknown; html_url?: unknown }
       latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/i, '') : undefined
       if (typeof release.html_url === 'string' && validReleasePage(release.html_url)) releaseUrl = release.html_url
     }
-    if (!latestVersion || compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion }
+    if (!latestVersion || !/^\d+(?:\.\d+){1,3}$/.test(latestVersion)) return { status: 'unavailable', currentVersion }
+    if (compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion }
     const preferences = await readUpdatePreferences()
     if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl }
     return { status: 'available', currentVersion, latestVersion, releaseUrl }
