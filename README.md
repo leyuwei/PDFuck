@@ -1,4 +1,4 @@
-<img width="128" height="128" alt="logo" src="[https://github.com/user-attachments/assets/d62b834e-7fa7-45d5-9964-1ed796508902](https://github.com/leyuwei/PDFuck/blob/main/resources/icon.png)" />
+<img width="256" height="256" alt="icon" src="https://github.com/user-attachments/assets/47f3fe1c-c121-44da-84ff-2edb18cbf7e4" />
 
 # PDFuck
 
