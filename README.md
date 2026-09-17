@@ -1,3 +1,5 @@
+<img width="128" height="128" alt="logo" src="[https://github.com/user-attachments/assets/d62b834e-7fa7-45d5-9964-1ed796508902](https://github.com/leyuwei/PDFuck/blob/main/resources/icon.png)" />
+
 # PDFuck
 
 [简体中文](#chinese) · [English](#english) · [下载 / Download](https://github.com/leyuwei/PDFuck/releases)
