@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.35",
+  "version": "2.0.36",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -42,6 +42,7 @@
     "test:selection-scheduling-inline-ui": "electron-vite build && node scripts/selection-scheduling-inline-formula-ui-smoke.cjs",
     "test:window-tabs": "electron-vite build && node scripts/window-tabs-smoke.cjs",
     "test:bookmarks-ui": "electron-vite build && node scripts/bookmark-ui-smoke.cjs",
+    "test:pdf-links-ui": "electron-vite build && node scripts/pdf-links-ui-smoke.cjs",
     "test:bookmark-recognition-papers": "electron-vite build && node scripts/bookmark-recognition-papers-smoke.cjs",
     "test:page-text-edit-ui": "electron-vite build && node scripts/page-text-edit-ui-smoke.cjs",
     "test:page-manager-input-ui": "electron-vite build && node scripts/page-manager-input-ui-smoke.cjs",
@@ -50,6 +51,7 @@
     "test:print-ui": "electron-vite build && node scripts/print-ui-smoke.cjs",
     "test:print-native": "node scripts/print-native-smoke.cjs",
     "test:release-ui": "node scripts/release-ui-smoke.cjs",
+    "render:icon": "electron scripts/render-app-icon.cjs",
     "test:watch": "node scripts/run-vitest.cjs",
     "build": "npm run typecheck && npm test && npm run test:i18n-catalogue && npm run test:typography && electron-vite build",
     "dist:win": "npm run build && electron-builder --win",

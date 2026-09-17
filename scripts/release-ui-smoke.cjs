@@ -32,6 +32,8 @@ async function main() {
     page.on('pageerror', (error) => console.error(`renderer error: ${error.message}`))
     await page.locator('.brand').waitFor()
     assert.equal(await page.locator('.brand').innerText(), 'PDFuck', 'titlebar must omit the version')
+    assert.deepEqual(await page.locator('.app-logo').evaluate(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height })), { width: 30, height: 30 }, 'titlebar logo must use a fixed 30px size')
+    assert.equal((await page.locator('.about-trigger > small').innerText()).trim(), `v${require('../package.json').version}`, 'navigation rail must expose the current version below About')
     await page.locator('.about-trigger').click()
     assert.ok((await page.locator('.about-dialog').innerText()).includes(require('../package.json').version), 'About must display the release version')
     const aboutPosition = await page.locator('.about-trigger').evaluate(el => ({ bottom: el.getBoundingClientRect().bottom, railBottom: el.closest('.nav-rail').getBoundingClientRect().bottom }))
@@ -83,10 +85,10 @@ async function main() {
     assert.ok(Math.abs(resizedShell.toolsLeft - initialShell.toolsLeft) >= 40, 'titlebar tools stayed anchored after the window width changed')
     await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), originalWindowBounds)
 
-    const lightLogoColor = await page.locator('.brand span').evaluate((element) => getComputedStyle(element).color)
+    const lightLogoColor = await page.locator('.brand-wordmark > span').evaluate((element) => getComputedStyle(element).color)
     await page.getByRole('button', { name: '夜间', exact: true }).click()
     await page.locator('.app-shell.theme-dark').waitFor()
-    const darkLogoColor = await page.locator('.brand span').evaluate((element) => getComputedStyle(element).color)
+    const darkLogoColor = await page.locator('.brand-wordmark > span').evaluate((element) => getComputedStyle(element).color)
     assert.notEqual(darkLogoColor, lightLogoColor, 'the “uck” logo color must follow the active theme')
     await page.getByRole('button', { name: '明快', exact: true }).click()
 

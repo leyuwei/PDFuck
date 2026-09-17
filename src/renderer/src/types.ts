@@ -3,13 +3,15 @@ import type { TextMark } from './lib/annotation-rich-text'
 export type ModuleKey = 'view' | 'edit' | 'annotate' | 'save'
 export type ViewMode = 'continuous' | 'single'
 
-/** A PDF document-outline item. pageIndex is absent for unsupported external actions. */
+/** A PDF document-outline item. Local destinations and safe external links are both retained. */
 export interface PdfBookmark {
   id: string
   title: string
   pageIndex?: number
   /** Normalized vertical destination within pageIndex (0 = top, 1 = bottom). */
   position?: number
+  /** External URI action attached to the outline item. */
+  url?: string
   open: boolean
   bold?: boolean
   italic?: boolean

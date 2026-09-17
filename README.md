@@ -15,7 +15,7 @@
 - **结合原文生成修改建议**：从批注位置自动提取附近正文，也可加入多段选区作为上下文。建议在同一编辑窗口中填入回复草稿，确认后保存到 PDF。
 - **把批注变成可跟进的修改清单**：区分批注人，用“已处理／想一想／不做了”标记处理状态；按进度统计快速定位批注，再回到原文核查，回复随 PDF 保存。
 - **扫描件也能原位框选与复制**：OCR 在本地识别所选页码，支持中英等 11 种主要语言，自动纠斜、低置信度复识别并整理中文/日文伪空格。隐形文字随 PDF 保存，页面外观保持不变，识别结果可撤销。
-- **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签，减少来回翻页。
+- **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签；PDF 自带书签与页内链接可准确跳转，网页和邮件链接由系统安全打开。
 - **衔接论文插图的 EPS 工作流**：支持 EPS 导入，将编辑后的 PDF 导出为保留文字与矢量路径的 EPS，方便后续排版。
 
 ## 安装与配置
@@ -25,7 +25,7 @@
 - **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。
 - **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
 - **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
-- **关于**：左侧模块下方的“关于”展示当前版本、检查更新状态，并可打开项目官方 Releases 页面。
+- **关于**：左侧模块下方以两行固定显示“关于”和当前版本号；弹窗可检查更新并打开项目官方 Releases 页面。
 - **AI（可选）**：在“批注 → 实验室 → 模型设置”中保存多个命名配置，填写接口地址、API Key、模型名后点击“激活此模型”。顶部摘要显示实际使用的配置与模型；实时过程按请求、思考和回复分区显示。支持 OpenAI、Claude、Grok、BigModel、Doubao、DeepSeek、KIMI 和自定义兼容接口；保存其他配置不会切换当前模型。启用 AI 时，所选原文或全文会发送给激活的服务；普通编辑与 OCR 在本地执行。
 - **Thinking 与生成参数**：可配置思考模式/强度、Claude 思考预算、温度、Top P、惩罚、Seed 和高级 JSON。默认等待 600 秒、输出预算 65,536 Token，最多可设置 3,600 秒和 262,144 Token，实际受服务商限制。遇到明确不兼容参数会尝试恢复；输出截断先扩容，再按允许的 Thinking 降级或分批处理。可关闭 Thinking 降级；界面仅显示服务商实际返回的思考内容。
 - **格式转换（可选）**：EPS 导入需要 Ghostscript；矢量 EPS 导出需要 Poppler 的 `pdftocairo`。Office 导入在 Windows 可使用本机 Microsoft Office，跨平台可使用 LibreOffice。macOS 可用 `brew install ghostscript poppler` 安装 EPS 工具。
@@ -61,14 +61,14 @@ npm run build
 - **Revision advice grounded in the source**: Automatically collect nearby text from an annotation’s position, or add multiple selections as context. Use suggestions in a reply draft within the same editor, then confirm to save them into the PDF.
 - **Annotations you can follow through**: Identify reviewers and mark each item as Done, Think about it, or Won’t do. Use progress counts to find annotations, return to the source to verify changes, and keep replies in the PDF.
 - **Select and copy scanned pages in place**: Local OCR supports selected page ranges and 11 primary languages, deskewing, a low-confidence retry, and removal of spurious Chinese/Japanese spaces. Invisible text is saved inside the PDF while preserving its appearance, with undo support.
-- **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks.
+- **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks. Built-in outlines and page links navigate precisely; web and email links open safely through the operating system.
 - **An EPS workflow for research figures**: Import EPS files and export edited PDFs to EPS while retaining text and vector paths for subsequent typesetting.
 
 ## Installation and configuration
 
 Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open a PDF to start; language, theme, and previewable interface font sizes are under **View**.
 
-**About**, below the module buttons, shows the current version, checks for updates and links to the official Releases page.
+**About**, below the module buttons, keeps the current version visible on a second line, checks for updates and links to the official Releases page.
 
 **OCR** is under **Edit**: choose pages and a primary language. The engine and language data are bundled for offline use.
 

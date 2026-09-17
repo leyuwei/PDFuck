@@ -36,14 +36,14 @@ it('keeps OCR alive while minimized and restores the completed result without an
 })
 
 it.each(['current', 'available', 'skipped', 'unavailable', 'reject'] as const)('shows accurate update state: %s', async status => {
-  const checkForUpdates = status === 'reject' ? vi.fn().mockRejectedValue(new Error('offline')) : vi.fn().mockResolvedValue({ status, currentVersion: '2.0.35', latestVersion: '2.0.36' })
+  const checkForUpdates = status === 'reject' ? vi.fn().mockRejectedValue(new Error('offline')) : vi.fn().mockResolvedValue({ status, currentVersion: '2.0.36', latestVersion: '2.0.37' })
   const openReleasePage = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(window, 'desktop', { configurable: true, value: { checkForUpdates, openReleasePage } })
   const container = document.createElement('div'); document.body.append(container)
   const root = createRoot(container)
-  await act(async () => root.render(<AboutDialog version="2.0.35" onClose={() => {}} />))
+  await act(async () => root.render(<AboutDialog version="2.0.36" onClose={() => {}} />))
   const text = container.querySelector('[role="status"]')!.textContent
-  expect(text).toContain(status === 'current' ? ui('about.current') : status === 'available' || status === 'skipped' ? '2.0.36' : ui('about.unavailable'))
+  expect(text).toContain(status === 'current' ? ui('about.current') : status === 'available' || status === 'skipped' ? '2.0.37' : ui('about.unavailable'))
   await act(async () => container.querySelector('a')!.click())
   expect(openReleasePage).toHaveBeenCalledWith('https://github.com/leyuwei/PDFuck/releases')
   await act(async () => container.querySelector<HTMLButtonElement>('.modal-actions button')!.click())

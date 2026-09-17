@@ -36,6 +36,7 @@ const api: DesktopApi = {
   checkForUpdates: () => ipcRenderer.invoke('app:check-update'),
   skipUpdateVersion: (version) => ipcRenderer.invoke('app:skip-update-version', version),
   openReleasePage: (url) => ipcRenderer.invoke('app:open-release-page', url),
+  openExternalLink: (url) => ipcRenderer.invoke('app:open-external-link', url),
   filePath: (file) => webUtils.getPathForFile(file),
   initialPdfs: () => ipcRenderer.invoke('pdf:initial'),
   initialDetachedDocument: () => ipcRenderer.invoke('window:initial-detached-document'),

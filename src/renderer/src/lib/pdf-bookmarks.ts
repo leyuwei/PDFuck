@@ -84,6 +84,13 @@ function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<st
   return { pageIndex, ...(position === undefined ? {} : { position }) }
 }
 
+function bookmarkUrl(document: PDFDocument, item: PDFDict): string | undefined {
+  const action = dictionary(document, item.get(PDFName.of('A')))
+  if (text(document, action?.get(PDFName.of('S'))) !== 'URI') return undefined
+  const url = text(document, action?.get(PDFName.of('URI'))).trim()
+  return url || undefined
+}
+
 function bookmarkColor(document: PDFDocument, object?: PDFObject): string | undefined {
   const values = array(document, object)?.asArray().map((entry) => number(document, entry))
   if (!values || values.length < 3 || values.some((value) => value === undefined)) return undefined
@@ -118,9 +125,11 @@ export function readPdfBookmarks(document: PDFDocument): PdfBookmark[] {
       if (title) {
         total += 1
         const destination = bookmarkDestination(document, item, pages)
+        const url = bookmarkUrl(document, item)
         result.push({
           id: bookmarkKey(document, current, item, `${path}-${sibling}`), title,
           ...destination,
+          ...(url ? { url } : {}),
           open: (number(document, item.get(PDFName.of('Count'))) || 0) >= 0,
           ...(style & 2 ? { bold: true } : {}), ...(style & 1 ? { italic: true } : {}),
           ...(color ? { color } : {}), children
@@ -163,6 +172,11 @@ function writeBranch(document: PDFDocument, bookmarks: PdfBookmark[], parent: PD
       dict.set(PDFName.of('Dest'), position === undefined
         ? document.context.obj([page.ref, PDFName.of('Fit')])
         : document.context.obj([page.ref, PDFName.of('XYZ'), PDFNull, PDFNumber.of(page.getHeight() * (1 - position)), PDFNull]))
+    } else if (bookmark.url) {
+      const action = document.context.obj({})
+      action.set(PDFName.of('S'), PDFName.of('URI'))
+      action.set(PDFName.of('URI'), PDFString.of(bookmark.url))
+      dict.set(PDFName.of('A'), action)
     }
     const style = (bookmark.italic ? 1 : 0) | (bookmark.bold ? 2 : 0)
     if (style) dict.set(PDFName.of('F'), PDFNumber.of(style))
@@ -192,6 +206,7 @@ function validateBookmarks(document: PDFDocument, bookmarks: PdfBookmark[]): voi
       if (!item.title.trim()) throw new Error('书签文字不能为空。')
       if (item.pageIndex !== undefined && (!Number.isInteger(item.pageIndex) || item.pageIndex < 0 || item.pageIndex >= document.getPageCount())) throw new Error('书签目标页无效。')
       if (item.position !== undefined && (item.pageIndex === undefined || !Number.isFinite(item.position) || item.position < 0 || item.position > 1)) throw new Error('ui.invalidBookmarkPosition')
+      if (item.url !== undefined && (!item.url.trim() || item.url.length > 4096)) throw new Error('pdfLink.invalidBookmark')
       visit(item.children, depth + 1)
     })
   }

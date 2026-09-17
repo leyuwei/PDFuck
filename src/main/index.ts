@@ -20,6 +20,7 @@ import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForSt
 import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
+import { validExternalLink } from './external-links'
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -784,6 +785,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:open-release-page', async (event, url: string) => {
     requireMainWindow(event.sender)
     if (!validReleasePage(url)) throw new Error('更新链接无效。')
+    await shell.openExternal(url)
+  })
+  ipcMain.handle('app:open-external-link', async (event, url: unknown) => {
+    requireMainWindow(event.sender)
+    if (!validExternalLink(url)) throw new Error('pdfLink.openFailed')
     await shell.openExternal(url)
   })
   ipcMain.on('app:set-interface-language', (event, language: unknown) => {

@@ -25,6 +25,7 @@ import type { AutomaticAnnotationSourcePage } from '../lib/automatic-annotation'
 import { automaticPageContext, type AutomaticAnnotationContextRequest, type AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
 import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecognitionOptions, type RecognizedBookmark } from '../lib/bookmark-recognition'
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
+import { pdfPageLinks, type PdfLinkTarget, type PdfPageLink } from '../lib/pdfjs-links'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
 export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
@@ -116,6 +117,7 @@ interface PageProps {
   onImageDraftDelete(): void
   onSize(pageIndex: number, size: { width: number; height: number }): void
   onError(error: Error): void
+  onLink(target: PdfLinkTarget): void
   grammarTerms: string[]
   citationHits: CitationLink[]
   textFocus?: { text: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean; token: number }
@@ -573,7 +575,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -581,6 +583,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const preciseFocusRef = useRef<HTMLDivElement>(null)
   const visualFocusRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
+  const [pageLinks, setPageLinks] = useState<PdfPageLink[]>([])
   const [rendered, setRendered] = useState(false)
   const [size, setSize] = useState({ width: 612, height: 792 })
   const [words, setWords] = useState<WordBox[]>([])
@@ -640,6 +643,13 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     }).catch((error) => { if (!cancelled) { setRendered(true); onError(error instanceof Error ? error : new Error(String(error))) } })
     return () => { cancelled = true }
   }, [document, pageIndex, onError, onSize])
+
+  useEffect(() => {
+    if (!page || !renderEligible) return
+    let active = true
+    pdfPageLinks(document, pageIndex + 1).then((links) => { if (active) setPageLinks(links) }).catch(() => { if (active) setPageLinks([]) })
+    return () => { active = false }
+  }, [document, page, pageIndex, renderEligible])
 
   useEffect(() => {
     if (!page || !textRequested || textLoadedRef.current) return
@@ -1000,6 +1010,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
     {!rendered && <div className="pdf-page-loading" role="status" aria-live="polite"><i aria-hidden="true" /><span>{ui('ui.loadingPage')}</span></div>}
+    {pageLinks.map((link) => <button type="button" key={link.id} className="pdf-embedded-link" style={{ left: link.rect.x * zoom, top: link.rect.y * zoom, width: Math.max(6, link.rect.width * zoom), height: Math.max(6, link.rect.height * zoom) }} aria-label={link.url ? ui('pdfLink.openExternal') : t('pdfLink.goToPage', { page: (link.pageIndex || 0) + 1 })} title={link.url || t('pdfLink.goToPage', { page: (link.pageIndex || 0) + 1 })} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onLink(link) }} />)}
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
     {boundaryEditing && <div className={`column-boundary-editor${drawingSpanningRegion ? ' drawing-spanning-region' : ''}`} onPointerDown={beginLayoutEditorPointer} onPointerMove={drawSpanningRegion} onPointerUp={finishSpanningRegion} onPointerCancel={finishSpanningRegion} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}>
       <div className="column-boundary-toolbar" onPointerDown={(event) => event.stopPropagation()}>
@@ -1304,13 +1315,23 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     fitPage()
   }, [currentPage, document, fitPage, fitPageRequest, sizes])
   const goToPage = (pageIndex: number, position?: number) => {
-    const viewport = viewportRef.current
-    const target = viewport?.querySelector<HTMLElement>(`[data-page="${pageIndex}"]`)
-    if (target && viewport && position !== undefined) {
-      const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
-      viewport.scrollTo({ top: scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, position), behavior: 'smooth' })
-    } else if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    else if (viewport && document && document.numPages > 80) viewport.scrollTo({ top: 24 + (pageIndex + (position || 0)) * 812 * zoom, behavior: 'smooth' })
+    if (!document) return
+    const nextPage = Math.max(0, Math.min(document.numPages - 1, pageIndex))
+    onPageChange(nextPage)
+    const reveal = () => {
+      const viewport = viewportRef.current
+      const target = viewport?.querySelector<HTMLElement>(`[data-page="${nextPage}"]`)
+      if (target && viewport && position !== undefined) {
+        const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
+        viewport.scrollTo({ top: scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, position), behavior: 'smooth' })
+      } else if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      else if (viewport && document.numPages > 80) viewport.scrollTo({ top: 24 + (nextPage + (position || 0)) * 812 * zoom, behavior: 'smooth' })
+    }
+    requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
+  }
+  const openPdfLink = (target: PdfLinkTarget) => {
+    if (target.url) { void window.desktop.openExternalLink(target.url).catch(() => onError(new Error(ui('pdfLink.openFailed')))); return }
+    if (target.pageIndex !== undefined) goToPage(target.pageIndex, target.position)
   }
   const focusAnnotation = (id: string, pageIndex: number) => {
     const reveal = () => {
@@ -1519,7 +1540,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })

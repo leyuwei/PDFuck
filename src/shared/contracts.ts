@@ -203,6 +203,7 @@ export interface DesktopApi {
   checkForUpdates(): Promise<UpdateCheckResult>
   skipUpdateVersion(version: string): Promise<void>
   openReleasePage(url: string): Promise<void>
+  openExternalLink(url: string): Promise<void>
   filePath(file: File): string
   initialPdfs(): Promise<string[]>
   initialDetachedDocument(): Promise<DetachedPdfDocument | null>

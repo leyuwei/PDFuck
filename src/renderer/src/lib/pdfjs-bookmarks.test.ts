@@ -26,4 +26,10 @@ describe('PDF.js bookmark conversion', () => {
     const result = await pdfJsBookmarks(document, [{ title: 'Inside page', bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: [direct, { name: 'XYZ' }, null, 600, null], url: null, unsafeUrl: undefined, newWindow: undefined, count: 0, items: [] }])
     expect(result[0]).toMatchObject({ pageIndex: 1, position: .25 })
   })
+
+  it('retains external URI outline actions', async () => {
+    const document = { getDestination: vi.fn(async () => null), getPageIndex: vi.fn(async () => 0) }
+    const result = await pdfJsBookmarks(document, [{ title: 'Project', bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: null, url: 'https://example.com', unsafeUrl: undefined, newWindow: true, count: 0, items: [] }])
+    expect(result[0]).toMatchObject({ title: 'Project', url: 'https://example.com' })
+  })
 })

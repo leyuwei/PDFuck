@@ -18,6 +18,8 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.36 统一 OCR 缩小态与实验室窗口按钮的琥珀色提示；左侧“关于”入口固定以第二行外显版本号；重绘蓝色纸张小鸭 Logo，并以固定 30px 尺寸加入标题栏，同时更新 Windows/macOS 应用图标。PDF 导航新增页内 Link 注释覆盖层、命名/直接目标和精确纵向位置解析，长文档与单页模式等待目标页挂载后跳转；内置书签保留 URI 动作，外链仅允许 `http`、`https` 与 `mailto` 交给系统打开。`test:pdf-links-ui` 覆盖本地书签、外部书签、页内跳转和安全外链，源码与最终包均须执行；OCR、字号和发布 UI 回归分别检查缩小按钮颜色、两行版本入口及 Logo 固定尺寸。验收记录见 `docs/VALIDATION-2.0.36.md`。
+
 2.0.35 将版本信息移至左侧栏底部的“关于”弹窗，包含更新检查及官方 Releases 链接；OCR 支持缩小到工具栏并保留识别任务。发布、窗口标签和 EPS 测试从“关于”读取版本，另断言标题不含版本号、关于入口位于侧栏底部。OCR 源码/成品测试覆盖缩小恢复及十语言关于弹窗。验收记录见 `docs/VALIDATION-2.0.35.md`。
 
 2.0.34 修复打印左右滚动分区、移除模型设置最小化入口，将实验室窗口默认定位到右下角，新增文档标签档案。`test:document-archives-ui` 覆盖增改删、重启恢复、重复标签、缺失文件和 80 组多语言布局，已接入两平台常规源码/成品发布脚本；打印、模型设置、实验室、画板检查增加本次回归断言。本次沿用用户要求，执行构建与改动相关源码/成品测试，跳过 OCR、框选等无关大回归；范围详见 `docs/VALIDATION-2.0.34.md`。
@@ -122,6 +124,7 @@ npm run test:print-native
 npm run test:print-ui
 npm run test:window-tabs
 npm run test:bookmarks-ui
+npm run test:pdf-links-ui
 npm run test:bookmark-recognition-papers
 npm run test:page-text-edit-ui
 npm run test:page-manager-input-ui
@@ -167,7 +170,7 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.21 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
 
-涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
+涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:pdf-links-ui` 生成同时含本地/外部 Outlines 与本地/外部 Link 注释的 PDF，验证内部目标精确跳页、外链统一经过主进程安全入口且不在应用内导航；`test:bookmark-recognition-papers` 会直接读取 `tmp/m91474-li paper.pdf` 与 `tmp/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 
 涉及页面文字编辑时，`test:page-text-edit-ui` 会生成独立测试 PDF，并在真实 Electron 窗口验证：点击后输入层与原字形区域保持同一坐标和尺寸、光标落在点击字符附近、双重提交只生成一个替换对象、保存并重开后仍只有一个对象，以及删除替换对象后原文编辑区域立即恢复。发布脚本必须执行此项，不能只依赖模型层单元测试。
 
@@ -325,7 +328,7 @@ Get-AuthenticodeSignature release\*.exe
 ## 8. 最终发布清单
 
 - `package.json`、`package-lock.json`、包内 `app.asar` 和目标平台文件属性版本完全一致。
-- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:workflow-state-ui`、`npm run test:lab-features-ui`、`npm run test:creative-tools-ui`、`npm run test:print-native`、`npm run test:print-ui`、`npm run test:window-tabs`、`npm run test:bookmarks-ui`、`npm run test:bookmark-recognition-papers`、`npm run test:page-text-edit-ui`、`git diff --check` 全部通过。
+- `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:workflow-state-ui`、`npm run test:lab-features-ui`、`npm run test:creative-tools-ui`、`npm run test:print-native`、`npm run test:print-ui`、`npm run test:window-tabs`、`npm run test:bookmarks-ui`、`npm run test:pdf-links-ui`、`npm run test:bookmark-recognition-papers`、`npm run test:page-text-edit-ui`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
 - DMG 保留卷图标、应用图标、Applications 快捷入口和正确 Finder 布局。

@@ -34,6 +34,14 @@ describe('PDF bookmark outlines', () => {
     expect(readPdfBookmarks(reopened)).toEqual(positioned)
   })
 
+  it('round-trips external URI outline actions without turning them into dead rows', async () => {
+    const document = await sourcePdf()
+    const external: PdfBookmark[] = [{ id: 'project', title: 'Project page', url: 'https://example.com/pdf', open: true, children: [] }]
+    replacePdfBookmarks(document, external)
+    const reopened = await PDFDocument.load(await document.save({ useObjectStreams: false }))
+    expect(readPdfBookmarks(reopened)).toEqual(external)
+  })
+
   it('appends roots without replacing existing bookmark objects', async () => {
     const document = await sourcePdf()
     replacePdfBookmarks(document, sampleBookmarks().slice(0, 1))
