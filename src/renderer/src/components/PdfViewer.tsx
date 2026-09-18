@@ -31,6 +31,11 @@ import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride
 
 export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
+function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
+  const viewportBounds = viewport.getBoundingClientRect(), pageBounds = page.getBoundingClientRect()
+  viewport.scrollLeft += pageBounds.left + pageBounds.width / 2 - (viewportBounds.left + viewport.clientLeft + viewport.clientWidth / 2)
+}
+
 interface ViewerProps {
   data?: Uint8Array
   password?: string
@@ -1203,6 +1208,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       viewport.scrollLeft = (anchor.scrollLeft + anchor.viewportX) * scale - anchor.viewportX
       viewport.scrollTop = (anchor.scrollTop + anchor.viewportY) * scale - anchor.viewportY
       wheelAnchorRef.current = undefined
+    } else if (viewport) {
+      const current = viewport.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
+      if (current) centerPageHorizontally(viewport, current)
     }
     if (wheelFrameRef.current === undefined && wheelAnchorRef.current === undefined) wheelZoomRef.current = zoom
   }, [zoom])
@@ -1268,25 +1276,21 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const documentKey = document.fingerprints[0] || String(document.numPages)
     if (restoredDocumentRef.current === documentKey) return
     const pageIndex = Math.max(0, Math.min(document.numPages - 1, initialReadingPosition?.page ?? currentPage))
-    if (mode === 'single') {
-      restoredDocumentRef.current = documentKey
-      restoringPositionRef.current = false
-      onPageChange(pageIndex)
-      onReadingPositionChange({ page: pageIndex, zoom, offset: 0 })
-      return
-    }
+    if (mode === 'single' && currentPage !== pageIndex) { onPageChange(pageIndex); return }
     if (!sizes[pageIndex]) return
     const viewport = viewportRef.current
     const target = viewport?.querySelector<HTMLElement>(`[data-page="${pageIndex}"]`)
     if (!viewport || !target) return
     const restore = () => {
-      const viewportBounds = viewport.getBoundingClientRect()
-      const pageBounds = target.getBoundingClientRect()
-      viewport.scrollTop = scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, pageBounds.top, pageBounds.height, initialReadingPosition?.offset)
+      if (mode !== 'single') {
+        const viewportBounds = viewport.getBoundingClientRect(), pageBounds = target.getBoundingClientRect()
+        viewport.scrollTop = scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, pageBounds.top, pageBounds.height, initialReadingPosition?.offset)
+      }
+      centerPageHorizontally(viewport, target)
       restoredDocumentRef.current = documentKey
       restoringPositionRef.current = false
       onPageChange(pageIndex)
-      onReadingPositionChange({ page: pageIndex, zoom, offset: initialReadingPosition?.offset || 0 })
+      onReadingPositionChange({ page: pageIndex, zoom, offset: mode === 'single' ? 0 : initialReadingPosition?.offset || 0 })
     }
     let settleTimer: number | undefined
     const frame = requestAnimationFrame(() => {
@@ -1298,6 +1302,26 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       if (settleTimer !== undefined) window.clearTimeout(settleTimer)
     }
   }, [currentPage, document, initialReadingPosition, mode, onPageChange, onReadingPositionChange, sizes, zoom])
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    const page = viewport?.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
+    if (document && viewport && page && sizes[currentPage]) centerPageHorizontally(viewport, page)
+  }, [document, mode, sizes])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    let width = viewport.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (viewport.clientWidth === width) return
+      width = viewport.clientWidth
+      const page = viewport.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
+      if (page) centerPageHorizontally(viewport, page)
+    })
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [currentPage, document])
 
   const fitWidth = useCallback(() => {
     const size = sizes[currentPage] || sizes[0]
@@ -1333,7 +1357,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       if (target && viewport && position !== undefined) {
         const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
         viewport.scrollTo({ top: scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, position), behavior: 'smooth' })
-      } else if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        centerPageHorizontally(viewport, target)
+      } else if (target) target.scrollIntoView({ block: 'start', inline: 'center', behavior: 'smooth' })
       else if (viewport && document.numPages > 80) viewport.scrollTo({ top: 24 + (nextPage + (position || 0)) * 812 * zoom, behavior: 'smooth' })
     }
     requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
