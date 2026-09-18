@@ -193,8 +193,10 @@ describe('AnnotationLab settings and availability', () => {
     expect(heading.lastElementChild?.classList.contains('annotation-lab-settings-trigger')).toBe(true)
     expect(container.querySelectorAll('.annotation-lab-settings-trigger')).toHaveLength(1)
     expect(container.querySelectorAll('.annotation-lab-tools kbd')).toHaveLength(1)
+    expect(container.querySelectorAll('.annotation-lab-tools > button')).toHaveLength(6)
     expect(container.querySelector('.full-review-launch kbd')).toBeNull()
     expect(container.querySelector('.annotation-suggestion-toggle kbd')).toBeNull()
+    expect(container.querySelector('.translation-toggle kbd')).toBeNull()
     const fullReview = container.querySelector('.full-review-launch')!
     const automatic = container.querySelector('.automatic-annotation-launch')!
     expect(automatic.previousElementSibling).toBe(fullReview)
@@ -295,6 +297,22 @@ describe('AnnotationLab settings and availability', () => {
     expect(container.querySelector('.annotation-suggestion-window')).toBeNull()
     expect(editor.apply).not.toHaveBeenCalled()
     expect(onAddSuggestion).not.toHaveBeenCalled()
+    await act(async () => root.unmount())
+  })
+
+  it('activates text translation only after choosing a target language', async () => {
+    const root = createRoot(container)
+    const onChange = vi.fn()
+    await act(async () => root.render(<AnnotationLab selection={selection} onTranslationSettingsChange={onChange} onAdd={() => undefined} onCopy={() => undefined} />))
+    const toggle = container.querySelector<HTMLButtonElement>('.translation-toggle')!
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    await act(async () => toggle.click())
+    const dialog = container.querySelector('.translation-settings-dialog')!
+    expect(dialog).not.toBeNull()
+    const select = dialog.querySelector<HTMLSelectElement>('select')!
+    await act(async () => { select.value = 'fr'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => dialog.querySelector<HTMLButtonElement>('button.primary')!.click())
+    expect(onChange).toHaveBeenCalledWith(true, 'fr')
     await act(async () => root.unmount())
   })
 

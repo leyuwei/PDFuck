@@ -1,4 +1,4 @@
-export type EditIconKind = 'crop' | 'merge' | 'manage' | 'edit_text' | 'add_text' | 'image' | 'page_numbers' | 'ocr'
+export type EditIconKind = 'crop' | 'merge' | 'manage' | 'edit_text' | 'add_text' | 'image' | 'page_numbers' | 'watermark' | 'ocr'
 
 export function EditIcon({ kind, size = 22 }: { kind: EditIconKind; size?: number }) {
   return <svg className={`edit-tool-icon ${kind}`} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
@@ -10,5 +10,6 @@ export function EditIcon({ kind, size = 22 }: { kind: EditIconKind; size?: numbe
     {kind === 'add_text' && <><path d="M4 5h11M9.5 5v14M6.5 19h6" /><path className="accent" d="M17.5 13v7M14 16.5h7" /></>}
     {kind === 'image' && <><rect x="3.5" y="5" width="14" height="14" rx="2" /><circle cx="8" cy="9.5" r="1.5" /><path d="m5.5 17 3.8-4 2.5 2.3 2.2-2.2 3.5 3.5" /><path className="accent" d="M19.5 3.5v6M16.5 6.5h6" /></>}
     {kind === 'page_numbers' && <><path d="M5 3.5h10l4 4v13H5z" /><path d="M15 3.5v4h4" /><path className="accent" d="M9 11.5h6M8.5 15h6M11 10l-1 7M14 10l-1 7" /></>}
+    {kind === 'watermark' && <><path d="M5 3.5h10l4 4v17H5z" /><path d="M15 3.5v4h4" /><path className="accent" d="m7.5 16 2-7 2 5 2-5 2 7 2-7" /></>}
   </svg>
 }

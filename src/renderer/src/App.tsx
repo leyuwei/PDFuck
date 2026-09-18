@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { AnnotationPanel } from './components/AnnotationPanel'
 import { activeBookmarkIdForPosition, BookmarkPanel } from './components/BookmarkPanel'
 import { BookmarkRecognitionDialog, type BookmarkWriteMode } from './components/BookmarkRecognitionDialog'
-import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, ErrorDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PageSelectionDialog, PrintDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, UnsavedCloseDialog, type UnsavedCloseDecision, UpdateDialog } from './components/Dialogs'
+import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, ErrorDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PageSelectionDialog, PrintDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, TranslationDialog, UnsavedCloseDialog, type UnsavedCloseDecision, UpdateDialog, WatermarkDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
 import { ToolPanel } from './components/ToolPanel'
 import { AnnotationLab, type AnnotationSuggestionRequest } from './components/AnnotationLab'
@@ -18,20 +18,22 @@ import { ModuleIcon } from './components/ModuleIcon'
 import { exportPdfPages } from './lib/export'
 import { isImeCompositionKey, isTextEntryEvent } from './lib/keyboard-input'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
-import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PageNumberSettings, PdfBookmark, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode } from './types'
+import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PageNumberSettings, PdfBookmark, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode, WatermarkSettings } from './types'
 import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PrinterDescriptor, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
-import { translateMessage } from '../../shared/i18n-catalogue'
+import { isInterfaceLanguage, translateMessage, type InterfaceLanguage } from '../../shared/i18n-catalogue'
 import { normalizeCopiedText } from './lib/clipboard-text'
 import type { UpdateCheckResult } from '../../shared/contracts'
 import { replacementTextRect } from './lib/page-text-edit'
 import { imposePdfForPrint } from './lib/print-layout'
 import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
+import { watermarkTiles } from './lib/watermarks'
 import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 import { isTemporaryDocumentPath, type CitationLink, type GrammarIssue, type InsightHit } from './lib/document-insights'
 import { bindTextSelectionToPage, type PageTextSelection } from './lib/page-text-selection'
-import type { FullReviewSendMode } from './lib/ai-polish'
+import { AI_LANGUAGE_NAMES, cancelAiRequest, loadAiSettings, translateText, type AiStreamProgress, type FullReviewSendMode } from './lib/ai-polish'
+import { DEFAULT_ANNOTATION_COLOR } from './lib/annotation-style'
 import { DEFAULT_ACCENT, contrastText, loadPreferences, savePreferences, type AppPreferences, type PageFitPreference } from './lib/app-preferences'
 import { documentTransferToken, isDocumentTransferDrag } from './lib/document-transfer'
 import { initialImageRect } from './lib/image-geometry'
@@ -47,12 +49,13 @@ const LAB_PREFERENCES_KEY = 'pdfuck.lab-preferences.v1'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 type TargetedAnnotationSuggestionRequest = AnnotationSuggestionRequest & { documentId: number }
+interface TranslationTask { token: number; documentId: number; selection: TextSelection; source: string; context?: string; target: InterfaceLanguage; busy: boolean; adding?: boolean; result?: string; error?: string; progress?: AiStreamProgress }
 
 function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes('Files')
 }
 
-type DialogState = { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
+type DialogState = { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
 
 interface DocumentSession {
   id: number
@@ -130,12 +133,31 @@ function labSelectionKey(documentId: number, selection?: PageTextSelection): str
   return `${documentId}:${geometry}`
 }
 
-function loadAnnotationSuggestionsEnabled(): boolean {
-  try { return JSON.parse(localStorage.getItem(LAB_PREFERENCES_KEY) || '{}').annotationSuggestionsEnabled === true } catch { return false }
+function loadLabPreferences(): { annotationSuggestionsEnabled?: boolean; translationEnabled?: boolean; translationTarget?: InterfaceLanguage } {
+  try { return JSON.parse(localStorage.getItem(LAB_PREFERENCES_KEY) || '{}') } catch { return {} }
 }
 
-function saveAnnotationSuggestionsEnabled(enabled: boolean): void {
-  localStorage.setItem(LAB_PREFERENCES_KEY, JSON.stringify({ annotationSuggestionsEnabled: enabled }))
+function watermarkRaster(settings: WatermarkSettings): Promise<{ data: Uint8Array; width: number; height: number }> {
+  const scale = 2
+  const measureCanvas = document.createElement('canvas'), measure = measureCanvas.getContext('2d')!
+  measure.font = `${settings.size}px ${fontCssFamily(settings.font)}`
+  const textWidth = Math.max(settings.size * 2.4, measure.measureText(settings.text).width + settings.size * .6)
+  const textHeight = settings.size * 1.35
+  const angle = settings.rotation * Math.PI / 180
+  const width = Math.abs(textWidth * Math.cos(angle)) + Math.abs(textHeight * Math.sin(angle))
+  const height = Math.abs(textWidth * Math.sin(angle)) + Math.abs(textHeight * Math.cos(angle))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(8, Math.ceil(width * scale)); canvas.height = Math.max(8, Math.ceil(height * scale))
+  const context = canvas.getContext('2d')!
+  context.scale(scale, scale); context.translate(width / 2, height / 2); context.rotate(angle)
+  context.globalAlpha = settings.opacity; context.fillStyle = settings.color
+  context.font = `${settings.size}px ${fontCssFamily(settings.font)}`; context.textAlign = 'center'; context.textBaseline = 'middle'
+  context.fillText(settings.text, 0, 0)
+  return new Promise((resolve, reject) => canvas.toBlob(async (blob) => blob ? resolve({ data: new Uint8Array(await blob.arrayBuffer()), width, height }) : reject(new Error(ui('ui.textImageEncodingFailed'))), 'image/png'))
+}
+
+function saveLabPreferences(value: Partial<ReturnType<typeof loadLabPreferences>>): void {
+  localStorage.setItem(LAB_PREFERENCES_KEY, JSON.stringify({ ...loadLabPreferences(), ...value }))
 }
 
 async function imagePreviewSource(file: ImageImportFile): Promise<{ source: string; width: number; height: number }> {
@@ -232,13 +254,18 @@ function DocumentTitle({ text, encrypted }: { text: string; encrypted: boolean }
 
 function viewerTextObjects(model?: PdfDocumentModel): TextObjectRecord[] {
   if (!model) return []
+  const watermarks = model.watermarks().flatMap(({ id, pageIndex, settings }) => watermarkTiles(model.getPageSize(pageIndex), settings).map((rect, index): TextObjectRecord => ({
+    id: `${id}-${index}`, pageIndex, text: settings.text, rect, locked: true, rotation: settings.rotation, opacity: settings.opacity, watermark: true,
+    style: { font: settings.font, size: settings.size, color: settings.color, bold: false, italic: false, align: 'center', lineHeight: 1 }
+  })))
   return [...model.textObjects(), ...model.pageNumbers().map(({ id, pageIndex, text, rect, settings }) => ({
     id, pageIndex, text, rect, locked: true,
     style: { font: settings.font, size: settings.size, color: settings.color, bold: settings.bold, italic: settings.italic, align: settings.horizontal, lineHeight: 1.25 as const }
-  }))]
+  })), ...watermarks]
 }
 
 export default function App() {
+  const interfaceLanguage = useInterfaceLanguage()
   const viewerRef = useRef<ViewerHandle>(null)
   const modelRef = useRef<PdfDocumentModel | undefined>(undefined)
   const dirtyRef = useRef(false)
@@ -315,7 +342,11 @@ export default function App() {
   const [insight, setInsight] = useState<{ kind: 'visual' | 'citation' | 'grammar'; hits: InsightHit[] | CitationLink[] | GrammarIssue[] }>()
   const [annotationPanelCollapsed, setAnnotationPanelCollapsed] = useState(false)
   const [bookmarkPanelCollapsed, setBookmarkPanelCollapsed] = useState(false)
-  const [annotationSuggestionsEnabled, setAnnotationSuggestionsEnabled] = useState(loadAnnotationSuggestionsEnabled)
+  const [annotationSuggestionsEnabled, setAnnotationSuggestionsEnabled] = useState(() => loadLabPreferences().annotationSuggestionsEnabled === true)
+  const [translationEnabled, setTranslationEnabled] = useState(() => loadLabPreferences().translationEnabled === true)
+  const [translationTarget, setTranslationTarget] = useState<InterfaceLanguage>(() => { const target = loadLabPreferences().translationTarget; return isInterfaceLanguage(target) ? target : interfaceLanguage })
+  const [translationTask, setTranslationTask] = useState<TranslationTask>()
+  const translationToken = useRef(0)
   const [annotationSuggestionRequest, setAnnotationSuggestionRequest] = useState<TargetedAnnotationSuggestionRequest>()
   const [annotationSuggestionEditor, setAnnotationSuggestionEditor] = useState<AnnotationSuggestionEditor & { documentId: number }>()
   const endAnnotationSuggestion = useCallback(() => { setAnnotationSuggestionEditor(undefined); setAnnotationSuggestionRequest(undefined) }, [])
@@ -326,7 +357,6 @@ export default function App() {
   const [recentFiles, setRecentFiles] = useState<RecentPdf[]>([])
   const [toolPanelCollapsed, setToolPanelCollapsed] = useState(false)
   const [preferences, setPreferences] = useState<AppPreferences>(loadPreferences)
-  const interfaceLanguage = useInterfaceLanguage()
   const hasDocument = Boolean(data?.length)
   const appAccent = preferences.accent || DEFAULT_ACCENT
   const documentBackgroundKey = modelRef.current?.filePath || documentName
@@ -1046,6 +1076,40 @@ export default function App() {
     }, segments.length > 1 ? `已在 ${segments.length} 页添加${translateMessage('zh', KIND_LABEL[kind])}` : `${translateMessage('zh', KIND_LABEL[kind])}已添加`, false)
   }, [currentPage, mutate, preferences.annotationAuthor])
 
+  const requestTranslation = useCallback(async (value: TextSelection, target = translationTarget, context?: string) => {
+    const source = normalizeCopiedText(value.text || '')
+    if (!source) return
+    const token = ++translationToken.current
+    const documentId = activeDocumentIdRef.current
+    setTranslationTask({ token, documentId, selection: value, source, context, target, busy: true })
+    try {
+      const result = await translateText(loadAiSettings(), target, source, (progress) => setTranslationTask((current) => current?.token === token ? { ...current, progress } : current), context)
+      setTranslationTask((current) => current?.token === token ? { ...current, busy: false, result } : current)
+    } catch (cause) {
+      setTranslationTask((current) => current?.token === token ? { ...current, busy: false, error: cause instanceof Error ? cause.message : String(cause) } : current)
+    }
+  }, [translationTarget])
+
+  const closeTranslation = useCallback(() => {
+    translationToken.current += 1
+    setTranslationTask((current) => { cancelAiRequest(current?.progress?.requestId); return undefined })
+  }, [])
+  const openWatermarks = useCallback(() => {
+    const existing = modelRef.current?.watermarks() || []
+    setDialog({ type: 'watermark', initial: existing[0]?.settings, existingCount: existing.length })
+  }, [])
+
+  const addTranslationHighlight = useCallback(async () => {
+    const task = translationTask
+    if (!task?.result || task.adding) return
+    if (task.documentId !== activeDocumentIdRef.current) { setTranslationTask((current) => current ? { ...current, error: 'ui.translationDocumentChanged' } : current); return }
+    setTranslationTask({ ...task, adding: true, error: undefined })
+    try {
+      await addSelectionAnnotations('highlight', task.selection, task.result, DEFAULT_ANNOTATION_COLOR.highlight, task.selection.segments?.[0]?.pageIndex ?? currentPage)
+      setStatus(ui('ui.translationAddedAsHighlight')); setTranslationTask(undefined)
+    } catch (cause) { setTranslationTask((current) => current?.token === task.token ? { ...current, adding: false, error: cause instanceof Error ? cause.message : String(cause) } : current) }
+  }, [addSelectionAnnotations, currentPage, translationTask])
+
   const handleCanvasAction = useCallback(async (action: CanvasAction) => {
     const model = modelRef.current; if (!model) return
     const documentId = activeDocumentIdRef.current
@@ -1206,9 +1270,13 @@ export default function App() {
     })
   }, [runDocumentOperation])
   const toggleAnnotationSuggestions = useCallback((enabled: boolean) => {
-    setAnnotationSuggestionsEnabled(enabled); saveAnnotationSuggestionsEnabled(enabled)
+    setAnnotationSuggestionsEnabled(enabled); saveLabPreferences({ annotationSuggestionsEnabled: enabled })
     if (!enabled) setAnnotationSuggestionRequest(undefined)
   }, [])
+  const changeTranslationSettings = useCallback((enabled: boolean, target: InterfaceLanguage) => {
+    setTranslationEnabled(enabled); setTranslationTarget(target); saveLabPreferences({ translationEnabled: enabled, translationTarget: target })
+    if (!enabled) closeTranslation()
+  }, [closeTranslation])
   const consumeAnnotationSuggestionRequest = useCallback((token: number) => {
     setAnnotationSuggestionRequest((current) => current?.token === token ? undefined : current)
   }, [])
@@ -1452,7 +1520,7 @@ export default function App() {
     if (!session) return null
     const visible = id === activeDocumentId && module === 'annotate'
     const request = annotationSuggestionRequest?.documentId === id ? annotationSuggestionRequest : undefined
-    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
+    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} translationEnabled={translationEnabled} translationTarget={translationTarget} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} onTranslationSettingsChange={changeTranslationSettings} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
   })
   return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
     if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }
@@ -1475,18 +1543,20 @@ export default function App() {
       <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui("ui.save")}</button></div>{!isMac && <div className="window-controls"><button className="window-minimize" aria-label={ui("ui.minimizeWindow")} title={ui("ui.minimizeWindow")} onClick={window.desktop.windowMinimize}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5h9" /></svg></button><button className={maximized ? 'window-restore' : 'window-maximize'} aria-label={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} title={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} onClick={window.desktop.windowToggleMaximize}>{maximized ? <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 1.5h7v7M1.5 3.5h7v7h-7z" /></svg> : <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" /></svg>}</button><button className="close window-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={closeCurrentWindow}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2 2 10" /></svg></button></div>}</header>
     <WindowManagerBar onRestoreArchive={restoreArchive} snapshot={documentTabs} onFocus={switchDocument} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} aria-label={moduleName(key)} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} /><span className="nav-module-label">{ui(({ view: "ui.navView", edit: "ui.navEdit", annotate: "ui.navAnnotate", save: "ui.navSave" } as const)[key])}</span></button>)}<button type="button" className="about-trigger" onClick={() => setAboutOpen(true)} title={ui('about.title')}><span aria-hidden="true">ⓘ</span><span>{ui('about.title')}</span><small>v{APP_VERSION}</small></button></nav>
-      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
+      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onWatermark={openWatermarks} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void savePdf(as)} onPrint={() => setDialog({ type: 'print' })} printing={printing} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
       {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} imageDraftBusy={imagePlacementBusy} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={(draft) => { if (!pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) setImageDraft(draft) }} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
+      <section className="document-area">{temporaryDocument && !dismissedTemporaryDocuments.has(activeDocumentId) && <div className="temporary-document-warning"><span aria-hidden="true">!</span><b>{ui("ui.thisFileMayBeInATemporaryFolderSaveIt")}</b><button type="button" onClick={() => setDismissedTemporaryDocuments((current) => new Set(current).add(activeDocumentId))} aria-label={ui("ui.dismissTemporaryFolderNotice")} title={ui("ui.dismissNotice")}>×</button></div>}{hasDocument ? <PdfViewer key={activeDocumentId} ref={viewerRef} data={data} password={documentPassword} mode={viewMode} activeTool={encrypted ? 'none' : tool} annotations={annotations} focusedAnnotationId={focusedAnnotation} annotationFocusToken={annotationFocusToken} textObjects={textObjects} imageObjects={imageObjects} imageDraft={imageDraft} imageDraftBusy={imagePlacementBusy} editableTextObjects={!encrypted && module === 'edit'} annotationMode={!encrypted && module === 'annotate'} zoom={zoom} fitWidthRequest={fitWidthRequest} fitPageRequest={fitPageRequest} currentPage={currentPage} initialReadingPosition={readingPositionRef.current} onZoomChange={setZoom} onPageChange={setCurrentPage} onReadingPositionChange={handleReadingPositionChange} onDocumentReady={setPageCount} onDocumentBookmarks={encrypted ? receiveReadOnlyBookmarks : undefined} onAction={handleCanvasAction} onSelectionChange={handleSelectionChange} onCopyText={(value) => void copyText(value)} translationEnabled={translationEnabled} onTranslateSelection={(value, context) => void requestTranslation(value, translationTarget, context)} onAnnotationMove={(id, dx, dy) => void mutate((model) => model.moveAnnotation(id, dx, dy), '批注位置已更新', false)} onAnnotationSelect={selectPageAnnotation} onAnnotationEdit={(annotation) => void editAnnotation(annotation)} onAnnotationColor={(annotation, color) => void recolorAnnotation(annotation.id, color)} onAnnotationDelete={deleteAnnotation} onTextObjectMove={(id, dx, dy) => void mutate((model) => model.moveTextObject(id, dx, dy), '文字位置已更新', false)} onTextObjectEdit={(textObject) => void editTextObject(textObject)} onTextObjectDelete={(id) => void deleteTextObject(id)} onImageEdit={(image) => void beginImageEdit(image)} onImageDraftChange={(draft) => { if (!pendingImageDocumentsRef.current.has(activeDocumentIdRef.current)) setImageDraft(draft) }} onImageDraftConfirm={() => void confirmImagePlacement()} onImageDraftCancel={cancelImagePlacement} onImageDraftDelete={() => void deleteImagePlacement()} onError={showError} onInsight={(kind, hits) => setInsight({ kind, hits })} /> : <RecentWelcome recent={recentFiles} onOpen={(path) => void openPath(path)} onChoose={() => void chooseOpen()} />}</section>
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui("ui.dropToOpenPdf")}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
     {draggingDocumentTransfer && <div className="document-transfer-overlay"><div><b>{ui("ui.dropToMoveIntoDocumentTabs")}</b><span>{ui("ui.theCurrentPdfWillReturnHereFromItsSeparateWindow")}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog key={dialog.value.annotationId || 'new'} aiSuggestionsEnabled={annotationSuggestionsEnabled} state={dialog.value} onSuggestionEnd={endAnnotationSuggestion} onSuggest={(value, editor) => { const annotation = modelRef.current?.annotations().find(item => item.id === dialog.value.annotationId); if (annotation) requestAnnotationSuggestion({ ...annotation, content: value.content }, editor) }} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
+    {translationTask && <TranslationDialog source={translationTask.source} target={AI_LANGUAGE_NAMES[translationTask.target]} result={translationTask.result} busy={translationTask.busy} adding={translationTask.adding} error={translationTask.error} recovery={Boolean(translationTask.progress?.recovery)} onCancel={closeTranslation} onRetry={() => void requestTranslation(translationTask.selection, translationTask.target, translationTask.context)} onAdd={() => void addTranslationHighlight()} />}
     {aboutOpen && <AboutDialog version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
     {documentTabs.documents.filter(({ id }) => ocrDocuments.includes(id)).map(({ id }) => <OcrDialog key={id} hidden={id !== activeDocumentId || dialog?.type !== 'ocr'} pageCount={id === activeDocumentId ? pageCount : sessionsRef.current.get(id)?.pageCount || 0} currentPage={id === activeDocumentId ? currentPage : sessionsRef.current.get(id)?.currentPage || 0} onMinimize={() => setDialog(null)} onClose={() => { setOcrDocuments(ids => ids.filter(value => value !== id)); if (id === activeDocumentId) setDialog(null) }} onRecognize={recognizeDocument} />)}
     {dialog?.type === 'page_numbers' && <PageNumberDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void mutate((model) => model.addPageNumbers(value, (text, rect, style) => styledTextRaster(text, rect, { text, style })), '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销') }} onDelete={() => { setDialog(null); void mutate((model) => model.deletePageNumbers(), '已删除添加的页码，可按 Ctrl/⌘Z 撤销') }} />}
+    {dialog?.type === 'watermark' && <WatermarkDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void watermarkRaster(value).then((raster) => mutate((model) => model.addWatermarks(value, raster), ui('ui.watermarksApplied'))).catch(showError) }} onDelete={() => { setDialog(null); void mutate((model) => model.deleteWatermarks(), ui('ui.watermarksRemoved')) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
     {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}
     {dialog?.type === 'save_as_required' && <SaveAsRequiredDialog target={dialog.target} onCancel={() => setDialog(null)} onSaveAs={() => { setDialog(null); void savePdf(true) }} />}

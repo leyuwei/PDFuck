@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PageTextSelection } from '../lib/page-text-selection'
 import { AnnotationIcon } from './AnnotationIcon'
 import {
-  AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, detectAiLanguage, FULL_REVIEW_PRESETS,
+  AI_LANGUAGE_NAMES, AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, detectAiLanguage, FULL_REVIEW_PRESETS,
   loadAiSettings, localizedPrompt,
   autoAnnotatePage, AUTOMATIC_ANNOTATION_ISSUE_TYPES, aiRecoveryTimeoutSeconds, cancelAiRequest, polishText, promptForLanguage, reviewDocument, suggestForAnnotation,
   type AiLanguage, type AiSettings, type AiStreamProgress, type AutomaticAnnotationIssueType, type FullReviewDocument, type FullReviewSendMode
@@ -61,10 +61,13 @@ interface Props {
   platform?: string
   disabled?: boolean
   annotationSuggestionsEnabled?: boolean
+  translationEnabled?: boolean
+  translationTarget?: AiLanguage
   suggestionRequest?: AnnotationSuggestionRequest
   suggestionEditor?: AnnotationSuggestionEditor
   onSuggestionRequestConsumed?(token: number): void
   onAnnotationSuggestionsEnabledChange?(enabled: boolean): void
+  onTranslationSettingsChange?(enabled: boolean, target: AiLanguage): void
   getDocument?(mode: FullReviewSendMode): Promise<LabDocumentPayload>
   getAutomaticContext?(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>
   getAutomaticAnnotationPages?(): Promise<AutomaticAnnotationSourcePage[]>
@@ -180,7 +183,7 @@ function AiActivity({ progress, busy }: { progress: AiActivityState; busy: boole
   </details>
 }
 
-export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, suggestionRequest, suggestionEditor, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, getDocument, getAutomaticContext, getAutomaticAnnotationPages, onAdd, onAddFullReview, onAddSuggestion, onAddAutomaticAnnotations, onAddDrawing, onExportDrawing, onCopy }: Props) {
+export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, translationEnabled = false, translationTarget = 'zh', suggestionRequest, suggestionEditor, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, onTranslationSettingsChange, getDocument, getAutomaticContext, getAutomaticAnnotationPages, onAdd, onAddFullReview, onAddSuggestion, onAddAutomaticAnnotations, onAddDrawing, onExportDrawing, onCopy }: Props) {
   const interfaceLanguage = useInterfaceLanguage()
   const t = ui
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
@@ -196,6 +199,8 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   }
   const windowState = (kind: LabWindow) => activeWindow === kind ? 'open' : openedWindows.includes(kind) ? 'minimized' : 'closed'
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [translationSettingsOpen, setTranslationSettingsOpen] = useState(false)
+  const [translationDraftTarget, setTranslationDraftTarget] = useState<AiLanguage>(translationTarget)
   const [settings, setSettings] = useState<AiSettings>(loadAiSettings)
   const [language, setLanguage] = useState<AiLanguage>('zh')
   const [presetId, setPresetId] = useState(AI_PRESETS[0].id)
@@ -603,11 +608,13 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
       <button type="button" className="tool-button with-icon has-shortcut annotation-lab-launch" data-window-state={windowState('polish')} disabled={disabled} onClick={() => openWindow('polish')}><AnnotationIcon kind="ai_polish" /><span className="tool-button-copy"><strong>{t("ui.aiPolish")}</strong><small>{t("ui.selectText")}</small></span><kbd>{shortcutLabel('aiPolish', platform)}</kbd></button>
       <button type="button" className="tool-button with-icon annotation-lab-launch full-review-launch" data-window-state={windowState('review')} disabled={disabled || !getDocument} onClick={requestFullReview}><AnnotationIcon kind="ai_review" /><span className="tool-button-copy"><strong>{t("ui.fullDocumentReview")}</strong><small>{t("ui.askAiToReviewTheEntireDocument")}</small></span></button>
       <button type="button" className="tool-button with-icon annotation-lab-launch automatic-annotation-launch" data-window-state={windowState('automatic')} disabled={disabled || !getAutomaticAnnotationPages || !onAddAutomaticAnnotations} onClick={requestAutomaticAnnotation}><AnnotationIcon kind="ai_annotate" /><span className="tool-button-copy"><strong>{t("ui.automaticAnnotation")}</strong><small>{t("ui.reviewEachPageAndAddAnnotations")}</small></span></button>
-      <button type="button" className={`tool-button with-icon annotation-lab-launch annotation-suggestion-toggle${annotationSuggestionsEnabled ? ' active' : ''}`} data-window-state={windowState('suggestion')} disabled={disabled} aria-pressed={annotationSuggestionsEnabled} onClick={() => { if (activeSuggestionRequest && windowState('suggestion') === 'minimized') openWindow('suggestion'); else onAnnotationSuggestionsEnabledChange?.(!annotationSuggestionsEnabled) }}><AnnotationIcon kind="ai_suggest" /><span className="tool-button-copy"><strong>{t("ui.annotationSuggestions")}</strong><small>{t(annotationSuggestionsEnabled ? "ui.onUseFromAnnotationSettings" : "ui.generateAdviceFromAnnotations")}</small></span><span className="lab-toggle-indicator" aria-hidden="true"><i /></span></button>
+      <button type="button" className={`tool-button with-icon annotation-lab-launch lab-feature-toggle annotation-suggestion-toggle${annotationSuggestionsEnabled ? ' active' : ''}`} data-window-state={windowState('suggestion')} disabled={disabled} aria-pressed={annotationSuggestionsEnabled} onClick={() => { if (activeSuggestionRequest && windowState('suggestion') === 'minimized') openWindow('suggestion'); else onAnnotationSuggestionsEnabledChange?.(!annotationSuggestionsEnabled) }}><AnnotationIcon kind="ai_suggest" /><span className="tool-button-copy"><strong>{t("ui.annotationSuggestions")}</strong><small>{t(annotationSuggestionsEnabled ? "ui.onUseFromAnnotationSettings" : "ui.generateAdviceFromAnnotations")}</small></span><span className="lab-toggle-indicator" aria-hidden="true"><i /></span></button>
+      <button type="button" className={`tool-button with-icon annotation-lab-launch lab-feature-toggle translation-toggle${translationEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={translationEnabled} onClick={() => { if (translationEnabled) onTranslationSettingsChange?.(false, translationTarget); else { setTranslationDraftTarget(translationTarget); setTranslationSettingsOpen(true) } }}><AnnotationIcon kind="ai_translate" /><span className="tool-button-copy"><strong>{t("ui.textTranslation")}</strong><small>{translationEnabled ? message('translation.activeTarget', { language: AI_LANGUAGE_NAMES[translationTarget] }) : t("ui.translateSelectionsWithAi")}</small></span><span className="lab-toggle-indicator" aria-hidden="true"><i /></span></button>
       <button type="button" className="tool-button with-icon annotation-lab-launch drawing-board-launch" data-window-state={windowState('drawing')} disabled={disabled || !onAddDrawing || !onExportDrawing} onClick={() => openWindow('drawing')}><DrawingBoardIcon /><span className="tool-button-copy"><strong>{t("ui.freeDrawingBoard")}</strong><small>{t("ui.drawFreelyOnAResizableCanvasThenExportOrAddToCurrentPage")}</small></span></button>
     </div>
 
     {settingsOpen && <AiSettingsDialog onClose={() => setSettingsOpen(false)} onSaved={() => setSettings(loadAiSettings())} />}
+    {translationSettingsOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer translation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-settings-title"><header><AnnotationIcon kind="ai_translate" /><div><h2 id="translation-settings-title">{t("ui.textTranslation")}</h2><p>{t("ui.translationSetupHint")}</p></div></header><div className="lab-disclaimer-copy"><label className="translation-target-field"><span>{t("ui.translationTargetLanguage")}</span><select value={translationDraftTarget} onChange={(event) => setTranslationDraftTarget(event.target.value as AiLanguage)}>{Object.entries(AI_LANGUAGE_NAMES).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div><footer><button type="button" onClick={() => setTranslationSettingsOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" onClick={() => { onTranslationSettingsChange?.(true, translationDraftTarget); setTranslationSettingsOpen(false) }}>{t("ui.activateTranslation")}</button></footer></ScrollWindow></div>}
 
     {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
 

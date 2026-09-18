@@ -97,9 +97,21 @@ async function main() {
     const citationCount = await page.locator('.insight-list button').count()
     assert.equal(citationCount, 40, 'Scheduling0826m must expose all linked citation occurrences')
     assert.ok((await page.locator('.insight-list').innerText()).includes('38'), 'citation [38] must appear in the linked result list')
+    await page.locator('.insight-list button').first().click()
+    const citationMark = page.locator('.citation-link-mark').first()
+    await citationMark.waitFor({ timeout: 10000 })
+    await citationMark.hover()
+    assert.equal(await citationMark.getAttribute('title'), null, 'citation links must not create native white hover tooltips')
+    const citationHover = await citationMark.evaluate(element => {
+      const background = getComputedStyle(element).backgroundColor
+      const match = background.match(/(?:,|\/)\s*([\d.]+)\)?$/)
+      return { hovered: element.matches(':hover'), background, alpha: background === 'transparent' ? 0 : Number(match?.[1] ?? 1) }
+    })
+    assert.equal(citationHover.hovered, true, 'citation regression must inspect the real hover state')
+    assert.equal(citationHover.alpha, 0, `citation hover must never paint over PDF text: ${JSON.stringify(citationHover)}`)
     const screenshot = path.join(artifactDir, `reading-navigation-${version}.png`)
     await page.screenshot({ path: screenshot })
-    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, singlePage: { initial, inPage, nextPage, previousPage }, search: { focusVisibility, scrollTop: searchScroll.scrollTop }, citationCount, screenshot }, null, 2))
+    console.log(JSON.stringify({ fixture: path.basename(pdfPath), version, singlePage: { initial, inPage, nextPage, previousPage }, search: { focusVisibility, scrollTop: searchScroll.scrollTop }, citationCount, nativeWhiteTooltip: false, citationHover, screenshot }, null, 2))
   } finally {
     await app.close()
   }

@@ -18,6 +18,12 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+3.0.39 在编辑模块增加按页码范围添加文字水印的浮窗，支持字体、字号、角度、颜色、透明度、密度与实时平铺预览；水印严格裁切到页面范围，PDFuck 添加的水印可整体更新或一键删除，并随 PDF 保存。`test:watermark` 覆盖平铺、多语言目录、写回、重开、替换和删除；`test:watermark-ui` 覆盖入口、实时预览、页面范围、页边界裁切、添加和删除。本次按用户要求仅执行这两个新增测试，并在源码与 Windows 成品上运行 UI 测试；验收记录见 `docs/VALIDATION-3.0.39.md`。
+
+3.0.38 优化文本翻译设置窗和结果窗的间距、分区、主题色与底部操作栏；PDF 内置 Link 和关联引文覆盖按钮在普通、悬停、焦点及激活状态均保持完全透明，仅以描边/下划线提示交互，并移除原生 `title` 提示框；文档档案的改名、删除改为标题右侧的可访问矢量图标，删除确认才展开第二行。`test:lab-features-ui` 检查翻译设置按钮至少 14px 留白、原文/译文不同底色与内容/操作间距；`test:pdf-links-ui` 和 `test:reading-navigation-ui` 必须断言元素真实命中 `:hover`、计算背景 alpha 精确为 0 且无原生提示框；`test:document-archives-ui` 在十语言 × 双主题 × 四字号下检查操作与标题同行。源码和最终包均须执行，验收记录见 `docs/VALIDATION-3.0.38.md`。
+
+2.0.37 在实验室增加“文本翻译”开关与十种目标语言设置。启用后，所有模块的文字选区右键菜单均提供翻译；结果可一键写为 Highlight 高亮批注。单词选区会附带同栏少量上下文用于消歧，但提示词严格限制只输出选区译文；翻译使用独立请求，不取消其他 AI 任务。翻译复用既有 AI 自适应恢复链路，暂时性故障先自动重试，最终失败再显示手动重试。`test:lab-features-ui` 需覆盖第六个实验室按钮、开关与目标语言持久化、非批注模块右键入口、单词上下文与选区输出边界、首次 503 后自动恢复，以及翻译结果写回并在批注列表出现；源码和最终包均须执行。验收记录见 `docs/VALIDATION-2.0.37.md`。
+
 2.0.36 统一 OCR 缩小态与实验室窗口按钮的琥珀色提示；左侧“关于”入口固定以第二行外显版本号；重绘蓝色纸张小鸭 Logo，并以固定 30px 尺寸加入标题栏，同时更新 Windows/macOS 应用图标。PDF 导航新增页内 Link 注释覆盖层、命名/直接目标和精确纵向位置解析，长文档与单页模式等待目标页挂载后跳转；内置书签保留 URI 动作，外链仅允许 `http`、`https` 与 `mailto` 交给系统打开。`test:pdf-links-ui` 覆盖本地书签、外部书签、页内跳转和安全外链，源码与最终包均须执行；OCR、字号和发布 UI 回归分别检查缩小按钮颜色、两行版本入口及 Logo 固定尺寸。验收记录见 `docs/VALIDATION-2.0.36.md`。
 
 2.0.35 将版本信息移至左侧栏底部的“关于”弹窗，包含更新检查及官方 Releases 链接；OCR 支持缩小到工具栏并保留识别任务。发布、窗口标签和 EPS 测试从“关于”读取版本，另断言标题不含版本号、关于入口位于侧栏底部。OCR 源码/成品测试覆盖缩小恢复及十语言关于弹窗。验收记录见 `docs/VALIDATION-2.0.35.md`。
@@ -96,13 +102,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.34
+.\scripts\package-windows.ps1 3.0.39
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.34
+bash scripts/package-macos.sh 3.0.39
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。
@@ -158,7 +164,7 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 `test:workflow-state-ui` 使用真实 Electron 窗口验证无文档按钮矩阵、干净/已修改文档的保存状态、跨模块选区传递、双击批注自动激活批注模块但不重放已关闭的批注建议请求、智能润色快捷键同行布局与 5–3600 秒自定义超时持久化；发布脚本还会对最终可执行文件再次运行该项回归。Office 合并导入由单元测试分别模拟 Windows、macOS 与 Linux 的 LibreOffice 查找路径，以及 Windows/macOS 的 Microsoft Office 回退脚本；目标系统仍应至少用一个真实 DOCX 和 PPTX 做人工导入抽检。
 
-`test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及十种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、包含自动批注与自由画板的五功能按钮及快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议开关、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、切换标签期间仍定向到原文档的 AI 回复写回、回复行与设置区可见性，以及保存重开后的回复持久化；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
+`test:ai-smoke` 会启动本地 SSE 服务并确认真实 Electron 主进程代理完整转发流式事件；对应单元测试覆盖 OpenAI 与 Claude 流式解析、旧中转明确拒绝流式时的一次兼容回退、524 后禁止盲目重放、网关/鉴权/额度/输入错误分类及十种界面语言。`test:lab-features-ui` 会生成多份 PDF 并启动本地模拟 AI 服务，在真实 Electron 窗口验证实验室标题无上下分隔线、按钮字号与间距和标准批注工具一致、包含文本翻译在内的六个功能按钮及快捷键约束、免责声明复选框同行及卡片边距、逐页全文文字载荷、按自定义超时倒计时的全文评价进度、打开新 PDF 与手动往返切换时的按文档任务隔离、倒计时连续和结果恢复、GitHub 风格 Markdown 渲染和原始 Markdown 复制、第一页批注写回、批注建议与文本翻译开关、目标语言持久化、任意模块选区右键翻译、暂时失败自动恢复、一键写为 Highlight 高亮批注、1–5 级自动上下文滑动条、自由位置批注的谨慎回退、按文档持久化的跨页多段手动上下文、切换标签期间仍定向到原文档的 AI 回复写回、回复行与设置区可见性，以及保存重开后的回复持久化；同时保存视觉 QA 截图。发布脚本会对最终可执行文件再次运行该项回归。
 
 2.0.13 自动批注 / Automatic Annotation：发布验证必须覆盖全文与当前选区两种范围，以及 12 类完整且可持久化的问题清单：错别字/格式、语法、清晰度与地道表达、术语一致性、句间衔接、段落主旨、事实/引证/论据、数学推理、跨段落/章节一致性、章节结构、段落/章节重组、论文贡献。每种勾选问题必须单独完成一轮逐页请求，并在新问题轮次开始时清空上一类的滚动摘要；进度须同时显示问题轮次、名称、页码和总检查量。文档开头、邻近段落、跨页文字及本轮持续更新的篇章提纲只能作为上下文，选区任务不得在范围外落注。结构问题须说明影响并给出移动、合并、拆分、补桥、重排或补证据等具体动作。六类结果（高亮、替换、删除、下划线、插入文字、自由批注）均须可保存、重开和一次撤销；“仅修订文本 / 简短说明 / 详细说明”必须直接写入批注内容。精确原文锚点必须覆盖完整命中范围。宽松、均衡（默认）、严格三档必须持久化且不得按配额凑批注。2.0.22 不再固定重试三次：按故障类型调整参数、预算或输入分批，在有界总时限内恢复，无法恢复再显示重试/跳过/结束；写回失败不可自动重放，重试中结束后迟到响应不可落注。还应验证暂停、继续、结束及首次隐私与版权确认。Release validation must cover all 12 persistent issue choices, one complete page pass per selected issue with a reset per-issue rolling summary, scope-safe context, concrete restructuring advice, exact-quote geometry, all six persisted annotation types, three persistent intensity levels without quotas, automatic retries, single writeback, pause/resume/end controls, and the one-time privacy and copyright confirmation.
 

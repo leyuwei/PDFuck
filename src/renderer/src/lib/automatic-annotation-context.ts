@@ -1,4 +1,4 @@
-import type { AnnotationKind, PdfRect } from '../types'
+import type { AnnotationKind, PdfRect, TextSelection } from '../types'
 import { normalizeCopiedText } from './clipboard-text'
 import type { WordBox } from './text-layout'
 
@@ -117,4 +117,14 @@ export function automaticPageContext(words: WordBox[], rects: PdfRect[], kind: A
   const selected = eligibleIndexes.slice(start, end + 1).map((index) => words[index])
   const text = contextText(selected)
   return text ? { text } : { issue: 'no-text' }
+}
+
+/** Add compact same-column context only when the selection maps to one PDF word. */
+export function translationContextForSelection(words: WordBox[], selection: TextSelection): string | undefined {
+  const source = normalizeCopiedText(selection.text)
+  if (!source || source.length > 64 || /\s/u.test(source)) return undefined
+  const anchors = words.filter((word) => selection.rects.some((rect) => overlapArea(word.rect, rect) > 0))
+  if (anchors.length !== 1) return undefined
+  const context = automaticPageContext(words, selection.rects, 'highlight', 1).text
+  return context && context !== source ? context : undefined
 }

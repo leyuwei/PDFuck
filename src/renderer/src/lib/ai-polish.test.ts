@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, defaultSettings, detectAiLanguage, endpoint,
   FULL_REVIEW_PRESETS, loadAiSettings, localizedPrompt, MAX_AI_PDF_BYTES, normalizeAiMaxOutputTokens, normalizeAiTimeoutSeconds, parseAiResponseBody, polishText,
-  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage,
+  promptForLanguage, providerSettings, PROVIDER_PRESETS, reviewDocument, suggestForAnnotation, autoAnnotatePage, translateText,
   AUTOMATIC_ANNOTATION_ISSUE_TYPES
 } from './ai-polish'
 import { INTERFACE_LANGUAGES } from '../../../shared/i18n-catalogue'
@@ -95,6 +95,17 @@ describe('polishText transport and response handling', () => {
     await expect(polishText({ ...settings, timeoutSeconds: 275 }, '改写', '原文')).resolves.toBe('第一段第二段')
     expect(aiRequest).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://api.openai.com/v1/chat/completions', headers: expect.objectContaining({ authorization: 'Bearer test-key', accept: 'text/event-stream' }), timeoutMs: 275_000 }), expect.any(Function))
     expect(JSON.parse(aiRequest.mock.calls[0][0].body)).toMatchObject({ stream: true, max_completion_tokens: 65_536 })
+  })
+
+  it('sends a translation-only prompt through the existing AI recovery transport', async () => {
+    const aiRequest = vi.fn().mockResolvedValue({ status: 200, statusText: 'OK', body: JSON.stringify({ choices: [{ message: { content: 'Bonjour le monde' } }] }) })
+    vi.stubGlobal('window', { desktop: { aiRequest } })
+    await expect(translateText(settings, 'fr', 'Hello', undefined, 'Hello world from the paper.')).resolves.toBe('Bonjour le monde')
+    const payload = JSON.parse(aiRequest.mock.calls[0][0].body)
+    expect(payload).toMatchObject({ stream: true })
+    expect(payload.messages.at(-1).content).toContain('Translate only the selected text into Français')
+    expect(payload.messages.at(-1).content).toContain('Selected text:\nHello')
+    expect(payload.messages.at(-1).content).toContain('Surrounding context (reference only; never include it in the answer):\nHello world from the paper.')
   })
 
   it('collects OpenAI-compatible event streams so gateways receive early response bytes', async () => {

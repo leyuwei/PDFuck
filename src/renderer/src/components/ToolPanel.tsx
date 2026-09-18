@@ -34,6 +34,7 @@ interface Props {
   onAddImage?(): void
   onAddShape?(data: Uint8Array): void | Promise<void>
   onPageNumbers?(): void
+  onWatermark?(): void
   onOcr?(): void
   ocrWindowState?: 'closed' | 'open' | 'minimized'
   onSave(saveAs?: boolean): void
@@ -175,7 +176,8 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="add_text" />} hint={ui("ui.dragOutATextBoxThenSetItsContentAnd")}>{ui("ui.addTextToPage")}</ToolButton>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorDocumentId(documentSessionKey)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
-      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction></>}
+      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction>
+      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="watermark" />} onClick={() => props.onWatermark?.()} hint={ui('ui.watermarkHint')}>{ui('ui.addWatermark')}</PanelAction></>}
     {module === 'annotate' && <><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui("ui.selectText")}>{ui("ui.highlightText")}</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="replace" />} shortcut={shortcutLabel('replace', platform)} hint={ui("ui.selectTheOriginalText")}>{ui("ui.replaceText")}</ToolButton>

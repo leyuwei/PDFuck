@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { automaticContextWordTarget, automaticPageContext } from './automatic-annotation-context'
+import { automaticContextWordTarget, automaticPageContext, translationContextForSelection } from './automatic-annotation-context'
 import type { WordBox } from './text-layout'
 
 function words(count: number, column = 0): WordBox[] {
@@ -45,5 +45,13 @@ describe('automatic annotation context', () => {
     const pageWords = words(40)
     expect(automaticPageContext(pageWords, [{ x: 42, y: 62, width: 4, height: 4 }], 'note', 3).text).toContain('word0')
     expect(automaticPageContext(pageWords, [{ x: 900, y: 900, width: 4, height: 4 }], 'note', 3)).toEqual({ issue: 'detached-note' })
+  })
+
+  it('adds compact context for one selected word but not a multi-word selection', () => {
+    const pageWords = words(80)
+    const context = translationContextForSelection(pageWords, { text: 'word40', rects: [pageWords[40].rect] })
+    expect(context?.split(' ')).toHaveLength(automaticContextWordTarget(1))
+    expect(context).toContain('word40')
+    expect(translationContextForSelection(pageWords, { text: 'word40 word41', rects: [{ x: pageWords[40].rect.x, y: pageWords[40].rect.y, width: 78, height: 11 }] })).toBeUndefined()
   })
 })

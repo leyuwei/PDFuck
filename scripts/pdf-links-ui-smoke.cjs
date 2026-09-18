@@ -65,10 +65,18 @@ async function main() {
     const links = page.locator('.pdf-page[data-page="0"] .pdf-embedded-link')
     await links.first().waitFor()
     assert.equal(await links.count(), 2, 'both embedded Link annotations must receive interactive overlays')
-    const linkTitles = await links.evaluateAll(elements => elements.map(element => element.getAttribute('title')))
-    console.log('[pdf-links-ui] embedded targets', linkTitles)
+    const nativeTitles = await links.evaluateAll(elements => elements.map(element => element.getAttribute('title')))
+    assert.deepEqual(nativeTitles, [null, null], 'embedded PDF links must not create native white hover tooltips')
+    await links.first().hover()
+    const linkHover = await links.first().evaluate(element => {
+      const background = getComputedStyle(element).backgroundColor
+      const match = background.match(/(?:,|\/)\s*([\d.]+)\)?$/)
+      return { hovered: element.matches(':hover'), background, alpha: background === 'transparent' ? 0 : Number(match?.[1] ?? 1) }
+    })
+    assert.equal(linkHover.hovered, true, 'embedded-link regression must inspect the real hover state')
+    assert.equal(linkHover.alpha, 0, `embedded-link hover must never paint over PDF text: ${JSON.stringify(linkHover)}`)
 
-    await page.locator('.pdf-embedded-link[title*="example.com"]').click()
+    await links.nth(1).click()
     await page.waitForTimeout(100)
     assert.deepEqual(await app.evaluate(() => globalThis.__pdfuckOpenedPdfLinks), [externalUrl], 'external PDF link must use the guarded main-process opener')
 
@@ -76,11 +84,11 @@ async function main() {
     await page.waitForTimeout(100)
     assert.deepEqual(await app.evaluate(() => globalThis.__pdfuckOpenedPdfLinks), [externalUrl, externalUrl], 'external outline action must remain actionable')
 
-    await page.locator('.pdf-embedded-link[title*="3"]').click()
+    await links.first().click()
     await page.waitForFunction(() => document.querySelector('.page-controls input')?.value === '3')
     await page.locator('.pdf-page[data-page="2"]').waitFor()
     await page.screenshot({ path: screenshot, animations: 'disabled' })
-    console.log(JSON.stringify({ pdfLinks: 'passed', version, packaged: Boolean(executable), internalDestination: 3, externalLinks: 2, screenshot }))
+    console.log(JSON.stringify({ pdfLinks: 'passed', version, packaged: Boolean(executable), internalDestination: 3, externalLinks: 2, nativeWhiteTooltip: false, readableHover: linkHover, screenshot }))
   } finally { await app.close() }
 }
 

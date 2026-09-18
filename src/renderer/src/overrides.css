@@ -33,8 +33,8 @@
 .pdf-page.search-focused { outline: 3px solid #5575de; outline-offset: 5px; animation: search-page-focus 1s ease-out forwards; }
 .insight-focus-ring { z-index: 17; }
 .grammar-mark { position: absolute; z-index: 18; height: 3px; background: repeating-linear-gradient(135deg, #d33d4a 0 2px, transparent 2px 4px); pointer-events: none; }
-.citation-link-mark { position: absolute; z-index: 16; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 2px; background: #75d6a35c; box-shadow: inset 0 -1px 0 #249a65a8; cursor: pointer; }
-.citation-link-mark:hover, .citation-link-mark.active { background: #54c58a82; box-shadow: inset 0 -2px 0 #168055, 0 0 0 2px #54c58a38; }
+.app-shell button.citation-link-mark { position: absolute; z-index: 16; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 2px; background: transparent; box-shadow: inset 0 -1px 0 #249a65bd; cursor: pointer; }
+.app-shell button.citation-link-mark:hover:not(:disabled), .app-shell button.citation-link-mark.active { border: 0; background: transparent; box-shadow: inset 0 -2px 0 #168055, 0 0 0 2px #54c58a24; }
 .citation-popover { position: absolute; z-index: 45; width: 298px; max-height: 210px; padding: 0 12px 11px; overflow: auto; border: 1px solid #b9dcca; border-radius: 8px; background: #fff; box-shadow: 0 12px 30px #1d44372e; color: #344b43; cursor: default; }
 .citation-popover header { position: sticky; top: 0; margin: 0 -12px; padding: 9px 9px 7px 12px; display: flex; align-items: center; justify-content: space-between; background: #f1faf5; border-bottom: 1px solid #dcece3; }
 .citation-popover header div { display: flex; align-items: baseline; gap: 7px; }.citation-popover header small { color: #56806d; font-size: var(--ui-font-small); font-weight: 700; }.citation-popover header b { color: #19784f; font-size: var(--ui-font-body); }

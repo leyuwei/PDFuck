@@ -5,7 +5,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AddAnnotationRequest, AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
+import type { AddAnnotationRequest, AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle, WatermarkRecord, WatermarkSettings } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
   displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
@@ -15,6 +15,7 @@ import { fontCategory, normalizeFontFamily } from './text-fonts'
 import { DEFAULT_ANNOTATION_COLOR, normalizeHexColor } from './annotation-style'
 import { rotatedImageBounds } from './image-geometry'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, pageNumberRect, validatePageNumberTemplate } from './page-numbers'
+import { DEFAULT_WATERMARK_SETTINGS, normalizeWatermarkSettings, validateWatermarkSettings, watermarkTiles } from './watermarks'
 import type { PdfImportFile } from '../../../shared/contracts'
 import { normalizeAnnotationAuthor } from './annotation-author'
 import { appendPdfBookmarks, deletePdfBookmark, readPdfBookmarks, remapPdfBookmarks, renamePdfBookmark, replacePdfBookmarks } from './pdf-bookmarks'
@@ -738,6 +739,94 @@ export class PdfDocumentModel {
 
   async deletePageNumbers(): Promise<number> {
     const removed = this.removePageNumberEntries()
+    if (removed) await this.commit()
+    return removed
+  }
+
+  private watermarkEntries(): AnnotationEntry[] {
+    return this.annotationEntries().filter((entry) => decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckWatermark'))) === 'true')
+  }
+
+  watermarks(): WatermarkRecord[] {
+    const entries = this.watermarkEntries()
+    const pages = entries.map((entry) => entry.pageIndex).sort((a, b) => a - b)
+    return entries.map((entry) => {
+      const dict = entry.dict
+      return {
+        id: decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.index}`,
+        pageIndex: entry.pageIndex,
+        settings: {
+          pages,
+          text: decodeObject(this.document, dict.get(PDFName.of('Contents'))) || DEFAULT_WATERMARK_SETTINGS.text,
+          font: normalizeFontFamily(decodeObject(this.document, dict.get(PDFName.of('PDFuckFont'))) || DEFAULT_WATERMARK_SETTINGS.font),
+          size: numberValue(this.document, dict.get(PDFName.of('PDFuckSize')), DEFAULT_WATERMARK_SETTINGS.size),
+          rotation: numberValue(this.document, dict.get(PDFName.of('PDFuckWatermarkRotation')), DEFAULT_WATERMARK_SETTINGS.rotation),
+          color: decodeObject(this.document, dict.get(PDFName.of('PDFuckColor'))) || DEFAULT_WATERMARK_SETTINGS.color,
+          opacity: numberValue(this.document, dict.get(PDFName.of('PDFuckWatermarkOpacity')), DEFAULT_WATERMARK_SETTINGS.opacity),
+          density: numberValue(this.document, dict.get(PDFName.of('PDFuckWatermarkDensity')), DEFAULT_WATERMARK_SETTINGS.density)
+        }
+      }
+    })
+  }
+
+  private removeWatermarkEntries(): number {
+    const entries = this.watermarkEntries()
+    const byPage = new Map<PDFPage, number[]>()
+    entries.forEach((entry) => byPage.set(entry.page, [...(byPage.get(entry.page) || []), entry.index]))
+    byPage.forEach((indexes, page) => indexes.sort((left, right) => right - left).forEach((index) => page.node.Annots()?.remove(index)))
+    return entries.length
+  }
+
+  /** Replace PDFuck's tagged watermark set as one undoable operation. */
+  async addWatermarks(settings: WatermarkSettings, raster: { data: Uint8Array; width: number; height: number }): Promise<void> {
+    const validationError = validateWatermarkSettings(settings, this.pageCount)
+    if (validationError) throw new Error(validationError)
+    const normalized = normalizeWatermarkSettings(settings, this.pageCount)
+    try {
+      this.removeWatermarkEntries()
+      const image = await this.document.embedPng(raster.data)
+      for (const pageIndex of normalized.pages) {
+        const page = this.document.getPage(pageIndex)
+        const size = this.getPageSize(pageIndex)
+        const placements = watermarkTiles(size, normalized).map((tile) => {
+          const centerX = tile.x + tile.width / 2, centerY = tile.y + tile.height / 2
+          return `q ${raster.width} 0 0 ${raster.height} ${centerX - raster.width / 2} ${size.height - centerY - raster.height / 2} cm /Im0 Do Q`
+        })
+        const appearance = this.document.context.register(this.document.context.flateStream(placements.join('\n'), {
+          Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, size.width, size.height],
+          Resources: { XObject: { Im0: image.ref } }
+        }))
+        const dictionary = this.document.context.obj({})
+        const id = `pdfuck-watermark-${Date.now()}-${pageIndex}-${Math.random().toString(36).slice(2, 7)}`
+        dictionary.set(PDFName.of('Type'), PDFName.of('Annot'))
+        dictionary.set(PDFName.of('Subtype'), PDFName.of('FreeText'))
+        dictionary.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds({ x: 0, y: 0, ...size }, pageGeometry(page))))
+        dictionary.set(PDFName.of('Contents'), pdfString(normalized.text))
+        dictionary.set(PDFName.of('NM'), pdfString(id))
+        dictionary.set(PDFName.of('T'), pdfString('PDFuck'))
+        dictionary.set(PDFName.of('Subj'), pdfString('PDFuck Watermark'))
+        dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+        dictionary.set(PDFName.of('F'), PDFNumber.of(4))
+        dictionary.set(PDFName.of('Border'), this.document.context.obj([0, 0, 0]))
+        dictionary.set(PDFName.of('AP'), this.document.context.obj({ N: appearance }))
+        dictionary.set(PDFName.of('PDFuckWatermark'), PDFName.of('true'))
+        dictionary.set(PDFName.of('PDFuckWatermarkRotation'), PDFNumber.of(normalized.rotation))
+        dictionary.set(PDFName.of('PDFuckWatermarkOpacity'), PDFNumber.of(normalized.opacity))
+        dictionary.set(PDFName.of('PDFuckWatermarkDensity'), PDFNumber.of(normalized.density))
+        dictionary.set(PDFName.of('PDFuckFont'), pdfString(normalizeFontFamily(normalized.font)))
+        dictionary.set(PDFName.of('PDFuckSize'), PDFNumber.of(normalized.size))
+        dictionary.set(PDFName.of('PDFuckColor'), PDFString.of(normalizeHexColor(normalized.color, DEFAULT_WATERMARK_SETTINGS.color)))
+        page.node.addAnnot(this.document.context.register(dictionary))
+      }
+      await this.commit()
+    } catch (error) {
+      this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+      throw error
+    }
+  }
+
+  async deleteWatermarks(): Promise<number> {
+    const removed = this.removeWatermarkEntries()
     if (removed) await this.commit()
     return removed
   }

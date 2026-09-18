@@ -116,6 +116,10 @@ export interface TextObjectRecord {
   fixedToSource?: boolean
   /** Render the object in the viewer without exposing drag/edit affordances. */
   locked?: boolean
+  /** Display-only transform used by tagged watermark tiles. */
+  rotation?: number
+  opacity?: number
+  watermark?: boolean
 }
 
 export type PageNumberHorizontalAlignment = 'left' | 'center' | 'right'
@@ -143,6 +147,24 @@ export interface PageNumberRecord {
   text: string
   rect: PdfRect
   settings: PageNumberSettings
+}
+
+export interface WatermarkSettings {
+  pages: number[]
+  text: string
+  font: string
+  size: number
+  rotation: number
+  color: string
+  opacity: number
+  /** 1 is sparse; 5 is dense. */
+  density: number
+}
+
+export interface WatermarkRecord {
+  id: string
+  pageIndex: number
+  settings: WatermarkSettings
 }
 
 /** A not-yet-persisted image preview being positioned on one PDF page. */

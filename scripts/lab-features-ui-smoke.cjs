@@ -11,6 +11,7 @@ const screenshotDirectory = path.join(root, 'output', 'playwright')
 const releaseVersion = process.env.PDFUCK_RELEASE_VERSION || require(path.join(root, 'package.json')).version
 const reviewMarkdown = '# FULL REVIEW RESULT\n\n- **Structure:** improve the introduction.\n- Check `terminology` consistency.\n\n| Area | Status |\n| --- | --- |\n| Logic | Review |'
 const suggestionMarkdown = '## ANNOTATION SUGGESTION RESULT\n\n1. Clarify the method.\n2. Align the conclusion.'
+const translationResult = 'Premier'
 
 async function fixture(directory) {
   const document = await PDFDocument.create()
@@ -176,7 +177,7 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     })
     assert.ok(headingLayout.gearLeft >= headingLayout.titleRight, 'Shared model settings must be to the right of the Lab title')
     assert.ok(Math.abs(headingLayout.gearCenter - headingLayout.titleCenter) < 8, 'Shared model settings must align with the Lab title')
-    assert.equal(await page.locator('.annotation-lab-tools > button').count(), 5)
+    assert.equal(await page.locator('.annotation-lab-tools > button').count(), 6)
     assert.equal(await page.locator('.annotation-lab-tools kbd').count(), 1, 'Only AI Polish should display a shortcut')
     const typography = await page.evaluate(() => {
       const standard = document.querySelector('.tool-panel .tool-panel-section .window-scroll-body > .tool-button')
@@ -394,6 +395,22 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     await automaticWindow.locator(':scope > header button[aria-label="关闭"]').click()
     console.log('[lab-smoke] automatic annotation scopes, issue passes, intensity, explanation levels, and live controls verified')
 
+    const translationToggle = page.locator('.translation-toggle')
+    await translationToggle.click()
+    const translationSettings = page.locator('.translation-settings-dialog')
+    await translationSettings.waitFor()
+    const translationSettingsSpacing = await translationSettings.evaluate(dialog => {
+      const footer = dialog.querySelector('footer'), button = footer?.querySelector('button')
+      if (!footer || !button) return null
+      const footerBox = footer.getBoundingClientRect(), buttonBox = button.getBoundingClientRect(), style = getComputedStyle(footer)
+      return { buttonInset: buttonBox.top - footerBox.top, borderTop: style.borderTopStyle, paddingTop: parseFloat(style.paddingTop) }
+    })
+    assert.ok(translationSettingsSpacing && translationSettingsSpacing.borderTop !== 'none' && translationSettingsSpacing.paddingTop >= 14 && translationSettingsSpacing.buttonInset >= 14, `Translation settings actions need breathing room: ${JSON.stringify(translationSettingsSpacing)}`)
+    await translationSettings.locator('select').selectOption('fr')
+    await translationSettings.locator('button.primary').click()
+    assert.equal(await translationToggle.getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.lab-preferences.v1')).translationTarget), 'fr')
+
     const toggle = page.locator('.annotation-suggestion-toggle')
     await toggle.click()
     assert.equal(await toggle.getAttribute('aria-pressed'), 'true')
@@ -478,16 +495,48 @@ async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
     assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
     await page.screenshot({ path: path.join(screenshotDirectory, `lab-suggestion-reply-${releaseVersion}.png`) })
     await page.locator('.annotation-dialog .modal-actions button.primary').click()
+    await page.locator('.nav-rail button').filter({ hasText: '查看' }).click()
+    await selectPageText(page, 0)
+    const selectedWord = page.locator('.pdf-page[data-page="0"] .text-map span').first()
+    const selectedWordBox = await selectedWord.boundingBox()
+    assert.ok(selectedWordBox)
+    await page.mouse.click(selectedWordBox.x + selectedWordBox.width / 2, selectedWordBox.y + selectedWordBox.height / 2, { button: 'right' })
+    const translateMenuItem = page.locator('.context-menu .translate-item')
+    await translateMenuItem.waitFor()
+    await translateMenuItem.click()
+    const translationDialog = page.locator('.translation-dialog')
+    await translationDialog.waitFor()
+    await translationDialog.getByText(translationResult, { exact: true }).waitFor({ timeout: 15000 })
+    const translationLayout = await translationDialog.evaluate(dialog => {
+      const source = dialog.querySelector('.translation-source'), result = dialog.querySelector('.translation-result'), actions = dialog.querySelector('.modal-actions')
+      if (!source || !result || !actions) return null
+      const sourceBox = source.getBoundingClientRect(), resultBox = result.getBoundingClientRect(), actionsBox = actions.getBoundingClientRect()
+      const sourceStyle = getComputedStyle(source), resultStyle = getComputedStyle(result)
+      return { sectionGap: resultBox.top - sourceBox.bottom, actionGap: actionsBox.top - resultBox.bottom, sourceBackground: sourceStyle.backgroundColor, resultBackground: resultStyle.backgroundColor, resultAccent: parseFloat(resultStyle.borderInlineStartWidth) }
+    })
+    assert.ok(translationLayout && translationLayout.sectionGap >= 12 && translationLayout.actionGap >= 16, `Translation regions need visible spacing: ${JSON.stringify(translationLayout)}`)
+    assert.notEqual(translationLayout.sourceBackground, translationLayout.resultBackground, 'Source and translated text need distinct backgrounds')
+    assert.ok(translationLayout.resultAccent >= 4, 'Translated text needs a visible accent edge')
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-translation-${releaseVersion}.png`) })
+    await translationDialog.locator('button.primary').click()
+    await translationDialog.waitFor({ state: 'detached' })
+    await page.locator('.nav-rail button').filter({ hasText: '批注' }).click()
+    await page.locator('.annotation-row').filter({ hasText: translationResult }).waitFor()
     await page.locator('.quick-save').click()
     await page.waitForFunction(() => document.querySelector('.quick-save')?.hasAttribute('disabled'))
 
-    assert.equal(requests.length, 3)
+    assert.equal(requests.length, 5)
     assert.ok(requests[0].includes('--- Page 1 ---') && requests[0].includes('First context passage'))
     assert.ok(requests[0].includes('--- Page 2 ---') && requests[0].includes('Second context passage'))
     assert.ok(requests[1].includes('targetBlocks') && requests[1].includes('First context passage'))
     assert.ok(requests[2].includes('FULL REVIEW RESULT'))
     assert.ok(requests[2].includes('First'))
     assert.ok(requests[2].includes('Second'))
+    assert.ok(requests[3].includes('Translate only the selected text into Français'))
+    assert.ok(requests[4].includes('Translate only the selected text into Français'))
+    assert.ok(requests[3].includes('Selected text:\\nFirst'))
+    assert.ok(requests[3].includes('Surrounding context (reference only; never include it in the answer)'))
+    assert.ok(requests[3].includes('First context passage for the method.'))
     console.log('[lab-smoke] copy, visible reply writeback, save, and payloads verified')
   } finally {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
@@ -518,6 +567,7 @@ async function verifyPersistedSuggestionReply(userData, pdf) {
 async function main() {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfuck-lab-features-'))
   const requests = []
+  let translationAttempts = 0
   const server = http.createServer(async (request, response) => {
     let body = ''
     for await (const chunk of request) body += chunk
@@ -526,11 +576,13 @@ async function main() {
     const payload = JSON.parse(body)
     assert.equal(payload.model, 'lab-smoke-model')
     requests.push(body)
-    const content = body.includes('FULL REVIEW RESULT') ? suggestionMarkdown : reviewMarkdown
+    const translation = body.includes('Translate only the selected text into Français')
+    if (translation && translationAttempts++ === 0) { response.writeHead(503, { 'content-type': 'application/json', 'retry-after': '0' }); response.end(JSON.stringify({ error: { message: 'temporary translation failure' } })); return }
+    const content = translation ? translationResult : body.includes('FULL REVIEW RESULT') ? suggestionMarkdown : reviewMarkdown
     response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
-    if (!body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 1200))
+    if (!translation && !body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 1200))
     response.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'Checking the document structure and requested constraints.' } }] })}\n\n`)
-    if (!body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 4800))
+    if (!translation && !body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 4800))
     response.end(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)
   })
   try {
@@ -541,7 +593,7 @@ async function main() {
     await configure(userData, `http://127.0.0.1:${address.port}/v1`)
     await verifyLabFeatures(userData, pdf.primary, pdf.switchTarget, requests)
     await verifyPersistedSuggestionReply(userData, pdf.primary)
-    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', automaticAnnotation: '12-categories-and-controls-passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', automaticContext: 'conservative-free-note-pass', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', copyAndWriteback: 'passed', replyVisibility: 'passed', replyPersistence: 'passed' }))
+    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', automaticAnnotation: '12-categories-and-controls-passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', automaticContext: 'conservative-free-note-pass', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', translation: 'context-menu-auto-retry-highlight-passed', copyAndWriteback: 'passed', replyVisibility: 'passed', replyPersistence: 'passed' }))
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))

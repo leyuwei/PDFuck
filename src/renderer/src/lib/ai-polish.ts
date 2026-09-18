@@ -20,6 +20,7 @@ import { normalizeAiTimeoutSeconds, normalizeAiMaxOutputTokens, MAX_AI_MAX_OUTPU
 export interface AiStreamProgress { reasoning: string; output: string; received: boolean; truncated: boolean; requestId?: string; recovery?: { kind: AiFailure; attempt: number; action: 'retry' | 'parameters' | 'budget' | 'split' | 'structure' | 'thinking'; delayMs?: number } }
 export type AiProgressCallback = (progress: AiStreamProgress) => void
 export type AiLanguage = InterfaceLanguage
+export const AI_LANGUAGE_NAMES: Record<AiLanguage, string> = { zh: '简体中文', en: 'English', ja: '日本語', ru: 'Русский', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', ko: '한국어', ar: 'العربية' }
 export interface AiPromptPreset { id: string; label: TranslationKey; prompt: string; promptEn: string; promptJa?: string; promptRu?: string; promptEs?: string }
 export interface LocalizedAiPromptPreset { id: string; label: TranslationKey; prompts: Partial<Record<AiLanguage, string>> & Record<'zh' | 'en' | 'ja' | 'ru' | 'es', string> }
 
@@ -581,6 +582,18 @@ export async function polishText(settings: AiSettings, instruction: string, text
   return requestTextOutput(settings, claude
     ? { model, messages: [{ role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }] }
     : { model, messages: [{ role: 'system', content: systemInstruction(language) }, { role: 'user', content: `${instruction}\n\n${language === 'zh' ? '原文' : 'Original text'}：\n${text}` }], temperature: 0.25 }, claude, headers, instruction, onProgress)
+}
+
+export async function translateText(settings: AiSettings, target: AiLanguage, text: string, onProgress?: AiProgressCallback, context?: string): Promise<string> {
+  const source = text.trim()
+  if (!source) throw new Error('ui.selectTextInThePdfFirst')
+  const { model, claude, headers } = requestCredentials(settings)
+  const instruction = `Translate only the selected text into ${AI_LANGUAGE_NAMES[target]}. Return only that translation. Preserve meaning, terminology, numbers, formulas, citations, paragraph breaks, and list structure. If surrounding context is supplied, use it only to disambiguate the selected text; never translate, quote, or include any context outside the selection. Do not explain, summarize, quote, or add Markdown fences.`
+  const reference = context?.trim()
+  const input = `${instruction}\n\nSelected text:\n${source}${reference ? `\n\nSurrounding context (reference only; never include it in the answer):\n${reference}` : ''}`
+  return requestTextOutput(settings, claude
+    ? { model, messages: [{ role: 'user', content: input }] }
+    : { model, messages: [{ role: 'system', content: 'You are a precise professional translator. Follow the requested target language and output format exactly.' }, { role: 'user', content: input }], temperature: 0.1 }, claude, headers, instruction, onProgress)
 }
 
 export async function reviewDocument(settings: AiSettings, instruction: string, document: FullReviewDocument, mode: FullReviewSendMode, language: AiLanguage, onProgress?: AiProgressCallback): Promise<string> {

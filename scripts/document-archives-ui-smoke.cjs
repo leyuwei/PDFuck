@@ -53,6 +53,10 @@ async function main() {
           const range = document.createRange(); range.selectNodeContents(element); const box = element.getBoundingClientRect()
           if ([...range.getClientRects()].some(text => text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1)) problems.push(element.textContent)
         }
+        for (const article of panel.querySelectorAll('.archive-list article')) {
+          const restore = article.querySelector('.archive-restore')?.getBoundingClientRect(), actions = article.querySelector('.archive-actions')?.getBoundingClientRect()
+          if (!restore || !actions || actions.bottom <= restore.top || actions.top >= restore.bottom) problems.push('archive actions must stay beside the title')
+        }
         return problems
       })
       assert.deepEqual(problems, [], `${language}/${theme}/${size}`); cases++
@@ -62,7 +66,7 @@ async function main() {
     await page.reload(); await open()
     await page.screenshot({ path: path.join(root, 'output/playwright', `archives-${version}${executable ? '-packaged' : ''}.png`) })
     await page.locator('.brand').click(); assert.equal(await page.locator('.document-archives-popover').count(), 0, 'Outside click closes the panel')
-    console.log(JSON.stringify({ archives: 'passed', cases, version, packaged: Boolean(executable), createRenameDelete: true, restartRestore: true, missingFiles: true, duplicatePrevention: true }))
+    console.log(JSON.stringify({ archives: 'passed', cases, version, packaged: Boolean(executable), inlineActions: true, createRenameDelete: true, restartRestore: true, missingFiles: true, duplicatePrevention: true }))
   } catch (error) { if (page) await page.screenshot({ path: path.join(root, 'output/playwright', `archives-failed-${version}.png`) }).catch(() => {}); throw error }
   finally { if (app) await close(); assert.ok(directory.startsWith(path.join(root, 'tmp') + path.sep)); await fs.rm(directory, { recursive: true, force: true }) }
 }
