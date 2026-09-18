@@ -212,6 +212,7 @@ export interface DesktopApi {
   claimDocumentTransfer(transferId: string): Promise<DetachedPdfDocument | null>
   completeDocumentTransfer(transferId: string): Promise<void>
   recentPdfs(): Promise<RecentPdf[]>
+  clearRecentPdfs(): Promise<void>
   getReadingPosition(path: string): Promise<ReadingPosition | null>
   setReadingPosition(path: string, position: ReadingPosition): Promise<void>
   flushReadingPosition(path: string, position: ReadingPosition): void

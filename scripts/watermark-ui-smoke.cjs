@@ -61,8 +61,16 @@ async function main() {
     assert.equal(preview.opacity, '0.32')
     await page.getByRole('button', { name: '添加水印', exact: true }).click()
     await page.locator('.text-object.watermark[data-text="机密 CONFIDENTIAL"]').first().waitFor()
+    const pageInput = page.locator('.page-controls input')
+    await pageInput.fill('1'); await page.locator('.pdf-page[data-page="0"]').waitFor()
+    await page.locator('.pdf-page[data-page="0"] .text-object.watermark').first().waitFor()
     assert.ok(await page.locator('.pdf-page[data-page="0"] .text-object.watermark').count() > 0)
+    await pageInput.fill('2'); await page.locator('.pdf-page[data-page="1"]').waitFor()
     assert.equal(await page.locator('.pdf-page[data-page="1"] .text-object.watermark').count(), 0)
+    await pageInput.fill('3'); await page.locator('.pdf-page[data-page="2"]').waitFor()
+    await page.locator('.pdf-page[data-page="2"] .text-object.watermark').first().waitFor()
+    assert.ok(await page.locator('.pdf-page[data-page="2"] .text-object.watermark').count() > 0)
+    await pageInput.fill('1'); await page.locator('.pdf-page[data-page="0"] .watermark-layer').waitFor()
     const clipping = await page.locator('.pdf-page[data-page="0"] .watermark-layer').evaluate((layer) => {
       const page = layer.closest('.pdf-page').getBoundingClientRect(), bounds = layer.getBoundingClientRect(), style = getComputedStyle(layer)
       return { overflowX: style.overflowX, overflowY: style.overflowY, page: { left: page.left, top: page.top, right: page.right, bottom: page.bottom }, bounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom } }

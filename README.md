@@ -26,7 +26,7 @@
 
 - **Windows**：从 [Releases](https://github.com/leyuwei/PDFuck/releases) 下载 `Windows-Setup.exe` 安装；`Windows.exe` 为便携版。
 - **macOS**：下载对应 DMG，将 PDFuck 拖入 Applications。各平台产物以 Releases 实际提供的文件为准。
-- **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。
+- **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。欢迎页和打开文件窗口中的最近打开列表可随时清空，且不会删除本机 PDF。
 - **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
 - **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
 - **关于**：左侧模块下方以两行固定显示“关于”和当前版本号；弹窗可检查更新并打开项目官方 Releases 页面。
@@ -73,7 +73,7 @@ npm run build
 
 ## Installation and configuration
 
-Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open a PDF to start; language, theme, and previewable interface font sizes are under **View**.
+Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open a PDF to start; language, theme, and previewable interface font sizes are under **View**. The recent-files list can be cleared from either the welcome screen or the Open PDF dialog without deleting files from your computer.
 
 **About**, below the module buttons, keeps the current version visible on a second line, checks for updates and links to the official Releases page.
 

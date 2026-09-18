@@ -45,6 +45,7 @@ const api: DesktopApi = {
   claimDocumentTransfer: (transferId: string) => ipcRenderer.invoke('window:claim-document-transfer', transferId),
   completeDocumentTransfer: (transferId: string) => ipcRenderer.invoke('window:complete-document-transfer', transferId),
   recentPdfs: () => ipcRenderer.invoke('pdf:recent'),
+  clearRecentPdfs: () => ipcRenderer.invoke('pdf:recent-clear'),
   getReadingPosition: (path) => ipcRenderer.invoke('pdf:reading-position-get', path),
   setReadingPosition: (path, position: ReadingPosition) => ipcRenderer.invoke('pdf:reading-position-set', { path, position }),
   flushReadingPosition: (path, position: ReadingPosition) => ipcRenderer.send('pdf:reading-position-flush', { path, position }),

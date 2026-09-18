@@ -18,7 +18,9 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
-3.0.39 在编辑模块增加按页码范围添加文字水印的浮窗，支持字体、字号、角度、颜色、透明度、密度与实时平铺预览；水印严格裁切到页面范围，PDFuck 添加的水印可整体更新或一键删除，并随 PDF 保存。`test:watermark` 覆盖平铺、多语言目录、写回、重开、替换和删除；`test:watermark-ui` 覆盖入口、实时预览、页面范围、页边界裁切、添加和删除。本次按用户要求仅执行这两个新增测试，并在源码与 Windows 成品上运行 UI 测试；验收记录见 `docs/VALIDATION-3.0.39.md`。
+2.0.40 修复水印实时预览：直接渲染当前 PDF 页面内容并按真实页面比例叠加水印；“实时预览”降为辅助字号，十语言功能说明同步精简。欢迎页与打开 PDF 弹窗新增最近记录清空入口，复用友好二次确认并明确不会删除本机文件。`test:release-2.0.40-ui` 覆盖真实页面预览、十语言、四档字号、两处清空入口、取消保护与确认清空；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `docs/VALIDATION-2.0.40.md`。
+
+2.0.39 在编辑模块增加按页码范围添加文字水印的浮窗，支持字体、字号、角度、颜色、透明度、密度与实时平铺预览；水印严格裁切到页面范围，PDFuck 添加的水印可整体更新或一键删除，并随 PDF 保存。`test:watermark` 覆盖平铺、多语言目录、写回、重开、替换和删除；`test:watermark-ui` 覆盖入口、实时预览、页面范围、页边界裁切、添加和删除。本次按用户要求仅执行这两个新增测试，并在源码与 Windows 成品上运行 UI 测试；验收记录见 `docs/VALIDATION-2.0.39.md`。
 
 3.0.38 优化文本翻译设置窗和结果窗的间距、分区、主题色与底部操作栏；PDF 内置 Link 和关联引文覆盖按钮在普通、悬停、焦点及激活状态均保持完全透明，仅以描边/下划线提示交互，并移除原生 `title` 提示框；文档档案的改名、删除改为标题右侧的可访问矢量图标，删除确认才展开第二行。`test:lab-features-ui` 检查翻译设置按钮至少 14px 留白、原文/译文不同底色与内容/操作间距；`test:pdf-links-ui` 和 `test:reading-navigation-ui` 必须断言元素真实命中 `:hover`、计算背景 alpha 精确为 0 且无原生提示框；`test:document-archives-ui` 在十语言 × 双主题 × 四字号下检查操作与标题同行。源码和最终包均须执行，验收记录见 `docs/VALIDATION-3.0.38.md`。
 
@@ -102,13 +104,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 3.0.39
+.\scripts\package-windows.ps1 2.0.40
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 3.0.39
+bash scripts/package-macos.sh 2.0.40
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

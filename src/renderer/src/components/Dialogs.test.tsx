@@ -256,7 +256,7 @@ describe('AnnotationDialog focus', () => {
   it('opens a recent PDF directly or offers browsing from the recent-files dialog', async () => {
     const onOpen = vi.fn(), onBrowse = vi.fn()
     const root = createRoot(container)
-    await act(async () => root.render(<OpenPdfDialog recent={[{ name: 'recent.pdf', path: 'C:\\docs\\recent.pdf', lastOpened: '2026-08-25T10:00:00.000Z' }]} onCancel={() => undefined} onOpen={onOpen} onBrowse={onBrowse} />))
+    await act(async () => root.render(<OpenPdfDialog recent={[{ name: 'recent.pdf', path: 'C:\\docs\\recent.pdf', lastOpened: '2026-08-25T10:00:00.000Z' }]} onCancel={() => undefined} onOpen={onOpen} onBrowse={onBrowse} onClear={() => undefined} />))
     expect(container.querySelectorAll('.open-pdf-recent .recent-item')).toHaveLength(1)
     await act(async () => { (container.querySelector('.open-pdf-recent button') as HTMLButtonElement).click() })
     expect(onOpen).toHaveBeenCalledWith('C:\\docs\\recent.pdf')

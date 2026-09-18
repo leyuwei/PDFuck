@@ -379,6 +379,11 @@ async function rememberRecentPdf(path: string): Promise<void> {
   return recentWriteQueue
 }
 
+async function clearRecentPdfs(): Promise<void> {
+  recentWriteQueue = recentWriteQueue.catch(() => undefined).then(() => atomicWrite(recentPdfsPath(), new TextEncoder().encode('[]')))
+  return recentWriteQueue
+}
+
 function requireWindowSession(sender: WebContents): MainWindowSession {
   const session = windowSessions.get(sender.id)
   if (!session || session.window.isDestroyed() || session.window.webContents !== sender) throw new Error('无效的窗口请求。')
@@ -706,6 +711,7 @@ app.whenReady().then(async () => {
     if (!transfer.source.window.isDestroyed() && !transfer.source.window.webContents.isDestroyed()) transfer.source.window.webContents.send('window:document-transfer-complete', transferId)
   })
   ipcMain.handle('pdf:recent', (event) => { requireMainWindow(event.sender); return readRecentPdfs() })
+  ipcMain.handle('pdf:recent-clear', (event) => { requireMainWindow(event.sender); return clearRecentPdfs() })
   ipcMain.handle('pdf:reading-position-get', (event, path: string) => {
     requireMainWindow(event.sender)
     if (typeof path !== 'string' || !isPdf(path)) throw new Error('阅读位置请求无效。')
