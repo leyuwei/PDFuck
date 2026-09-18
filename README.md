@@ -1,10 +1,10 @@
-<img width="4992" height="832" alt="PDFuck Ads" src="https://github.com/user-attachments/assets/6ea8f8da-7e92-49b2-86d3-7cfab73b7df1" />
+<img width="4992" height="832" alt="PDFuck Ads" src="https://github.com/user-attachments/assets/3a24ae79-9ce7-4437-ba60-dce1e8533dfc" />
 
 # PDFuck - A PDF Editor
 
 [简体中文](#chinese) · [English](#english) · [下载 / Download](https://github.com/leyuwei/PDFuck/releases)
 
-<img width="2154" height="1352" alt="ScreenShot_2026-09-18_113723_792" src="https://github.com/user-attachments/assets/76bac08c-970c-430f-9add-631b512a011e" />
+<img width="2154" height="1352" alt="ScreenShot_2026-09-18_113723_792" src="https://github.com/user-attachments/assets/b2b3b87d-d8b8-4996-8f9d-94c933359fa6" />
 
 <a id="chinese"></a>
 
