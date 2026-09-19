@@ -29,6 +29,29 @@ export interface ReadingPosition {
   offset?: number
 }
 
+export interface PdfPermissions {
+  print: boolean
+  copy: boolean
+  modify: boolean
+  annotate: boolean
+}
+
+export interface PdfSignatureInfo {
+  status: 'valid' | 'invalid' | 'unsupported' | 'unsigned'
+  coversWholeDocument: boolean
+  signer?: string
+  issuer?: string
+  validFrom?: string
+  validTo?: string
+}
+
+export interface PdfSecurityInfo {
+  encrypted: boolean
+  permissions?: PdfPermissions
+  signatures: PdfSignatureInfo[]
+  changedAfterSigning?: boolean
+}
+
 export interface SavePdfRequest {
   data: Uint8Array
   currentPath?: string
@@ -142,6 +165,7 @@ export interface DetachedPdfDocument {
   filePath?: string
   fileName: string
   encrypted: boolean
+  security?: PdfSecurityInfo
   password?: string
   dirty: boolean
   pageCount: number

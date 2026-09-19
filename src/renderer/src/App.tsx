@@ -10,6 +10,7 @@ import { activeBookmarkIdForPosition, BookmarkPanel } from './components/Bookmar
 import { BookmarkRecognitionDialog, type BookmarkWriteMode } from './components/BookmarkRecognitionDialog'
 import { AnnotationDialog, type AnnotationDialogResult, type AnnotationDialogState, ConfirmDialog, ErrorDialog, MergeFilesDialog, type MergeInsertion, OpenPdfDialog, PageManagerDialog, PageNumberDialog, PageSelectionDialog, PrintDialog, PdfPasswordDialog, type PdfPasswordDialogResult, type PdfPasswordDialogState, SaveAsRequiredDialog, SecureStorageNoticeDialog, TextDialog, type TextDialogValue, Toast, TranslationDialog, UnsavedCloseDialog, type UnsavedCloseDecision, UpdateDialog, WatermarkDialog } from './components/Dialogs'
 import { PdfViewer, type ViewerHandle } from './components/PdfViewer'
+import { PdfSecurityNotice } from './components/PdfSecurityNotice'
 import { ToolPanel } from './components/ToolPanel'
 import { AnnotationLab, type AnnotationSuggestionRequest } from './components/AnnotationLab'
 import { WindowManagerBar, reorderDocumentTabs } from './components/WindowManagerBar'
@@ -19,7 +20,7 @@ import { exportPdfPages } from './lib/export'
 import { isImeCompositionKey, isTextEntryEvent } from './lib/keyboard-input'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PageNumberSettings, PdfBookmark, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode, WatermarkSettings } from './types'
-import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PrinterDescriptor, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
+import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PdfSecurityInfo, PrinterDescriptor, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
 import { isInterfaceLanguage, translateMessage, type InterfaceLanguage } from '../../shared/i18n-catalogue'
@@ -55,6 +56,10 @@ function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes('Files')
 }
 
+function editableCopyName(name: string): string {
+  return `${name.replace(/\.pdf$/i, '')}-editable-copy.pdf`
+}
+
 type DialogState = { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
 
 interface DocumentSession {
@@ -82,6 +87,7 @@ interface DocumentSession {
   canUndo: boolean
   canRedo: boolean
   encrypted: boolean
+  security?: PdfSecurityInfo
   password?: string
   documentName: string
   status: string
@@ -200,6 +206,7 @@ function detachedDocument(session: DocumentSession): DetachedPdfDocument {
     filePath: model?.filePath || session.filePath,
     fileName: model?.fileName || session.documentName,
     encrypted: session.encrypted,
+    security: session.security,
     password: session.password,
     dirty: session.dirty,
     pageCount: session.pageCount,
@@ -319,6 +326,8 @@ export default function App() {
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [encrypted, setEncrypted] = useState(false)
+  const [security, setSecurity] = useState<PdfSecurityInfo>()
+  const [securityConversionBusy, setSecurityConversionBusy] = useState(false)
   const [documentPassword, setDocumentPassword] = useState<string>()
   const [documentName, setDocumentName] = useState('未打开文档')
   const [status, setStatus] = useState('准备就绪')
@@ -371,7 +380,7 @@ export default function App() {
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
-  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, fitPageRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, imageObjects, bookmarks, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, password: documentPassword, documentName, status }
+  liveSessionRef.current = { id: activeDocumentId, model: modelRef.current, data, filePath: modelRef.current?.filePath || liveSessionRef.current.filePath, module, tool, viewMode, zoom, fitWidthRequest, fitPageRequest, pageCount, currentPage, readingPosition: readingPositionRef.current, annotations, textObjects, imageObjects, bookmarks, selectedAnnotation, annotationFocusToken, selection, dirty, canUndo, canRedo, encrypted, security, password: documentPassword, documentName, status }
   sessionsRef.current.set(activeDocumentId, liveSessionRef.current)
 
   const syncModel = useCallback((message: string, refreshDocument = true, model = modelRef.current, documentId = activeDocumentIdRef.current) => {
@@ -395,7 +404,8 @@ export default function App() {
       canUndo: model.canUndo,
       canRedo: model.canRedo,
       documentName: model.fileName,
-      status: message
+      status: message,
+      security: session.security?.signatures.length ? { ...session.security, changedAfterSigning: true } : session.security
     }
     sessionsRef.current.set(documentId, nextSession)
     const current = tabsSnapshotRef.current
@@ -404,7 +414,7 @@ export default function App() {
     if (!active) return
     liveSessionRef.current = nextSession
     if (refreshDocument) setData(nextData)
-    setAnnotations(nextSession.annotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = model.dirty
+    setAnnotations(nextSession.annotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks); setDirty(model.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); setSecurity(nextSession.security); dirtyRef.current = model.dirty
     setPageCount(model.pageCount); setCurrentPage(nextSession.currentPage); setDocumentName(model.fileName); setStatus(message)
   }, [])
   const runDocumentOperation = useCallback(async <T,>(documentId: number, operation: () => Promise<T>, allowLifecycleLock = false): Promise<T> => {
@@ -506,7 +516,7 @@ export default function App() {
     setActiveDocumentId(session.id); setData(session.data); setImageDraft(undefined); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects); setBookmarks(session.bookmarks)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
-    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
+    setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setSecurity(session.security); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
     setImagePlacementBusy(pendingImageDocumentsRef.current.has(session.id))
     setInsight(undefined)
     setCitationsEnabled(false)
@@ -521,10 +531,14 @@ export default function App() {
     let encryptedDocument = usingSavedPassword
     let secureStorageApproved = false
     let pageCountFromProbe = 0
+    let security: PdfSecurityInfo | undefined
     let passwordSaveFailed = false
     while (true) {
       try {
-        pageCountFromProbe = (await probePdfPassword(opened.data, password)).pageCount
+        const probe = await probePdfPassword(opened.data, password)
+        pageCountFromProbe = probe.pageCount
+        security = probe.security
+        encryptedDocument = probe.security.encrypted
         break
       } catch (error) {
         if (!(error instanceof PdfPasswordError)) throw error
@@ -565,7 +579,7 @@ export default function App() {
     const replaceBlank = !modelRef.current && tabsSnapshotRef.current.documents.length === 1
     const id = replaceBlank ? activeDocumentIdRef.current : nextDocumentId.current++
     const session: DocumentSession = {
-      ...emptySession(id), model, data: model?.bytes || opened.data, filePath: model?.filePath || opened.path, encrypted: encryptedDocument, password,
+      ...emptySession(id), model, data: model?.bytes || opened.data, filePath: model?.filePath || opened.path, encrypted: encryptedDocument, security, password,
       currentPage: Math.min(readingPosition?.page || 0, Math.max(0, (model?.pageCount || pageCountFromProbe) - 1)), zoom: readingPosition?.zoom || 1,
       fitWidthRequest: preferences.pageFit === 'width' ? nextFitRequest.current++ : 0,
       fitPageRequest: preferences.pageFit === 'page' ? nextFitRequest.current++ : 0,
@@ -574,7 +588,7 @@ export default function App() {
         : { page: 0, zoom: 1, offset: 0 },
       documentName: model?.fileName || opened.name, pageCount: model?.pageCount || pageCountFromProbe,
       annotations: model?.annotations() || [], textObjects: viewerTextObjects(model), imageObjects: model?.images() || [], bookmarks: model?.bookmarks() || [],
-      status: encryptedDocument ? `已用密码打开 · 加密文档只读${passwordSaveFailed ? ' · 系统安全存储不可用，未保存密码' : ''}` : `已打开 · ${opened.path}`
+      status: encryptedDocument ? `${prompted ? ui('ui.openedWithPassword') : ui('ui.encryptedPdfOpenedReadOnly')}${passwordSaveFailed ? ui('ui.secureStorageUnavailablePasswordNotSaved') : ''}` : `已打开 · ${opened.path}`
     }
     sessionsRef.current.set(id, session)
     setDocumentTabs((current) => {
@@ -586,6 +600,36 @@ export default function App() {
     window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
     return true
   }, [activateSession, askPdfPassword, askSecureStorageNotice, preferences.pageFit])
+  const forceEditableCopy = useCallback(async () => {
+    const session = liveSessionRef.current
+    if (!session.encrypted || !session.data?.length || securityConversionBusy) return
+    if (!await askConfirmation(ui('ui.forceEditableCopyMessage'), { title: ui('ui.forceEditableCopyTitle'), confirmLabel: ui('ui.forceEditableCopy') })) return
+    const documentId = session.id
+    setSecurityConversionBusy(true); setStatus(ui('ui.creatingEditableCopy'))
+    try {
+      await runDocumentOperation(documentId, async () => {
+        const dpi = 144
+        const pages = await exportPdfPages(session.data!, 'png', dpi, (completed, total) => {
+          if (activeDocumentIdRef.current === documentId) setStatus(`${ui('ui.creatingEditableCopy')} ${completed}/${total}`)
+        }, undefined, session.password)
+        const model = await PdfDocumentModel.fromRasterPages(pages.map((page) => page.data), dpi, editableCopyName(session.documentName))
+        const latest = sessionsRef.current.get(documentId)
+        if (!latest) return
+        const next: DocumentSession = {
+          ...latest, model, data: model.bytes, filePath: undefined, encrypted: false, security: undefined, password: undefined,
+          module: 'edit', tool: 'none', pageCount: model.pageCount, currentPage: Math.min(latest.currentPage, model.pageCount - 1),
+          annotations: [], textObjects: [], imageObjects: [], bookmarks: [], dirty: true, canUndo: false, canRedo: false,
+          documentName: model.fileName, status: ui('ui.editableCopyReady')
+        }
+        sessionsRef.current.set(documentId, next)
+        const current = tabsSnapshotRef.current
+        const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(next) : item) }
+        tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
+        if (activeDocumentIdRef.current === documentId) activateSession(next)
+      })
+    } catch (error) { showError(error) }
+    finally { setSecurityConversionBusy(false) }
+  }, [activateSession, askConfirmation, runDocumentOperation, securityConversionBusy, showError])
   const restoreDetachedDocument = useCallback(async (handoff: DetachedPdfDocument) => {
     const id = activeDocumentIdRef.current
     const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.filePath, handoff.fileName)
@@ -595,7 +639,7 @@ export default function App() {
     const readingPosition = { ...handoff.readingPosition, page: Math.min(Math.max(0, handoff.readingPosition.page), Math.max(0, pageCountFromModel - 1)) }
     const session: DocumentSession = {
       ...emptySession(id), model, data: model?.bytes || handoff.data, filePath: model?.filePath || handoff.filePath,
-      encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
+      encrypted: handoff.encrypted, security: handoff.security, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
       module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0, fitPageRequest: 0,
       pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
       annotations: model?.annotations() || [], textObjects: viewerTextObjects(model), imageObjects: model?.images() || [], bookmarks: model?.bookmarks() || [], status: '已在独立窗口中打开文档'
@@ -616,7 +660,7 @@ export default function App() {
     const id = replaceBlank ? activeDocumentIdRef.current : nextDocumentId.current++
     const session: DocumentSession = {
       ...emptySession(id), model, data: model?.bytes || handoff.data, filePath: model?.filePath || handoff.filePath,
-      encrypted: handoff.encrypted, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
+      encrypted: handoff.encrypted, security: handoff.security, password: handoff.password, dirty: Boolean(handoff.dirty), canUndo: false, canRedo: false,
       module: handoff.encrypted ? 'view' : handoff.module, viewMode: handoff.viewMode, zoom: handoff.zoom, fitWidthRequest: 0, fitPageRequest: 0,
       pageCount: pageCountFromModel, currentPage, readingPosition, documentName: model?.fileName || handoff.fileName,
       annotations: model?.annotations() || [], textObjects: viewerTextObjects(model), imageObjects: model?.images() || [], bookmarks: model?.bookmarks() || [], status: '已移回文档标签页'
@@ -1562,6 +1606,7 @@ export default function App() {
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
     {translationTask && <TranslationDialog source={translationTask.source} target={AI_LANGUAGE_NAMES[translationTask.target]} result={translationTask.result} busy={translationTask.busy} adding={translationTask.adding} error={translationTask.error} recovery={Boolean(translationTask.progress?.recovery)} onCancel={closeTranslation} onRetry={() => void requestTranslation(translationTask.selection, translationTask.target, translationTask.context)} onAdd={() => void addTranslationHighlight()} />}
     {aboutOpen && <AboutDialog version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
+    {security && (security.encrypted || security.signatures.length > 0) && <PdfSecurityNotice security={security} busy={securityConversionBusy} onForceEditableCopy={() => void forceEditableCopy()} />}
     {documentTabs.documents.filter(({ id }) => ocrDocuments.includes(id)).map(({ id }) => <OcrDialog key={id} hidden={id !== activeDocumentId || dialog?.type !== 'ocr'} pageCount={id === activeDocumentId ? pageCount : sessionsRef.current.get(id)?.pageCount || 0} currentPage={id === activeDocumentId ? currentPage : sessionsRef.current.get(id)?.currentPage || 0} onMinimize={() => setDialog(null)} onClose={() => { setOcrDocuments(ids => ids.filter(value => value !== id)); if (id === activeDocumentId) setDialog(null) }} onRecognize={recognizeDocument} />)}
     {dialog?.type === 'page_numbers' && <PageNumberDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void mutate((model) => model.addPageNumbers(value, (text, rect, style) => styledTextRaster(text, rect, { text, style })), '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销') }} onDelete={() => { setDialog(null); void mutate((model) => model.deletePageNumbers(), '已删除添加的页码，可按 Ctrl/⌘Z 撤销') }} />}
     {dialog?.type === 'watermark' && data && <WatermarkDialog data={data} currentPage={currentPage} initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void watermarkRaster(value).then((raster) => mutate((model) => model.addWatermarks(value, raster), ui('ui.watermarksApplied'))).catch(showError) }} onDelete={() => { setDialog(null); void mutate((model) => model.deleteWatermarks(), ui('ui.watermarksRemoved')) }} />}

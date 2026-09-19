@@ -29,7 +29,7 @@ button, input, select, textarea { line-height: 1.35; }
 .interface-size-dialog > header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #d6deeb; cursor: move; touch-action: none; }
 .interface-size-dialog > header h2 { flex: 1; min-width: 0; margin: 0; }
 .interface-size-dialog > header button { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; font-size: var(--ui-font-title); }
-.interface-size-dialog > .window-scroll-body { padding: 18px 20px; }
+.interface-size-dialog.scroll-window > .window-scroll-body { padding: 18px 20px; }
 .interface-size-options { display: flex; flex-wrap: wrap; }
 .interface-size-options button { flex: 1; padding: 10px; font-size: var(--ui-font-body); }
 .interface-size-preview { display: grid; gap: 12px; margin: 18px 0; padding: 18px; border: 1px solid #d6deeb; border-radius: 8px; }

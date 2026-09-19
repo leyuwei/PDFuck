@@ -12,5 +12,5 @@ export const PDFJS_STANDARD_FONTS_URL = new URL('../standard_fonts/', import.met
 // 4 megapixels still exceed the viewer's display resolution for ordinary pages.
 export const PDFJS_CANVAS_MAX_AREA_IN_BYTES = 16 * 1024 * 1024
 
-export { AnnotationMode, OPS, PasswordException, PasswordResponses, getDocument } from 'pdfjs-dist'
+export { AnnotationMode, OPS, PasswordException, PasswordResponses, PermissionFlag, getDocument } from 'pdfjs-dist'
 export type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'

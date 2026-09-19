@@ -173,6 +173,19 @@ export class PdfDocumentModel {
     return PdfDocumentModel.load(await document.save({ useObjectStreams: false, addDefaultPage: false }), undefined, name)
   }
 
+  static async fromRasterPages(pages: Uint8Array[], dpi: number, name: string): Promise<PdfDocumentModel> {
+    if (!pages.length || !Number.isFinite(dpi) || dpi <= 0) throw new Error('无法生成可编辑副本。')
+    const document = await PDFDocument.create()
+    for (const bytes of pages) {
+      const image = await document.embedPng(bytes)
+      const width = image.width * 72 / dpi, height = image.height * 72 / dpi
+      document.addPage([width, height]).drawImage(image, { x: 0, y: 0, width, height })
+    }
+    const model = await PdfDocumentModel.load(await document.save({ useObjectStreams: false }), undefined, name)
+    model.markUnsaved()
+    return model
+  }
+
   get bytes(): Uint8Array { return Uint8Array.from(this.currentBytes) }
   get pageCount(): number { return this.document.getPageCount() }
   get canUndo(): boolean { return this.undoStack.length > 0 }

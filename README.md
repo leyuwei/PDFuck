@@ -21,6 +21,7 @@
 - **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签；PDF 自带书签与页内链接可准确跳转，网页和邮件链接由系统安全打开。
 - **衔接论文插图的 EPS 工作流**：支持 EPS 导入，将编辑后的 PDF 导出为保留文字与矢量路径的 EPS，方便后续排版。
 - **批量添加可撤销文字水印**：在编辑模块按页码范围添加水印，可实时预览并设置文字、字体、字号、角度、颜色、透明度和密度；已添加水印可整体更新或一键删除。
+- **识别加密权限与数字签名**：密码加密和空密码权限加密 PDF 均可阅读；明显显示打印、复制、修改和批注权限，并验证签名覆盖范围、密码学完整性及证书信息。无法直接写回时可生成不覆盖原件的高分辨率可编辑副本。
 
 ## 安装与配置
 
@@ -70,6 +71,7 @@ npm run build
 - **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks. Built-in outlines and page links navigate precisely; web and email links open safely through the operating system.
 - **An EPS workflow for research figures**: Import EPS files and export edited PDFs to EPS while retaining text and vector paths for subsequent typesetting.
 - **Removable text watermarks in batches**: Add watermarks to selected page ranges with live controls for text, font, size, angle, color, opacity, and density; update or remove the full set in one click.
+- **Encryption permissions and digital signatures**: Read password-protected and permission-encrypted PDFs, inspect print/copy/edit/annotation permissions, and verify signature coverage, cryptographic integrity, and certificate details. When direct writeback is unavailable, create a high-resolution editable copy without overwriting the original.
 
 ## Installation and configuration
 
