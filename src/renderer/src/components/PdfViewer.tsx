@@ -71,6 +71,7 @@ interface ViewerProps {
   onAnnotationColor(annotation: AnnotationRecord, color: string): void
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
+  onTextObjectResize(textObject: TextObjectRecord, rect: PdfRect): void
   onTextObjectEdit(textObject: TextObjectRecord): void
   onTextObjectDelete(id: string): void
   onImageEdit(image: ImageObjectRecord): void
@@ -118,6 +119,7 @@ interface PageProps {
   onAnnotationColor(annotation: AnnotationRecord, color: string): void
   onAnnotationDelete(annotation: AnnotationRecord): void
   onTextObjectMove(id: string, dx: number, dy: number): void
+  onTextObjectResize(textObject: TextObjectRecord, rect: PdfRect): void
   onTextObjectEdit(textObject: TextObjectRecord): void
   onTextObjectDelete(id: string): void
   onImageEdit(image: ImageObjectRecord): void
@@ -344,12 +346,27 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
   </div>
 }
 
-function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit, onDelete }: { textObject: TextObjectRecord; zoom: number; editable: boolean; onMove(id: string, dx: number, dy: number): void; onEdit(textObject: TextObjectRecord): void; onDelete(id: string): void }) {
+type TextResizeCorner = 'nw' | 'ne' | 'se' | 'sw'
+
+function resizedTextRect(rect: PdfRect, corner: TextResizeCorner, dx: number, dy: number, pageSize: { width: number; height: number }): PdfRect {
+  const minimum = 12
+  const right = rect.x + rect.width, bottom = rect.y + rect.height
+  const left = corner.includes('w') ? Math.max(0, Math.min(right - minimum, rect.x + dx)) : rect.x
+  const top = corner.includes('n') ? Math.max(0, Math.min(bottom - minimum, rect.y + dy)) : rect.y
+  const nextRight = corner.includes('e') ? Math.min(pageSize.width, Math.max(rect.x + minimum, right + dx)) : right
+  const nextBottom = corner.includes('s') ? Math.min(pageSize.height, Math.max(rect.y + minimum, bottom + dy)) : bottom
+  return { x: left, y: top, width: nextRight - left, height: nextBottom - top }
+}
+
+function TextObjectOverlay({ textObject, zoom, pageSize, editable, onMove, onResize, onEdit, onDelete }: { textObject: TextObjectRecord; zoom: number; pageSize: { width: number; height: number }; editable: boolean; onMove(id: string, dx: number, dy: number): void; onResize(textObject: TextObjectRecord, rect: PdfRect): void; onEdit(textObject: TextObjectRecord): void; onDelete(id: string): void }) {
   const drag = useRef<{ x: number; y: number } | null>(null)
+  const resize = useRef<{ pointerId: number; x: number; y: number; corner: TextResizeCorner } | null>(null)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [draftRect, setDraftRect] = useState<PdfRect>()
   const [selected, setSelected] = useState(false)
   const [rasterSource, setRasterSource] = useState('')
   useEffect(() => { if (!editable) setSelected(false) }, [editable])
+  useEffect(() => { setDraftRect((current) => current && Math.abs(current.x - textObject.rect.x) < .01 && Math.abs(current.y - textObject.rect.y) < .01 && Math.abs(current.width - textObject.rect.width) < .01 && Math.abs(current.height - textObject.rect.height) < .01 ? undefined : current) }, [textObject.rect.x, textObject.rect.y, textObject.rect.width, textObject.rect.height])
   useEffect(() => {
     if (!textObject.appearanceData?.length) { setRasterSource(''); return }
     const bytes = new Uint8Array(textObject.appearanceData.length); bytes.set(textObject.appearanceData)
@@ -358,10 +375,12 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit, onDelet
     return () => URL.revokeObjectURL(url)
   }, [textObject.appearanceData, textObject.id])
   const { rect, style } = textObject
+  const visibleRect = draftRect || rect
   const fontFamily = fontCssFamily(style.font)
+  const previewFontFamily = style.sourceFont ? `"${style.sourceFont.replace(/["']/g, '')}", ${fontFamily}` : fontFamily
   const movable = editable && !textObject.fixedToSource
   return <div className={`text-object${textObject.watermark ? ' watermark' : ''}${editable ? ' editable' : ''}${movable ? ' movable' : ' fixed'}${selected && editable ? ' selected' : ''}`} data-text={textObject.text} tabIndex={editable ? 0 : undefined} style={{
-    left: rect.x * zoom + offset.x, top: rect.y * zoom + offset.y, width: rect.width * zoom, height: rect.height * zoom,
+    left: visibleRect.x * zoom + offset.x, top: visibleRect.y * zoom + offset.y, width: visibleRect.width * zoom, height: visibleRect.height * zoom,
     transform: textObject.rotation ? `rotate(${textObject.rotation}deg)` : undefined, transformOrigin: 'center', opacity: textObject.opacity
   }} title={editable ? textObject.fixedToSource ? ui("ui.editText") : ui("ui.dragToRepositionDoubleClickToEditTextAndFormatting") : textObject.text}
     onPointerDown={(event) => {
@@ -384,7 +403,12 @@ function TextObjectOverlay({ textObject, zoom, editable, onMove, onEdit, onDelet
     onDoubleClick={(event) => { if (editable) { event.stopPropagation(); onEdit(textObject) } }}
   >
     {textObject.sourceRects?.map((source, index) => <span key={index} className="text-object-source-mask" aria-hidden style={{ left: (source.x - rect.x) * zoom, top: (source.y - rect.y) * zoom, width: source.width * zoom, height: source.height * zoom, color: textObject.backgroundColor || '#ffffff', backgroundColor: textObject.backgroundColor || '#ffffff' }} />)}
-    {rasterSource ? <img className="text-object-raster" src={rasterSource} alt="" draggable={false} /> : <span className="text-object-content" style={{ color: style.color, fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight: style.lineHeight || 1.25, paddingTop: (style.paragraphBefore || 0) * zoom, paddingBottom: (style.paragraphAfter || 0) * zoom }}>{textObject.text}</span>}
+    {rasterSource && !draftRect ? <img className="text-object-raster" src={rasterSource} alt="" draggable={false} /> : <span className="text-object-content" style={{ color: style.color, fontFamily: previewFontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight: style.lineHeight || 1.25, paddingTop: (style.paragraphBefore || 0) * zoom, paddingBottom: (style.paragraphAfter || 0) * zoom }}>{textObject.text}</span>}
+    {selected && movable && (['nw', 'ne', 'se', 'sw'] as TextResizeCorner[]).map((corner) => <button key={corner} type="button" className={`text-object-resize ${corner}`} aria-label={ui('ui.dragHandleToResizeTextBox')} title={ui('ui.dragHandleToResizeTextBox')}
+      onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); event.stopPropagation(); resize.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, corner }; event.currentTarget.setPointerCapture(event.pointerId) }}
+      onPointerMove={(event) => { const active = resize.current; if (!active || active.pointerId !== event.pointerId) return; event.preventDefault(); event.stopPropagation(); setDraftRect(resizedTextRect(rect, active.corner, (event.clientX - active.x) / zoom, (event.clientY - active.y) / zoom, pageSize)) }}
+      onPointerUp={(event) => { const active = resize.current; if (!active || active.pointerId !== event.pointerId) return; event.preventDefault(); event.stopPropagation(); const next = resizedTextRect(rect, active.corner, (event.clientX - active.x) / zoom, (event.clientY - active.y) / zoom, pageSize); resize.current = null; if (Math.abs(next.width - rect.width) > .5 || Math.abs(next.height - rect.height) > .5 || Math.abs(next.x - rect.x) > .5 || Math.abs(next.y - rect.y) > .5) { setDraftRect(next); onResize(textObject, next) } else setDraftRect(undefined); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
+      onPointerCancel={(event) => { resize.current = null; setDraftRect(undefined); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }} />)}
     {selected && editable && <button type="button" className="text-object-delete" aria-label={ui("ui.deleteText")} title={ui("ui.remove")} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDelete(textObject.id) }}>×</button>}
   </div>
 }
@@ -586,7 +610,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1062,8 +1086,8 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
-    <div className="watermark-layer" aria-hidden="true">{textObjects.filter((textObject) => textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={false} onMove={onTextObjectMove} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}</div>
-    {textObjects.filter((textObject) => !textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}
+    <div className="watermark-layer" aria-hidden="true">{textObjects.filter((textObject) => textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} pageSize={size} editable={false} onMove={onTextObjectMove} onResize={onTextObjectResize} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}</div>
+    {textObjects.filter((textObject) => !textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} pageSize={size} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onResize={onTextObjectResize} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}
     {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(undefined)}>
       {menu.annotation ? <>
         <button onClick={editMenuAnnotation}><AnnotationIcon kind={menu.annotation.kind} size={18} /><span>{ui("ui.editAnnotation2")}</span></button>
@@ -1082,7 +1106,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -1574,7 +1598,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })

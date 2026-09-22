@@ -18,6 +18,8 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.43 增加已添加文字框的四角拖拽缩放，栅格文字在拖动中按当前尺寸实时重新排版；临时目录判定在目录名任意位置匹配 `wechat/tmp/temp/qq/msg/chat/tencent/slack/feishu/dingding/linshi/deprecate/archi` 等提示词，Ctrl/⌘+S 自动改为“另存为”。同时修复页面管理弹窗滚轮、标签按空间自适应宽度及水印预览过小。打印改为小批次顺序排版和派发，默认 300 DPI，并把单页 PDFium BGRA 位图预算限制在 64 MiB，降低大文件在低内存 Windows 电脑上打印时闪退的风险。`test:release-2.0.43` 仅覆盖本次新增的模型与真实窗口检查，并在源码与 Windows 成品上各运行一次；验收记录见 `docs/VALIDATION-2.0.43.md`。
+
 2.0.42 支持空密码权限加密 PDF，并统一识别密码加密、打印/复制/修改/批注权限和数字签名。文档区明显提示受保护或已签名状态；签名入口验证 ByteRange、CMS 密码学完整性、整文件覆盖及证书信息，同时明确不代替操作系统信任链。编辑引擎无法安全写回时，可经二次确认生成不覆盖原件的高分辨率扁平化可编辑副本。`test:release-2.0.42-ui` 直接使用 `tmp/test-enc.pdf` 覆盖无底层错误打开、权限矩阵、实际签名验真、十语言提示、强制编辑副本与另存后移除加密/签名；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `docs/VALIDATION-2.0.42.md`。
 
 2.0.41 修复混合页面尺寸文档的横向居中：连续阅读容器仍以最宽页面决定滚动宽度，但首次打开、普通缩放、跳页和工作区宽度变化时会按当前页中心校正横向滚动；Ctrl/⌘+滚轮继续保留鼠标锚点。`test:release-2.0.41-ui` 使用窄页、超宽页、窄页组合稳定复现旧问题，并覆盖打开、工具栏缩放、窗口缩放和跳页；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `docs/VALIDATION-2.0.41.md`。
@@ -108,13 +110,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.42
+.\scripts\package-windows.ps1 2.0.43
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.42
+bash scripts/package-macos.sh 2.0.43
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

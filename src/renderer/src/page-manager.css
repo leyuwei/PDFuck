@@ -19,6 +19,14 @@
   box-shadow: 0 30px 90px #10182d66;
 }
 
+.page-manager-dialog > .window-scroll-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: 0;
+}
+
 .page-manager-dialog button,
 .page-manager-dialog input {
   box-sizing: border-box;

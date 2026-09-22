@@ -1008,6 +1008,20 @@ export class PdfDocumentModel {
     await this.commit()
   }
 
+  async resizeTextObject(id: string, rect: PdfRect, rasterPng?: Uint8Array): Promise<void> {
+    const { dict, page } = this.findTextObject(id)
+    if (decodePageTextRects(this.document, dict.get(PDFName.of('PDFuckPageTextRects'))).length) return
+    const object = this.textObjects().find((candidate) => candidate.id === id)
+    if (!object) throw new Error('找不到这段文字，它可能已经被删除。')
+    const appearance = await this.textAppearance(rect, object.text, object.style, rasterPng)
+    dict.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(rect, pageGeometry(page))))
+    dict.set(PDFName.of('AP'), this.document.context.obj({ N: appearance }))
+    dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    if (rasterPng) dict.set(PDFName.of('PDFuckTextRasterData'), this.document.context.register(this.document.context.stream(Uint8Array.from(rasterPng), { Type: 'EmbeddedFile' })))
+    else dict.delete(PDFName.of('PDFuckTextRasterData'))
+    await this.commit()
+  }
+
   async deleteTextObject(id: string): Promise<void> {
     const entry = this.findTextObject(id)
     entry.page.node.Annots()?.remove(entry.index)

@@ -12,7 +12,7 @@ const PAPER_SIZES: Record<PrintPdfOptions['pageSize'], [number, number]> = {
 
 /** Initial UI settings deliberately preserve the source page without an added frame. */
 export const DEFAULT_PRINT_PDF_OPTIONS: PrintPdfOptions = {
-  pageSize: 'A4', orientation: 'auto', duplex: 'simplex', copies: 1, quality: 600, multiPage: false, rows: 2, columns: 2, scale: 100, frame: false
+  pageSize: 'A4', orientation: 'auto', duplex: 'simplex', copies: 1, quality: 300, multiPage: false, rows: 2, columns: 2, scale: 100, frame: false
 }
 
 export type ResolvedPrintOrientation = Exclude<PrintPdfOptions['orientation'], 'auto'>
@@ -79,16 +79,15 @@ export function printCellsForSheet(pageSizes: Array<{ width: number; height: num
   return cellsForOrientation(pageSizes, sheetIndex, options, orientation)
 }
 
-export async function createImposedPrintJob(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
-  const source = await PDFDocument.load(data)
+async function createImposedPrintJobFromSource(source: PDFDocument, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
   const sourcePages = source.getPages()
   if (!pageIndices.length) throw new Error('请至少选择一个要打印的页面。')
   if (pageIndices.some((pageIndex) => pageIndex < 0 || pageIndex >= sourcePages.length)) throw new Error('打印页码超出了文档范围。')
   const output = await PDFDocument.create()
-  const selectedPages = pageIndices.map((pageIndex) => sourcePages[pageIndex])
-  const embeddedPages = await Promise.all(selectedPages.map((page) => output.embedPage(page)))
+  const embeddedPages = []
+  for (const pageIndex of pageIndices) embeddedPages.push(await output.embedPage(sourcePages[pageIndex]))
   const pageSizes = embeddedPages.map((page) => ({ width: page.width, height: page.height }))
-  const sheets = printSheetCount(selectedPages.length, options)
+  const sheets = printSheetCount(pageIndices.length, options)
   const orientations: ResolvedPrintOrientation[] = []
   for (let sheetIndex = 0; sheetIndex < sheets; sheetIndex += 1) {
     const orientation = printSheetOrientation(pageSizes, sheetIndex, options)
@@ -109,6 +108,36 @@ export async function createImposedPrintJob(data: Uint8Array, pageIndices: numbe
     }
   }
   return { data: await output.save(), orientations }
+}
+
+export async function createImposedPrintJob(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
+  return createImposedPrintJobFromSource(await PDFDocument.load(data), pageIndices, options)
+}
+
+export interface PrintDispatchBatch {
+  pages: number[]
+  copy: number
+  options: PrintPdfOptions
+}
+
+/** Keep only a few imposed sheets resident; duplex batches always end on a sheet pair. */
+export function planPrintDispatchBatches(pageIndices: number[], options: PrintPdfOptions): PrintDispatchBatch[] {
+  const perSheet = options.multiPage ? Math.max(1, options.rows * options.columns) : 1
+  const sheetsPerBatch = options.duplex === 'simplex' ? 4 : 2
+  const pagesPerBatch = perSheet * sheetsPerBatch
+  const chunks = Array.from({ length: Math.ceil(pageIndices.length / pagesPerBatch) }, (_, index) => pageIndices.slice(index * pagesPerBatch, (index + 1) * pagesPerBatch))
+  if (chunks.length <= 1) return chunks.map((pages) => ({ pages, copy: 1, options }))
+  return Array.from({ length: options.copies }, (_, copy) => chunks.map((pages) => ({ pages, copy: copy + 1, options: { ...options, copies: 1 } }))).flat()
+}
+
+export async function* imposePdfForPrintBatches(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): AsyncGenerator<{ data: Uint8Array; batch: PrintDispatchBatch; index: number; total: number }> {
+  const batches = planPrintDispatchBatches(pageIndices, options)
+  const source = await PDFDocument.load(data)
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index]
+    const job = await createImposedPrintJobFromSource(source, batch.pages, batch.options)
+    yield { data: job.data, batch, index, total: batches.length }
+  }
 }
 
 export async function imposePdfForPrint(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): Promise<Uint8Array> {

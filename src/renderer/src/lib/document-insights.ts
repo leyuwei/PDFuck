@@ -37,12 +37,12 @@ function normalizeInsightText(text: string): string {
     .trim()
 }
 
-const TEMP_SEGMENT = /^(?:temp|tmp|wx|wechat|tencent|qq|feishu|dingding|钉钉|微信|腾讯)(?:[-_.].*)?$/i
+const TEMP_PATH_HINT = /wechat|tmp|temp|qq|msg|chat|tencent|slack|feishu|dingding|linshi|deprecate|archi|wx|钉钉|微信|腾讯/i
 
 export function isTemporaryDocumentPath(filePath?: string): boolean {
   if (!filePath) return false
   const normalized = filePath.replace(/\\/g, '/')
-  return normalized.split('/').some((segment) => TEMP_SEGMENT.test(segment))
+  return normalized.split('/').slice(0, -1).some((segment) => TEMP_PATH_HINT.test(segment))
 }
 
 export function fileDirectory(filePath?: string): string {

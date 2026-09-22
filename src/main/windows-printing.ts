@@ -44,6 +44,17 @@ export interface NativePrintJobOptions {
   quality: number
 }
 
+const PAPER_AREA_INCHES: Record<PrintPdfOptions['pageSize'], number> = {
+  A3: 11.69 * 16.54, A4: 8.27 * 11.69, A5: 5.83 * 8.27, Letter: 8.5 * 11, Legal: 8.5 * 14, Tabloid: 11 * 17
+}
+const MAX_NATIVE_BITMAP_BYTES = 64 * 1024 * 1024
+
+/** Bound the one-page BGRA bitmap allocated by PDFium on memory-constrained PCs. */
+export function boundedNativePrintQuality(options: Pick<PrintPdfOptions, 'pageSize' | 'quality'>): number {
+  const maxDpi = Math.floor(Math.sqrt(MAX_NATIVE_BITMAP_BYTES / (4 * PAPER_AREA_INCHES[options.pageSize])))
+  return Math.min(options.quality, maxDpi)
+}
+
 let modulePromise: Promise<NativePrinterModule> | undefined
 let pdfiumPromise: Promise<void> | undefined
 
@@ -124,7 +135,7 @@ export function buildNativePrintJobOptions(options: PrintPdfOptions): NativePrin
     // Automatic jobs are normalized to portrait media by the renderer while
     // retaining each sheet's optimal visible orientation.
     orientation: options.orientation === 'landscape' ? 2 : 1,
-    quality: options.quality
+    quality: boundedNativePrintQuality(options)
   }
 }
 

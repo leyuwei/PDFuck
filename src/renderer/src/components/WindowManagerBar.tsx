@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { DocumentTabsSnapshot } from '../../../shared/contracts'
 import { fileDirectory, stablePathColor } from '../lib/document-insights'
 import { writeDocumentTransfer } from '../lib/document-transfer'
@@ -74,9 +74,36 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
   useInterfaceLanguage()
   const translatedTitles = snapshot.documents.map((document) => translateUiText(document.title))
   const tabsRef = useRef<HTMLDivElement>(null)
+  const naturalTabsWidth = useRef(0)
   const draggingId = useRef<number | undefined>(undefined)
   const lastReorderTarget = useRef<number | undefined>(undefined)
   const [dragging, setDragging] = useState<number | undefined>(undefined)
+  const [compact, setCompact] = useState(false)
+  const titleKey = translatedTitles.join('\0')
+  const measuredTitleKey = useRef(titleKey)
+  useLayoutEffect(() => {
+    const tabs = tabsRef.current
+    if (!tabs) return
+    if (measuredTitleKey.current !== titleKey) {
+      measuredTitleKey.current = titleKey
+      naturalTabsWidth.current = 0
+      if (compact) setCompact(false)
+    }
+    let frame = 0
+    const fit = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!compact) naturalTabsWidth.current = tabs.scrollWidth
+        setCompact(tabs.clientWidth + 1 < naturalTabsWidth.current)
+      })
+    }
+    if (!compact) naturalTabsWidth.current = 0
+    if (typeof ResizeObserver === 'undefined') { setCompact(true); return }
+    const observer = new ResizeObserver(fit)
+    observer.observe(tabs)
+    fit()
+    return () => { cancelAnimationFrame(frame); observer.disconnect() }
+  }, [compact, titleKey])
   const startDrag = (event: React.DragEvent<HTMLDivElement>, id: number) => {
     if (event.target instanceof HTMLButtonElement) { event.preventDefault(); return }
     const transferId = crypto.randomUUID()
@@ -101,7 +128,7 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
   }
   return <section className="window-manager-bar" aria-label={ui("ui.pdfDocumentTabs")}>
     <DocumentArchives snapshot={snapshot} onRestore={onRestoreArchive} />
-    <div className="window-tabs" ref={tabsRef} onDragOver={(event) => event.preventDefault()}>
+    <div className={`window-tabs${compact ? ' compact' : ''}`} ref={tabsRef} onDragOver={(event) => event.preventDefault()}>
       {snapshot.documents.map((document, index) => {
         const current = document.id === snapshot.currentId
         const directory = fileDirectory(document.filePath)
@@ -114,7 +141,7 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
           onClick={() => onFocus(document.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onFocus(document.id); else reorderFromKeyboard(event, document.id) }}
           onDragStart={(event) => startDrag(event, document.id)} onDragEnter={(event) => { event.preventDefault(); const sourceId = draggingId.current; if (sourceId !== undefined && sourceId !== document.id && lastReorderTarget.current !== document.id) { lastReorderTarget.current = document.id; onReorder(sourceId, document.id) } }} onDrop={(event) => event.preventDefault()} onDragEnd={finishDrag}>
           <span className="window-tab-icon" style={{ '--tab-pdf-color': stablePathColor(document.filePath) } as React.CSSProperties}>PDF</span>
-          <span className="window-tab-name" dir="auto">{distinctive ? <span className="window-tab-distinctive" aria-hidden="true">{distinctive.prefix && <span className="window-tab-prefix"><bdi>{distinctive.prefix}</bdi></span>}<mark className={distinctive.focus ? undefined : 'empty'}><bdi>{distinctive.focus || '∅'}</bdi></mark>{distinctive.trailingHidden && <span className="window-tab-common">…</span>}</span> : title}</span>
+          <span className="window-tab-name" dir="auto">{compact && distinctive ? <span className="window-tab-distinctive" aria-hidden="true">{distinctive.prefix && <span className="window-tab-prefix"><bdi>{distinctive.prefix}</bdi></span>}<mark className={distinctive.focus ? undefined : 'empty'}><bdi>{distinctive.focus || '∅'}</bdi></mark>{distinctive.trailingHidden && <span className="window-tab-common">…</span>}</span> : title}</span>
           {document.encrypted && <span className="window-encrypted-badge" title={ui("ui.passwordProtectedReadOnlyDocument")}>{ui("ui.encrypted")}</span>}
           {document.dirty && <span className="window-dirty-dot" title={ui("ui.hasUnsavedChanges")} />}
           <button type="button" className="window-tab-close" aria-label={`${ui("ui.close")} ${title}`} title={ui("ui.closeDocumentTab")}
