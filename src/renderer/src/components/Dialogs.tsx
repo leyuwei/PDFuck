@@ -202,6 +202,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const [rotations, setRotations] = useState<PageManagerRotations>({})
   const [windowIndex, setWindowIndex] = useState(() => Math.floor(currentPage / PAGE_MANAGER_WINDOW_SIZE))
   const [jumpValue, setJumpValue] = useState('')
+  const [removalRange, setRemovalRange] = useState('')
   const [moveValue, setMoveValue] = useState('')
   const [focusedPage, setFocusedPage] = useState(currentPage)
   const [dragVisual, setDragVisual] = useState<PageManagerDragVisual>()
@@ -218,6 +219,8 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const focusedPosition = Math.max(0, order.indexOf(focusedPage))
   const requestedMovePosition = Number(moveValue) - 1
   const validMovePosition = Number.isInteger(requestedMovePosition) && requestedMovePosition >= 0 && requestedMovePosition < order.length && requestedMovePosition !== focusedPosition
+  const parsedRemovalRange = parsePageSelection(removalRange, pageCount)
+  const validRemovalRange = parsedRemovalRange.pages.length > 0 && parsedRemovalRange.invalid.length === 0
 
   useEffect(() => { setWindowIndex((current) => Math.min(current, windowCount - 1)) }, [windowCount])
   useEffect(() => { if (galleryRef.current) galleryRef.current.scrollTop = 0 }, [windowIndex])
@@ -276,6 +279,14 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     const position = order.indexOf(currentPage)
     if (position >= 0) setWindowIndex(Math.floor(position / PAGE_MANAGER_WINDOW_SIZE))
     focusPage(currentPage)
+  }
+  const markRemovalRange = () => {
+    if (!validRemovalRange) return
+    setRemoved((current) => new Set([...current, ...parsedRemovalRange.pages]))
+    const page = parsedRemovalRange.pages[0]
+    setWindowIndex(Math.floor(order.indexOf(page) / PAGE_MANAGER_WINDOW_SIZE))
+    focusPage(page)
+    setRemovalRange('')
   }
   const resetChanges = () => {
     setOrder(initialOrder)
@@ -372,6 +383,11 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     <div className="page-manager-workspace">
       <section className="page-manager-storyboard" aria-labelledby="page-manager-storyboard-title">
         <div className="page-manager-section-heading"><div><h3 id="page-manager-storyboard-title">{t('page.managerStoryboard')}</h3><p>{t('page.managerOnDemandHint', { count: PAGE_MANAGER_WINDOW_SIZE })}</p></div><span>{t('page.managerDragHint')}</span></div>
+        <div className={`page-manager-bulk-remove${parsedRemovalRange.invalid.length ? ' invalid' : ''}`}>
+          <label><span>{t('page.managerBatchRange')}</span><input value={removalRange} placeholder={ui('ui.forExample135810')} aria-label={t('page.managerBatchRange')} onChange={(event) => setRemovalRange(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') markRemovalRange() }} /></label>
+          <button type="button" disabled={!validRemovalRange} onClick={markRemovalRange}><PageManagerIcon name="trash" /><span>{t('page.managerMarkRange')}</span></button>
+          <small>{parsedRemovalRange.invalid.length ? t('page.rangeInvalid', { value: parsedRemovalRange.invalid.join('、') }) : t('page.managerBatchRangeHint')}</small>
+        </div>
         <div ref={galleryRef} className="page-manager-grid" aria-label={t('page.managerStoryboard')}>
           {visibleOrder.map((page, visibleIndex) => {
             const index = visibleStart + visibleIndex

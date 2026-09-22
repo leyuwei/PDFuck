@@ -1,4 +1,4 @@
-import { degrees, PDFDocument, rgb } from 'pdf-lib'
+import { degrees, drawObject, PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, popGraphicsState, pushGraphicsState, rgb, scale, translate } from 'pdf-lib'
 import type { PrintPdfOptions } from '../../../shared/contracts'
 
 const PAPER_SIZES: Record<PrintPdfOptions['pageSize'], [number, number]> = {
@@ -79,6 +79,48 @@ export function printCellsForSheet(pageSizes: Array<{ width: number; height: num
   return cellsForOrientation(pageSizes, sheetIndex, options, orientation)
 }
 
+const PDFUCK_PRINT_KEYS = ['PDFuckImage', 'PDFuckText', 'PDFuckPageNumber', 'PDFuckWatermark'].map(PDFName.of)
+
+function resolved(document: PDFDocument, object?: PDFObject): PDFObject | undefined {
+  return object instanceof PDFRef ? document.context.lookup(object) : object
+}
+
+function numberArray(document: PDFDocument, object?: PDFObject): number[] {
+  const array = resolved(document, object)
+  if (!(array instanceof PDFArray)) return []
+  return array.asArray().map((item) => {
+    const value = resolved(document, item)
+    return value instanceof PDFNumber ? value.asNumber() : 0
+  })
+}
+
+/** embedPage omits annotations, so paint PDFuck's editable appearances into this temporary print copy first. */
+export function flattenPdfuckAnnotationsForPrint(document: PDFDocument): number {
+  let flattened = 0
+  for (const page of document.getPages()) {
+    const annotations = page.node.Annots()
+    if (!(annotations instanceof PDFArray)) continue
+    for (const item of annotations.asArray()) {
+      const annotation = resolved(document, item)
+      if (!(annotation instanceof PDFDict) || !PDFUCK_PRINT_KEYS.some((key) => annotation.has(key))) continue
+      const appearanceDictionary = resolved(document, annotation.get(PDFName.of('AP')))
+      if (!(appearanceDictionary instanceof PDFDict)) continue
+      const normalObject = appearanceDictionary.get(PDFName.of('N'))
+      const appearance = resolved(document, normalObject)
+      if (!(appearance instanceof PDFRawStream)) continue
+      const [left, bottom, right, top] = numberArray(document, annotation.get(PDFName.of('Rect')))
+      const [boxLeft, boxBottom, boxRight, boxTop] = numberArray(document, appearance.dict.get(PDFName.of('BBox')))
+      const boxWidth = boxRight - boxLeft, boxHeight = boxTop - boxBottom
+      if (![left, bottom, right, top, boxLeft, boxBottom, boxRight, boxTop].every(Number.isFinite) || boxWidth <= 0 || boxHeight <= 0) continue
+      const reference = normalObject instanceof PDFRef ? normalObject : document.context.register(appearance)
+      const name = page.node.newXObject('PDFuckPrint', reference)
+      page.pushOperators(pushGraphicsState(), translate(left, bottom), scale((right - left) / boxWidth, (top - bottom) / boxHeight), translate(-boxLeft, -boxBottom), drawObject(name), popGraphicsState())
+      flattened += 1
+    }
+  }
+  return flattened
+}
+
 async function createImposedPrintJobFromSource(source: PDFDocument, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
   const sourcePages = source.getPages()
   if (!pageIndices.length) throw new Error('请至少选择一个要打印的页面。')
@@ -111,7 +153,9 @@ async function createImposedPrintJobFromSource(source: PDFDocument, pageIndices:
 }
 
 export async function createImposedPrintJob(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
-  return createImposedPrintJobFromSource(await PDFDocument.load(data), pageIndices, options)
+  const source = await PDFDocument.load(data)
+  flattenPdfuckAnnotationsForPrint(source)
+  return createImposedPrintJobFromSource(source, pageIndices, options)
 }
 
 export interface PrintDispatchBatch {
@@ -133,6 +177,7 @@ export function planPrintDispatchBatches(pageIndices: number[], options: PrintPd
 export async function* imposePdfForPrintBatches(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): AsyncGenerator<{ data: Uint8Array; batch: PrintDispatchBatch; index: number; total: number }> {
   const batches = planPrintDispatchBatches(pageIndices, options)
   const source = await PDFDocument.load(data)
+  flattenPdfuckAnnotationsForPrint(source)
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index]
     const job = await createImposedPrintJobFromSource(source, batch.pages, batch.options)
