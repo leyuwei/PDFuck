@@ -18,6 +18,8 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.46 修复长文档虚拟页与导航竞争：书签、页内链接和搜索结果先挂载目标页，按实际页位置定位，定位期间滚动监听不覆盖目标页；搜索高亮保留到下一次定位。搜索窗扩大并使用正文档字号、命中词高亮、明确的搜索中和空结果状态，支持窗口缩放、暗色主题及十种语言。`test:release-2.0.46` 使用 96 页混合尺寸 PDF 在真实窗口验证三类远距离跳转、搜索定位、空状态和多语言；本次按用户要求仅执行新增测试项。验收记录见 `docs/VALIDATION-2.0.46.md`。
+
 2.0.44 修复打印拼版遗漏 PDFuck 新增内容：打印前仅在临时副本中把新增文字、图片、图形、页码和水印的注释外观压入页面内容流，再进行单页或多页拼版；编辑中的原文档仍保持可编辑。页面管理新增原页码范围批量删除入口，支持逗号和连续范围，并与排序、旋转作为一次可撤销调整统一应用。`test:release-2.0.44` 覆盖三类新增对象进入打印任务、批量删除/撤销，以及真实窗口的打印 IPC 和 `2-4, 6` 批量删除；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `docs/VALIDATION-2.0.44.md`。
 
 2.0.43 增加已添加文字框的四角拖拽缩放，栅格文字在拖动中按当前尺寸实时重新排版；临时目录判定在目录名任意位置匹配 `wechat/tmp/temp/qq/msg/chat/tencent/slack/feishu/dingding/linshi/deprecate/archi` 等提示词，Ctrl/⌘+S 自动改为“另存为”。同时修复页面管理弹窗滚轮、标签按空间自适应宽度及水印预览过小。打印改为小批次顺序排版和派发，默认 300 DPI，并把单页 PDFium BGRA 位图预算限制在 64 MiB，降低大文件在低内存 Windows 电脑上打印时闪退的风险。`test:release-2.0.43` 仅覆盖本次新增的模型与真实窗口检查，并在源码与 Windows 成品上各运行一次；验收记录见 `docs/VALIDATION-2.0.43.md`。
@@ -112,13 +114,13 @@ node -p "require('./package-lock.json').version"
 Windows PowerShell：
 
 ```powershell
-.\scripts\package-windows.ps1 2.0.44
+.\scripts\package-windows.ps1 2.0.46
 ```
 
 macOS：
 
 ```bash
-bash scripts/package-macos.sh 2.0.44
+bash scripts/package-macos.sh 2.0.46
 ```
 
 版本参数可省略；省略时脚本自动读取 `package.json`。传入版本时脚本先用 `npm version --no-git-tag-version` 同步清单和锁文件。两个脚本都会重新安装锁定依赖、执行生产构建和完整发布回归、复用 `npm ci` 已安装的相同版本 Electron 运行时生成目标平台产物、检查包内版本、实际启动打包应用验证未保存关闭弹窗，并生成带 SHA-256、签名状态和测试清单的发布 JSON。macOS 没有 Developer ID 时会明确使用 ad-hoc 签名；设置 `REQUIRE_NOTARIZATION=1` 可要求 Gatekeeper 验证必须通过。

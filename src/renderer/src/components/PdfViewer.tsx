@@ -193,8 +193,12 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   </div>
 }
 
-interface SearchMatch { pageIndex: number; context: string; match: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean }
+interface SearchMatch { pageIndex: number; context: string; highlightStart: number; highlightEnd: number; match: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean }
 interface SearchFocusTarget { pageIndex: number; text: string; occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
+function searchContext(text: string, start: number, end: number): Pick<SearchMatch, 'context' | 'highlightStart' | 'highlightEnd'> {
+  const from = Math.max(0, start - 52), to = Math.min(text.length, end + 84)
+  return { context: text.slice(from, to), highlightStart: start - from, highlightEnd: end - from }
+}
 
 type PdfMatrix = [number, number, number, number, number, number]
 function multiplyPdfMatrix(left: PdfMatrix, right: PdfMatrix): PdfMatrix {
@@ -239,35 +243,48 @@ function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocume
   const [fuzzy, setFuzzy] = useState(true)
   const [regex, setRegex] = useState(false)
   const [results, setResults] = useState<SearchMatch[]>([])
+  const [searched, setSearched] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const searchRunRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [position, setPosition] = useState(() => ({ x: Math.max(12, (typeof window === 'undefined' ? 1200 : window.innerWidth) - 378), y: 108 }))
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState(() => ({ x: Math.max(12, (typeof window === 'undefined' ? 1200 : window.innerWidth) - 462), y: 108 }))
   const dragRef = useRef<{ startX: number; startY: number; x: number; y: number } | undefined>(undefined)
   useEffect(() => { inputRef.current?.focus() }, [])
   useEffect(() => {
     const move = (event: PointerEvent) => {
       const drag = dragRef.current
       if (!drag) return
-      const maxX = Math.max(12, window.innerWidth - 372)
-      const maxY = Math.max(12, window.innerHeight - 120)
+      const maxX = Math.max(12, window.innerWidth - (panelRef.current?.offsetWidth || 440) - 12)
+      const maxY = Math.max(12, window.innerHeight - (panelRef.current?.offsetHeight || 120) - 12)
       setPosition({ x: Math.max(12, Math.min(maxX, drag.x + event.clientX - drag.startX)), y: Math.max(12, Math.min(maxY, drag.y + event.clientY - drag.startY)) })
     }
     const stop = () => { dragRef.current = undefined }
+    const clamp = () => setPosition((current) => ({
+      x: Math.max(12, Math.min(current.x, window.innerWidth - (panelRef.current?.offsetWidth || 440) - 12)),
+      y: Math.max(12, Math.min(current.y, window.innerHeight - (panelRef.current?.offsetHeight || 120) - 12))
+    }))
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
     window.addEventListener('pointercancel', stop)
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop) }
+    window.addEventListener('resize', clamp)
+    const observer = new ResizeObserver(clamp)
+    if (panelRef.current) observer.observe(panelRef.current)
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); window.removeEventListener('resize', clamp); observer.disconnect() }
   }, [])
+  const resetResults = () => { searchRunRef.current += 1; setResults([]); setSearched(false); setBusy(false); setError('') }
   const search = async () => {
-    if (!query.trim()) { setResults([]); return }
-    setBusy(true); setError('')
+    const run = ++searchRunRef.current
+    if (!query.trim()) { setResults([]); setSearched(false); return }
+    setBusy(true); setError(''); setResults([]); setSearched(false)
     try {
       const flags = caseSensitive ? 'g' : 'gi'
       const pattern = regex ? new RegExp(query, flags) : undefined
       const next: SearchMatch[] = []
       for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
         const content = await document.getPage(pageIndex + 1).then((page) => page.getTextContent())
+        if (run !== searchRunRef.current) return
         const text = content.items.filter((item): item is TextItem => 'str' in item).flatMap((item) => Array.from(item.str.matchAll(/\S+/gu), (match) => match[0])).join(' ')
         const normalizedQuery = query.trim().replace(/\s+/g, ' ')
         const ignoreWhitespace = fuzzy && !regex
@@ -284,34 +301,37 @@ function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocume
               const key = caseSensitive ? matchedText : matchedText.toLocaleLowerCase()
               const occurrence = occurrences.get(key) || 0
               occurrences.set(key, occurrence + 1)
-              next.push({ pageIndex, match: matchedText, occurrence, caseSensitive, ignoreWhitespace: false, context: text.slice(Math.max(0, match.index - 46), Math.min(text.length, match.index + match[0].length + 72)) })
+              next.push({ pageIndex, match: matchedText, occurrence, caseSensitive, ignoreWhitespace: false, ...searchContext(text, match.index, match.index + match[0].length) })
             }
             if (!match[0]) pattern!.lastIndex += 1
           }
         } else {
           const haystack = caseSensitive ? source : source.toLowerCase()
-          const compactOffsets = ignoreWhitespace ? Array.from(text).flatMap((char, index) => /\s/u.test(char) ? [] : [index]) : []
+          const compactOffsets = ignoreWhitespace ? Array.from({ length: text.length }, (_, index) => index).filter((index) => !/\s/u.test(text[index])) : []
           let occurrence = 0
           let offset = haystack.indexOf(needle)
           while (offset >= 0) {
             const contextOffset = ignoreWhitespace ? compactOffsets[offset] ?? 0 : offset
-            const raw = text.slice(Math.max(0, contextOffset - 46), Math.min(text.length, contextOffset + normalizedQuery.length + 72))
-            next.push({ pageIndex, match: normalizedQuery, occurrence: occurrence++, caseSensitive, ignoreWhitespace, context: raw })
+            const contextEnd = ignoreWhitespace ? (compactOffsets[offset + needle.length - 1] ?? contextOffset) + 1 : contextOffset + rawNeedle.length
+            next.push({ pageIndex, match: normalizedQuery, occurrence: occurrence++, caseSensitive, ignoreWhitespace, ...searchContext(text, contextOffset, contextEnd) })
             offset = haystack.indexOf(needle, offset + Math.max(1, needle.length))
           }
         }
       }
-      setResults(next.slice(0, 200))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : ui("ui.invalidSearchExpression")) }
-    finally { setBusy(false) }
+      if (run === searchRunRef.current) { setResults(next.slice(0, 200)); setSearched(true) }
+    } catch (cause) { if (run === searchRunRef.current) setError(cause instanceof SyntaxError ? ui('ui.invalidSearchExpression') : cause instanceof Error ? cause.message : ui('ui.invalidSearchExpression')) }
+    finally { if (run === searchRunRef.current) setBusy(false) }
   }
-  return <div className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
+  return <div ref={panelRef} role="dialog" aria-label={ui('ui.searchDocument')} className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
     <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>{ui("ui.searchDocument")}</b><button type="button" onClick={onClose} aria-label={ui("ui.closeSearch")} title={ui("ui.closeSearch")}>×</button></div>
-    <div className="pdf-search-input-row"><input ref={inputRef} value={query} placeholder={ui("ui.enterTextOrARegularExpression")} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" onClick={() => void search()}>{busy ? '…' : ui("ui.search")}</button></div>
-    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} />{ui("ui.matchCase")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => setFuzzy(event.target.checked)} disabled={regex} />{ui("ui.fuzzyMatch")}</label><label><input type="checkbox" checked={regex} onChange={(event) => setRegex(event.target.checked)} />{ui("ui.regularExpression")}</label></div>
-    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => setQuery(event.target.value)}><option value="">{ui("ui.commonRegularExpressions")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
+    <div className="pdf-search-input-row"><input ref={inputRef} value={query} aria-label={ui('ui.searchDocument')} placeholder={ui("ui.enterTextOrARegularExpression")} onChange={(event) => { resetResults(); setQuery(event.target.value) }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" disabled={busy || !query.trim()} onClick={() => void search()}>{ui("ui.search")}</button></div>
+    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => { resetResults(); setCaseSensitive(event.target.checked) }} />{ui("ui.matchCase")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => { resetResults(); setFuzzy(event.target.checked) }} disabled={regex} />{ui("ui.fuzzyMatch")}</label><label><input type="checkbox" checked={regex} onChange={(event) => { resetResults(); setRegex(event.target.checked) }} />{ui("ui.regularExpression")}</label></div>
+    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => { resetResults(); setQuery(event.target.value) }}><option value="">{ui("ui.commonRegularExpressions")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
     {error && <p className="pdf-search-error">{error}</p>}
-    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace })}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context}</span></button>)}</div>}
+    {busy && <div className="pdf-search-state" role="status">{ui('search.searching')}</div>}
+    {!busy && !error && searched && !results.length && <div className="pdf-search-state" role="status"><b>{ui('search.noResults')}</b><span>{ui('ui.tryADifferentSearchTerm')}</span></div>}
+    {!busy && !searched && !error && <div className="pdf-search-state muted"><span>{ui('search.startHint')}</span></div>}
+    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace })}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context.slice(0, result.highlightStart)}<mark>{result.context.slice(result.highlightStart, result.highlightEnd)}</mark>{result.context.slice(result.highlightEnd)}</span></button>)}</div>}
   </div>
 }
 
@@ -1112,6 +1132,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
   const [renderZoom, setRenderZoom] = useState(zoom)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [navigationRequest, setNavigationRequest] = useState(0)
   const [textFocus, setTextFocus] = useState<{ pageIndex: number; text: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean; token: number }>()
   const [visualFocus, setVisualFocus] = useState<{ pageIndex: number; rects?: PdfRect[]; token: number }>()
   const [grammarTerms, setGrammarTerms] = useState<string[]>([])
@@ -1125,8 +1146,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const [selectionCancelToken, setSelectionCancelToken] = useState(0)
   const wordMapsRef = useRef(new Map<number, WordBox[]>())
   const wordMapsDocumentRef = useRef<PDFDocumentProxy | undefined>(undefined)
-  const insightFocusTimerRef = useRef<number | undefined>(undefined)
   const insightFocusSequenceRef = useRef(0)
+  const pendingNavigationRef = useRef<{ pageIndex: number; position?: number } | undefined>(undefined)
+  const navigationTimerRef = useRef<number | undefined>(undefined)
   const restoredDocumentRef = useRef<string | undefined>(undefined)
   const restoringPositionRef = useRef(true)
   const wheelZoomRef = useRef(zoom)
@@ -1247,7 +1269,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   useEffect(() => () => {
     if (wheelFrameRef.current !== undefined) cancelAnimationFrame(wheelFrameRef.current)
     if (singlePageWheelResetRef.current !== undefined) window.clearTimeout(singlePageWheelResetRef.current)
-    if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
+    if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
   }, [])
 
   useLayoutEffect(() => {
@@ -1273,6 +1295,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
 
   useEffect(() => {
     setTextFocus(undefined); setVisualFocus(undefined); setCitationHits([])
+    pendingNavigationRef.current = undefined
+    if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
     restoredDocumentRef.current = undefined
     restoringPositionRef.current = true
     wordMapsDocumentRef.current = undefined
@@ -1374,19 +1398,25 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const goToPage = (pageIndex: number, position?: number) => {
     if (!document) return
     const nextPage = Math.max(0, Math.min(document.numPages - 1, pageIndex))
+    pendingNavigationRef.current = { pageIndex: nextPage, position }
+    if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
+    navigationTimerRef.current = window.setTimeout(() => { pendingNavigationRef.current = undefined }, 5000)
+    restoringPositionRef.current = false
+    restoredDocumentRef.current = document.fingerprints[0] || String(document.numPages)
+    setNavigationRequest((request) => request + 1)
     onPageChange(nextPage)
-    const reveal = () => {
-      const viewport = viewportRef.current
-      const target = viewport?.querySelector<HTMLElement>(`[data-page="${nextPage}"]`)
-      if (target && viewport && position !== undefined) {
-        const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
-        viewport.scrollTo({ top: scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, position), behavior: 'smooth' })
-        centerPageHorizontally(viewport, target)
-      } else if (target) target.scrollIntoView({ block: 'start', inline: 'center', behavior: 'smooth' })
-      else if (viewport && document.numPages > 80) viewport.scrollTo({ top: 24 + (nextPage + (position || 0)) * 812 * zoom, behavior: 'smooth' })
-    }
-    requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
   }
+  useLayoutEffect(() => {
+    const pending = pendingNavigationRef.current
+    const viewport = viewportRef.current
+    const target = pending && viewport?.querySelector<HTMLElement>(`[data-page="${pending.pageIndex}"]`)
+    if (!pending || !viewport || !target || currentPage !== pending.pageIndex || !sizes[pending.pageIndex]) return
+    const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
+    viewport.scrollTop = scrollTopForReadingPosition(viewport.scrollTop, viewportBounds.top, targetBounds.top, targetBounds.height, pending.position)
+    centerPageHorizontally(viewport, target)
+    if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
+    navigationTimerRef.current = window.setTimeout(() => { if (pendingNavigationRef.current === pending) pendingNavigationRef.current = undefined }, 700)
+  }, [currentPage, document, mode, navigationRequest, sizes, zoom])
   const openPdfLink = (target: PdfLinkTarget) => {
     if (target.url) { void window.desktop.openExternalLink(target.url).catch(() => onError(new Error(ui('pdfLink.openFailed')))); return }
     if (target.pageIndex !== undefined) goToPage(target.pageIndex, target.position)
@@ -1400,20 +1430,16 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     requestAnimationFrame(() => { reveal(); window.setTimeout(reveal, 90) })
   }
   const focusText = (pageIndex: number, text: string, occurrence = 0, caseSensitive = false, ignoreWhitespace = false) => {
-    onPageChange(pageIndex)
+    goToPage(pageIndex)
     const token = ++insightFocusSequenceRef.current
-    if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
     setVisualFocus(undefined)
     setTextFocus({ pageIndex, text, occurrence, caseSensitive, ignoreWhitespace, token })
-    insightFocusTimerRef.current = window.setTimeout(() => { setTextFocus((current) => current?.token === token ? undefined : current); insightFocusTimerRef.current = undefined }, 1000)
   }
   const focusVisual = (pageIndex: number, rects?: PdfRect[]) => {
-    onPageChange(pageIndex)
+    goToPage(pageIndex)
     const token = ++insightFocusSequenceRef.current
-    if (insightFocusTimerRef.current !== undefined) window.clearTimeout(insightFocusTimerRef.current)
     setTextFocus(undefined)
     setVisualFocus({ pageIndex, rects, token })
-    insightFocusTimerRef.current = window.setTimeout(() => { setVisualFocus((current) => current?.token === token ? undefined : current); insightFocusTimerRef.current = undefined }, 1000)
   }
   const wordsForPage = useCallback(async (pageIndex: number): Promise<WordBox[]> => {
     if (!document || pageIndex < 0 || pageIndex >= document.numPages) return []
@@ -1500,7 +1526,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const update = () => { if (frame !== undefined) return; frame = requestAnimationFrame(() => {
       frame = undefined
       const top = viewport.getBoundingClientRect().top
-      if (restoringPositionRef.current) return
+      if (restoringPositionRef.current || pendingNavigationRef.current) return
       let best = currentPage, bestPage: HTMLElement | undefined, distance = Number.POSITIVE_INFINITY
       viewport.querySelectorAll<HTMLElement>('.pdf-page').forEach((page) => { const value = Math.abs(page.getBoundingClientRect().top - top - 18); if (value < distance) { distance = value; best = Number(page.dataset.page); bestPage = page } })
       if (best !== currentPage) onPageChange(best)
