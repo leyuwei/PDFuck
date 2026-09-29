@@ -38,8 +38,6 @@ interface Props {
   onOcr?(): void
   ocrWindowState?: 'closed' | 'open' | 'minimized'
   onSave(saveAs?: boolean): void
-  onPrint(): void
-  printing: boolean
   onExport(): void
   onExportFormat(value: ExportFormat): void
   onExportDpi(value: number): void
@@ -186,8 +184,7 @@ export function ToolPanel(props: Props) {
       <ToolButton tool="note" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="note" />} shortcut={shortcutLabel('note', platform)} hint={ui("ui.clickThePageToPlace")}>{ui("ui.note")}</ToolButton>
       <ToolButton tool="insert" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="insert" />} shortcut={shortcutLabel('insert', platform)} hint={ui("ui.clickATextGapToInsert")}>{ui("ui.insertText")}</ToolButton></>}
     {module === 'save' && <><p className="subtitle">{ui("ui.saveTheCompleteDocumentOrPrintAndExportOnlyThe")}</p><h3>PDF</h3>
-      <PanelAction tone={dirty ? 'primary' : 'default'} disabled={documentDisabled || !dirty} onClick={() => props.onSave(false)} shortcut={shortcutLabel('save', platform)} hint={ui("ui.writeAllCurrentChangesBackToThisFile")}>{ui("ui.savePdf")}</PanelAction><PanelAction disabled={documentDisabled} onClick={() => props.onSave(true)} hint={ui("ui.chooseANewLocationAndKeepTheOriginalFileUnchanged")}>{ui("ui.saveAsPdf")}</PanelAction><h3>{ui("ui.print")}</h3>
-      <PanelAction disabled={documentDisabled || props.printing} onClick={props.onPrint} shortcut={shortcutLabel('print', platform)} hint={ui("ui.chooseContinuousOrNonContiguousPagesIncludingUnsavedChanges")}>{props.printing ? ui("ui.openingPrintDialog") : ui("ui.selectPagesPrint")}</PanelAction><h3>{ui("ui.exportSelectedPages")}</h3>
+      <PanelAction tone={dirty ? 'primary' : 'default'} disabled={documentDisabled || !dirty} onClick={() => props.onSave(false)} shortcut={shortcutLabel('save', platform)} hint={ui("ui.writeAllCurrentChangesBackToThisFile")}>{ui("ui.savePdf")}</PanelAction><PanelAction disabled={documentDisabled} onClick={() => props.onSave(true)} hint={ui("ui.chooseANewLocationAndKeepTheOriginalFileUnchanged")}>{ui("ui.saveAsPdf")}</PanelAction><h3>{ui("ui.exportSelectedPages")}</h3>
       <PanelAction disabled={documentDisabled || ((props.exportFormat === 'png' || props.exportFormat === 'jpg') && parsedExportDpi === undefined)} onClick={props.onExport} hint={ui("ui.nonContiguousPagesAreSupportedFilenamesKeepTheOriginalPage")}>{ui("ui.selectPagesExport")}</PanelAction><div className="tool-control-card export-settings-card"><label>{ui("ui.fileFormat")}<select disabled={documentDisabled} value={props.exportFormat} onChange={(event) => props.onExportFormat(event.target.value as Props['exportFormat'])}><option value="pdf">PDF</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="eps">EPS</option></select></label>
       {props.exportFormat === 'eps' && <p className="hint">{ui("ui.vectorEpsHint")}</p>}
       {props.exportFormat === 'pdf' && <><span className="export-mode-label">{ui("ui.pdfOutput")}</span><div className="segmented export-mode"><button disabled={documentDisabled} className={props.pdfExportMode === 'combined' ? 'active' : ''} onClick={() => props.onPdfExportMode('combined')}>{ui("ui.combineIntoOnePdf")}</button><button disabled={documentDisabled} className={props.pdfExportMode === 'separate' ? 'active' : ''} onClick={() => props.onPdfExportMode('separate')}>{ui("ui.onePdfPerPage")}</button></div></>}

@@ -314,8 +314,7 @@ async function main() {
     if (await temporaryWarning.count()) {
       await temporaryWarning.getByText('El archivo puede ser temporal. Guarde una copia en otro lugar.', { exact: true }).waitFor()
     }
-    await page.locator('.nav-rail').getByRole('button', { name: 'Guardar', exact: true }).click()
-    await page.getByText('Seleccionar páginas e imprimir…', { exact: true }).click()
+    await page.locator('.nav-rail').getByRole('button', { name: 'Imprimir', exact: true }).click()
     await page.getByRole('heading', { name: 'Configuración y vista previa de impresión', exact: true }).waitFor()
     assert.equal(await page.locator('.page-selection-dialog').count(), 0, 'printing must not open a separate page-selection dialog')
     await page.getByText('15 páginas del documento · 15 hojas', { exact: true }).waitFor()

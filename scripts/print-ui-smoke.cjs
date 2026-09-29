@@ -83,9 +83,8 @@ async function waitForCapture(app, collection, count) {
 }
 
 async function openPrintDialog(page) {
-  const tab = page.locator('.nav-rail button').nth(3)
-  if (await tab.getAttribute('aria-expanded') !== 'true') await tab.click()
-  await page.locator('.tool-panel-action').nth(2).click()
+  const tab = page.locator('.nav-rail button').nth(4)
+  await tab.click()
   await page.locator('.print-options-dialog').waitFor()
 }
 

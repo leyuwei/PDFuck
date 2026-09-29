@@ -21,7 +21,7 @@ describe('ToolPanel theme colours', () => {
     const onAccent = vi.fn(), onDocumentBackground = vi.fn()
     const root = createRoot(container)
     await act(async () => {
-      root.render(<ToolPanel module="view" activeTool="none" mode="continuous" hasDocument dirty readOnly={false} exportFormat="pdf" exportDpi={144} pdfExportMode="combined" onTool={() => undefined} onMode={() => undefined} onDeletePages={() => undefined} onMergeFiles={() => undefined} onSave={() => undefined} onPrint={() => undefined} printing={false} onExport={() => undefined} onExportFormat={() => undefined} onExportDpi={() => undefined} onPdfExportMode={() => undefined} onSearch={() => undefined} onVisuals={() => undefined} onCitations={() => undefined} citationsEnabled={false} onGrammar={() => undefined} theme="light" accent="#5575de" hasCustomAccent={false} documentBackground="#ffffff" onTheme={() => undefined} onAccent={onAccent} onClearAccent={() => undefined} onDocumentBackground={onDocumentBackground} hasCustomDocumentBackground={false} onClearDocumentBackground={() => undefined} onAddAiAnnotation={() => undefined} onCopy={() => undefined} />)
+      root.render(<ToolPanel module="view" activeTool="none" mode="continuous" hasDocument dirty readOnly={false} exportFormat="pdf" exportDpi={144} pdfExportMode="combined" onTool={() => undefined} onMode={() => undefined} onDeletePages={() => undefined} onMergeFiles={() => undefined} onSave={() => undefined} onExport={() => undefined} onExportFormat={() => undefined} onExportDpi={() => undefined} onPdfExportMode={() => undefined} onSearch={() => undefined} onVisuals={() => undefined} onCitations={() => undefined} citationsEnabled={false} onGrammar={() => undefined} theme="light" accent="#5575de" hasCustomAccent={false} documentBackground="#ffffff" onTheme={() => undefined} onAccent={onAccent} onClearAccent={() => undefined} onDocumentBackground={onDocumentBackground} hasCustomDocumentBackground={false} onClearDocumentBackground={() => undefined} onAddAiAnnotation={() => undefined} onCopy={() => undefined} />)
     })
     const searchAction = container.querySelector('.search-pdf-action') as HTMLButtonElement
     expect(searchAction.classList.contains('tool-action-button')).toBe(true)
@@ -47,7 +47,7 @@ describe('ToolPanel theme colours', () => {
   it('keeps interface language as one direct dropdown below its heading', async () => {
     const root = createRoot(container)
     await act(async () => {
-      root.render(<ToolPanel module="view" activeTool="none" mode="continuous" hasDocument dirty readOnly={false} exportFormat="pdf" exportDpi={144} pdfExportMode="combined" onTool={() => undefined} onMode={() => undefined} onDeletePages={() => undefined} onMergeFiles={() => undefined} onSave={() => undefined} onPrint={() => undefined} printing={false} onExport={() => undefined} onExportFormat={() => undefined} onExportDpi={() => undefined} onPdfExportMode={() => undefined} onSearch={() => undefined} onVisuals={() => undefined} onGrammar={() => undefined} onCitations={() => undefined} citationsEnabled={false} theme="light" accent="#5575de" hasCustomAccent={false} documentBackground="#ffffff" onTheme={() => undefined} onAccent={() => undefined} onClearAccent={() => undefined} onDocumentBackground={() => undefined} hasCustomDocumentBackground={false} onClearDocumentBackground={() => undefined} onAddAiAnnotation={() => undefined} onCopy={() => undefined} />)
+      root.render(<ToolPanel module="view" activeTool="none" mode="continuous" hasDocument dirty readOnly={false} exportFormat="pdf" exportDpi={144} pdfExportMode="combined" onTool={() => undefined} onMode={() => undefined} onDeletePages={() => undefined} onMergeFiles={() => undefined} onSave={() => undefined} onExport={() => undefined} onExportFormat={() => undefined} onExportDpi={() => undefined} onPdfExportMode={() => undefined} onSearch={() => undefined} onVisuals={() => undefined} onGrammar={() => undefined} onCitations={() => undefined} citationsEnabled={false} theme="light" accent="#5575de" hasCustomAccent={false} documentBackground="#ffffff" onTheme={() => undefined} onAccent={() => undefined} onClearAccent={() => undefined} onDocumentBackground={() => undefined} hasCustomDocumentBackground={false} onClearDocumentBackground={() => undefined} onAddAiAnnotation={() => undefined} onCopy={() => undefined} />)
     })
     const languageSelect = container.querySelector<HTMLSelectElement>('.language-select select')
     expect(languageSelect).not.toBeNull()
@@ -84,11 +84,11 @@ describe('ToolPanel theme colours', () => {
     expect(document.body.querySelector('.shape-creator-modal')).toBeNull()
     canvasContext.mockRestore()
     await act(async () => root.render(<ToolPanel {...common} module="save" />))
-    expect(container.querySelectorAll('.tool-panel-action')).toHaveLength(4)
+    expect(container.querySelectorAll('.tool-panel-action')).toHaveLength(3)
     expect(container.querySelector('.tool-control-card')).not.toBeNull()
     const exportHeading = [...container.querySelectorAll('h3')].find((heading) => heading.textContent === '指定页面导出')!
     expect(exportHeading.nextElementSibling?.textContent).toContain('选择页面并导出')
-    expect([...container.querySelectorAll('kbd')].map((node) => node.textContent)).toEqual(['Ctrl+S', 'Ctrl+P'])
+    expect([...container.querySelectorAll('kbd')].map((node) => node.textContent)).toEqual(['Ctrl+S'])
     await act(async () => root.unmount())
   })
 

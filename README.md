@@ -30,6 +30,7 @@
 - **日常使用**：打开 PDF 即可阅读、编辑与批注。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。欢迎页和打开文件窗口中的最近打开列表可随时清空，且不会删除本机 PDF。
 - **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
 - **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
+- **打印**：点击左侧“打印”直接打开原有打印设置与预览，在弹窗中选择页码；书签、批注列表等侧栏展开或拖宽后，当前 PDF 页面若放不下，会自动适合宽度并保留阅读位置。
 - **关于**：左侧模块下方以两行固定显示“关于”和当前版本号；弹窗可检查更新并打开项目官方 Releases 页面。
 - **AI（可选）**：在“批注 → 实验室 → 模型设置”中保存多个命名配置，填写接口地址、API Key、模型名后点击“激活此模型”。顶部摘要显示实际使用的配置与模型；实时过程按请求、思考和回复分区显示。支持 OpenAI、Claude、Grok、BigModel、Doubao、DeepSeek、KIMI 和自定义兼容接口；保存其他配置不会切换当前模型。启用 AI 时，所选原文或全文会发送给激活的服务；普通编辑与 OCR 在本地执行。
 - **文本翻译（可选）**：在“批注 → 实验室 → 文本翻译”中选择目标语言并启用。之后在任意模块圈选 PDF 文字，右键选择“翻译所选文字”；确认结果后可直接添加为高亮批注。关闭开关即可移除全局右键入口。
@@ -80,6 +81,8 @@ Download the Windows installer/portable executable or the macOS DMG from [Releas
 **About**, below the module buttons, keeps the current version visible on a second line, checks for updates and links to the official Releases page.
 
 **OCR** is under **Edit**: choose pages and a primary language. The engine and language data are bundled for offline use.
+
+**Print** in the left rail directly opens the existing dialog with page selection, settings, and preview. Opening or widening sidebars automatically fits an overflowing current page to the available width while keeping the reading position.
 
 **Saved tab groups**: click **Document tabs** to save the current window’s file list under a name. Create multiple groups, rename or delete them, and reopen a group later. Existing tabs are kept and unavailable files are listed. Groups store file locations, not unsaved edits; save new documents to disk first.
 

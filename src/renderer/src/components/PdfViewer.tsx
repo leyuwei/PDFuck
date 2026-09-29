@@ -1130,6 +1130,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
+  const resizeStateRef = useRef({ currentPage, sizes, zoom })
+  resizeStateRef.current = { currentPage, sizes, zoom }
+  const initialSidebarFitRef = useRef<string | undefined>(undefined)
   const [renderZoom, setRenderZoom] = useState(zoom)
   const [searchOpen, setSearchOpen] = useState(false)
   const [navigationRequest, setNavigationRequest] = useState(0)
@@ -1357,19 +1360,48 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (document && viewport && page && sizes[currentPage]) centerPageHorizontally(viewport, page)
   }, [document, mode, sizes])
 
+  const fitOverflowingPage = useCallback(() => {
+    const viewport = viewportRef.current
+    const { currentPage, sizes, zoom } = resizeStateRef.current
+    const size = sizes[currentPage]
+    const page = viewport?.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
+    if (!viewport || !page || !size || size.width * zoom <= viewport.clientWidth - 56 + 1) return false
+    const nextZoom = Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width))
+    if (nextZoom >= zoom) return false
+    // Reuse the zoom anchor so opening/resizing a sidebar preserves the visible text.
+    const bounds = page.getBoundingClientRect(), viewportBounds = viewport.getBoundingClientRect()
+    const clientX = viewportBounds.left + viewport.clientWidth / 2
+    const clientY = Math.max(viewportBounds.top, bounds.top)
+    wheelAnchorRef.current = { pageIndex: currentPage, x: size.width / 2, y: (clientY - bounds.top) / zoom, clientX, clientY, baseZoom: zoom, viewportX: clientX - viewportBounds.left, viewportY: clientY - viewportBounds.top, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop }
+    onZoomChange(nextZoom)
+    return true
+  }, [onZoomChange])
+
+  useEffect(() => {
+    if (!document || !sizes[currentPage]) return
+    const key = document.fingerprints[0] || String(document.numPages)
+    if (initialSidebarFitRef.current === key) return
+    initialSidebarFitRef.current = key
+    // Outlines can appear before the first page reports its size.
+    if (viewportRef.current?.closest('.workspace')?.querySelector('.bookmark-panel:not(.collapsed), .annotation-panel:not(.collapsed)')) fitOverflowingPage()
+  }, [currentPage, document, fitOverflowingPage, sizes])
+
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
     let width = viewport.clientWidth
     const observer = new ResizeObserver(() => {
-      if (viewport.clientWidth === width) return
-      width = viewport.clientWidth
-      const page = viewport.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
+      const nextWidth = viewport.clientWidth
+      if (nextWidth === width) return
+      const shrinking = nextWidth < width
+      width = nextWidth
+      if (shrinking && fitOverflowingPage()) return
+      const page = viewport.querySelector<HTMLElement>(`[data-page="${resizeStateRef.current.currentPage}"]`)
       if (page) centerPageHorizontally(viewport, page)
     })
     observer.observe(viewport)
     return () => observer.disconnect()
-  }, [currentPage, document])
+  }, [document, fitOverflowingPage])
 
   const fitWidth = useCallback(() => {
     const size = sizes[currentPage] || sizes[0]
