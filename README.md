@@ -20,6 +20,7 @@
 - **扫描件也能原位框选与复制**：OCR 在本地识别所选页码，支持中英等 11 种主要语言，自动纠斜、低置信度复识别并整理中文/日文伪空格。隐形文字随 PDF 保存，页面外观保持不变，识别结果可撤销。
 - **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签；PDF 自带书签与页内链接可准确跳转，网页和邮件链接由系统安全打开。
 - **衔接论文插图的 EPS 工作流**：支持 EPS 导入，将编辑后的 PDF 导出为保留文字与矢量路径的 EPS，方便后续排版。
+- **智能裁切与图片解读**：框选图片后，智能裁切自动贴合可见内容边缘；实验室“解释图片”支持趋势、坐标估读、图线比较与特征解读，结果可复制或添加为便笺。已添加的图片和图形支持跨页拖放，也可选择目标页，确认后保存，可撤销。
 - **批量添加可撤销文字水印**：在编辑模块按页码范围添加水印，可实时预览并设置文字、字体、字号、角度、颜色、透明度和密度；已添加水印可整体更新或一键删除。
 - **识别加密权限与数字签名**：密码加密和空密码权限加密 PDF 均可阅读；明显显示打印、复制、修改和批注权限，并验证签名覆盖范围、密码学完整性及证书信息。无法直接写回时可生成不覆盖原件的高分辨率可编辑副本。
 
@@ -34,6 +35,7 @@
 - **关于**：左侧模块下方以两行固定显示“关于”和当前版本号；弹窗可检查更新并打开项目官方 Releases 页面。
 - **AI（可选）**：在“批注 → 实验室 → 模型设置”中保存多个命名配置，填写接口地址、API Key、模型名后点击“激活此模型”。顶部摘要显示实际使用的配置与模型；实时过程按请求、思考和回复分区显示。支持 OpenAI、Claude、Grok、BigModel、Doubao、DeepSeek、KIMI 和自定义兼容接口；保存其他配置不会切换当前模型。启用 AI 时，所选原文或全文会发送给激活的服务；普通编辑与 OCR 在本地执行。
 - **文本翻译（可选）**：在“批注 → 实验室 → 文本翻译”中选择目标语言并启用。之后在任意模块圈选 PDF 文字，右键选择“翻译所选文字”；确认结果后可直接添加为高亮批注。关闭开关即可移除全局右键入口。
+- **解释图片（可选）**：在实验室点击“解释图片”，框选页面区域，选择预设或修改提示词后发送。只发送所选区域的 PNG 给当前激活的模型，需要模型支持图片输入；坐标是依据图像的估算值。窗口可最小化，结果可复制或添加到原图所在页的便笺。
 - **Thinking 与生成参数**：可配置思考模式/强度、Claude 思考预算、温度、Top P、惩罚、Seed 和高级 JSON。默认等待 600 秒、输出预算 65,536 Token，最多可设置 3,600 秒和 262,144 Token，实际受服务商限制。遇到明确不兼容参数会尝试恢复；输出截断先扩容，再按允许的 Thinking 降级或分批处理。可关闭 Thinking 降级；界面仅显示服务商实际返回的思考内容。
 - **格式转换（可选）**：EPS 导入需要 Ghostscript；矢量 EPS 导出需要 Poppler 的 `pdftocairo`。Office 导入在 Windows 可使用本机 Microsoft Office，跨平台可使用 LibreOffice。macOS 可用 `brew install ghostscript poppler` 安装 EPS 工具。
 
@@ -71,6 +73,7 @@ npm run build
 - **Select and copy scanned pages in place**: Local OCR supports selected page ranges and 11 primary languages, deskewing, a low-confidence retry, and removal of spurious Chinese/Japanese spaces. Invisible text is saved inside the PDF while preserving its appearance, with undo support.
 - **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks. Built-in outlines and page links navigate precisely; web and email links open safely through the operating system.
 - **An EPS workflow for research figures**: Import EPS files and export edited PDFs to EPS while retaining text and vector paths for subsequent typesetting.
+- **Smart crop and figure interpretation**: Trim a selected figure to its visible content edges. Lab’s **Explain image** provides trends, estimated coordinates, curve comparisons and feature interpretation; copy the result or add a note on the source page. Added images and shapes can be dragged across pages or moved with a target-page selector, with confirmation and undo.
 - **Removable text watermarks in batches**: Add watermarks to selected page ranges with live controls for text, font, size, angle, color, opacity, and density; update or remove the full set in one click.
 - **Encryption permissions and digital signatures**: Read password-protected and permission-encrypted PDFs, inspect print/copy/edit/annotation permissions, and verify signature coverage, cryptographic integrity, and certificate details. When direct writeback is unavailable, create a high-resolution editable copy without overwriting the original.
 
@@ -89,6 +92,8 @@ Download the Windows installer/portable executable or the macOS DMG from [Releas
 **AI is optional**: under **Annotations → Lab → Model settings**, save named configurations and explicitly activate one. The summary identifies the active configuration and model; live activity separates the request, reasoning and response. Providers include OpenAI, Claude, Grok, BigModel, Doubao, DeepSeek, KIMI and custom compatible endpoints. Saving an inactive configuration does not switch models. Configure Thinking mode/effort, Claude's thinking budget, sampling, penalties, Seed and advanced JSON. Defaults are 600 seconds and 65,536 output tokens; configurable maxima are 3,600 seconds and 262,144 tokens, subject to provider limits. Recovery handles rejected parameters and truncation; Thinking fallback can be disabled. Only reasoning actually returned by the provider is displayed. AI sends the selected text or document to the active provider; ordinary editing and OCR run locally.
 
 **Text translation is optional**: under **Annotations → Lab → Text translation**, choose a target language and enable the switch. In any module, select PDF text and choose **Translate selected text** from the context menu. Source and translation are shown in clearly separated panels, and the result can be added directly as a Highlight annotation; disabling the switch removes the global menu item.
+
+**Explain image is optional**: select an area, choose or edit a prompt, then send only that region’s PNG to the active model, which must support image input. Coordinates read from a figure are estimates. The window supports minimizing, copying results and adding a note on the source page.
 
 Optional format tools: Ghostscript for EPS import, Poppler (`pdftocairo`) for vector EPS export, and Microsoft Office on Windows or LibreOffice across platforms for Office import. On macOS, `brew install ghostscript poppler` installs the EPS tools.
 

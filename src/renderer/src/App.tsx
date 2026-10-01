@@ -315,6 +315,7 @@ export default function App() {
   const [imageObjects, setImageObjects] = useState<ImageObjectRecord[]>([])
   const [bookmarks, setBookmarks] = useState<PdfBookmark[]>([])
   const [activeBookmarkId, setActiveBookmarkId] = useState<string>()
+  const [figureSelection, setFigureSelection] = useState<{ documentId: number; pageIndex: number; rect: PdfRect; png: string }>()
   const [imageDraft, setImageDraft] = useState<ImageDraft>()
   const [imagePlacementBusy, setImagePlacementBusy] = useState(false)
   const [selectedAnnotation, setSelectedAnnotation] = useState<string>()
@@ -1079,7 +1080,7 @@ export default function App() {
     try {
       await runDocumentOperation(documentId, async () => {
         if (draft.id) {
-          await model.updateImage(draft.id, draft.rect, draft.rotation, draft.aspectRatio, draft.lockAspectRatio)
+          await model.updateImage(draft.id, draft.rect, draft.rotation, draft.aspectRatio, draft.lockAspectRatio, draft.pageIndex)
           syncModel('ui.imageUpdatedSaveThePdfToKeepTheChange', true, model, documentId)
         } else {
           await model.addImage(draft.pageIndex, draft.data, draft.format, draft.rect, draft.rotation, draft.name, draft.aspectRatio, draft.lockAspectRatio)
@@ -1166,7 +1167,12 @@ export default function App() {
     const model = modelRef.current; if (!model) return
     const documentId = activeDocumentIdRef.current
     const originIsActive = () => modelRef.current === model && activeDocumentIdRef.current === documentId
-    if (action.tool === 'crop' && action.rect) {
+    if (action.tool === 'explain_image' && action.rect) {
+      try {
+        const png = await viewerRef.current!.captureFigure(action.pageIndex, action.rect)
+        if (originIsActive()) { setFigureSelection({ documentId, pageIndex: action.pageIndex, rect: action.rect, png }); setTool('none') }
+      } catch (cause) { showError(cause) }
+    } else if (action.tool === 'crop' && action.rect) {
       setDialog({ type: 'crop_confirm', pageIndex: action.pageIndex, rect: action.rect })
     } else if (action.tool === 'add_text' && action.rect) {
       const value = await askText(); if (!value || !originIsActive()) return
@@ -1193,7 +1199,7 @@ export default function App() {
       const annotation = await askAnnotation({ kind }); if (annotation === null || !originIsActive()) return
       await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], annotation.content, action.point, annotation.color, undefined, preferences.annotationAuthor, undefined, annotation.marks), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
     }
-  }, [addSelectionAnnotations, mutate, preferences.annotationAuthor])
+  }, [addSelectionAnnotations, mutate, preferences.annotationAuthor, showError])
 
   const requestAnnotationSuggestion = useCallback((annotation: AnnotationRecord, editor: AnnotationSuggestionEditor) => {
     setAnnotationSuggestionEditor({ ...editor, documentId: activeDocumentIdRef.current })
@@ -1492,6 +1498,7 @@ export default function App() {
     if (isImeCompositionKey(event)) return
     const command = event.ctrlKey || event.metaKey
     const editingText = isTextEntryEvent(event)
+    if (event.key === 'Escape' && !editingText) setTool((current) => current === 'explain_image' ? 'none' : current)
     if (event.altKey && !command && !editingText && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && data?.length) {
       event.preventDefault()
       const page = Math.max(0, Math.min(pageCount - 1, currentPage + (event.key === 'ArrowLeft' ? -1 : 1)))
@@ -1583,7 +1590,14 @@ export default function App() {
     if (!session) return null
     const visible = id === activeDocumentId && module === 'annotate'
     const request = annotationSuggestionRequest?.documentId === id ? annotationSuggestionRequest : undefined
-    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} translationEnabled={translationEnabled} translationTarget={translationTarget} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} onTranslationSettingsChange={changeTranslationSettings} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
+    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} translationEnabled={translationEnabled} translationTarget={translationTarget} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} onTranslationSettingsChange={changeTranslationSettings} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} figureSelection={figureSelection?.documentId === id ? figureSelection : undefined} onSelectFigure={() => { setTool('explain_image'); setStatus('ui.figureSelecting') }} onCancelFigureSelection={() => { if (activeDocumentIdRef.current === id) setTool((current) => current === 'explain_image' ? 'none' : current) }} onAddFigureExplanation={async (figure, content) => {
+      const model = id === activeDocumentIdRef.current ? modelRef.current : sessionsRef.current.get(id)?.model
+      if (!model || figure.documentId !== id) throw new Error('ui.translationDocumentChanged')
+      await runDocumentOperation(id, async () => {
+        await model.addAnnotation(figure.pageIndex, 'note', [], content, { x: figure.rect.x + figure.rect.width, y: figure.rect.y }, undefined, undefined, preferences.annotationAuthor)
+        syncModel(t('status.annotationAdded', { annotation: ui('ui.explainImage') }), true, model, id)
+      })
+    }} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
   })
   return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
     if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }

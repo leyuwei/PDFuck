@@ -448,3 +448,10 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .theme-dark .ocr-launch[data-window-state="minimized"] { background: #48391e; border-color: #c49a4b; }
 .about-dialog .modal-actions { align-items: center; flex-wrap: wrap; gap: 12px; }
 .about-dialog a { color: var(--theme-accent-soft-ink); text-underline-offset: 3px; }
+
+.image-draft-actions { flex-wrap: wrap; max-width: calc(100vw - 100px); }
+.image-target-page { display: flex; align-items: center; gap: 6px; font-size: var(--ui-font-small); }
+.image-target-page select { max-width: 80px; min-height: 28px; }
+.image-cross-page-preview { position: fixed; z-index: 2000; pointer-events: none; opacity: .85; border: 2px solid var(--theme-accent, #3157d5); object-fit: fill; }
+.pdf-page.tool-explain_image { cursor: crosshair; }
+.crop-actions { max-width: calc(100vw - 100px); flex-wrap: wrap; }

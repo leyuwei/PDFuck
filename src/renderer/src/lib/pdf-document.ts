@@ -498,10 +498,19 @@ export class PdfDocumentModel {
     return id
   }
 
-  async updateImage(id: string, rect: PdfRect, rotation: number, aspectRatio: number, lockAspectRatio: boolean): Promise<void> {
+  async updateImage(id: string, rect: PdfRect, rotation: number, aspectRatio: number, lockAspectRatio: boolean, pageIndex?: number): Promise<void> {
     this.validImageRect(rect)
     const entry = this.findImage(id), record = this.imageRecord(entry)
-    await this.writeImageAnnotation(entry.dict, entry.page, record.data, record.format, record.name, rect, rotation, aspectRatio, lockAspectRatio)
+    const targetIndex = pageIndex ?? entry.pageIndex
+    if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= this.pageCount) throw new Error('ui.targetPageUnavailable')
+    const target = this.document.getPage(targetIndex)
+    await this.writeImageAnnotation(entry.dict, target, record.data, record.format, record.name, rect, rotation, aspectRatio, lockAspectRatio)
+    if (targetIndex !== entry.pageIndex) {
+      const reference = entry.page.node.Annots()!.get(entry.index)
+      entry.page.node.Annots()!.remove(entry.index)
+      target.node.addAnnot(reference as PDFRef)
+      entry.dict.set(PDFName.of('P'), target.ref)
+    }
     await this.commit()
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
   }

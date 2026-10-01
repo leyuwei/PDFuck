@@ -18,6 +18,12 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.49 增加框选旁的智能裁切按钮，以独立高分辨率渲染识别当前选区可见像素边界，确认时仍沿用矢量 PDF 裁切。实验室新增“解释图片”、同风格图标、十语言的完整预设提示词和可最小化结果窗，仅发送所选 PNG，支持复制或写入原页便笺。图片与图形共用跨页拖放及目标页选择，保持确认、取消、保存重开和撤销语义；长文档只保留拖动源页和当前虚拟页窗口。
+
+本次按用户要求仅执行新增测试项：`npm run typecheck`、`npm run test:release-2.0.49` 与 `git diff --check`，再直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成安装版和便携版。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向成品运行 `node scripts/release-2.0.49-ui-smoke.cjs`，检查包内版本、程序属性、签名、SHA-256 和本次功能。AI 请求及图片选择/保存 IPC 使用本地测试替身，不发送文档到外部模型。验收范围与交付记录见 `docs/VALIDATION-2.0.49.md`；不调用包含全部旧测试的 `npm run build` 或一键发布脚本。
+
+2.0.49 便携版另执行 `node scripts/release-2.0.49-portable-smoke.cjs`：实际启动本轮便携 EXE，通过仅监听本机的 CDP 连接核对版本、PDF 打开、图片解释的框选/预设/最小化，以及已保存图片的跨页目标选择入口；退出该测试应用后关闭连接，不派发真实 AI 请求。
+
 2.0.47 将打印从保存工具中移至独立的左侧模块，新增同风格矢量打印机图标；点击后直接打开原打印弹窗，不切换工具栏，快捷键和作业流程保持不变。PDF 视区缩窄且当前页超出可用宽度时自动适合宽度，并保留阅读位置；涵盖书签/批注列表展开、拖宽、工具栏展开和窗口缩小，以及首次打开文档自动出现书签栏的情形。侧栏收起和已经放得下的手动缩放不会被改动。`test:release-2.0.47` 使用混合宽度 PDF 验证打印入口、十语言、选页打印 IPC、无文档禁用，以及连续/单页模式下的侧栏缩放。验收记录见 `docs/VALIDATION-2.0.47.md`。
 
 本次按用户要求只执行新增测试：运行 `npm run typecheck`、`npm run test:release-2.0.47` 和 `git diff --check`，再直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版与便携版。通过 `PDFUCK_SMOKE_EXECUTABLE` 指向成品执行 `node scripts/release-2.0.47-ui-smoke.cjs`，核对包内/可执行文件版本、签名和 SHA-256。不调用会执行全部旧测试的 `npm run build` 或一键发布脚本，不宣称完成全量发布回归。

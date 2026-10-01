@@ -108,3 +108,5 @@
 .annotation-lab .ai-profile-form fieldset, .annotation-lab .ai-advanced-body { grid-template-columns: minmax(0, 1fr); padding: 12px; }
 .annotation-lab .ai-model-settings > .window-scroll-body { padding: 12px 12px 0; }
 }
+
+.figure-explanation-preview { display: block; max-width: 100%; max-height: 200px; object-fit: contain; margin: 14px auto; background: #fff; border-radius: 8px; }

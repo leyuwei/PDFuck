@@ -2,11 +2,12 @@ import { createPortal } from 'react-dom'
 import { ScrollWindow } from './ScrollWindow'
 import { useFloatingWindow } from '../lib/floating-window'
 import { useEffect, useRef, useState } from 'react'
+import type { PdfRect } from '../types'
 import type { PageTextSelection } from '../lib/page-text-selection'
 import { AnnotationIcon } from './AnnotationIcon'
 import {
   AI_LANGUAGE_NAMES, AI_PRESETS, ANNOTATION_SUGGESTION_PRESETS, detectAiLanguage, FULL_REVIEW_PRESETS,
-  loadAiSettings, localizedPrompt,
+  loadAiSettings, localizedPrompt, explainImage,
   autoAnnotatePage, AUTOMATIC_ANNOTATION_ISSUE_TYPES, aiRecoveryTimeoutSeconds, cancelAiRequest, polishText, promptForLanguage, reviewDocument, suggestForAnnotation,
   type AiLanguage, type AiSettings, type AiStreamProgress, type AutomaticAnnotationIssueType, type FullReviewDocument, type FullReviewSendMode
 } from '../lib/ai-polish'
@@ -53,7 +54,20 @@ export interface AnnotationSuggestionRequest extends AutomaticAnnotationContextR
 export interface AnnotationSuggestionEditor { element: HTMLElement; apply(content: string): void; close(): void }
 export interface LabDocumentPayload extends FullReviewDocument {}
 
+export interface FigureSelection { documentId: number; pageIndex: number; rect: PdfRect; png: string }
+
+const FIGURE_PRESETS = [
+  { key: 'ui.figureTrends', prompt: 'ui.figureTrendsPrompt' },
+  { key: 'ui.figureCoordinates', prompt: 'ui.figureCoordinatesPrompt' },
+  { key: 'ui.figureComparison', prompt: 'ui.figureComparisonPrompt' },
+  { key: 'ui.figureFeatures', prompt: 'ui.figureFeaturesPrompt' }
+] as const
+
 interface Props {
+  figureSelection?: FigureSelection
+  onSelectFigure?(): void
+  onCancelFigureSelection?(): void
+  onAddFigureExplanation?(figure: FigureSelection, content: string): Promise<void>
   visible?: boolean
   selection?: PageTextSelection
   selectionKey?: string
@@ -80,7 +94,7 @@ interface Props {
   onCopy(content: string): void
 }
 
-type LabWindow = 'polish' | 'review' | 'automatic' | 'suggestion' | 'drawing'
+type LabWindow = 'image' | 'polish' | 'review' | 'automatic' | 'suggestion' | 'drawing'
 type AutomaticAnnotationScope = 'document' | 'selection'
 type AutomaticAnnotationStatus = 'idle' | 'extracting' | 'running' | 'pausing' | 'paused' | 'error' | 'complete' | 'stopped'
 type AutomaticAnnotationDecision = 'retry' | 'skip' | 'end'
@@ -183,9 +197,20 @@ function AiActivity({ progress, busy }: { progress: AiActivityState; busy: boole
   </details>
 }
 
-export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, translationEnabled = false, translationTarget = 'zh', suggestionRequest, suggestionEditor, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, onTranslationSettingsChange, getDocument, getAutomaticContext, getAutomaticAnnotationPages, onAdd, onAddFullReview, onAddSuggestion, onAddAutomaticAnnotations, onAddDrawing, onExportDrawing, onCopy }: Props) {
+export function AnnotationLab({ visible = true, selection, selectionKey, documentKey, platform = 'win32', disabled = false, annotationSuggestionsEnabled = false, translationEnabled = false, translationTarget = 'zh', suggestionRequest, suggestionEditor, onSuggestionRequestConsumed, onAnnotationSuggestionsEnabledChange, onTranslationSettingsChange, getDocument, getAutomaticContext, getAutomaticAnnotationPages, onAdd, onAddFullReview, onAddSuggestion, onAddAutomaticAnnotations, onAddDrawing, onExportDrawing, onCopy, figureSelection, onSelectFigure, onCancelFigureSelection, onAddFigureExplanation }: Props) {
   const interfaceLanguage = useInterfaceLanguage()
   const t = ui
+  const [figure, setFigure] = useState<FigureSelection>()
+  const [figurePreset, setFigurePreset] = useState(0)
+  const [figureCustom, setFigureCustom] = useState<string>()
+  const [figureResult, setFigureResult] = useState('')
+  const [figureError, setFigureError] = useState('')
+  const [figureBusy, setFigureBusy] = useState(false)
+  const [figureAdding, setFigureAdding] = useState(false)
+  const [figureActivity, setFigureActivity] = useState(emptyAiActivity())
+  const figureToken = useRef(0)
+  const figureRequest = useRef<string | undefined>(undefined)
+  useEffect(() => () => { figureToken.current++; cancelAiRequest(figureRequest.current) }, [])
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
   const [openedWindows, setOpenedWindows] = useState<LabWindow[]>([])
   const floating = useFloatingWindow(visible && !(activeWindow === 'suggestion' && suggestionEditor) ? activeWindow : undefined, true)
@@ -196,6 +221,33 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
   const closeWindow = () => {
     setOpenedWindows((current) => current.filter((kind) => kind !== activeWindow))
     setActiveWindow((current) => current === activeWindow ? undefined : current)
+  }
+  useEffect(() => {
+    if (!figureSelection) return
+    figureToken.current++; cancelAiRequest(figureRequest.current)
+    setFigure(figureSelection); setFigureResult(''); setFigureError(''); setFigureBusy(false); setFigureAdding(false); setFigureActivity(emptyAiActivity()); openWindow('image')
+  }, [figureSelection])
+  const submitFigure = async () => {
+    if (!figure || figureBusy) return
+    const token = ++figureToken.current
+    const settings = loadAiSettings()
+    const request = { model: settings.model, details: [message('search.page', { page: figure.pageIndex + 1 }), t('ui.explainImage')] }
+    setFigureBusy(true); setFigureError(''); setFigureResult(''); setFigureActivity(emptyAiActivity(request))
+    try {
+      const response = await explainImage(settings, figureCustom ?? t(FIGURE_PRESETS[figurePreset].prompt), figure.png, interfaceLanguage, (progress) => {
+        figureRequest.current = progress.requestId
+        if (token === figureToken.current) setFigureActivity({ ...progress, request })
+      })
+      if (token === figureToken.current) setFigureResult(response)
+    } catch (cause) { if (token === figureToken.current) setFigureError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { if (token === figureToken.current) setFigureBusy(false) }
+  }
+  const addFigure = async () => {
+    if (!figure || !figureResult || figureAdding) return
+    setFigureAdding(true)
+    try { await onAddFigureExplanation?.(figure, figureResult) }
+    catch (cause) { setFigureError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setFigureAdding(false) }
   }
   const windowState = (kind: LabWindow) => activeWindow === kind ? 'open' : openedWindows.includes(kind) ? 'minimized' : 'closed'
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -610,6 +662,7 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
       <button type="button" className="tool-button with-icon annotation-lab-launch automatic-annotation-launch" data-window-state={windowState('automatic')} disabled={disabled || !getAutomaticAnnotationPages || !onAddAutomaticAnnotations} onClick={requestAutomaticAnnotation}><AnnotationIcon kind="ai_annotate" /><span className="tool-button-copy"><strong>{t("ui.automaticAnnotation")}</strong><small>{t("ui.reviewEachPageAndAddAnnotations")}</small></span></button>
       <button type="button" className={`tool-button with-icon annotation-lab-launch lab-feature-toggle annotation-suggestion-toggle${annotationSuggestionsEnabled ? ' active' : ''}`} data-window-state={windowState('suggestion')} disabled={disabled} aria-pressed={annotationSuggestionsEnabled} onClick={() => { if (activeSuggestionRequest && windowState('suggestion') === 'minimized') openWindow('suggestion'); else onAnnotationSuggestionsEnabledChange?.(!annotationSuggestionsEnabled) }}><AnnotationIcon kind="ai_suggest" /><span className="tool-button-copy"><strong>{t("ui.annotationSuggestions")}</strong><small>{t(annotationSuggestionsEnabled ? "ui.onUseFromAnnotationSettings" : "ui.generateAdviceFromAnnotations")}</small></span><span className="lab-toggle-indicator" aria-hidden="true"><i /></span></button>
       <button type="button" className={`tool-button with-icon annotation-lab-launch lab-feature-toggle translation-toggle${translationEnabled ? ' active' : ''}`} disabled={disabled} aria-pressed={translationEnabled} onClick={() => { if (translationEnabled) onTranslationSettingsChange?.(false, translationTarget); else { setTranslationDraftTarget(translationTarget); setTranslationSettingsOpen(true) } }}><AnnotationIcon kind="ai_translate" /><span className="tool-button-copy"><strong>{t("ui.textTranslation")}</strong><small>{translationEnabled ? message('translation.activeTarget', { language: AI_LANGUAGE_NAMES[translationTarget] }) : t("ui.translateSelectionsWithAi")}</small></span><span className="lab-toggle-indicator" aria-hidden="true"><i /></span></button>
+      <button type="button" className="tool-button with-icon annotation-lab-launch image-explanation-launch" data-window-state={windowState('image')} disabled={disabled || !onSelectFigure} onClick={() => { openWindow('image'); if (!figure) { setActiveWindow(undefined); onSelectFigure?.() } }}><AnnotationIcon kind="ai_image" /><span className="tool-button-copy"><strong>{t('ui.explainImage')}</strong><small>{t('ui.explainImageSubtitle')}</small></span></button>
       <button type="button" className="tool-button with-icon annotation-lab-launch drawing-board-launch" data-window-state={windowState('drawing')} disabled={disabled || !onAddDrawing || !onExportDrawing} onClick={() => openWindow('drawing')}><DrawingBoardIcon /><span className="tool-button-copy"><strong>{t("ui.freeDrawingBoard")}</strong><small>{t("ui.drawFreelyOnAResizableCanvasThenExportOrAddToCurrentPage")}</small></span></button>
     </div>
 
@@ -618,7 +671,20 @@ export function AnnotationLab({ visible = true, selection, selectionKey, documen
 
     {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
 
-    {activeWindow === 'polish' && <ScrollWindow className="ai-polish-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_polish" />{t("ui.aiPolish")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="ai-polish-selection">{normalizedSelection || t("ui.selectTextInThePdfFirst")}</p><div className="ai-preset-grid">{AI_PRESETS.map((preset) => <button type="button" key={preset.id} className={presetId === preset.id ? 'active' : ''} onClick={() => { setPresetId(preset.id); setInstruction(promptForLanguage(preset, language)) }}>{t(preset.label)}</button>)}</div><textarea value={instruction} aria-label={t("ui.polishingInstruction")} onChange={(event) => { setPresetId(''); setInstruction(event.target.value) }} placeholder={t("ui.customInstruction")} /><button type="button" className="primary wide" disabled={busy} onClick={() => void submitPolish()}>{busy ? t("ui.gettingResponse") : t("ui.polishText")}</button><AiActivity progress={polishActivity} busy={busy} />{error && <p className="ai-polish-error">{translateUiText(error)}</p>}{result && <><AiMarkdown content={result} /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(result)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={adding} onClick={() => void addPolishResult()}>{adding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
+    {activeWindow === 'image' && <ScrollWindow className="ai-polish-window lab-workflow-window image-explanation-window" role="dialog" aria-label={t('ui.explainImage')} ref={floating.ref} style={windowStyle}>
+      <header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_image" />{t('ui.explainImage')}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t('ui.minimizeLabWindow')}>−</button><button type="button" onClick={() => { figureToken.current++; cancelAiRequest(figureRequest.current); setFigureBusy(false); onCancelFigureSelection?.(); closeWindow() }} aria-label={t('ui.close')}>×</button></span></header>
+      <p className="lab-workflow-intro">{t('ui.figureHint')}</p>
+      {figure && <img className="figure-explanation-preview" src={figure.png} alt={t('ui.explainImage')} />}
+      <button type="button" disabled={figureBusy || figureAdding} onClick={() => { setActiveWindow(undefined); onSelectFigure?.() }}>{t('ui.selectFigure')}</button>
+      <div className="ai-preset-grid">{FIGURE_PRESETS.map((preset, index) => <button key={preset.key} type="button" className={figureCustom === undefined && figurePreset === index ? 'active' : ''} onClick={() => { setFigurePreset(index); setFigureCustom(undefined) }}>{t(preset.key)}</button>)}</div>
+      <textarea aria-label={t('ui.figurePrompt')} value={figureCustom ?? t(FIGURE_PRESETS[figurePreset].prompt)} onChange={(event) => setFigureCustom(event.target.value)} />
+      <button type="button" className="primary wide" disabled={!figure || figureBusy || !(figureCustom ?? 'preset').trim()} onClick={() => void submitFigure()}>{t(figureBusy ? 'ui.gettingResponse' : 'ui.explainImage')}</button>
+      <AiActivity progress={figureActivity} busy={figureBusy} />
+      {figureError && <p className="ai-polish-error" role="alert">{translateUiText(figureError)}</p>}
+      {figureResult && <><AiMarkdown content={figureResult} /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(figureResult)}>{t('ui.copyResponse')}</button><button type="button" className="primary" disabled={figureAdding || !onAddFigureExplanation} onClick={() => void addFigure()}>{t(figureAdding ? 'ui.adding' : 'ui.addToAnnotations')}</button></div></>}
+    </ScrollWindow>}
+
+    {activeWindow === 'polish'  && <ScrollWindow className="ai-polish-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_polish" />{t("ui.aiPolish")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="ai-polish-selection">{normalizedSelection || t("ui.selectTextInThePdfFirst")}</p><div className="ai-preset-grid">{AI_PRESETS.map((preset) => <button type="button" key={preset.id} className={presetId === preset.id ? 'active' : ''} onClick={() => { setPresetId(preset.id); setInstruction(promptForLanguage(preset, language)) }}>{t(preset.label)}</button>)}</div><textarea value={instruction} aria-label={t("ui.polishingInstruction")} onChange={(event) => { setPresetId(''); setInstruction(event.target.value) }} placeholder={t("ui.customInstruction")} /><button type="button" className="primary wide" disabled={busy} onClick={() => void submitPolish()}>{busy ? t("ui.gettingResponse") : t("ui.polishText")}</button><AiActivity progress={polishActivity} busy={busy} />{error && <p className="ai-polish-error">{translateUiText(error)}</p>}{result && <><AiMarkdown content={result} /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(result)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={adding} onClick={() => void addPolishResult()}>{adding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
 
     {activeWindow === 'review' && <ScrollWindow className="ai-polish-window lab-workflow-window full-review-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_review" />{t("ui.fullDocumentReview")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="lab-workflow-intro">{t("ui.chooseASendModeAndReviewPromptTheAiWill")}</p><div className="lab-send-mode" role="radiogroup" aria-label={t("ui.documentSendMode")}><button type="button" role="radio" aria-checked={reviewMode === 'text'} className={reviewMode === 'text' ? 'active' : ''} onClick={() => setReviewMode('text')}><b>{t("ui.sendConvertedDocumentText")}</b><small>{t("ui.moreCompatibleWithPageByPageMarkers")}</small></button><button type="button" role="radio" aria-checked={reviewMode === 'file'} className={reviewMode === 'file' ? 'active' : ''} onClick={() => setReviewMode('file')}><b>{t("ui.sendThePdfFileDirectly")}</b><small>{t("ui.preservesLayoutButTheModelMustSupportPdfInput")}</small></button></div>{reviewMode === 'file' && <p className="lab-compatibility-note">{t("ui.fileInputCompatibilityDependsOnTheAiProviderOrRelay")}</p>}<label className="lab-field-title">{t("ui.reviewPrompt")}</label><div className="ai-preset-grid lab-preset-grid">{FULL_REVIEW_PRESETS.map((preset) => <button type="button" key={preset.id} className={reviewPresetId === preset.id ? 'active' : ''} onClick={() => { setReviewPresetId(preset.id); setReviewInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={reviewInstruction} aria-label={t("ui.reviewPrompt")} onChange={(event) => { setReviewPresetId(''); setReviewInstruction(event.target.value) }} /><button type="button" className="primary wide" disabled={reviewBusy} onClick={() => void submitReview()}>{reviewBusy ? t("ui.reviewingTheEntireDocument") : t("ui.startFullDocumentReview")}</button>{reviewBusy && reviewProgress && <div className="lab-review-progress" role="progressbar" aria-label={t("ui.fullDocumentReviewProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(reviewProgress.elapsedPercent)}><header><b>{t("ui.aiIsReviewingTheEntireDocument")}</b><span>{message('lab.reviewCountdown', { seconds: reviewProgress.remainingSeconds })}</span></header><div className="lab-review-progress-track"><i style={{ width: `${reviewProgress.elapsedPercent}%` }} /></div><small>{t("ui.theMaximumWaitUsesTheResponseTimeoutInModelSettings")}</small></div>}<AiActivity progress={reviewActivity} busy={reviewBusy} />{reviewError && <p className="ai-polish-error">{translateUiText(reviewError)}</p>}{reviewResult && <><AiMarkdown content={reviewResult} className="lab-long-result" /><div className="ai-polish-actions"><button type="button" onClick={() => onCopy(reviewResult)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={reviewAdding} onClick={() => void addReviewResult()}>{reviewAdding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
 

@@ -18,7 +18,7 @@ export interface PdfBookmark {
   color?: string
   children: PdfBookmark[]
 }
-export type Tool = 'none' | 'text_select' | 'crop' | 'add_text' | 'edit_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
+export type Tool = 'none' | 'text_select' | 'crop' | 'explain_image' | 'add_text' | 'edit_text' | 'highlight' | 'note' | 'replace' | 'insert' | 'delete_text' | 'underline'
 export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'delete' | 'underline' | 'ai_polish'
 export type AnnotationReplyStatus = 'handled' | 'thinking' | 'declined' | 'custom'
 

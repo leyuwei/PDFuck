@@ -1,10 +1,12 @@
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
+import { createPortal } from 'react-dom'
 import { ContextMenu } from './ContextMenu'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
+import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
 import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
@@ -29,7 +31,7 @@ import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { pdfPageLinks, type PdfLinkTarget, type PdfPageLink } from '../lib/pdfjs-links'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
-export interface ViewerHandle { fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
   const viewportBounds = viewport.getBoundingClientRect(), pageBounds = page.getBoundingClientRect()
@@ -127,6 +129,7 @@ interface PageProps {
   onImageDraftConfirm(): void
   onImageDraftCancel(): void
   onImageDraftDelete(): void
+  onImageDraftPage(pageIndex: number): void
   onSize(pageIndex: number, size: { width: number; height: number }): void
   onError(error: Error): void
   onLink(target: PdfLinkTarget): void
@@ -460,12 +463,29 @@ function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObje
   </div>
 }
 
-function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConfirm, onCancel, onDelete }: { draft: ImageDraft; zoom: number; bounds: { width: number; height: number }; busy?: boolean; onChange(draft: ImageDraft): void; onConfirm(): void; onCancel(): void; onDelete(): void }) {
+function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConfirm, onCancel, onDelete, pageCount, onPage }: { draft: ImageDraft; zoom: number; bounds: { width: number; height: number }; busy?: boolean; pageCount: number; onPage(pageIndex: number): void; onChange(draft: ImageDraft): void; onConfirm(): void; onCancel(): void; onDelete(): void }) {
   useInterfaceLanguage()
+  const [dragPreview, setDragPreview] = useState<{ x: number; y: number }>()
   const interaction = useRef<{ kind: 'move' | 'resize' | 'rotate'; handle?: ImageResizeHandle; x: number; y: number; initial: ImageDraft } | undefined>(undefined)
+  const sourceBounds = useRef({ left: 0, top: 0 })
+  const scrollTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const pointerY = useRef(0)
+  useEffect(() => () => clearInterval(scrollTimer.current), [])
   const begin = (kind: 'move' | 'resize' | 'rotate', event: React.PointerEvent, handle?: ImageResizeHandle) => {
     if (event.button !== 0 || busy) return
     event.preventDefault(); event.stopPropagation()
+    const pageBounds = event.currentTarget.closest('.pdf-page')!.getBoundingClientRect()
+    sourceBounds.current = { left: pageBounds.left + draft.rect.x * zoom, top: pageBounds.top + draft.rect.y * zoom }
+    pointerY.current = event.clientY
+    if (kind === 'move') {
+      const viewer = event.currentTarget.closest<HTMLElement>('.viewer')!
+      clearInterval(scrollTimer.current)
+      scrollTimer.current = setInterval(() => {
+        const box = viewer.getBoundingClientRect()
+        const delta = pointerY.current > box.bottom - 48 ? 12 : pointerY.current < box.top + 48 ? -12 : 0
+        if (delta) viewer.scrollBy({ top: delta })
+      }, 16)
+    }
     interaction.current = { kind, handle, x: event.clientX, y: event.clientY, initial: draft }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -473,8 +493,12 @@ function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConf
     const active = interaction.current
     if (!active) return
     event.preventDefault(); event.stopPropagation()
+    pointerY.current = event.clientY
     const delta = { x: (event.clientX - active.x) / zoom, y: (event.clientY - active.y) / zoom }
-    if (active.kind === 'move') onChange({ ...active.initial, rect: moveImageRect(active.initial.rect, delta, active.initial.rotation, bounds) })
+    if (active.kind === 'move') {
+      setDragPreview({ x: event.clientX - (active.x - sourceBounds.current.left), y: event.clientY - (active.y - sourceBounds.current.top) })
+      onChange({ ...active.initial, rect: moveImageRect(active.initial.rect, delta, active.initial.rotation, bounds) })
+    }
     else if (active.kind === 'resize' && active.handle) onChange({ ...active.initial, rect: resizeImageRect(active.initial.rect, active.handle, delta, active.initial.rotation, bounds, { lockAspectRatio: active.initial.lockAspectRatio, aspectRatio: active.initial.aspectRatio }) })
     else {
       const center = { x: active.initial.rect.x + active.initial.rect.width / 2, y: active.initial.rect.y + active.initial.rect.height / 2 }
@@ -485,16 +509,32 @@ function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConf
   }
   const finish = (event: React.PointerEvent) => {
     if (!interaction.current) return
-    event.preventDefault(); event.stopPropagation(); interaction.current = undefined
+    event.preventDefault(); event.stopPropagation()
+    const active = interaction.current
+    clearInterval(scrollTimer.current)
+    setDragPreview(undefined)
+    interaction.current = undefined
+    if (event.type === 'pointerup' && active.kind === 'move') {
+      const viewer = event.currentTarget.closest('.viewer')!
+      const target = Array.from(viewer.querySelectorAll<HTMLElement>('.pdf-page')).find((element) => {
+        const box = element.getBoundingClientRect()
+        return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom
+      })
+      if (target) {
+        const box = target.getBoundingClientRect(), scale = box.width / Number(target.dataset.pageWidth)
+        const rect = { ...active.initial.rect, x: (event.clientX - box.left) / scale - (active.x - sourceBounds.current.left) / zoom, y: (event.clientY - box.top) / scale - (active.y - sourceBounds.current.top) / zoom }
+        onChange({ ...active.initial, pageIndex: Number(target.dataset.page), rect: moveImageRect(rect, { x: 0, y: 0 }, active.initial.rotation, { width: Number(target.dataset.pageWidth), height: Number(target.dataset.pageHeight) }) })
+      } else onChange(active.initial)
+    } else if (event.type !== 'pointerup') onChange(active.initial)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const displayed = rotatedImageBounds(draft.rect, draft.rotation)
-  const actionWidth = draft.id ? 432 : 318
+  const actionWidth = draft.id ? 540 : 450
   const actionLeft = Math.max(4, Math.min(bounds.width * zoom - actionWidth - 4, (displayed.x + displayed.width / 2) * zoom - actionWidth / 2))
-  const actionBelow = displayed.y + displayed.height + 44 / zoom <= bounds.height
-  const actionTop = actionBelow ? (displayed.y + displayed.height) * zoom + 8 : Math.max(4, displayed.y * zoom - 42)
+  const actionTop = (displayed.y + displayed.height) * zoom + 8
   const handles: ImageResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
+    {dragPreview && createPortal(<img className="image-cross-page-preview" src={draft.source} alt="" style={{ left: dragPreview.x, top: dragPreview.y, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} />, window.document.body)}
     <div className={`image-draft${busy ? ' busy' : ''}`} aria-busy={busy} style={{ left: draft.rect.x * zoom, top: draft.rect.y * zoom, width: draft.rect.width * zoom, height: draft.rect.height * zoom, transform: `rotate(${draft.rotation}deg)` }} title={ui("ui.dragImageToReposition")}
       onPointerDown={(event) => begin('move', event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <img src={draft.source} alt={draft.name} draggable={false} />
@@ -504,7 +544,7 @@ function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConf
       {handles.map((handle) => <span key={handle} className={`image-resize-handle image-resize-handle-${handle}`} aria-label={ui("ui.dragHandleToResizeImage")} title={ui("ui.dragHandleToResizeImage")} onPointerDown={(event) => begin('resize', event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
     <div className={`image-draft-actions${draft.id ? ' has-delete' : ''}`} style={{ left: actionLeft, top: actionTop, minWidth: actionWidth }} onPointerDown={(event) => event.stopPropagation()}>
-      <span>{ui("ui.moveResizeRotateOrChangeTheAspectLockThenConfirm")}</span>
+      <label className="image-target-page">{ui('ui.targetPage')}<select aria-label={ui('ui.targetPage')} value={draft.pageIndex} disabled={busy} onChange={(event) => onPage(Number(event.target.value))}>{Array.from({ length: pageCount }, (_, index) => <option key={index} value={index}>{index + 1}</option>)}</select></label>
       <button type="button" disabled={busy} className={`image-aspect-lock${draft.lockAspectRatio ? ' active' : ''}`} aria-pressed={draft.lockAspectRatio} title={draft.lockAspectRatio ? ui("ui.originalAspectRatioLocked") : ui("ui.originalAspectRatioUnlocked")} onClick={(event) => { event.stopPropagation(); onChange({ ...draft, lockAspectRatio: !draft.lockAspectRatio }) }}>{draft.lockAspectRatio ? ui("ui.ratioLocked") : ui("ui.ratioUnlocked")}</button>
       <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
       {draft.id && <button type="button" disabled={busy} className="danger" onClick={(event) => { event.stopPropagation(); onDelete() }}>{ui("ui.deleteImage")}</button>}
@@ -569,7 +609,7 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   </>
 }
 
-function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void }) {
+function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel, onSmartCrop, busy }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void; onSmartCrop(): void; busy: boolean }) {
   const interaction = useRef<{ handle: CropHandle; x: number; y: number; initial: PdfRect } | undefined>(undefined)
   const begin = (handle: CropHandle, event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -589,7 +629,7 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const actionBelow = rect.y + rect.height + 42 / zoom <= bounds.height
-  const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 154, rect.x * zoom))
+  const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 290, rect.x * zoom))
   const actionTop = actionBelow ? (rect.y + rect.height) * zoom + 7 : Math.max(4, rect.y * zoom - 37)
   const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
@@ -598,9 +638,10 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel }:
       <span className="crop-draft-label">{t('crop.label')}</span>
       {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
-    <div className="crop-actions" style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
+    <div className="crop-actions" aria-busy={busy} style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
       <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
-      <button type="button" className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
+      <button type="button" disabled={busy} onClick={onSmartCrop}>{t(busy ? 'crop.detecting' : 'crop.smart')}</button>
+      <button type="button" disabled={busy} className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
     </div>
   </>
 }
@@ -630,7 +671,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -650,6 +691,23 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [drag, setDrag] = useState<PageDrag>()
   const dragRef = useRef<PageDrag | undefined>(undefined)
   const [cropDraft, setCropDraft] = useState<PdfRect>()
+  const [cropBusy, setCropBusy] = useState(false)
+  const cropToken = useRef(0)
+  useEffect(() => { cropToken.current++; setCropBusy(false) }, [cropDraft, tool])
+  useEffect(() => () => { cropToken.current++ }, [])
+  const smartCrop = async () => {
+    if (!cropDraft || cropBusy) return
+    const token = ++cropToken.current
+    setCropBusy(true)
+    try {
+      const canvas = await renderFigureRegion(await document.getPage(pageIndex + 1), cropDraft)
+      if (token !== cropToken.current) return
+      const content = figureContentBounds(canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height), cropDraft)
+      if (content) setCropDraft(content)
+      else onError(new Error(t('crop.empty')))
+    } catch (cause) { if (token === cropToken.current) onError(cause instanceof Error ? cause : new Error(String(cause))) }
+    finally { if (token === cropToken.current) setCropBusy(false) }
+  }
   const [menu, setMenu] = useState<{ x: number; y: number; point: PdfPoint; annotation?: AnnotationRecord }>()
   const [hoverInsert, setHoverInsert] = useState<PdfPoint>()
   const [citationPopup, setCitationPopup] = useState<{ key: string; hits: CitationLink[]; rect: PdfRect }>()
@@ -784,7 +842,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const bounds = pageRef.current!.getBoundingClientRect()
     return { x: (event.clientX - bounds.left) / zoom, y: (event.clientY - bounds.top) / zoom }
   }
-  const canSelectText = !boundaryEditing && !['crop', 'add_text', 'note', 'insert'].includes(tool)
+  const canSelectText = !boundaryEditing && !['crop', 'explain_image', 'add_text', 'note', 'insert'].includes(tool)
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -804,7 +862,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
       dragRef.current = next
       onCrossSelectionStart(pageIndex, position, event.shiftKey)
       setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
-    } else if (tool === 'crop' || tool === 'add_text') {
+    } else if (tool === 'crop' || tool === 'explain_image' || tool === 'add_text') {
       const next: PageDrag = { start: point, current: point, moved: false }
       dragRef.current = next; setDrag(next)
     }
@@ -1061,7 +1119,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : undefined }}
+  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : imageDraft ? 30 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -1100,9 +1158,9 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     </aside>}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
-    {tool === 'crop' && cropDraft && <CropDraftOverlay rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
+    {tool === 'crop' && cropDraft && <CropDraftOverlay busy={cropBusy} onSmartCrop={() => void smartCrop()} rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
     {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
-    {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} />}
+    {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} pageCount={document.numPages} onPage={onImageDraftPage} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
@@ -1551,7 +1609,11 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     }
     return recognizeBookmarkCandidates(lines, options)
   }, [document, wordsForPage])
-  useImperativeHandle(ref, () => ({ fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
+  useImperativeHandle(ref, () => ({
+    captureFigure: async (pageIndex, rect) => {
+      if (!document) throw new Error('ui.targetPageUnavailable')
+      return (await renderFigureRegion(await document.getPage(pageIndex + 1), rect)).toDataURL('image/png')
+    }, fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -1587,8 +1649,11 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (!virtualized || !document) return pages
     const start = Math.max(0, currentPage - 7)
     const end = Math.min(document.numPages, currentPage + 9)
-    return Array.from({ length: Math.max(0, end - start) }, (_, index) => start + index)
-  }, [currentPage, document, pages, virtualized])
+    const visible = Array.from({ length: Math.max(0, end - start) }, (_, index) => start + index)
+    // Keep the captured drag source mounted without rendering every intervening page.
+    if (imageDraft && !visible.includes(imageDraft.pageIndex)) visible.push(imageDraft.pageIndex)
+    return visible.sort((left, right) => left - right)
+  }, [currentPage, document, pages, virtualized, imageDraft?.pageIndex])
   const handleWheel = (event: React.WheelEvent) => {
     if (mode === 'single' && !event.ctrlKey) {
       const viewport = viewportRef.current
@@ -1652,11 +1717,19 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       onZoomChange(wheelZoomRef.current)
     })
   }
+  const changeImagePage = async (pageIndex: number) => {
+    if (!document || !imageDraft || imageDraftBusy || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= document.numPages) return
+    const viewport = (await document.getPage(pageIndex + 1)).getViewport({ scale: 1 })
+    onImageDraftChange({ ...imageDraft, pageIndex, rect: moveImageRect(imageDraft.rect, { x: 0, y: 0 }, imageDraft.rotation, viewport) })
+    goToPage(pageIndex)
+  }
   return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
-      <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex) => <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
+      <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.fingerprints[0]}-${pageIndex}`}>
+      {virtualized && index > 0 && pageIndex > visiblePages[index - 1] + 1 && <div className="pdf-page-virtual-spacer" style={{ height: (pageIndex - visiblePages[index - 1] - 1) * 812 * zoom }} aria-hidden />}
+      <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} />)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })
