@@ -4,6 +4,16 @@ export type CropHandle = 'move' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | '
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value))
 
+// PDF coordinates are points; the UI uses physical millimetres, independent of zoom.
+export function protectCropBounds(content: PdfRect, marginMm: number, bounds: { width: number; height: number }): PdfRect {
+  const padding = (Number.isFinite(marginMm) ? Math.max(0, marginMm) : 0) * 72 / 25.4
+  const left = clamp(content.x - padding, 0, bounds.width)
+  const top = clamp(content.y - padding, 0, bounds.height)
+  const right = clamp(content.x + content.width + padding, left, bounds.width)
+  const bottom = clamp(content.y + content.height + padding, top, bounds.height)
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
 export function adjustCropRect(initial: PdfRect, handle: CropHandle, dx: number, dy: number, bounds: { width: number; height: number }, minimum = 18): PdfRect {
   if (handle === 'move') {
     return {

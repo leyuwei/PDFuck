@@ -455,3 +455,16 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .image-cross-page-preview { position: fixed; z-index: 2000; pointer-events: none; opacity: .85; border: 2px solid var(--theme-accent, #3157d5); object-fit: fill; }
 .pdf-page.tool-explain_image { cursor: crosshair; }
 .crop-actions { max-width: calc(100vw - 100px); flex-wrap: wrap; }
+.crop-actions { width: max-content; min-width: 0; flex-direction: column; gap: 8px; padding: 10px; overflow: auto; border-radius: 10px; }
+.crop-margin { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; font-size: var(--ui-font-small); font-weight: 650; }
+.crop-margin-input { display: flex; align-items: center; gap: 6px; padding-inline-end: 8px; border: 1px solid #d8deea; border-radius: 6px; background: #f7f9ff; font-weight: 400; }
+.crop-margin-input:focus-within { border-color: var(--app-accent, #3157d5); }
+.crop-margin-input input { width: 5em; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px; outline: 0; background: transparent; direction: ltr; }
+.crop-margin-input abbr { border: 0; text-decoration: none; }
+.crop-margin-hint { max-width: 29em; color: #68758c; font-size: var(--ui-font-small); line-height: 1.5; }
+.crop-action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; padding-top: 8px; border-top: 1px solid #e4e8f0; }
+.crop-actions button { max-width: 100%; white-space: normal; }
+.theme-dark .crop-actions { color: #e0e8f5; background: #202d40; border-color: #475a73; }
+.theme-dark .crop-margin-input { background: #172235; border-color: #475a73; }
+.theme-dark .crop-margin-hint { color: #afbdd0; }
+.theme-dark .crop-action-buttons { border-color: #475a73; }

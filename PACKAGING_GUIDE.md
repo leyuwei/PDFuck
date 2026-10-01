@@ -18,6 +18,10 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.50 在裁切框边增加“保护边界”：以毫米设置 0–50 mm 的四周留白，默认 0；识别后实时调整，始终以原始主体边界重新计算，重复智能裁切不叠加留白，页面边缘自动限制。手调框后重新识别才应用保护边界。操作条随视区、语言、字号和倍率调整位置，支持暗色主题与阿拉伯语。
+
+本次按用户要求仅执行新增测试项：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.50.test.ts`、`npx --no-install electron-vite build`、`node scripts/release-2.0.50-ui-smoke.cjs` 和 `git diff --check`（新增测试与构建也可合并执行 `npm run test:release-2.0.50`）。随后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版和解包程序。通过 `PDFUCK_SMOKE_EXECUTABLE` 指向解包成品运行新增 UI 脚本，并执行 `node scripts/release-2.0.50-portable-smoke.cjs` 实际验证便携 EXE 的保护边界。核对包内版本、原生资源、程序属性、签名和 SHA-256；验收见 `docs/VALIDATION-2.0.50.md`。不运行包含全部旧测试的 `npm run build` 或一键发布脚本。
+
 2.0.49 增加框选旁的智能裁切按钮，以独立高分辨率渲染识别当前选区可见像素边界，确认时仍沿用矢量 PDF 裁切。实验室新增“解释图片”、同风格图标、十语言的完整预设提示词和可最小化结果窗，仅发送所选 PNG，支持复制或写入原页便笺。图片与图形共用跨页拖放及目标页选择，保持确认、取消、保存重开和撤销语义；长文档只保留拖动源页和当前虚拟页窗口。
 
 本次按用户要求仅执行新增测试项：`npm run typecheck`、`npm run test:release-2.0.49` 与 `git diff --check`，再直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成安装版和便携版。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向成品运行 `node scripts/release-2.0.49-ui-smoke.cjs`，检查包内版本、程序属性、签名、SHA-256 和本次功能。AI 请求及图片选择/保存 IPC 使用本地测试替身，不发送文档到外部模型。验收范围与交付记录见 `docs/VALIDATION-2.0.49.md`；不调用包含全部旧测试的 `npm run build` 或一键发布脚本。

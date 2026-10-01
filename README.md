@@ -20,7 +20,7 @@
 - **扫描件也能原位框选与复制**：OCR 在本地识别所选页码，支持中英等 11 种主要语言，自动纠斜、低置信度复识别并整理中文/日文伪空格。隐形文字随 PDF 保存，页面外观保持不变，识别结果可撤销。
 - **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签；PDF 自带书签与页内链接可准确跳转，网页和邮件链接由系统安全打开。
 - **衔接论文插图的 EPS 工作流**：支持 EPS 导入，将编辑后的 PDF 导出为保留文字与矢量路径的 EPS，方便后续排版。
-- **智能裁切与图片解读**：框选图片后，智能裁切自动贴合可见内容边缘；实验室“解释图片”支持趋势、坐标估读、图线比较与特征解读，结果可复制或添加为便笺。已添加的图片和图形支持跨页拖放，也可选择目标页，确认后保存，可撤销。
+- **智能裁切与图片解读**：框选图片后，智能裁切自动贴合可见内容边缘；框边“保护边界”可设置 0–50 mm 四周留白，识别后实时调整，0 为贴边，留白止于页面边缘。实验室“解释图片”支持趋势、坐标估读、图线比较与特征解读，结果可复制或添加为便笺。已添加的图片和图形支持跨页拖放，也可选择目标页，确认后保存，可撤销。
 - **批量添加可撤销文字水印**：在编辑模块按页码范围添加水印，可实时预览并设置文字、字体、字号、角度、颜色、透明度和密度；已添加水印可整体更新或一键删除。
 - **识别加密权限与数字签名**：密码加密和空密码权限加密 PDF 均可阅读；明显显示打印、复制、修改和批注权限，并验证签名覆盖范围、密码学完整性及证书信息。无法直接写回时可生成不覆盖原件的高分辨率可编辑副本。
 
@@ -73,7 +73,7 @@ npm run build
 - **Select and copy scanned pages in place**: Local OCR supports selected page ranges and 11 primary languages, deskewing, a low-confidence retry, and removal of spurious Chinese/Japanese spaces. Invisible text is saved inside the PDF while preserving its appearance, with undo support.
 - **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks. Built-in outlines and page links navigate precisely; web and email links open safely through the operating system.
 - **An EPS workflow for research figures**: Import EPS files and export edited PDFs to EPS while retaining text and vector paths for subsequent typesetting.
-- **Smart crop and figure interpretation**: Trim a selected figure to its visible content edges. Lab’s **Explain image** provides trends, estimated coordinates, curve comparisons and feature interpretation; copy the result or add a note on the source page. Added images and shapes can be dragged across pages or moved with a target-page selector, with confirmation and undo.
+- **Smart crop and figure interpretation**: Trim a selected figure to its visible content edges. The adjacent **Protective margin** control adds 0–50 mm of space on all sides with live adjustment after detection; 0 fits tightly and margins stop at page edges. Lab’s **Explain image** provides trends, estimated coordinates, curve comparisons and feature interpretation; copy the result or add a note on the source page. Added images and shapes can be dragged across pages or moved with a target-page selector, with confirmation and undo.
 - **Removable text watermarks in batches**: Add watermarks to selected page ranges with live controls for text, font, size, angle, color, opacity, and density; update or remove the full set in one click.
 - **Encryption permissions and digital signatures**: Read password-protected and permission-encrypted PDFs, inspect print/copy/edit/annotation permissions, and verify signature coverage, cryptographic integrity, and certificate details. When direct writeback is unavailable, create a high-resolution editable copy without overwriting the original.
 

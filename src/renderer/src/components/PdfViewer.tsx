@@ -7,7 +7,7 @@ import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
 import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
-import { adjustCropRect, type CropHandle } from '../lib/crop-geometry'
+import { adjustCropRect, protectCropBounds, type CropHandle } from '../lib/crop-geometry'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
 import { canvasOutputScale, singlePageWheelDecision, wheelZoom } from '../lib/rendering'
@@ -609,8 +609,30 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   </>
 }
 
-function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel, onSmartCrop, busy }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void; onSmartCrop(): void; busy: boolean }) {
+function CropDraftOverlay({ rect, zoom, bounds, marginMm, onMarginChange, onChange, onConfirm, onCancel, onSmartCrop, busy }: { rect: PdfRect; zoom: number; bounds: { width: number; height: number }; marginMm: number; onMarginChange(value: number): void; onChange(rect: PdfRect): void; onConfirm(): void; onCancel(): void; onSmartCrop(): void; busy: boolean }) {
   const interaction = useRef<{ handle: CropHandle; x: number; y: number; initial: PdfRect } | undefined>(undefined)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  const [marginInput, setMarginInput] = useState(String(marginMm))
+  useLayoutEffect(() => {
+    const actions = actionsRef.current, page = actions?.parentElement, viewer = page?.closest('.viewer')
+    if (!actions || !page || !viewer) return
+    const place = () => {
+      const area = viewer.getBoundingClientRect(), origin = page.getBoundingClientRect()
+      actions.style.maxWidth = `${Math.max(1, area.width - 16)}px`
+      actions.style.maxHeight = `${Math.max(1, area.height - 16)}px`
+      const width = actions.offsetWidth, height = actions.offsetHeight
+      const left = Math.max(area.left + 8, Math.min(origin.left + rect.x * zoom, area.right - width - 8))
+      const below = origin.top + (rect.y + rect.height) * zoom + 9
+      const above = origin.top + rect.y * zoom - height - 9
+      const top = Math.max(area.top + 8, Math.min(below + height <= area.bottom - 8 ? below : above, area.bottom - height - 8))
+      actions.style.left = `${left - origin.left}px`; actions.style.top = `${top - origin.top}px`
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(actions); observer.observe(viewer)
+    viewer.addEventListener('scroll', place); window.addEventListener('resize', place)
+    return () => { observer.disconnect(); viewer.removeEventListener('scroll', place); window.removeEventListener('resize', place) }
+  }, [rect, zoom])
   const begin = (handle: CropHandle, event: React.PointerEvent) => {
     if (event.button !== 0) return
     event.preventDefault(); event.stopPropagation()
@@ -628,9 +650,6 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel, o
     event.preventDefault(); event.stopPropagation(); interaction.current = undefined
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
-  const actionBelow = rect.y + rect.height + 42 / zoom <= bounds.height
-  const actionLeft = Math.max(4, Math.min(bounds.width * zoom - 290, rect.x * zoom))
-  const actionTop = actionBelow ? (rect.y + rect.height) * zoom + 7 : Math.max(4, rect.y * zoom - 37)
   const handles: Exclude<CropHandle, 'move'>[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
   return <>
     <div className="crop-draft" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
@@ -638,10 +657,23 @@ function CropDraftOverlay({ rect, zoom, bounds, onChange, onConfirm, onCancel, o
       <span className="crop-draft-label">{t('crop.label')}</span>
       {handles.map((handle) => <span key={handle} className={`crop-handle crop-handle-${handle}`} onPointerDown={(event) => begin(handle, event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish} />)}
     </div>
-    <div className="crop-actions" aria-busy={busy} style={{ left: actionLeft, top: actionTop }} onPointerDown={(event) => event.stopPropagation()}>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
-      <button type="button" disabled={busy} onClick={onSmartCrop}>{t(busy ? 'crop.detecting' : 'crop.smart')}</button>
-      <button type="button" disabled={busy} className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
+    <div ref={actionsRef} className="crop-actions" aria-busy={busy} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <label className="crop-margin">
+        <span>{t('crop.margin')}</span>
+        <span className="crop-margin-input"><input type="number" min="0" max="50" step="0.5" disabled={busy} value={marginInput} aria-label={t('crop.margin')} title={t('crop.marginHint')}
+          onChange={(event) => {
+            const value = event.target.value
+            setMarginInput(value)
+            if (value !== '' && Number.isFinite(Number(value))) onMarginChange(Math.max(0, Math.min(50, Number(value))))
+          }}
+          onBlur={() => setMarginInput(String(marginMm))} /><abbr title={t('crop.marginUnit')}>mm</abbr></span>
+      </label>
+      <small className="crop-margin-hint">{t('crop.marginHint')}</small>
+      <div className="crop-action-buttons">
+        <button type="button" onClick={(event) => { event.stopPropagation(); onCancel() }}>{ui("ui.cancel")}</button>
+        <button type="button" disabled={busy} onClick={onSmartCrop}>{t(busy ? 'crop.detecting' : 'crop.smart')}</button>
+        <button type="button" disabled={busy} className="primary" onClick={(event) => { event.stopPropagation(); onConfirm() }}>{t('crop.confirm')}</button>
+      </div>
     </div>
   </>
 }
@@ -691,19 +723,27 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [drag, setDrag] = useState<PageDrag>()
   const dragRef = useRef<PageDrag | undefined>(undefined)
   const [cropDraft, setCropDraft] = useState<PdfRect>()
+  const [cropMarginMm, setCropMarginMm] = useState(0)
+  const cropContent = useRef<PdfRect | undefined>(undefined)
+  const changeCropDraft = (rect: PdfRect | undefined) => { cropContent.current = undefined; setCropDraft(rect) }
+  const changeCropMargin = (value: number) => {
+    setCropMarginMm(value)
+    if (cropContent.current) setCropDraft(protectCropBounds(cropContent.current, value, size))
+  }
   const [cropBusy, setCropBusy] = useState(false)
   const cropToken = useRef(0)
   useEffect(() => { cropToken.current++; setCropBusy(false) }, [cropDraft, tool])
   useEffect(() => () => { cropToken.current++ }, [])
   const smartCrop = async () => {
     if (!cropDraft || cropBusy) return
+    if (cropContent.current) { setCropDraft(protectCropBounds(cropContent.current, cropMarginMm, size)); return }
     const token = ++cropToken.current
     setCropBusy(true)
     try {
       const canvas = await renderFigureRegion(await document.getPage(pageIndex + 1), cropDraft)
       if (token !== cropToken.current) return
       const content = figureContentBounds(canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height), cropDraft)
-      if (content) setCropDraft(content)
+      if (content) { cropContent.current = content; setCropDraft(protectCropBounds(content, cropMarginMm, size)) }
       else onError(new Error(t('crop.empty')))
     } catch (cause) { if (token === cropToken.current) onError(cause instanceof Error ? cause : new Error(String(cause))) }
     finally { if (token === cropToken.current) setCropBusy(false) }
@@ -835,7 +875,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     return () => { cancelled = true; task.cancel() }
   }, [page, renderEligible, renderZoom, onError])
 
-  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); setCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }, [tool])
+  useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); changeCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }, [tool])
   useEffect(() => { if (!activePage) setPageTextEditor(undefined) }, [activePage])
 
   const pointFor = (event: React.PointerEvent | React.MouseEvent): PdfPoint => {
@@ -908,7 +948,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     } else {
       const rect = normalizeRect(completed.start, completed.current)
       if (rect.width > 4 && rect.height > 4) {
-        if (tool === 'crop') setCropDraft(rect)
+        if (tool === 'crop') changeCropDraft(rect)
         else onAction({ pageIndex, tool, rect })
       }
     }
@@ -1119,7 +1159,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : imageDraft ? 30 : undefined }}
+  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : imageDraft || cropDraft ? 30 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -1158,7 +1198,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     </aside>}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
-    {tool === 'crop' && cropDraft && <CropDraftOverlay busy={cropBusy} onSmartCrop={() => void smartCrop()} rect={cropDraft} zoom={zoom} bounds={size} onChange={setCropDraft} onCancel={() => setCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); setCropDraft(undefined) }} />}
+    {tool === 'crop' && cropDraft && <CropDraftOverlay busy={cropBusy} marginMm={cropMarginMm} onMarginChange={changeCropMargin} onSmartCrop={() => void smartCrop()} rect={cropDraft} zoom={zoom} bounds={size} onChange={changeCropDraft} onCancel={() => changeCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); changeCropDraft(undefined) }} />}
     {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
     {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} pageCount={document.numPages} onPage={onImageDraftPage} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
