@@ -18,6 +18,10 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.51 将保护边界保存为共享本地偏好，跨页、跨文档、应用重启后复用，保持 0–50 mm 与小数语义。缩放采用 React 更新前快照读取原页面坐标，再在更新后恢复滚动位置，统一覆盖工具栏、适合宽度/页面、Ctrl＋滚轮及侧栏自动缩放；优先保留可见裁切框、图片/图形草稿或选区的焦点。禁用浏览器滚动锚定竞争，滚轮监听允许取消默认行为，避免默认滚动叠加。十语言原有控件继续复用。
+
+仅执行本次新增测试：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.51.test.ts`、`npx --no-install electron-vite build`、`node scripts/release-2.0.51-ui-smoke.cjs` 与 `git diff --check`（新增单元/UI 与构建可合并为 `npm run test:release-2.0.51`）。直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 打包；`PDFUCK_SMOKE_EXECUTABLE` 指向解包成品重跑新增 UI，并运行 `node scripts/release-2.0.51-portable-smoke.cjs` 实际验证便携 EXE 的重启持久化和缩放。核对包内版本/资源、文件属性、签名与 SHA-256，记录于 `docs/VALIDATION-2.0.51.md`。不执行全部旧测试与一键发布脚本。
+
 2.0.50 在裁切框边增加“保护边界”：以毫米设置 0–50 mm 的四周留白，默认 0；识别后实时调整，始终以原始主体边界重新计算，重复智能裁切不叠加留白，页面边缘自动限制。手调框后重新识别才应用保护边界。操作条随视区、语言、字号和倍率调整位置，支持暗色主题与阿拉伯语。
 
 本次按用户要求仅执行新增测试项：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.50.test.ts`、`npx --no-install electron-vite build`、`node scripts/release-2.0.50-ui-smoke.cjs` 和 `git diff --check`（新增测试与构建也可合并执行 `npm run test:release-2.0.50`）。随后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版和解包程序。通过 `PDFUCK_SMOKE_EXECUTABLE` 指向解包成品运行新增 UI 脚本，并执行 `node scripts/release-2.0.50-portable-smoke.cjs` 实际验证便携 EXE 的保护边界。核对包内版本、原生资源、程序属性、签名和 SHA-256；验收见 `docs/VALIDATION-2.0.50.md`。不运行包含全部旧测试的 `npm run build` 或一键发布脚本。

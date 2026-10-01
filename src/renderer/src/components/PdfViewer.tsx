@@ -8,6 +8,8 @@ import type { AnnotationRecord, CanvasAction, EditableTextRegion, ImageDraft, Im
 import { normalizeRect, rectUnion } from '../lib/geometry'
 import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
 import { adjustCropRect, protectCropBounds, type CropHandle } from '../lib/crop-geometry'
+import { saveCropMargin, useCropMargin } from '../lib/crop-preferences'
+import { captureZoomAnchor, ZoomScrollAnchor, type ZoomAnchor } from './ZoomScrollAnchor'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
 import { canvasOutputScale, singlePageWheelDecision, wheelZoom } from '../lib/rendering'
@@ -613,6 +615,7 @@ function CropDraftOverlay({ rect, zoom, bounds, marginMm, onMarginChange, onChan
   const interaction = useRef<{ handle: CropHandle; x: number; y: number; initial: PdfRect } | undefined>(undefined)
   const actionsRef = useRef<HTMLDivElement>(null)
   const [marginInput, setMarginInput] = useState(String(marginMm))
+  useEffect(() => setMarginInput(String(marginMm)), [marginMm])
   useLayoutEffect(() => {
     const actions = actionsRef.current, page = actions?.parentElement, viewer = page?.closest('.viewer')
     if (!actions || !page || !viewer) return
@@ -723,14 +726,11 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
   const [drag, setDrag] = useState<PageDrag>()
   const dragRef = useRef<PageDrag | undefined>(undefined)
   const [cropDraft, setCropDraft] = useState<PdfRect>()
-  const [cropMarginMm, setCropMarginMm] = useState(0)
+  const cropMarginMm = useCropMargin()
   const cropContent = useRef<PdfRect | undefined>(undefined)
   const changeCropDraft = (rect: PdfRect | undefined) => { cropContent.current = undefined; setCropDraft(rect) }
-  const changeCropMargin = (value: number) => {
-    setCropMarginMm(value)
-    if (cropContent.current) setCropDraft(protectCropBounds(cropContent.current, value, size))
-  }
   const [cropBusy, setCropBusy] = useState(false)
+  useEffect(() => { if (cropContent.current) setCropDraft(protectCropBounds(cropContent.current, cropMarginMm, size)) }, [cropMarginMm, size])
   const cropToken = useRef(0)
   useEffect(() => { cropToken.current++; setCropBusy(false) }, [cropDraft, tool])
   useEffect(() => () => { cropToken.current++ }, [])
@@ -1198,7 +1198,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     </aside>}
     {textCaret && <div className="text-caret" style={{ left: textCaret.x * zoom, top: textCaret.y * zoom, height: Math.max(8, textCaret.height * zoom) }} />}
     {drag && !canSelectText && <div className="area-selection" style={{ left: Math.min(drag.start.x, drag.current.x) * zoom, top: Math.min(drag.start.y, drag.current.y) * zoom, width: Math.abs(drag.current.x - drag.start.x) * zoom, height: Math.abs(drag.current.y - drag.start.y) * zoom }} />}
-    {tool === 'crop' && cropDraft && <CropDraftOverlay busy={cropBusy} marginMm={cropMarginMm} onMarginChange={changeCropMargin} onSmartCrop={() => void smartCrop()} rect={cropDraft} zoom={zoom} bounds={size} onChange={changeCropDraft} onCancel={() => changeCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); changeCropDraft(undefined) }} />}
+    {tool === 'crop' && cropDraft && <CropDraftOverlay busy={cropBusy} marginMm={cropMarginMm} onMarginChange={saveCropMargin} onSmartCrop={() => void smartCrop()} rect={cropDraft} zoom={zoom} bounds={size} onChange={changeCropDraft} onCancel={() => changeCropDraft(undefined)} onConfirm={() => { onAction({ pageIndex, tool: 'crop', rect: cropDraft }); changeCropDraft(undefined) }} />}
     {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
     {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} pageCount={document.numPages} onPage={onImageDraftPage} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
@@ -1262,7 +1262,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const singlePageWheelLastInteriorRef = useRef(0)
   const singlePageTargetScrollRef = useRef<{ pageIndex: number; edge: 'start' | 'end' } | undefined>(undefined)
   const previousModeRef = useRef(mode)
-  const wheelAnchorRef = useRef<{ pageIndex?: number; x?: number; y?: number; clientX: number; clientY: number; baseZoom: number; viewportX: number; viewportY: number; scrollLeft: number; scrollTop: number } | undefined>(undefined)
+  const wheelAnchorRef = useRef<ZoomAnchor | undefined>(undefined)
   const handleSize = useCallback((index: number, size: { width: number; height: number }) => {
     setSizes((current) => {
       const previous = current[index]
@@ -1342,23 +1342,6 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }, [calculateCrossSelection, updateSelection])
 
   useLayoutEffect(() => {
-    const anchor = wheelAnchorRef.current
-    const viewport = viewportRef.current
-    const page = anchor?.pageIndex === undefined ? undefined : viewport?.querySelector<HTMLElement>(`[data-page="${anchor.pageIndex}"]`)
-    if (anchor && viewport && page && anchor.x !== undefined && anchor.y !== undefined) {
-      const pageBounds = page.getBoundingClientRect()
-      viewport.scrollLeft += pageBounds.left - (anchor.clientX - anchor.x * zoom)
-      viewport.scrollTop += pageBounds.top - (anchor.clientY - anchor.y * zoom)
-      wheelAnchorRef.current = undefined
-    } else if (anchor && viewport) {
-      const scale = zoom / anchor.baseZoom
-      viewport.scrollLeft = (anchor.scrollLeft + anchor.viewportX) * scale - anchor.viewportX
-      viewport.scrollTop = (anchor.scrollTop + anchor.viewportY) * scale - anchor.viewportY
-      wheelAnchorRef.current = undefined
-    } else if (viewport) {
-      const current = viewport.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
-      if (current) centerPageHorizontally(viewport, current)
-    }
     if (wheelFrameRef.current === undefined && wheelAnchorRef.current === undefined) wheelZoomRef.current = zoom
   }, [zoom])
 
@@ -1466,11 +1449,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (!viewport || !page || !size || size.width * zoom <= viewport.clientWidth - 56 + 1) return false
     const nextZoom = Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width))
     if (nextZoom >= zoom) return false
-    // Reuse the zoom anchor so opening/resizing a sidebar preserves the visible text.
-    const bounds = page.getBoundingClientRect(), viewportBounds = viewport.getBoundingClientRect()
-    const clientX = viewportBounds.left + viewport.clientWidth / 2
-    const clientY = Math.max(viewportBounds.top, bounds.top)
-    wheelAnchorRef.current = { pageIndex: currentPage, x: size.width / 2, y: (clientY - bounds.top) / zoom, clientX, clientY, baseZoom: zoom, viewportX: clientX - viewportBounds.left, viewportY: clientY - viewportBounds.top, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop }
+    // Auto-fit uses the same draft/selection focus as explicit toolbar zoom.
+    wheelAnchorRef.current = captureZoomAnchor(viewport, zoom, currentPage)
     onZoomChange(nextZoom)
     return true
   }, [onZoomChange])
@@ -1546,7 +1526,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     centerPageHorizontally(viewport, target)
     if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
     navigationTimerRef.current = window.setTimeout(() => { if (pendingNavigationRef.current === pending) pendingNavigationRef.current = undefined }, 700)
-  }, [currentPage, document, mode, navigationRequest, sizes, zoom])
+  }, [currentPage, document, mode, navigationRequest, sizes])
   const openPdfLink = (target: PdfLinkTarget) => {
     if (target.url) { void window.desktop.openExternalLink(target.url).catch(() => onError(new Error(ui('pdfLink.openFailed')))); return }
     if (target.pageIndex !== undefined) goToPage(target.pageIndex, target.position)
@@ -1694,7 +1674,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (imageDraft && !visible.includes(imageDraft.pageIndex)) visible.push(imageDraft.pageIndex)
     return visible.sort((left, right) => left - right)
   }, [currentPage, document, pages, virtualized, imageDraft?.pageIndex])
-  const handleWheel = (event: React.WheelEvent) => {
+  const handleWheel = (event: WheelEvent) => {
     if (mode === 'single' && !event.ctrlKey) {
       const viewport = viewportRef.current
       if (!viewport || !document) return
@@ -1757,19 +1737,27 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       onZoomChange(wheelZoomRef.current)
     })
   }
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.addEventListener('wheel', handleWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [currentPage, document, mode, onZoomChange, zoom])
   const changeImagePage = async (pageIndex: number) => {
     if (!document || !imageDraft || imageDraftBusy || !Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= document.numPages) return
     const viewport = (await document.getPage(pageIndex + 1)).getViewport({ scale: 1 })
     onImageDraftChange({ ...imageDraft, pageIndex, rect: moveImageRect(imageDraft.rect, { x: 0, y: 0 }, imageDraft.rotation, viewport) })
     goToPage(pageIndex)
   }
-  return <div className="viewer" ref={viewportRef} onWheel={handleWheel}>
+  return <div className="viewer" ref={viewportRef}>
+      <ZoomScrollAnchor zoom={zoom} currentPage={currentPage} viewport={viewportRef} anchor={wheelAnchorRef}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: visiblePages[0] * 812 * zoom }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.fingerprints[0]}-${pageIndex}`}>
       {virtualized && index > 0 && pageIndex > visiblePages[index - 1] + 1 && <div className="pdf-page-virtual-spacer" style={{ height: (pageIndex - visiblePages[index - 1] - 1) * 812 * zoom }} aria-hidden />}
       <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      </ZoomScrollAnchor>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })

@@ -456,6 +456,7 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .pdf-page.tool-explain_image { cursor: crosshair; }
 .crop-actions { max-width: calc(100vw - 100px); flex-wrap: wrap; }
 .crop-actions { width: max-content; min-width: 0; flex-direction: column; gap: 8px; padding: 10px; overflow: auto; border-radius: 10px; }
+.viewer { overflow-anchor: none; }
 .crop-margin { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; font-size: var(--ui-font-small); font-weight: 650; }
 .crop-margin-input { display: flex; align-items: center; gap: 6px; padding-inline-end: 8px; border: 1px solid #d8deea; border-radius: 6px; background: #f7f9ff; font-weight: 400; }
 .crop-margin-input:focus-within { border-color: var(--app-accent, #3157d5); }
