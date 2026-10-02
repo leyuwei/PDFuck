@@ -174,7 +174,7 @@ export class PdfDocumentModel {
   }
 
   static async fromRasterPages(pages: Uint8Array[], dpi: number, name: string): Promise<PdfDocumentModel> {
-    if (!pages.length || !Number.isFinite(dpi) || dpi <= 0) throw new Error('无法生成可编辑副本。')
+    if (!pages.length || !Number.isFinite(dpi) || dpi <= 0) throw new Error('ui.editableCopyFailed')
     const document = await PDFDocument.create()
     for (const bytes of pages) {
       const image = await document.embedPng(bytes)
@@ -924,9 +924,10 @@ export class PdfDocumentModel {
       const replyStatus = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyStatus'))) as AnnotationReplyStatus
       const replyContent = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReply')))
       const replyMarks = readMarks(replyContent, decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyMarks'))))
-      const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent, ...(replyMarks.length ? { marks: replyMarks } : {}) } : undefined
+      const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent, ...(decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' ? { aiGenerated: true } : {}), ...(replyMarks.length ? { marks: replyMarks } : {}) } : undefined
       return [{
         id, groupId, pageIndex: entry.pageIndex, kind,
+        ...((decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckAI'))) === 'true' || decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' || kind === 'ai_polish') ? { aiGenerated: true } : {}),
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
         marks: readMarks(decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))), decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckMarks')))),
@@ -1068,7 +1069,7 @@ export class PdfDocumentModel {
     return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
   }
 
-  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason, marks }: PreparedAnnotation): string {
+  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason, marks, aiGenerated }: PreparedAnnotation): string {
     const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const bounds = rectUnion(normalized)
     const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
@@ -1084,6 +1085,7 @@ export class PdfDocumentModel {
     }
     dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
+    if (aiGenerated) dictionary.set(PDFName.of('PDFuckAI'), PDFName.of('true'))
     if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
     if (reason) dictionary.set(PDFName.of('PDFuckReason'), pdfString(reason))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
@@ -1116,8 +1118,8 @@ export class PdfDocumentModel {
     }
   }
 
-  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string, marks?: TextMark[]): Promise<string> {
-    const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason, marks }])
+  async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string, marks?: TextMark[], aiGenerated = false): Promise<string> {
+    const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason, marks, aiGenerated }])
     return id
   }
 
@@ -1144,6 +1146,8 @@ export class PdfDocumentModel {
   }
 
   private setAnnotationReply(dict: PDFDict, reply?: AnnotationReply): void {
+    if (reply?.aiGenerated && reply.content.trim()) dict.set(PDFName.of('PDFuckReplyAI'), PDFName.of('true'))
+    else dict.delete(PDFName.of('PDFuckReplyAI'))
     if (reply?.content.trim()) {
       dict.set(PDFName.of('PDFuckReplyStatus'), PDFName.of(reply.status))
       dict.set(PDFName.of('PDFuckReply'), pdfString(reply.content))

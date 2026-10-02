@@ -1,10 +1,13 @@
+import { AiAnnotationBadge } from './AnnotationContent'
+import { InlineAnnotation, PageAnnotationSummary } from './InlineAnnotation'
+import { useAnnotationView } from '../lib/annotation-preferences'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import { createPortal } from 'react-dom'
 import { ContextMenu } from './ContextMenu'
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
-import type { AnnotationRecord, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
+import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
 import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
 import { adjustCropRect, protectCropBounds, type CropHandle } from '../lib/crop-geometry'
@@ -69,6 +72,7 @@ interface ViewerProps {
   onCopyText(text: string): void
   translationEnabled?: boolean
   onTranslateSelection?(selection: TextSelection, context?: string): void
+  onAnnotationReply(id: string, reply?: AnnotationReply): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
   onAnnotationEdit(annotation: AnnotationRecord): void
@@ -88,6 +92,10 @@ interface ViewerProps {
 }
 
 interface PageProps {
+  inlineAnnotationId?: string
+  inlineMode: boolean
+  annotationMarkdown: boolean
+  onInlineClose(): void
   document: PDFDocumentProxy
   pageIndex: number
   zoom: number
@@ -117,6 +125,7 @@ interface PageProps {
   onCopyText(text: string): void
   translationEnabled?: boolean
   onTranslateSelection?(selection: TextSelection, context?: string): void
+  onAnnotationReply(id: string, reply?: AnnotationReply): void
   onAnnotationMove(id: string, dx: number, dy: number): void
   onAnnotationSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
   onAnnotationEdit(annotation: AnnotationRecord): void
@@ -349,7 +358,8 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     className={`annotation-hit ${markup ? 'markup' : 'point'} annotation-${annotation.kind}${focused ? ' focused' : ''}`}
     style={style}
     data-annotation-id={annotation.id}
-    title={annotation.content || annotation.kind}
+    role="button" tabIndex={0} aria-label={annotation.content || annotation.kind}
+    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(annotation) } }}
     onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }; onSelect(annotation, { additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); event.currentTarget.setPointerCapture(event.pointerId) }}
     onPointerUp={(event) => {
       event.stopPropagation()
@@ -365,6 +375,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSe
     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(annotation); onContext(annotation, event.clientX, event.clientY) }}
   >
     {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
+    {annotation.aiGenerated && <span className="annotation-ai-pin"><AiAnnotationBadge /></span>}
     {annotation.kind === 'note' && <span className="note-pin">●</span>}
     {annotation.kind === 'insert' && <span className="insert-caret" aria-hidden="true" />}
     {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 7 }}>{t('annotation.current')}</span></>}
@@ -706,7 +717,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
+function PdfPage({ inlineAnnotationId, inlineMode, annotationMarkdown, onInlineClose, onAnnotationReply, document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, grammarTerms, citationHits, textFocus, visualFocus }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -1159,7 +1170,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }))
     return () => cancelAnimationFrame(frame)
   }, [textFocus?.token, visualFocus?.token, words.length])
-  return <div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : imageDraft || cropDraft ? 30 : undefined }}
+  return <div className="pdf-sheet" style={{ width: size.width * zoom }}>{inlineMode && <PageAnnotationSummary annotations={annotations} />}<div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : inlineMode && inlineAnnotationId && annotations.some(annotation => annotation.id === inlineAnnotationId) ? 40 : imageDraft || cropDraft ? 30 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -1203,6 +1214,7 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
     {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} pageCount={document.numPages} onPage={onImageDraftPage} />}
     {tool === 'insert' && hoverInsert && <div className="insert-preview" style={{ left: hoverInsert.x * zoom - 7, top: hoverInsert.y * zoom }} />}
     {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
+    {inlineMode && annotations.filter(annotation => annotation.id === inlineAnnotationId).map(annotation => <InlineAnnotation key={annotation.id} annotation={annotation} zoom={zoom} markdown={annotationMarkdown} onReply={onAnnotationReply} onEdit={onAnnotationEdit} onClose={onInlineClose} />)}
     {annotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     <div className="watermark-layer" aria-hidden="true">{textObjects.filter((textObject) => textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} pageSize={size} editable={false} onMove={onTextObjectMove} onResize={onTextObjectResize} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}</div>
     {textObjects.filter((textObject) => !textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} pageSize={size} editable={!textObject.locked && editableTextObjects && tool !== 'crop'} onMove={onTextObjectMove} onResize={onTextObjectResize} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}
@@ -1220,11 +1232,22 @@ function PdfPage({ document, pageIndex, zoom, renderZoom, tool, annotations, foc
           {selection?.text && <i />}<button onClick={() => runMenu('note')}><AnnotationIcon kind="note" size={18} /><span>{ui("ui.note")}</span></button><button onClick={() => runMenu('insert')}><AnnotationIcon kind="insert" size={18} /><span>{ui("ui.insertText")}</span></button></>}
       </>}
     </ContextMenu>}
-  </div>
+  </div></div>
 }
 
 export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewer(props, ref) {
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
+  const annotationView = useAnnotationView()
+  const [inlineAnnotationId, setInlineAnnotationId] = useState<string>()
+  useEffect(() => { setInlineAnnotationId(undefined) }, [annotationView.mode])
+  useEffect(() => {
+    if (!inlineAnnotationId || annotationView.mode !== 'document') return
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.inline-annotation, .annotation-hit, .annotation-dialog-backdrop')) setInlineAnnotationId(undefined)
+    }
+    window.addEventListener('pointerdown', dismiss, true)
+    return () => window.removeEventListener('pointerdown', dismiss, true)
+  }, [inlineAnnotationId, annotationView.mode])
+  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationReply, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
@@ -1756,7 +1779,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
-      onAnnotationMove={onAnnotationMove} onAnnotationSelect={onAnnotationSelect} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
+      onAnnotationMove={onAnnotationMove} onAnnotationSelect={(annotation, options) => { setInlineAnnotationId(annotation.id); onAnnotationSelect(annotation, options) }} onAnnotationReply={onAnnotationReply} inlineAnnotationId={inlineAnnotationId} inlineMode={annotationView.mode === 'document'} annotationMarkdown={annotationView.markdown} onInlineClose={() => setInlineAnnotationId(undefined)} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: (document.numPages - visiblePages.at(-1)! - 1) * 812 * zoom }} aria-hidden />}</div>
       </ZoomScrollAnchor>
     {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>

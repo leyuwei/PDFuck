@@ -18,6 +18,14 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.52 新增实验室 AI 报告 PDF 导出（Markdown 渲染、生成时原文快照、完整 Markdown 与原文 UTF-8 附件；全文评价另附原 PDF 页面）、持久化的 Markdown 展示和列表/文内模式、AI 来源徽标、单行预览修复及书签展开/收起 SVG。文内卡片含作者、三种状态选择、正文与回复，双击编辑；每页纸张左上方外侧显示四类状态统计，使用共享十语言和三档字体变量。
+
+2.0.52 界面修正版仅复测这次关联项目：`npm run test:release-2.0.52-fixes`（3 项定向单元测试及五类界面问题），必要的 typecheck/字号静态审计；按上述直接打包方式生成成品，再用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包 EXE 运行 `scripts/release-2.0.52-fixes-ui-smoke.cjs`。不运行无关 AI 报告检查或旧测试全集，重写最终成品清单及 SHA-256。
+
+紧凑 AI 图标修正版使用 `node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.52.test.tsx -t 'icon-only'` 和 `scripts/release-2.0.52-ai-badge-ui-smoke.cjs` 定向复测，按相同方式生产构建、直接打包及成品复测；便携启动检查增加纯图标断言。最终清单和哈希对应这一轮成品，不重跑无关测试。
+
+仅运行本次新增测试：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.52.test.tsx`、`npx --no-install electron-vite build`、`node scripts/release-2.0.52-ui-smoke.cjs` 和 `git diff --check`；多语言和字号脚本只作为静态审计。直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 打包，不使用运行全部旧测试的 `npm run build` 或一键发布脚本。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包成品重跑新增 UI，执行 `node scripts/release-2.0.52-portable-smoke.cjs` 检查真实便携启动、模式与 Markdown 偏好跨重启。核对版本、资源、签名和 SHA-256，记录于 `docs/VALIDATION-2.0.52.md`。AI 与保存路径只使用本机测试替身，报告生成与写盘使用实际 IPC。
+
 2.0.51 将保护边界保存为共享本地偏好，跨页、跨文档、应用重启后复用，保持 0–50 mm 与小数语义。缩放采用 React 更新前快照读取原页面坐标，再在更新后恢复滚动位置，统一覆盖工具栏、适合宽度/页面、Ctrl＋滚轮及侧栏自动缩放；优先保留可见裁切框、图片/图形草稿或选区的焦点。禁用浏览器滚动锚定竞争，滚轮监听允许取消默认行为，避免默认滚动叠加。十语言原有控件继续复用。
 
 仅执行本次新增测试：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.51.test.ts`、`npx --no-install electron-vite build`、`node scripts/release-2.0.51-ui-smoke.cjs` 与 `git diff --check`（新增单元/UI 与构建可合并为 `npm run test:release-2.0.51`）。直接调用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 打包；`PDFUCK_SMOKE_EXECUTABLE` 指向解包成品重跑新增 UI，并运行 `node scripts/release-2.0.51-portable-smoke.cjs` 实际验证便携 EXE 的重启持久化和缩放。核对包内版本/资源、文件属性、签名与 SHA-256，记录于 `docs/VALIDATION-2.0.51.md`。不执行全部旧测试与一键发布脚本。

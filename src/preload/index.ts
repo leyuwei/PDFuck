@@ -21,6 +21,7 @@ const api: DesktopApi = {
   listPrinters: () => ipcRenderer.invoke('pdf:list-printers'),
   openPrinterSettings: (printerName) => ipcRenderer.invoke('pdf:open-printer-settings', printerName),
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),
+  exportLabReport: (request) => ipcRenderer.invoke('pdf:export-lab-report', request),
   exportPages: (request: ExportRequest) => ipcRenderer.invoke('pdf:export', request),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
   aiRequest: async (request: AiRequest, onChunk?: (chunk: string) => void) => {

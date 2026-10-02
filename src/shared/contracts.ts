@@ -121,6 +121,15 @@ export interface PrintPdfResult {
   status: 'printed' | 'canceled'
 }
 
+export interface LabReportRequest {
+  name: string
+  html: string
+  markdown: string
+  sourceText: string
+  fontSizes: { small: number; body: number; title: number }
+  sourcePdf?: Uint8Array
+}
+
 export interface ExportPage {
   data: Uint8Array
   pageNumber: number
@@ -220,6 +229,7 @@ export interface DesktopApi {
   listPrinters(): Promise<PrinterDescriptor[]>
   openPrinterSettings(printerName: string): Promise<void>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>
+  exportLabReport(request: LabReportRequest): Promise<string | null>
   exportPages(request: ExportRequest): Promise<string[] | null>
   copyText(text: string): Promise<void>
   aiRequest(request: AiRequest, onChunk?: (chunk: string) => void): Promise<AiResponse>

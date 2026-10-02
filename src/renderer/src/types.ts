@@ -39,6 +39,7 @@ export interface AnnotationRecord {
   pageIndex: number
   kind: AnnotationKind
   author: string
+  aiGenerated?: boolean
   content: string
   marks?: TextMark[]
   /** Optional explanation kept separate from replacement/insertion text. */
@@ -50,6 +51,7 @@ export interface AnnotationRecord {
 }
 
 export interface AnnotationReply {
+  aiGenerated?: boolean
   status: AnnotationReplyStatus
   content: string
   marks?: TextMark[]
@@ -90,6 +92,7 @@ export interface AddAnnotationRequest {
   color?: string
   groupId?: string
   author?: string
+  aiGenerated?: boolean
   reason?: string
 }
 

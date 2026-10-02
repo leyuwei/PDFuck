@@ -1,3 +1,5 @@
+import { createLabReport } from './lab-report'
+import type { LabReportRequest } from '../shared/contracts'
 import { cancelOcr, recognizeOcrPage } from './ocr'
 import type { OcrPageRequest } from '../shared/ocr'
 import { convertPdfToEps, findPdfToCairo } from './eps-export'
@@ -749,6 +751,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('pdf:list-printers', (event) => listPrinters(requireMainWindow(event.sender).webContents))
   ipcMain.handle('pdf:open-printer-settings', (event, printerName: string) => openPrinterSettings(printerName, requireMainWindow(event.sender)))
   ipcMain.handle('pdf:print', (event, request: PrintPdfRequest) => printPdf(request, requireMainWindow(event.sender)))
+  ipcMain.handle('pdf:export-lab-report', async (event, request: LabReportRequest) => {
+    const session = requireWindowSession(event.sender)
+    const bytes = await createLabReport(request)
+    const name = request.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 100) || 'AI'
+    const result = await dialog.showSaveDialog(session.window, { title: nativeText(session.interfaceLanguage, 'ui.exportPdfReport'), defaultPath: `${name}.pdf`, filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+    if (result.canceled || !result.filePath) return null
+    await atomicWrite(result.filePath, bytes)
+    return result.filePath
+  })
   ipcMain.handle('pdf:export', async (event, request: ExportRequest) => {
     const session = requireWindowSession(event.sender)
     const window = session.window

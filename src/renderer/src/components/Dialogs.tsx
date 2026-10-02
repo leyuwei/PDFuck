@@ -1,6 +1,10 @@
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
 import type { AnnotationSuggestionEditor } from './AnnotationLab'
+import { useAnnotationView, saveAnnotationView } from '../lib/annotation-preferences'
+import { AnnotationContent } from './AnnotationContent'
+import { AiMarkdown } from './AiMarkdown'
+import { LabExportButton } from './LabExportButton'
 import { AnnotationRichEditor } from './AnnotationRichText'
 import type { TextMark } from '../lib/annotation-rich-text'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -38,6 +42,7 @@ function useDeferredFocus<T extends HTMLElement>() {
 }
 
 export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabled, onSuggest, onSuggestionEnd }: { state: AnnotationDialogState; onCancel(): void; onSubmit(value: AnnotationDialogResult): void; aiSuggestionsEnabled?: boolean; onSuggest?(value: AnnotationDialogResult, editor: AnnotationSuggestionEditor): void; onSuggestionEnd?(): void }) {
+  const annotationView = useAnnotationView()
   const [value, setValue] = useState(state.initial || '')
   const [marks, setMarks] = useState<TextMark[]>(state.marks || [])
   const [color, setColor] = useState(state.initialColor || DEFAULT_ANNOTATION_COLOR[state.kind])
@@ -62,13 +67,13 @@ export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabl
     if (!suggestionHost.current || !onSuggest) return
     setSuggesting(true)
     onSuggest(draft(), { element: suggestionHost.current, close: returnToEditor, apply(content) {
-      setReply({ status: 'custom', content })
+      setReply({ status: 'custom', content, aiGenerated: true })
       if (replySection.current) replySection.current.open = true
       returnToEditor()
     } })
   }
   return <div className={`modal-backdrop annotation-dialog-backdrop${suggesting ? ' annotation-suggestion-mode' : ''}`} onPointerDown={(event) => { backgroundPointer.current = event.button === 0 && event.target === event.currentTarget }} onPointerCancel={() => { backgroundPointer.current = false }} onClick={(event) => { if (!suggesting && backgroundPointer.current && event.target === event.currentTarget) onCancel(); backgroundPointer.current = false }} onKeyDownCapture={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); if (suggesting) returnToEditor(); else onCancel() } }}><ScrollWindow ref={floating.ref} className="modal annotation-dialog" role="dialog" aria-modal={!suggesting} aria-labelledby="annotation-dialog-title" style={floating.style}><div className="annotation-dialog-heading" {...floating.dragHandlers}><h2 id="annotation-dialog-title">{suggesting ? ui("ui.annotationSuggestions") : state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2>{suggesting && <button type="button" className="annotation-suggestion-back" onClick={returnToEditor}>{ui("ui.backToAnnotationEditor")}</button>}<button type="button" className="annotation-dialog-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
-    <div className="annotation-editor-fields" hidden={suggesting}><AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
+    <div className="annotation-editor-fields" hidden={suggesting}><label className="annotation-markdown-toggle"><input type="checkbox" checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label>{annotationView.markdown && value.trim() && <AnnotationContent text={value} marks={marks} markdown />}<AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
     {state.edit && <details ref={replySection} className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
     <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={suggest}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></div><div className="annotation-suggestion-stage" hidden={!suggesting}><p className="annotation-suggestion-draft-hint">{ui("ui.annotationSuggestionDraftHint")}</p><div ref={suggestionHost} /></div></ScrollWindow></div>
 }
@@ -727,7 +732,7 @@ export function MergeFilesDialog({ files, pageCount, creating, onCancel, onSubmi
 }
 
 export function TranslationDialog({ source, target, result, busy, adding, error, recovery, onCancel, onRetry, onAdd }: { source: string; target: string; result?: string; busy: boolean; adding?: boolean; error?: string; recovery?: boolean; onCancel(): void; onRetry(): void; onAdd(): void }) {
-  return <div className="modal-backdrop translation-backdrop"><ScrollWindow className="modal translation-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-dialog-title"><header><div><small>{ui("ui.translationTargetLanguage")}: {target}</small><h2 id="translation-dialog-title">{ui("ui.textTranslation")}</h2></div><button type="button" aria-label={ui("ui.close")} onClick={onCancel}>×</button></header><section className="translation-source"><small>{ui("ui.sourceText")}</small><p>{source}</p></section>{busy && <div className="translation-progress" role="status"><i />{recovery ? ui("ui.translationRetryingAutomatically") : ui("ui.translatingSelection")}</div>}{error && <div className="translation-error" role="alert"><b>{ui("ui.translationFailed")}</b><span>{translateUiText(error)}</span></div>}{result && <section className="translation-result"><small>{ui("ui.translationResult")}</small><p>{result}</p></section>}<div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.close")}</button>{error && !busy && <button type="button" onClick={onRetry}>{ui("ui.retryTranslation")}</button>}{result && <button type="button" className="primary" disabled={adding} onClick={onAdd}>{adding ? ui("ui.adding") : ui("ui.addTranslationAsHighlight")}</button>}</div></ScrollWindow></div>
+  return <div className="modal-backdrop translation-backdrop"><ScrollWindow className="modal translation-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-dialog-title"><header><div><small>{ui("ui.translationTargetLanguage")}: {target}</small><h2 id="translation-dialog-title">{ui("ui.textTranslation")}</h2></div><button type="button" aria-label={ui("ui.close")} onClick={onCancel}>×</button></header><section className="translation-source"><small>{ui("ui.sourceText")}</small><p>{source}</p></section>{busy && <div className="translation-progress" role="status"><i />{recovery ? ui("ui.translationRetryingAutomatically") : ui("ui.translatingSelection")}</div>}{error && <div className="translation-error" role="alert"><b>{ui("ui.translationFailed")}</b><span>{translateUiText(error)}</span></div>}{result && <section className="translation-result"><small>{ui("ui.translationResult")}</small><AiMarkdown content={result} /></section>}<div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.close")}</button>{error && !busy && <button type="button" onClick={onRetry}>{ui("ui.retryTranslation")}</button>}{result && <LabExportButton title={ui('ui.textTranslation')} content={result} source={{ text: `${target}\n\n${source}` }} />}{result && <button type="button" className="primary" disabled={adding} onClick={onAdd}>{adding ? ui("ui.adding") : ui("ui.addTranslationAsHighlight")}</button>}</div></ScrollWindow></div>
 }
 
 export function WatermarkDialog({ data, currentPage, initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { data: Uint8Array; currentPage: number; initial?: WatermarkSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: WatermarkSettings): void; onDelete(): void }) {

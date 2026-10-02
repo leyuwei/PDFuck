@@ -1,3 +1,4 @@
+import { useAnnotationView, saveAnnotationView } from '../lib/annotation-preferences'
 import { InterfaceSizeDialog } from './InterfaceSizeDialog'
 import { INTERFACE_SIZES, INTERFACE_SIZE_LABELS, useInterfaceSize } from '../lib/interface-size'
 import { ScrollWindow } from './ScrollWindow'
@@ -136,6 +137,7 @@ export function ThemeColorPicker({ label, value, theme, disabled = false, onChan
 
 export function ToolPanel(props: Props) {
   const { module, activeTool, mode, hasDocument, dirty, onTool, readOnly } = props
+  const annotationView = useAnnotationView()
   const documentDisabled = !hasDocument || readOnly
   const language = useInterfaceLanguage()
   const platform = props.platform || 'win32'
@@ -176,7 +178,7 @@ export function ToolPanel(props: Props) {
       <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorDocumentId(documentSessionKey)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="watermark" />} onClick={() => props.onWatermark?.()} hint={ui('ui.watermarkHint')}>{ui('ui.addWatermark')}</PanelAction></>}
-    {module === 'annotate' && <><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
+    {module === 'annotate' && <><section className="annotation-view-settings"><h3>{ui('ui.annotationView')}</h3><div className="segmented" role="radiogroup" aria-label={ui('ui.annotationView')}>{(['list', 'document'] as const).map(mode => <button key={mode} type="button" role="radio" aria-checked={annotationView.mode === mode} className={annotationView.mode === mode ? 'active' : ''} onClick={() => saveAnnotationView({ mode })}>{ui(mode === 'list' ? 'ui.annotationList' : 'ui.annotationsInDocument')}</button>)}</div><label className="annotation-markdown-toggle"><input type="checkbox" checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label></section><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui("ui.selectText")}>{ui("ui.highlightText")}</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="replace" />} shortcut={shortcutLabel('replace', platform)} hint={ui("ui.selectTheOriginalText")}>{ui("ui.replaceText")}</ToolButton>
       <ToolButton tool="delete_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="delete_text" />} shortcut={shortcutLabel('deleteSelection', platform)} hint={ui("ui.selectText")}>{ui("ui.deleteText")}</ToolButton>

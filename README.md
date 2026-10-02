@@ -17,6 +17,7 @@
 - **结合原文生成修改建议**：从批注位置自动提取附近正文，也可加入多段选区作为上下文。建议在同一编辑窗口中填入回复草稿，确认后保存到 PDF。
 - **随手翻译选中的文本**：在“实验室”选择目标语言并启用后，可在任何模块圈选文字并右键翻译。单词会自动参考同页少量上下文，但结果只翻译选区；结果可一键写成 Highlight 高亮批注。翻译独立运行，不打断其他 AI 任务；临时故障会先自动恢复，仍失败时可直接重试。
 - **把批注变成可跟进的修改清单**：区分批注人，用“已处理／想一想／不做了”标记处理状态；按进度统计快速定位批注，再回到原文核查，回复随 PDF 保存。
+- **Markdown 批注与文内浮窗**：编辑窗、批注列表和文内浮窗共用持久化的 Markdown 开关；可选择列表或文内查看，单击批注显示作者与处理状态，双击浮窗编辑。每页纸张左上方外侧显示四类状态统计，AI 批注附带来源徽标。实验室的润色、全文评价、自动批注、修改建议、图片解释和翻译均可将结果与对应原文导出为独立 PDF，附带完整 Markdown 和原文附件。
 - **扫描件也能原位框选与复制**：OCR 在本地识别所选页码，支持中英等 11 种主要语言，自动纠斜、低置信度复识别并整理中文/日文伪空格。隐形文字随 PDF 保存，页面外观保持不变，识别结果可撤销。
 - **按论文结构找内容**：一键定位图表，将文中引用关联到参考文献，自动识别章节书签；PDF 自带书签与页内链接可准确跳转，网页和邮件链接由系统安全打开。
 - **衔接论文插图的 EPS 工作流**：支持 EPS 导入，将编辑后的 PDF 导出为保留文字与矢量路径的 EPS，方便后续排版。
@@ -70,6 +71,7 @@ npm run build
 - **Revision advice grounded in the source**: Automatically collect nearby text from an annotation’s position, or add multiple selections as context. Use suggestions in a reply draft within the same editor, then confirm to save them into the PDF.
 - **Translate selected text in place**: Choose a target language in Lab, then translate any PDF selection from its context menu in every module. A single word receives a small same-page context for disambiguation while only the selection is translated. Translation runs independently of other AI tasks; add the result as a Highlight annotation in one click, with automatic recovery before a manual retry.
 - **Annotations you can follow through**: Identify reviewers and mark each item as Done, Think about it, or Won’t do. Use progress counts to find annotations, return to the source to verify changes, and keep replies in the PDF.
+- **Markdown annotations and in-document cards**: a remembered Markdown switch applies to the editor, list and paper cards. Choose the list or in-document view; click an annotation to see its author and status choices, and double-click the card to edit. Each sheet shows four status counts outside its upper-left corner, and AI annotations retain a source badge. Export every Lab AI result with its source to a separate PDF, including full Markdown and source attachments.
 - **Select and copy scanned pages in place**: Local OCR supports selected page ranges and 11 primary languages, deskewing, a low-confidence retry, and removal of spurious Chinese/Japanese spaces. Invisible text is saved inside the PDF while preserving its appearance, with undo support.
 - **Navigate by the paper’s structure**: Find figures and tables in one click, link citations to references, and recognize section bookmarks. Built-in outlines and page links navigate precisely; web and email links open safely through the operating system.
 - **An EPS workflow for research figures**: Import EPS files and export edited PDFs to EPS while retaining text and vector paths for subsequent typesetting.
