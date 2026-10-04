@@ -337,6 +337,7 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState>(null)
   const [errorMessage, setErrorMessage] = useState<string>()
   const [maximized, setMaximized] = useState(false)
+  const [fullScreen, setFullScreen] = useState(false)
   const [draggingFile, setDraggingFile] = useState(false)
   const [draggingDocumentTransfer, setDraggingDocumentTransfer] = useState(false)
   const [draggingDocumentTab, setDraggingDocumentTab] = useState(false)
@@ -823,6 +824,13 @@ export default function App() {
     } catch (error) { showError(error) }
     finally { documentLifecycleLocksRef.current.delete(id) }
   }, [activateSession, showError, waitForDocumentOperations])
+
+  useEffect(() => {
+    let active = true, changed = false
+    const off = window.desktop.onWindowFullScreen((value) => { changed = true; setFullScreen(value) })
+    window.desktop.windowIsFullScreen().then((value) => { if (active && !changed) setFullScreen(value) }).catch(() => undefined)
+    return () => { active = false; off() }
+  }, [])
 
   useEffect(() => {
     window.desktop.windowIsMaximized().then(setMaximized)
@@ -1599,7 +1607,7 @@ export default function App() {
       })
     }} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
   })
-  return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
+  return <div className={`app-shell theme-${preferences.theme} ${isMac ? 'platform-macos' : 'platform-windows'}${isMac && fullScreen ? ' window-fullscreen' : ''}`} style={{ '--app-accent': appAccent, '--theme-accent-on': contrastText(appAccent), '--pdf-paper-background': documentBackground } as CSSProperties} onDragEnter={(event) => {
     if (isExternalFileDrag(event.dataTransfer)) { event.preventDefault(); setDraggingFile(true); return }
     if (!draggingDocumentTab && isDocumentTransferDrag(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingDocumentTransfer(true) }
   }} onDragOver={(event) => {

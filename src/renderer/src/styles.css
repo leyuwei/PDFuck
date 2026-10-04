@@ -38,6 +38,8 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .zoom-value { min-width: 56px !important; }.quick-save { margin-left: 2px; }.quick-save:not(.primary):disabled { opacity: 1; color: #98a1b0; border-color: #e0e4eb; background: #eef1f5; }
 .window-controls { grid-column: 3; justify-self: end; height: 58px; margin: 0; gap: 0; -webkit-app-region: no-drag; }.window-controls button { width: 48px; height: 58px; border: 0; border-radius: 0; padding: 0; display: grid; place-items: center; background: transparent; }.window-controls button:hover { background: #eef1f7; }.window-controls .close:hover { background: #e5484d; color: #fff; }.window-controls svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: square; stroke-linejoin: miter; shape-rendering: geometricPrecision; }
 .platform-macos .titlebar-identity { padding-left: 82px; }
+.platform-macos .titlebar { direction: ltr; }
+.platform-macos.window-fullscreen .titlebar-identity { padding-left: 18px; }
 .platform-macos .window-manager-bar { padding-left: 15px; }
 .window-tab[draggable="true"] { cursor: grab; }.window-tab[draggable="true"]:active { cursor: grabbing; }.window-tab.dragging { opacity: .48; transform: scale(.985); }
 .annotation-line-toggle .annotation-line-label { color: inherit; font-size: var(--ui-font-small); line-height: normal; }

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, nativeImage } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
+const os = require('node:os')
+const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
 const source = path.join(root, 'resources', 'icon.svg')
@@ -32,6 +34,8 @@ function icoFromPng(image) {
 }
 
 app.whenReady().then(async () => {
+  const documentIcon = process.argv.includes('--mac-document')
+  if (documentIcon && process.platform !== 'darwin') throw new Error('The document icon requires macOS iconutil.')
   if (process.argv.includes('--ico-only')) {
     const image = nativeImage.createFromPath(pngPath)
     if (image.isEmpty()) throw new Error(`Unable to read ${pngPath}`)
@@ -39,23 +43,38 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
-  const svg = fs.readFileSync(source, 'utf8')
-  const window = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: '#00000000', width: 512, height: 512, useContentSize: true, webPreferences: { offscreen: true } })
-  const html = `<style>html,body{margin:0;width:512px;height:512px;overflow:hidden;background:transparent}img{display:block;width:512px;height:512px}</style><img src="data:image/svg+xml,${encodeURIComponent(svg)}">`
+  const logo = fs.readFileSync(source, 'utf8')
+  // Vector-only document artwork has no font or locale-dependent glyphs.
+  const svg = documentIcon ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M96 24h224l112 112v328a24 24 0 0 1-24 24H96a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z" fill="#f4f7ff" stroke="#7893c4" stroke-width="12"/><path d="M320 24v112h112" fill="#c9dcff" stroke="#7893c4" stroke-width="12" stroke-linejoin="round"/><svg x="128" y="166" width="256" height="256" viewBox="0 0 512 512">${logo.replace(/<\/?svg[^>]*>/g, '')}</svg></svg>` : logo
+  const size = documentIcon ? 1024 : 512
+  const window = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: '#00000000', width: size, height: size, useContentSize: true, webPreferences: { offscreen: true } })
+  const html = `<style>html,body{margin:0;width:${size}px;height:${size}px;overflow:hidden;background:transparent}img{display:block;width:${size}px;height:${size}px}</style><img src="data:image/svg+xml,${encodeURIComponent(svg)}">`
   await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
   const raster = await new Promise((resolve, reject) => {
     const cleanup = () => { clearTimeout(timeout); window.webContents.removeListener('paint', onPaint) }
     const onPaint = (_event, _dirty, image) => {
-      const size = image.getSize()
-      if (image.isEmpty() || size.width !== 512 || size.height !== 512 || !image.toPNG().length) return
+      const dimensions = image.getSize()
+      if (image.isEmpty() || dimensions.width !== size || dimensions.height !== size || !image.toPNG().length) return
       cleanup(); resolve(image)
     }
     const timeout = setTimeout(() => { cleanup(); reject(new Error('Timed out while rendering the app icon.')) }, 5000)
     window.webContents.on('paint', onPaint)
     window.webContents.invalidate()
   })
-  fs.writeFileSync(pngPath, raster.toPNG())
-  fs.writeFileSync(icoPath, icoFromPng(nativeImage.createFromBuffer(raster.toPNG())))
+  if (documentIcon) {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-icon-'))
+    try {
+      const iconset = path.join(temporary, 'pdf.iconset')
+      fs.mkdirSync(iconset)
+      for (const pixels of [16, 32, 128, 256, 512]) for (const scale of [1, 2]) {
+        fs.writeFileSync(path.join(iconset, `icon_${pixels}x${pixels}${scale === 2 ? '@2x' : ''}.png`), raster.resize({ width: pixels * scale, height: pixels * scale, quality: 'best' }).toPNG())
+      }
+      execFileSync('/usr/bin/iconutil', ['--convert', 'icns', '--output', path.join(root, 'resources/pdf.icns'), iconset])
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }) }
+  } else {
+    fs.writeFileSync(pngPath, raster.toPNG())
+    fs.writeFileSync(icoPath, icoFromPng(nativeImage.createFromBuffer(raster.toPNG())))
+  }
   window.destroy()
   app.quit()
 }).catch((error) => { console.error(error); app.exit(1) })

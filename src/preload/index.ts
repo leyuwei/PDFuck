@@ -56,6 +56,12 @@ const api: DesktopApi = {
   windowToggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
   windowClose: () => ipcRenderer.send('window:close'),
   windowIsMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+  windowIsFullScreen: () => ipcRenderer.invoke('window:is-full-screen'),
+  onWindowFullScreen: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, fullScreen: boolean) => callback(fullScreen)
+    ipcRenderer.on('window:full-screen', listener)
+    return () => ipcRenderer.removeListener('window:full-screen', listener)
+  },
   onWindowMaximized: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized)
     ipcRenderer.on('window:maximized', listener)

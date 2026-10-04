@@ -10,6 +10,8 @@
 
 **为论文精读、审稿与修改设计的 PDF 编辑器。** 支持 Windows、macOS 和十种界面语言。
 
+**2.0.55 macOS 修复**：双击 PDF 自动创建或恢复窗口并显示到前台；PDF 文件关联使用独立的原生文档图标；进入全屏时 Logo 自动移到左上角，退出后恢复窗口按钮留白，支持全部十种界面语言。
+
 ## 核心亮点
 
 - **专门处理复杂论文版式的框选**：兼顾双栏、行内公式、上下标与跨页选区；支持手动校正栏界，复制时自动整理断行与断词。
@@ -63,6 +65,8 @@ npm run build
 <a id="english"></a>
 
 **A PDF editor for close reading, peer review, and revision.** Available on Windows and macOS, with ten interface languages.
+
+**2.0.55 macOS fixes**: opening a PDF shows or recreates the window in front; PDF associations use a dedicated native document icon; the Logo moves to the upper left in fullscreen and restores the window-button spacing on exit, across all ten languages.
 
 ## Highlights
 

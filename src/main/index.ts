@@ -406,7 +406,11 @@ function queuePdfPath(path: string): void {
   const absolute = resolve(path)
   if (!isPdf(absolute) || !existsSync(absolute)) return
   const primary = mainSession && !mainSession.window.isDestroyed() ? mainSession : undefined
-  if (!primary) pendingPaths.push(absolute)
+  if (!primary) {
+    pendingPaths.push(absolute)
+    if (app.isReady()) createMainWindow()
+    return
+  }
   else if (!primary.initialDelivered) primary.initialPaths.push(absolute)
   else primary.window.webContents.send('pdf:open-external', absolute)
   showMainWindow()
@@ -562,6 +566,8 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
   if (options.primary) mainSession = session
   window.on('maximize', () => window.webContents.send('window:maximized', true))
   window.on('unmaximize', () => window.webContents.send('window:maximized', false))
+  window.on('enter-full-screen', () => window.webContents.send('window:full-screen', true))
+  window.on('leave-full-screen', () => window.webContents.send('window:full-screen', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); window.setTitle(nativeWindowTitle(session, session.interfaceLanguage)) })
   window.on('close', (event) => {
     if (session.closeApproved || !session.dirty && (session.documentCount || 0) <= 1) return
@@ -829,6 +835,7 @@ app.whenReady().then(async () => {
     window.close()
   })
   ipcMain.handle('window:is-maximized', (event) => requireMainWindow(event.sender).isMaximized())
+  ipcMain.handle('window:is-full-screen', (event) => requireMainWindow(event.sender).isFullScreen())
   createMainWindow()
 })
 

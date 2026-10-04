@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 
+vi.mock('electron', () => ({ app: { show: vi.fn(), focus: vi.fn() } }))
+
 function windowDouble(overrides: { destroyed?: boolean; minimized?: boolean } = {}) {
   return {
     isDestroyed: vi.fn(() => overrides.destroyed || false),

@@ -257,6 +257,8 @@ export interface DesktopApi {
   windowClose(): void
   windowIsMaximized(): Promise<boolean>
   onWindowMaximized(callback: (maximized: boolean) => void): () => void
+  windowIsFullScreen(): Promise<boolean>
+  onWindowFullScreen(callback: (fullScreen: boolean) => void): () => void
   onWindowRequestClose(callback: () => void): () => void
   onDocumentTransferComplete(callback: (transferId: string) => void): () => void
   onOpenPdf(callback: (path: string) => void): () => void
