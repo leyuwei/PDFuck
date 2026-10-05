@@ -36,12 +36,13 @@
 .md-quick-trigger > span { font-size: var(--ui-font-title); line-height: 1; }
 .md-workspace input, .md-workspace select, .md-insert-fields textarea { border: 1px solid var(--md-border); border-radius: 7px; padding: 9px 10px; min-width: 0; width: 100%; background: var(--md-surface); color: inherit; font-size: var(--ui-font-body); }
 .md-workspace .md-source-editor { flex: 1; min-height: 80px; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; padding: 20px; font: var(--ui-font-body)/1.8 Consolas, Menlo, 'Microsoft YaHei', monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; background: var(--md-surface); color: inherit; }
-.md-source-editor:focus-visible { box-shadow: inset 0 0 0 2px var(--theme-accent, #3157d5); }
-.md-workspace .md-source-footer { height: auto; min-height: 30px; padding: 8px 12px; gap: 6px 12px; flex: none; display: flex; flex-wrap: wrap; justify-content: space-between; border-top: 1px solid var(--md-border); background: var(--md-subtle); color: var(--md-muted); font-size: var(--ui-font-small); }
-.md-source-footer span { white-space: normal; overflow-wrap: anywhere; }
-.md-divider { display: grid; place-items: center; cursor: col-resize; touch-action: none; border-radius: 5px; }
+.md-workspace .md-source-editor:focus, .md-workspace .md-source-editor:focus-visible { outline: 0; box-shadow: none; }
+.md-workspace .md-source-footer { min-height: 30px; padding: 4px 10px; gap: 8px; flex: none; display: flex; align-items: center; border-top: 1px solid var(--md-border); background: var(--md-subtle); color: var(--md-muted); font-size: var(--ui-font-small); }
+.md-source-footer > span { white-space: nowrap; }
+.md-source-footer > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 420px) { .md-source-footer > span:last-of-type { display: none; } }
+.md-divider { display: grid; place-items: center; cursor: col-resize; touch-action: none; border-radius: 5px; outline: 0; }
 .md-divider span { height: 36px; width: 3px; border-radius: 3px; background: #a6b4c9; }
-.md-divider:hover, .md-divider:focus-visible { background: var(--theme-accent-faint, #dce6fc); outline: 2px solid var(--theme-accent, #3157d5); outline-offset: -2px; }
 .md-workspace [hidden] { display: none !important; }
 .md-dialog-backdrop { background: #101d3455; }
 .md-workspace .md-dialog.scroll-window { position: fixed; width: min(720px, calc(100vw - 40px)); padding: 0; max-height: var(--floating-max-height); border-radius: 12px; background: var(--md-surface); border: 1px solid var(--md-border); box-shadow: 0 18px 70px #15243d40; }
@@ -85,3 +86,10 @@
 .theme-dark .md-tooltip { background: #253146; color: #dce5f4; border-color: #3b4a63; }
 @keyframes md-hint-in { 0%, 80% { opacity: 0 } 100% { opacity: 1 } }
 @media (max-width: 720px) { .md-template-grid, .md-insert-layout { grid-template-columns: minmax(0, 1fr); }.md-insert-types { border-inline-end: 0; padding-inline-end: 0; }.md-insert-types section > div { flex-direction: row; flex-wrap: wrap; } }
+
+.md-workspace .md-sync-scroll { height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; overflow-wrap: normal; flex: none; }
+.md-sync-scroll[aria-checked="true"] { color: var(--theme-accent-strong, #3157d5); background: var(--theme-accent-faint, #eef2fc); border-color: var(--theme-accent-border, #b8c8f0); }
+.md-font-stepper { display: flex; align-items: center; flex: none; border: 1px solid var(--md-border); border-radius: 7px; background: var(--md-surface); overflow: hidden; }
+.md-font-stepper button, .md-font-stepper output { min-width: 24px; height: max(24px, calc(var(--ui-font-small) * 1.4 + 4px)); display: grid; place-items: center; padding: 0 4px; font-size: var(--ui-font-small); }
+.md-font-stepper button { border: 0; border-radius: 0; background: transparent; white-space: nowrap; }
+.md-font-stepper output { color: var(--theme-accent-strong, #3157d5); border-inline: 1px solid var(--md-border); font-weight: 700; }

@@ -1,6 +1,9 @@
 import type { InterfaceLanguage } from './i18n-catalogue'
 function m(zh: string, en: string, ja: string, ru: string, es: string, fr: string, de: string, pt: string, ko: string, ar: string): Record<InterfaceLanguage, string> { return { zh, en, ja, ru, es, fr, de, pt, ko, ar } }
 export const markdownMessages = {
+  'md.syncScroll': m('同步滚动','Sync scroll','スクロール同期','Синхронизация','Sincronizar','Défilement lié','Scrollen koppeln','Sincronizar','스크롤 동기화','مزامنة التمرير'),
+  'md.syncScrollHint': m('双栏按阅读进度同步滚动','Link both panes by reading progress','両ペインを読書の進行度で同期','Связать панели по ходу чтения','Vincular paneles por progreso de lectura','Lier les panneaux selon la progression','Beide Bereiche nach Lesefortschritt koppeln','Vincular painéis pelo progresso da leitura','읽기 진행률에 따라 두 창 연결','ربط اللوحتين حسب تقدم القراءة'),
+  'md.sourceFontSize': m('源码字号','Source font size','ソース文字サイズ','Размер текста исходника','Tamaño del código','Taille du texte source','Schriftgröße des Quelltexts','Tamanho do código','소스 글꼴 크기','حجم خط المصدر'),
   'md.underline': m('下划线','Underline','下線','Подчёркивание','Subrayado','Souligné','Unterstrichen','Sublinhado','밑줄','تسطير'),
   'md.editorHint': m('写作或粘贴内容，自动生成右侧 PDF','Write or paste; the PDF updates automatically','入力・貼り付けでPDFを自動更新','Пишите или вставляйте — PDF обновится','Escriba o pegue; el PDF se actualiza','Écrivez ou collez ; le PDF s’actualise','Schreiben oder einfügen; PDF wird aktualisiert','Escreva ou cole; o PDF é atualizado','작성하거나 붙여넣으면 PDF가 갱신됩니다','اكتب أو الصق؛ يُحدَّث PDF تلقائياً'),
   'md.pdfHint': m('使用现有工具阅读、编辑与批注','Read, edit and annotate with the existing tools','既存ツールで閲覧・編集・注釈','Читайте, правьте и комментируйте','Lea, edite y anote con las herramientas','Lisez, modifiez et annotez avec les outils','Mit den Werkzeugen lesen, bearbeiten und annotieren','Leia, edite e anote com as ferramentas','기존 도구로 읽고 편집하고 주석을 다세요','اقرأ وحرر وعلّق بالأدوات المتاحة'),

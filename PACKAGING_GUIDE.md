@@ -18,6 +18,12 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.2 Markdown 滚动、历史与紧凑字号（2026-10-05）**：清单和锁文件同步为 2.1.2，无新增依赖。源码与分栏把手取消焦点边框。双栏新增 36px 同步滚动开关，默认关闭；按阅读进度双向联动，兼容连续/单页、PDF 页码导航及预览重新生成，单栏时禁用但保留设置。源码 S/M/L 字号位于底部状态栏（界面正文字号的 90%/100%/120%），不单独占用工具栏行；窄于 420px 的栏隐藏保存快捷键说明，字符计数截断，字号控件始终可操作。字号与同步开关持久化，PDF 排版字号独立。
+
+源码输入、粘贴和格式插入进入独立的每文档历史；相邻输入在 800ms 内合并为一步，保存及 PDF 自动更新不清除历史，关闭文档后释放。顶部撤销/重做按最近操作或激活的源码/PDF 区域执行；源码支持 Ctrl/⌘+Z、Shift+Z 和 Ctrl/⌘+Y，恢复选区，新编辑清除重做。历史最多保留 100 个快照/约 800 万字符，至少保留最近一步，历史不跨进程保存。PDF 原有撤销及编辑保护继续复用。
+
+本轮只运行新增 5 项单元测试 `node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.1.2.test.ts`，新增 UI `node scripts/release-2.1.2-ui-smoke.cjs`（支持 `--checks=history,scroll,navigation,layout,persistence`；已通过部分不重复，修复后只检查受影响部分），以及 typecheck、生产构建和 diff 检查。新 UI 检查真实键盘/按钮历史、独立 PDF 编辑历史、双向滚动/页码导航、80 组十语言 × 双主题 × 四字号、应用支持的最小窗宽下单行状态栏，以及跨文档/重启偏好。随后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`，不调用旧测试全集或一键完整发布。成品仅执行新 `scripts/release-2.1.2-packaged-smoke.cjs`，实际启动解包、便携及便携重启并验证本次控件、源码撤销和偏好；安装器资源沿用 2.1.1 Logo/旧版本提示，仅执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-installer-check.ps1 -IconOnly` 核对最终 EXE 图标，未重复旧安装状态测试。记录成品版本、包内资源一致性、签名及 SHA-256 到 `docs/VALIDATION-2.1.2.md` 与 release 清单。Windows 不构建或宣称 macOS 实机验收。
+
 **2.1.1 Markdown 与 Windows 安装器（2026-10-05）**：本轮版本同步为 2.1.1，无新增依赖。快捷插入入口只显示 `+`，常用语法工具紧凑排列，窄栏按组换行；源码停止修改 1.5 秒后自动更新 PDF，输入法组字、正在渲染、已有 PDF 编辑及上次渲染失败时暂停自动刷新。过期结果不替换当前预览。源码快捷键为 Ctrl/⌘+B（加粗）、I（斜体）、U（下划线）、E（行内代码）、K（链接）及 Shift+X（删除线）；下划线仅解析无属性的成对 `<u>` 标记，其他原始 HTML 仍禁用。五种模板每页底部统一显示“当前页 / 总页数”，分栏拖拽比例继续在打开其他 Markdown 及重启后复用。另存为图标重绘，Markdown 按钮使用不受栏内裁切影响的应用内悬浮提示，兼容十语言、双主题和四档界面字号。
 
 本次只执行新增测试与必要检查：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.1.1.test.tsx`、`npx --no-install electron-vite build`、`node scripts/release-2.1.1-ui-smoke.cjs`、`git diff --check`。UI 脚本支持 `--checks=debounce,shortcuts,layout,footer,ratio`，失败后只重试受影响部分；旧测试全集和一键打包流程不在此次验收范围内。通过后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`。成品执行新增 `node scripts/release-2.1.1-packaged-smoke.cjs`，检查解包/便携启动、Unicode Markdown 参数、实际 PDF 和便携重启比例恢复。安装器执行新增 `npm run test:windows-installer`。验收、签名与 SHA-256 记录于 `docs/VALIDATION-2.1.1.md` 和 release 清单。Windows 本机可交付安装版、便携版和解包 EXE；macOS 成品仍需在 macOS 原生构建与验收。

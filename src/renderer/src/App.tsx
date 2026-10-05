@@ -1,5 +1,6 @@
 import { AboutDialog } from './components/AboutDialog'
 import { MarkdownWorkspace } from './components/MarkdownWorkspace'
+import { recordMarkdownEdit, stepMarkdownHistory, type MarkdownEdit, type MarkdownHistory, type MarkdownSelection } from './lib/markdown-history'
 import { isDocumentPath, markdownRenderKey, normalizeMarkdownOptions, type MarkdownDocument } from '../../shared/markdown'
 import { loadMarkdownPreferences, markdownHtml, MARKDOWN_REFRESH_DELAY, saveMarkdownPreferences } from './lib/markdown-document'
 import { OcrDialog } from './components/OcrDialog'
@@ -312,6 +313,9 @@ export default function App() {
   const [markdown, setMarkdown] = useState<MarkdownDocument>()
   const [markdownRendering, setMarkdownRendering] = useState(false)
   const [markdownComposing, setMarkdownComposing] = useState(false)
+  const markdownHistories = useRef(new Map<number, MarkdownHistory>())
+  const [markdownHistoryTarget, setMarkdownHistoryTarget] = useState<'source' | 'pdf'>('source')
+  const [markdownSelection, setMarkdownSelection] = useState<MarkdownSelection & { token: number }>()
   const markdownRenderRequestsRef = useRef(new Set<number>())
   const [markdownError, setMarkdownError] = useState<string>()
   const [module, setModule] = useState<ModuleKey>('view')
@@ -404,7 +408,7 @@ export default function App() {
     tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
     if (session.id === activeDocumentIdRef.current) { liveSessionRef.current = session; setMarkdown(session.markdown); setDirty(session.dirty); dirtyRef.current = session.dirty; setDocumentName(session.documentName); setStatus(session.status) }
   }, [])
-  const syncModel = useCallback((message: string, refreshDocument = true, model = modelRef.current, documentId = activeDocumentIdRef.current) => {
+  const syncModel = useCallback((message: string, refreshDocument = true, model = modelRef.current, documentId = activeDocumentIdRef.current, activatePdfHistory = true) => {
     if (!model) return
     const active = documentId === activeDocumentIdRef.current && model === modelRef.current
     const session = active ? liveSessionRef.current : sessionsRef.current.get(documentId)
@@ -434,6 +438,7 @@ export default function App() {
     const snapshot = { ...current, documents: current.documents.map((item) => item.id === documentId ? sessionSummary(nextSession) : item) }
     tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
     if (!active) return
+    if (activatePdfHistory) setMarkdownHistoryTarget('pdf')
     liveSessionRef.current = nextSession
     if (refreshDocument) setData(nextData)
     setAnnotations(nextSession.annotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks); setMarkdown(nextSession.markdown); setDirty(nextSession.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); setSecurity(nextSession.security); dirtyRef.current = nextSession.dirty
@@ -550,7 +555,7 @@ export default function App() {
     annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); liveSessionRef.current = session; activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty; readingPositionRef.current = session.readingPosition
     setActiveDocumentId(session.id); setData(session.data); setImageDraft(undefined); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
-    setMarkdown(session.markdown); setMarkdownError(undefined); setMarkdownRendering(false)
+    setMarkdown(session.markdown); setMarkdownError(undefined); setMarkdownRendering(false); setMarkdownHistoryTarget(session.markdown && loadMarkdownPreferences().view === 'pdf' ? 'pdf' : 'source'); setMarkdownSelection(undefined)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects); setBookmarks(session.bookmarks)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setSecurity(session.security); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
@@ -652,14 +657,27 @@ export default function App() {
     window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
     return true
   }, [activateSession, askPdfPassword, askSecureStorageNotice, preferences.pageFit])
-  const changeMarkdown = useCallback((source: string, options: MarkdownDocument['options']) => {
+  const changeMarkdown = useCallback((source: string, options: MarkdownDocument['options'], edit?: MarkdownEdit) => {
     const session = liveSessionRef.current
     if (!session.markdown || windowClosingRef.current || documentLifecycleLocksRef.current.has(session.id)) return
+    if (edit && source !== session.markdown.source) {
+      markdownHistories.current.set(session.id, recordMarkdownEdit(markdownHistories.current.get(session.id), session.markdown.source, source, edit))
+      setMarkdownHistoryTarget('source')
+    }
     const next = { ...session.markdown, source, options: normalizeMarkdownOptions(options) }
     if (JSON.stringify(next.options) !== JSON.stringify(session.markdown.options)) saveMarkdownPreferences({ options: next.options })
     publishSession({ ...session, markdown: next, dirty: Boolean(session.model?.dirty) || source !== next.savedSource })
     setMarkdownError(undefined)
   }, [publishSession])
+  const sourceHistory = useCallback((direction: 'undo' | 'redo') => {
+    const session = liveSessionRef.current, history = markdownHistories.current.get(session.id)
+    if (!session.markdown || !history || markdownComposing || windowClosingRef.current || documentLifecycleLocksRef.current.has(session.id)) return
+    const next = stepMarkdownHistory(history, direction)
+    if (!next) return
+    markdownHistories.current.set(session.id, next)
+    changeMarkdown(next.current.source, session.markdown.options)
+    setMarkdownSelection(current => ({ ...next.current.selection, token: (current?.token || 0) + 1 }))
+  }, [changeMarkdown, markdownComposing])
   const refreshMarkdown = useCallback(async (documentId: number, force = false) => {
     const session = sessionsRef.current.get(documentId), md = session?.markdown
     if (!md || !session?.model || markdownRenderRequestsRef.current.has(documentId)) return
@@ -681,7 +699,7 @@ export default function App() {
         const next = { ...ready, model, markdown: { ...ready.markdown, renderedKey: key, pdfModified: false }, selectedAnnotation: undefined, selection: undefined }
         sessionsRef.current.set(documentId, next)
         if (documentId === activeDocumentIdRef.current) { liveSessionRef.current = next; modelRef.current = model; setSelection(undefined); setSelectedAnnotation(undefined); setSelectedAnnotationIds([]); setImageDraft(undefined) }
-        syncModel('准备就绪', true, model, documentId)
+        syncModel('准备就绪', true, model, documentId, false)
       })
     } catch { if (documentId === activeDocumentIdRef.current) setMarkdownError('md.error') }
     finally { markdownRenderRequestsRef.current.delete(documentId); if (documentId === activeDocumentIdRef.current) setMarkdownRendering(false) }
@@ -794,7 +812,7 @@ export default function App() {
     const current = tabsSnapshotRef.current
     const removedIndex = current.documents.findIndex((item) => item.id === id)
     const remaining = current.documents.filter((item) => item.id !== id)
-    sessionsRef.current.delete(id)
+    sessionsRef.current.delete(id); markdownHistories.current.delete(id)
     if (!remaining.length) { window.desktop.windowClose(); return }
     if (id !== activeDocumentIdRef.current) {
       const snapshot = { ...current, documents: remaining }
@@ -860,7 +878,7 @@ export default function App() {
       const current = tabsSnapshotRef.current
       const closedIndex = current.documents.findIndex((item) => item.id === id)
       const remaining = current.documents.filter((item) => item.id !== id)
-      sessionsRef.current.delete(id)
+      sessionsRef.current.delete(id); markdownHistories.current.delete(id)
       if (id !== activeDocumentIdRef.current) {
         const snapshot = { ...current, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); return
       }
@@ -894,7 +912,7 @@ export default function App() {
       const current = tabsSnapshotRef.current
       const closedIndex = current.documents.findIndex((item) => item.id === id)
       const remaining = current.documents.filter((item) => item.id !== id)
-      sessionsRef.current.delete(id)
+      sessionsRef.current.delete(id); markdownHistories.current.delete(id)
       if (id !== activeDocumentIdRef.current) {
         const snapshot = { ...current, documents: remaining }
         tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
@@ -1131,7 +1149,7 @@ export default function App() {
   const navigateBookmark = useCallback((bookmark: PdfBookmark) => {
     if (bookmark.url) { void window.desktop.openExternalLink(bookmark.url).catch(() => showError(new Error(ui('pdfLink.openFailed')))); return }
     if (bookmark.pageIndex === undefined) return
-    setCurrentPage(bookmark.pageIndex); viewerRef.current?.goToPage(bookmark.pageIndex, bookmark.position); setStatus(t('bookmark.navigated', { title: bookmark.title, page: bookmark.pageIndex + 1 }))
+    setMarkdownHistoryTarget('pdf'); setCurrentPage(bookmark.pageIndex); viewerRef.current?.goToPage(bookmark.pageIndex, bookmark.position); setStatus(t('bookmark.navigated', { title: bookmark.title, page: bookmark.pageIndex + 1 }))
   }, [showError])
   const receiveReadOnlyBookmarks = useCallback((items: PdfBookmark[]) => {
     const session = sessionsRef.current.get(activeDocumentIdRef.current)
@@ -1148,7 +1166,7 @@ export default function App() {
     const rect = initialImageRect({ width: preview.width, height: preview.height }, model.getPageSize(pageIndex))
     setTool('none')
     setImageDraft({ pageIndex, name: file.name, data: file.data, format: file.format, source: preview.source, rect, aspectRatio: preview.width / preview.height, lockAspectRatio, rotation: 0 })
-    setStatus(status)
+    setStatus(status); setMarkdownHistoryTarget('pdf')
     viewerRef.current?.goToPage(pageIndex)
   }, [])
   const beginImagePlacement = useCallback(async () => {
@@ -1195,7 +1213,7 @@ export default function App() {
       if (modelRef.current !== model || !model.images().some((candidate) => candidate.id === image.id)) { URL.revokeObjectURL(preview.source); return }
       setTool('none')
       setImageDraft({ ...image, source: preview.source })
-      setCurrentPage(image.pageIndex)
+      setMarkdownHistoryTarget('pdf'); setCurrentPage(image.pageIndex)
       viewerRef.current?.goToPage(image.pageIndex)
       setStatus('正在编辑已添加图片；可调整位置、尺寸、旋转和比例锁后确认')
     } catch (error) { showError(error) }
@@ -1417,7 +1435,7 @@ export default function App() {
       })
 
       if (documentId === activeDocumentIdRef.current && modelRef.current === model) {
-        liveSessionRef.current = nextSession
+        liveSessionRef.current = nextSession; setMarkdownHistoryTarget('pdf')
         setAnnotations(nextAnnotations); setTextObjects(nextSession.textObjects); setImageObjects(nextSession.imageObjects); setBookmarks(nextSession.bookmarks)
         setSelectedAnnotation(annotationId); setSelectedAnnotationIds(writtenAnnotations.map((annotation) => annotation.id)); setCurrentPage(target.pageIndex)
         setMarkdown(nextSession.markdown); setDirty(nextSession.dirty); setCanUndo(model.canUndo); setCanRedo(model.canRedo); dirtyRef.current = nextSession.dirty; setStatus(successMessage)
@@ -1486,6 +1504,7 @@ export default function App() {
     annotationFocusTimer.current = window.setTimeout(() => { setFocusedAnnotation((current) => current === id ? undefined : current); annotationFocusTimer.current = undefined }, 1050)
   }, [])
   const selectAnnotation = useCallback((annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }) => {
+    setMarkdownHistoryTarget('pdf')
     const ordered = annotations
     setSelectedAnnotationIds((current) => {
       if (options?.range && current.length) {
@@ -1540,15 +1559,17 @@ export default function App() {
   }, [saveSession])
 
   const undoDocument = useCallback(async () => {
+    if (liveSessionRef.current.markdown && markdownHistoryTarget === 'source') { sourceHistory('undo'); return }
     const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model?.canUndo) return
     try { await runDocumentOperation(documentId, async () => { await model.undo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已撤销上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
-  }, [runDocumentOperation, showError, syncModel])
+  }, [markdownHistoryTarget, sourceHistory, runDocumentOperation, showError, syncModel])
   const redoDocument = useCallback(async () => {
+    if (liveSessionRef.current.markdown && markdownHistoryTarget === 'source') { sourceHistory('redo'); return }
     const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model?.canRedo) return
     try { await runDocumentOperation(documentId, async () => { await model.redo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已重做上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
-  }, [runDocumentOperation, showError, syncModel])
+  }, [markdownHistoryTarget, sourceHistory, runDocumentOperation, showError, syncModel])
 
   const copyText = useCallback(async (value: string) => {
     const normalized = normalizeCopiedText(value)
@@ -1598,7 +1619,7 @@ export default function App() {
     const editingText = isTextEntryEvent(event)
     if (event.key === 'Escape' && !editingText) setTool((current) => current === 'explain_image' ? 'none' : current)
     if (event.altKey && !command && !editingText && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && data?.length) {
-      event.preventDefault()
+      event.preventDefault(); setMarkdownHistoryTarget('pdf')
       const page = Math.max(0, Math.min(pageCount - 1, currentPage + (event.key === 'ArrowLeft' ? -1 : 1)))
       setCurrentPage(page); viewerRef.current?.goToPage(page)
     }
@@ -1677,6 +1698,10 @@ export default function App() {
     if (module === 'annotate' && bookmarks.length && !annotationPanelCollapsed && window.innerWidth < 1240 && !bookmarkPanelCollapsed) { setBookmarkPanelCollapsed(true); bookmarkAutoCollapsedRef.current = true }
   }, [annotationPanelCollapsed, bookmarks.length, module])
 
+  const sourceHistoryActive = Boolean(markdown) && markdownHistoryTarget === 'source'
+  const activeSourceHistory = markdownHistories.current.get(activeDocumentId)
+  const historyCanUndo = sourceHistoryActive ? !markdownComposing && Boolean(activeSourceHistory?.past.length) : canUndo
+  const historyCanRedo = sourceHistoryActive ? !markdownComposing && Boolean(activeSourceHistory?.future.length) : canRedo
   const temporaryDocument = hasDocument && isTemporaryDocumentPath(liveSessionRef.current.markdown?.path || modelRef.current?.filePath || liveSessionRef.current.filePath)
   const insightTitle = insight?.kind === 'visual' ? ui("ui.figuresTables") : insight?.kind === 'citation' ? ui("ui.citationLinks") : ui("ui.grammarResults")
 
@@ -1713,15 +1738,15 @@ export default function App() {
     const path = window.desktop.filePath(file)
     void openPath(path)
   }}>
-    <header className="titlebar"><div className="titlebar-identity"><div className="brand"><img className="app-logo" src={appLogo} alt="" aria-hidden="true" /><span className="brand-wordmark">PDF<span>uck</span></span></div><DocumentTitle text={`${visibleDocumentName}${dirty ? ui("ui.unsaved") : ''}`} encrypted={encrypted} /></div><div className="titlebar-tools"><div className="file-actions"><button className="open-button" onClick={() => setDialog({ type: 'open_pdf' })}>{ui('md.open')}</button><button className="folder-button" disabled={!hasDocument} title={ui("ui.showTheCurrentPdfInFinderOrFileExplorer")} aria-label={ui("ui.openFolder")} onClick={() => void openCurrentFolder()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h6l2 3h8v2M3 7h6l2 2h10l-2 11H3z" /></svg></button></div><div className="history-controls"><button disabled={!canUndo} title={`${ui("ui.undo")} (${shortcutLabel('undo', window.desktop.platform)})`} aria-label={ui("ui.undo")} onClick={() => void undoDocument()}>↶</button><button disabled={!canRedo} title={`${ui("ui.redo")} (${shortcutLabel('redo', window.desktop.platform)})`} aria-label={ui("ui.redo")} onClick={() => void redoDocument()}>↷</button></div>
-      <div className="page-controls"><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
+    <header className="titlebar"><div className="titlebar-identity"><div className="brand"><img className="app-logo" src={appLogo} alt="" aria-hidden="true" /><span className="brand-wordmark">PDF<span>uck</span></span></div><DocumentTitle text={`${visibleDocumentName}${dirty ? ui("ui.unsaved") : ''}`} encrypted={encrypted} /></div><div className="titlebar-tools"><div className="file-actions"><button className="open-button" onClick={() => setDialog({ type: 'open_pdf' })}>{ui('md.open')}</button><button className="folder-button" disabled={!hasDocument} title={ui("ui.showTheCurrentPdfInFinderOrFileExplorer")} aria-label={ui("ui.openFolder")} onClick={() => void openCurrentFolder()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h6l2 3h8v2M3 7h6l2 2h10l-2 11H3z" /></svg></button></div><div className="history-controls"><button disabled={!historyCanUndo} title={`${ui("ui.undo")} (${shortcutLabel('undo', window.desktop.platform)})`} aria-label={ui("ui.undo")} onClick={() => void undoDocument()}>↶</button><button disabled={!historyCanRedo} title={`${ui("ui.redo")} (${shortcutLabel('redo', window.desktop.platform)})`} aria-label={ui("ui.redo")} onClick={() => void redoDocument()}>↷</button></div>
+      <div className="page-controls" onPointerDownCapture={() => setMarkdownHistoryTarget('pdf')} onFocusCapture={() => setMarkdownHistoryTarget('pdf')}><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
       <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => activatePageFit('width')}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button className="fit-control" disabled={!hasDocument} onClick={() => activatePageFit('width')} title={ui("ui.fitWidth")} aria-label={ui("ui.fitWidth")}><FitIcon mode="width" /></button><button className="fit-control" disabled={!hasDocument} onClick={() => activatePageFit('page')} title={ui("ui.fitPage")} aria-label={ui("ui.fitPage")}><FitIcon mode="page" /></button></div>
       <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui("ui.save")}</button></div>{!isMac && <div className="window-controls"><button className="window-minimize" aria-label={ui("ui.minimizeWindow")} title={ui("ui.minimizeWindow")} onClick={window.desktop.windowMinimize}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5h9" /></svg></button><button className={maximized ? 'window-restore' : 'window-maximize'} aria-label={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} title={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} onClick={window.desktop.windowToggleMaximize}>{maximized ? <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 1.5h7v7M1.5 3.5h7v7h-7z" /></svg> : <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" /></svg>}</button><button className="close window-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={closeCurrentWindow}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2 2 10" /></svg></button></div>}</header>
     <WindowManagerBar onRestoreArchive={restoreArchive} snapshot={documentTabs} onFocus={switchDocument} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} aria-label={moduleName(key)} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} /><span className="nav-module-label">{ui(({ view: "ui.navView", edit: "ui.navEdit", annotate: "ui.navAnnotate", save: "ui.navSave" } as const)[key])}</span></button>)}<button type="button" disabled={!hasDocument || encrypted || printing} className={dialog?.type === 'print' ? 'active' : ''} aria-label={ui("ui.print")} title={ui("ui.print")} onClick={() => setDialog({ type: 'print' })}><ModuleIcon module="print" /><span className="nav-module-label">{ui("ui.print")}</span></button><button type="button" className="about-trigger" onClick={() => setAboutOpen(true)} title={ui('about.title')}><span aria-hidden="true">ⓘ</span><span>{ui('about.title')}</span><small>v{APP_VERSION}</small></button></nav>
       <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onWatermark={openWatermarks} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void savePdf(as)} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
       {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      {markdown ? <MarkdownWorkspace key={activeDocumentId} document={markdown} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
+      {markdown ? <MarkdownWorkspace key={activeDocumentId} document={markdown} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onHistory={sourceHistory} onHistoryTarget={setMarkdownHistoryTarget} historyTarget={markdownHistoryTarget} selectionRequest={markdownSelection} pdfMode={viewMode} pdfPageCount={pageCount} pdfPage={currentPage} onPdfNavigate={(page, offset) => viewerRef.current?.goToPage(page, offset)} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('md.drop')}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
@@ -1749,6 +1774,6 @@ export default function App() {
     {errorMessage && <ErrorDialog message={errorMessage} onClose={() => setErrorMessage(undefined)} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />
-    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound")}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span>{'reference' in hit ? hit.reference : translateUiText(hit.context)}</span></button>)}</div></div>}
+    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound")}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setMarkdownHistoryTarget('pdf'); setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span>{'reference' in hit ? hit.reference : translateUiText(hit.context)}</span></button>)}</div></div>}
   </div>
 }

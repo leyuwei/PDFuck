@@ -15,6 +15,7 @@ export function markdownShortcut(event: { key: string; ctrlKey: boolean; metaKey
 export type MarkdownView = 'both' | 'source' | 'pdf'
 export function normalizeMarkdownView(value: unknown): MarkdownView { return value === 'source' || value === 'pdf' ? value : 'both' }
 export function normalizeMarkdownRatio(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? Math.max(20, Math.min(80, value)) : 42 }
+export function normalizeMarkdownSourceSize(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(2, Math.round(value))) : 1 }
 function readMarkdownPreferences(): Record<string, unknown> {
   let value: Record<string, unknown> = {}
   try { value = JSON.parse(localStorage.getItem(MARKDOWN_PREFERENCES_KEY) || '{}') || {} } catch { /* Use defaults. */ }
@@ -31,12 +32,13 @@ export function loadMarkdownTemplateOptions(template: MarkdownTemplate) {
 }
 export function loadMarkdownPreferences() {
   const value = readMarkdownPreferences()
-  return { view: normalizeMarkdownView(value.view), ratio: normalizeMarkdownRatio(value.ratio), options: normalizeMarkdownOptions(value.options as MarkdownDocument['options'] | undefined) }
+  return { view: normalizeMarkdownView(value.view), ratio: normalizeMarkdownRatio(value.ratio), syncScroll: value.syncScroll === true, sourceFontSize: normalizeMarkdownSourceSize(value.sourceFontSize), options: normalizeMarkdownOptions(value.options as MarkdownDocument['options'] | undefined) }
 }
 export function saveMarkdownPreferences(value: Partial<ReturnType<typeof loadMarkdownPreferences>>): void {
   try {
     const stored = readMarkdownPreferences(), next = { ...loadMarkdownPreferences(), ...value }
     next.options = normalizeMarkdownOptions(next.options)
+    next.sourceFontSize = normalizeMarkdownSourceSize(next.sourceFontSize)
     const templates = Object.fromEntries(MARKDOWN_TEMPLATES.map(template => [template, templateOptions(stored, template)]))
     templates[next.options.template] = next.options
     localStorage.setItem(MARKDOWN_PREFERENCES_KEY, JSON.stringify({ ...next, templates }))

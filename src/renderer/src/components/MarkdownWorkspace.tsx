@@ -1,7 +1,10 @@
-import { useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { MARKDOWN_FONTS, MARKDOWN_TEMPLATES, MAX_MARKDOWN_LENGTH, type MarkdownDocument, type MarkdownOptions } from '../../../shared/markdown'
 import { loadMarkdownPreferences, loadMarkdownTemplateOptions, markdownInsertion, markdownShortcut, MARKDOWN_SHORTCUTS, normalizeMarkdownRatio, saveMarkdownPreferences, type MarkdownInsertType, type MarkdownInsertionOptions, type MarkdownView } from '../lib/markdown-document'
+import type { MarkdownEdit, MarkdownSelection } from '../lib/markdown-history'
+import { scrollProgress, singlePageProgress } from '../lib/markdown-scroll'
+import type { ViewMode } from '../types'
 import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
@@ -11,7 +14,15 @@ interface Props {
   document: MarkdownDocument
   rendering: boolean
   error?: string
-  onChange(source: string, options: MarkdownOptions): void
+  onChange(source: string, options: MarkdownOptions, edit?: MarkdownEdit): void
+  onHistory(direction: 'undo' | 'redo'): void
+  onHistoryTarget(target: 'source' | 'pdf'): void
+  historyTarget: 'source' | 'pdf'
+  selectionRequest?: MarkdownSelection & { token: number }
+  pdfMode: ViewMode
+  pdfPageCount: number
+  pdfPage: number
+  onPdfNavigate(page: number, offset: number): void
   onSaveSource(saveAs: boolean): void
   onSavePdf(): void
   onRefresh(): void
@@ -72,13 +83,59 @@ function MarkdownInsertDialog({ selectedText, initialType, onInsert, onClose }: 
   </div>
 }
 
-export function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, onCompositionChange, children }: Props) {
+export function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, onCompositionChange, onHistory, onHistoryTarget, historyTarget, selectionRequest, pdfMode, pdfPageCount, pdfPage, onPdfNavigate, children }: Props) {
   useInterfaceLanguage()
   const [view, setView] = useState<MarkdownView>(() => loadMarkdownPreferences().view), [ratio, setRatio] = useState(() => loadMarkdownPreferences().ratio)
+  const [syncScroll, setSyncScroll] = useState(() => loadMarkdownPreferences().syncScroll), [sourceFontSize, setSourceFontSize] = useState(() => loadMarkdownPreferences().sourceFontSize)
+  const scrollLeader = useRef(historyTarget); scrollLeader.current = historyTarget
   const [dialog, setDialog] = useState<'layout' | MarkdownInsertType>()
   const [hint, setHint] = useState<{ button: HTMLButtonElement; text: string; left: number; top: number }>()
   const editor = useRef<HTMLTextAreaElement>(null), columns = useRef<HTMLDivElement>(null), selection = useRef({ start: 0, end: 0 })
+  const selectionFrame = useRef(0)
   const { source, options } = document
+  const rememberSelection = () => { if (editor.current) selection.current = { start: editor.current.selectionStart, end: editor.current.selectionEnd } }
+  useLayoutEffect(() => {
+    if (!selectionRequest || !editor.current) return
+    cancelAnimationFrame(selectionFrame.current)
+    editor.current.focus(); editor.current.setSelectionRange(selectionRequest.start, selectionRequest.end)
+    selection.current = selectionRequest
+  }, [selectionRequest])
+  useEffect(() => () => cancelAnimationFrame(selectionFrame.current), [])
+  const syncFrom = (side: 'source' | 'pdf') => {
+    const text = editor.current, pdf = columns.current?.querySelector<HTMLElement>('.viewer')
+    if (!syncScroll || view !== 'both' || rendering || !text || !pdf || !pdfPageCount) return
+    if (side === 'source') {
+      const progress = scrollProgress(text), range = Math.max(0, pdf.scrollHeight - pdf.clientHeight)
+      if (pdfMode === 'single') {
+        const { page, fraction } = singlePageProgress(progress, pdfPageCount)
+        if (page !== pdfPage) {
+          const height = pdf.querySelector<HTMLElement>('.pdf-page')?.offsetHeight || 1
+          onPdfNavigate(page, fraction * range / height)
+        } else pdf.scrollTop = fraction * range
+      } else pdf.scrollTop = progress * range
+    } else {
+      const progress = pdfMode === 'single' ? (pdfPage + scrollProgress(pdf)) / pdfPageCount : scrollProgress(pdf)
+      text.scrollTop = progress * Math.max(0, text.scrollHeight - text.clientHeight)
+    }
+  }
+  const syncLatest = useRef(syncFrom); syncLatest.current = syncFrom
+  useEffect(() => {
+    if (!syncScroll || view !== 'both') return
+    const observer = new ResizeObserver(() => syncLatest.current(scrollLeader.current))
+    const stack = columns.current?.querySelector('.page-stack')
+    if (stack) observer.observe(stack)
+    if (editor.current) observer.observe(editor.current)
+    syncLatest.current(scrollLeader.current)
+    return () => observer.disconnect()
+  }, [syncScroll, view, rendering, pdfMode, pdfPage, pdfPageCount, sourceFontSize])
+  const choosePane = (event: SyntheticEvent) => {
+    const pane = (event.target as Element).closest('.md-source-pane, .md-pdf-pane')
+    if (!pane) return
+    const side = pane.classList.contains('md-source-pane') ? 'source' : 'pdf'
+    scrollLeader.current = side; onHistoryTarget(side)
+  }
+  const changeSize = (size: number) => { setSourceFontSize(size); saveMarkdownPreferences({ sourceFontSize: size }) }
+
   const showHint = (event: SyntheticEvent) => {
     const button = (event.target as Element).closest('button')
     if (!button || hint?.button === button) return
@@ -92,28 +149,35 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
     return ui(`md.${kind}`) + (key ? ` · ${window.desktop.platform === 'darwin' ? '⌘+' : 'Ctrl+'}${key}` : '')
   }
   const resize = (value: number) => { const next = normalizeMarkdownRatio(value); setRatio(next); saveMarkdownPreferences({ ratio: next }) }
-  const show = (mode: MarkdownView) => { setView(mode); saveMarkdownPreferences({ view: mode }) }
+  const show = (mode: MarkdownView) => { if (mode !== 'both') onHistoryTarget(mode); setView(mode); saveMarkdownPreferences({ view: mode }) }
   const insert = (kind: MarkdownInsertType, content = '', address = '', settings: MarkdownInsertionOptions = {}) => {
     const result = markdownInsertion(source, selection.current.start, selection.current.end, kind, content || (selection.current.start === selection.current.end ? ui(`md.${kind}`) : ''), address, settings)
-    onChange(result.source, options); setDialog(undefined)
-    requestAnimationFrame(() => { editor.current?.focus(); editor.current?.setSelectionRange(result.start, result.end); selection.current = { start: result.start, end: result.end } })
+    onChange(result.source, options, { before: selection.current, after: { start: result.start, end: result.end } }); setDialog(undefined)
+    cancelAnimationFrame(selectionFrame.current)
+    selectionFrame.current = requestAnimationFrame(() => { editor.current?.focus(); editor.current?.setSelectionRange(result.start, result.end); selection.current = { start: result.start, end: result.end } })
   }
   const sourceActions = <div className="md-source-actions"><button type="button" className={`md-icon-button md-source-save${source !== document.savedSource ? ' primary' : ''}`} aria-label={ui('md.saveSource')} title={ui('md.saveSource')} disabled={source === document.savedSource} onClick={() => onSaveSource(false)}><SaveIcon /></button><button type="button" className="md-icon-button" aria-label={ui('md.sourceAs')} title={ui('md.sourceAs')} onClick={() => onSaveSource(true)}><SaveAsIcon /></button>{view === 'both' && <button type="button" className="md-pane-close" aria-label={ui('ui.close')} title={ui('ui.close')} onClick={() => show('pdf')}><CloseIcon /></button>}</div>
-  return <div className={`md-workspace md-view-${view}`} onPointerOver={showHint} onFocus={showHint} onPointerOut={event => { if (hint && !hint.button.contains(event.relatedTarget as Node | null)) setHint(undefined) }} onBlur={() => setHint(undefined)} onClickCapture={() => setHint(undefined)}>
-    <header className="md-workspace-header"><span className="md-workspace-brand">MD <b>Markdown</b></span><div className="md-view-controls">{(['both', 'source', 'pdf'] as const).map(mode => <button key={mode} type="button" aria-pressed={view === mode} onClick={() => show(mode)}>{ui(`md.${mode}`)}</button>)}</div><div className="md-pdf-tools"><button type="button" className="md-layout-trigger" onClick={() => setDialog('layout')}><LayoutIcon />{ui('md.layout')}</button><div className="md-pdf-actions"><button type="button" disabled={rendering} onClick={onRefresh}>{ui('md.refresh')}</button><button type="button" onClick={onSavePdf}>{ui('md.savePdf')}</button></div></div></header>
+  return <div className={`md-workspace md-view-${view}`} onPointerDownCapture={choosePane} onWheelCapture={choosePane} onKeyDownCapture={choosePane} onFocusCapture={choosePane} onScrollCapture={event => { const side = event.target === editor.current ? 'source' : (event.target as Element).classList.contains('viewer') ? 'pdf' : undefined; if (side && side === scrollLeader.current) syncFrom(side) }} onPointerOver={showHint} onFocus={showHint} onPointerOut={event => { if (hint && !hint.button.contains(event.relatedTarget as Node | null)) setHint(undefined) }} onBlur={() => setHint(undefined)} onClickCapture={() => setHint(undefined)}>
+    <header className="md-workspace-header"><span className="md-workspace-brand">MD <b>Markdown</b></span><div className="md-view-controls">{(['both', 'source', 'pdf'] as const).map(mode => <button key={mode} type="button" aria-pressed={view === mode} onClick={() => show(mode)}>{ui(`md.${mode}`)}</button>)}</div><button type="button" className="md-sync-scroll" role="switch" aria-checked={syncScroll} disabled={view !== 'both'} data-hint={ui('md.syncScrollHint')} onClick={() => { setSyncScroll(!syncScroll); saveMarkdownPreferences({ syncScroll: !syncScroll }) }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-2 2M14 11a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l2-2" /></svg>{ui('md.syncScroll')}</button><div className="md-pdf-tools"><button type="button" className="md-layout-trigger" onClick={() => setDialog('layout')}><LayoutIcon />{ui('md.layout')}</button><div className="md-pdf-actions"><button type="button" disabled={rendering} onClick={onRefresh}>{ui('md.refresh')}</button><button type="button" onClick={onSavePdf}>{ui('md.savePdf')}</button></div></div></header>
     {(rendering || document.pdfModified || error) && <p className={`md-render-status${error ? ' md-error' : ''}`} role="status">{error || ui(rendering ? 'md.rendering' : 'md.paused')}</p>}
     <div className="md-columns" ref={columns} style={{ gridTemplateColumns: view === 'both' ? `minmax(0, ${ratio}fr) 10px minmax(0, ${100 - ratio}fr)` : 'minmax(0, 1fr)' }}>
       <section className="md-source-pane" aria-label={ui('md.source')} hidden={view === 'pdf'}>
         {view === 'both' && <header className="md-pane-heading"><h2 className="md-pane-title" title={ui('md.editorHint')}>{ui('md.source')}{source !== document.savedSource ? ' *' : ''}</h2>{sourceActions}</header>}
         <div className="md-editor-tools"><div className="md-syntax-toolbar"><div role="group" aria-label={ui('md.format')}>{(['bold', 'italic', 'underline', 'strike', 'inline_code'] as const).map(kind => <button key={kind} className={`md-symbol md-symbol-${kind}`} type="button" aria-label={ui(`md.${kind}`)} data-hint={shortcutHint(kind)} onClick={() => insert(kind)}>{symbols[kind]}</button>)}</div><div role="group" aria-label={ui('md.blocks')}>{(['heading', 'list', 'ordered', 'quote'] as const).map(kind => <button key={kind} className="md-symbol" type="button" aria-label={ui(`md.${kind}`)} onClick={() => kind === 'heading' ? setDialog('heading') : insert(kind)}>{symbols[kind]}</button>)}</div><button type="button" className="md-quick-trigger" aria-label={ui('md.quick')} onClick={() => setDialog('link')}><span aria-hidden="true">+</span></button></div>{view === 'source' && sourceActions}</div>
-        <textarea ref={editor} className="md-source-editor" aria-label={ui('md.source')} dir="auto" spellCheck={false} maxLength={MAX_MARKDOWN_LENGTH} value={source} onSelect={event => { selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onChange={event => onChange(event.target.value, options)} onCompositionStart={() => onCompositionChange(true)} onCompositionEnd={() => onCompositionChange(false)} onKeyDown={event => {
+        <textarea ref={editor} className="md-source-editor" style={{ fontSize: `calc(var(--ui-font-body) * ${[0.9, 1, 1.2][sourceFontSize]})` }} aria-label={ui('md.source')} dir="auto" spellCheck={false} maxLength={MAX_MARKDOWN_LENGTH} value={source} onSelect={event => { selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onBeforeInput={rememberSelection} onChange={event => { const input = event.nativeEvent as InputEvent; const after = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }; onChange(event.target.value, options, { before: selection.current, after, typing: ['insertText', 'insertCompositionText', 'deleteContentBackward', 'deleteContentForward'].includes(input.inputType) }); selection.current = after }} onCompositionStart={() => onCompositionChange(true)} onCompositionEnd={() => onCompositionChange(false)} onKeyDown={event => {
+          rememberSelection()
+          const command = window.desktop.platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+          const key = event.key.toLowerCase()
+          if (command && !event.altKey && !event.nativeEvent.isComposing && (key === 'z' || key === 'y')) {
+            event.preventDefault(); event.stopPropagation(); onHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo'); return
+          }
           const kind = markdownShortcut({ ...event, isComposing: event.nativeEvent.isComposing }, window.desktop.platform)
           if (!kind) return
           event.preventDefault(); event.stopPropagation()
           selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }
           if (kind === 'link') setDialog(kind); else insert(kind)
         }} />
-        <footer className="md-source-footer"><span>UTF-8 · {t('md.characters', { count: source.length.toLocaleString() })}</span><span>{window.desktop.platform === 'darwin' ? '⌘' : 'Ctrl'}+S · {ui('md.saveSource')}</span></footer>
+        <footer className="md-source-footer"><div className="md-font-stepper" role="group" aria-label={ui('md.sourceFontSize')}><button type="button" aria-label={ui('ui.decreaseFontSize')} disabled={sourceFontSize === 0} onClick={() => changeSize(sourceFontSize - 1)}>A−</button><output aria-label={ui('md.sourceFontSize')}>{['S', 'M', 'L'][sourceFontSize]}</output><button type="button" aria-label={ui('ui.increaseFontSize')} disabled={sourceFontSize === 2} onClick={() => changeSize(sourceFontSize + 1)}>A＋</button></div><span>UTF-8 · {t('md.characters', { count: source.length.toLocaleString() })}</span><span>{window.desktop.platform === 'darwin' ? '⌘' : 'Ctrl'}+S · {ui('md.saveSource')}</span></footer>
       </section>
       {view === 'both' && <div className="md-divider" role="separator" tabIndex={0} aria-label={ui('md.divider')} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(ratio)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) { event.preventDefault(); resize(event.key === 'Home' ? 42 : ratio + (event.key === 'ArrowLeft' ? -2 : 2)) } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId) }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId) && columns.current) { const box = columns.current.getBoundingClientRect(); resize((event.clientX - box.left - 17) / (box.width - 34) * 100) } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}><span /></div>}
       <div className="md-pdf-pane" role="region" aria-label={ui('md.pdf')} hidden={view === 'source'}>{view === 'both' && <header className="md-pane-heading"><h2 className="md-pane-title" title={ui('md.pdfHint')}>{ui('md.pdf')}</h2><span className="md-template-label" title={`A4 · ${ui(`md.${options.template}`)}`}>A4 · {ui(`md.${options.template}`).split(' · ')[0]}</span><button type="button" className="md-pane-close" aria-label={ui('ui.close')} title={ui('ui.close')} onClick={() => show('source')}><CloseIcon /></button></header>}{children}</div>

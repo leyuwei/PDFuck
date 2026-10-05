@@ -10,7 +10,7 @@
 
 **为论文精读、审稿与修改设计的 PDF 编辑器。** 支持 Windows、macOS 和十种界面语言。
 
-**2.1.1 改进 Markdown 文档工作区**：直接打开 `.md`，左侧编辑源码，右侧显示真实 PDF 页面；可拖动分割线、关闭任一栏并随时恢复。五种模板分别设计标题、引用、代码和表格样式，并持久保存所选模板及每个模板的字体、字号、行距、段距。源码与 PDF 分别保存。
+**2.1.2 改进 Markdown 文档工作区**：直接打开 `.md`，左侧编辑源码，右侧显示真实 PDF 页面；可拖动分割线、关闭任一栏并随时恢复。五种模板分别设计标题、引用、代码和表格样式，并持久保存所选模板及每个模板的字体、字号、行距、段距。源码与 PDF 分别保存。新增双向同步滚动开关，按阅读进度联动连续/单页 PDF；源码输入及格式插入可通过顶部按钮或 Ctrl/⌘+Z、Shift+Z（也支持 Ctrl+Y）撤销/重做。源码字号采用底部状态栏的 S/M/L 控件，窄栏隐藏保存快捷键说明、字符数过长时截断，控件保持单行；字号与同步开关均持久保存。源码和分割线取消焦点边框。
 
 ## 核心亮点
 
@@ -69,7 +69,9 @@ npm run build
 
 **A PDF editor for close reading, peer review, and revision.** Available on Windows and macOS, with ten interface languages.
 
-**2.1.1 improves the Markdown workspace**: open `.md` files directly, edit the source alongside real PDF pages, resize the divider, hide either pane and restore it anytime. Five templates style headings, quotations, code and tables independently. The selected template and each template's font, point size and spacing are remembered. Save source and PDF separately.
+**2.1.2 improves the Markdown workspace**: open `.md` files directly, edit the source alongside real PDF pages, resize the divider, hide either pane and restore it anytime. Five templates style headings, quotations, code and tables independently. The selected template and each template's font, point size and spacing are remembered. Save source and PDF separately.
+
+Markdown now offers bidirectional scrolling by reading progress, source undo/redo through the title bar and Ctrl/⌘+Z or Shift+Z (also Ctrl+Y), and persistent S/M/L source text sizes. Font controls share the bottom status row; narrow panes hide the save shortcut and truncate long character counts. Source and splitter focus borders are removed. Source and PDF histories are independent, with the latest active area determining undo/redo.
 
 ## Highlights
 
