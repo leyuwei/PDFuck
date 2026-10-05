@@ -4,9 +4,10 @@ const root = path.resolve(__dirname, '..'), output = path.join(root, 'output/pla
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-md-layout-template-')), profile = path.join(temporary, 'profile')
 const fixture = path.join(temporary, '区域样式.md')
 const source = '# 区域样式 · Region styles\n\n不同模板为不同内容区域提供清晰的视觉层级。This introduction keeps readable spacing.\n\n## 项目概览 · Overview\n\n正文中包含 **重点信息**、[参考链接](https://example.com) 和 `inline_code`。\n\n> 引用与提示内容应当有独立的呈现方式。\n> A quotation or note stands apart from the body.\n\n### 实施步骤 · Steps\n\n- 明确需求和验收条件\n- [x] 检查区域样式与文字对比度\n\n```js\nconst template = "Markdown";\nconsole.log(template);\n```\n\n| 区域 / Region | 渲染 / Rendering |\n| --- | --- |\n| 标题 Heading | 视觉分级 |\n| 引用 Quote | 独立样式 |\n| 代码 Code | 清晰对比 |\n\n---\n\n尾段：中文 日本語 한국어 العربية.\n'
-const report = { version: '2.1.0', layouts: 0, checks: [], regions: {}, profiles: {} }
+const executable = process.env.PDFUCK_SMOKE_EXECUTABLE
+const report = { version: '2.1.0', variant: executable ? 'packaged' : 'source', layouts: 0, checks: [], regions: {}, profiles: {} }
 async function launch() {
-  const app = await electron.launch({ executablePath: require('electron'), args: [path.join(root, 'out/main/index.js')], env: { ...process.env, PDFUCK_TEST_USER_DATA: profile, PDFUCK_TEST_UPDATE_VERSION: '2.1.0' } })
+  const app = await electron.launch({ executablePath: executable || require('electron'), args: executable ? [`--user-data-dir=${profile}`] : [path.join(root, 'out/main/index.js')], env: { ...process.env, PDFUCK_TEST_USER_DATA: profile, PDFUCK_TEST_UPDATE_VERSION: '2.1.0' } })
   const page = await app.firstWindow(); page.setDefaultTimeout(30000)
   await page.locator('.language-select select').waitFor()
   await app.evaluate(({ app }) => {

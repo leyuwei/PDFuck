@@ -8,6 +8,7 @@ if [[ "$(node -p 'process.platform')" != "darwin" ]]; then
   echo 'This packaging script must run on macOS.' >&2
   exit 1
 fi
+/usr/bin/SetFile -h >/dev/null 2>&1 || { echo 'Active Apple developer tools cannot run SetFile; fix Xcode licensing or select installed Command Line Tools with DEVELOPER_DIR before packaging.' >&2; exit 1; }
 node_major="$(node -p "process.versions.node.split('.')[0]")"
 if (( node_major < 22 )); then
   echo "Node.js 22 or newer is required; found $(node --version)." >&2
@@ -38,6 +39,9 @@ echo "Packaging PDFuck $version for macOS"
 npm ci
 [[ -d node_modules/electron/dist ]] || node node_modules/electron/install.js
 npm run build
+npm run render:dmg-background
+node scripts/markdown-ui-smoke.cjs
+node scripts/markdown-layout-template-check.cjs
 npm run test:i18n-ui
 node scripts/ai-smoke.cjs
 node scripts/annotation-editor-ui-smoke.cjs
@@ -107,6 +111,7 @@ dmg="release/PDFuck-$version-macOS.dmg"
 zip="release/PDFuck-$version-macOS.zip"
 rm -f "$dmg" "$zip"
 npx --no-install electron-builder --prepackaged "$app_bundle" --mac dmg
+npm run test:macos-installer
 ditto -c -k --keepParent "$app_bundle" "$zip"
 
 [[ -f "$dmg" ]] || { echo "Missing DMG: $dmg" >&2; exit 1; }
@@ -137,6 +142,9 @@ rmdir "$mount_dir"
 trap - EXIT
 
 release_executable="$repo_root/$app_bundle/Contents/MacOS/PDFuck"
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-layout-template-check.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-macos-launch-smoke.cjs
 PDFUCK_RELEASE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/release-ui-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/ai-smoke.cjs
 PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/annotation-editor-ui-smoke.cjs
@@ -179,7 +187,7 @@ if [[ "${REQUIRE_NOTARIZATION:-0}" == '1' && "$notarization" != 'accepted by Gat
 fi
 
 manifest="release/PDFuck-$version-macOS-release.json"
-node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],skippedTests:[{name:'print-native',reason:'Windows-only native printer test; host is macOS'}],tests:['document-archives-ui','packaged-document-archives-ui','ai-settings-ui','packaged-ai-settings-ui','ocr-ui','packaged-ocr-ui','typography','typography-ui','packaged-typography-ui','annotation-dialog-ui','packaged-annotation-dialog-ui','ai-smoke','annotation-editor-ui','packaged-ai-smoke','packaged-annotation-editor-ui','popups-ui','eps-vector','packaged-popups-ui','packaged-eps-vector','typecheck','unit','i18n-catalogue','i18n-ui','workflow-state-ui','lab-features-ui','creative-tools-ui','print-ui','window-tabs','bookmarks-ui','pdf-links-ui','bookmark-recognition-papers','page-text-edit-ui','page-manager-input-ui','selection-scheduling','selection-scheduling-ui','selection-scheduling-0826','selection-scheduling-0826-ui','selection-test2','selection-test2-ui', 'selection-test3', 'selection-test3-ui', 'selection-m91474', 'selection-scheduling-inline','citations-scheduling-0826','reading-navigation-ui','selection-chinese','selection-chinese-ui','selection-bc','selection-bc-ui','heavy-image-page-ui','packaged-release-ui','packaged-workflow-state-ui','packaged-lab-features-ui','packaged-creative-tools-ui','packaged-print-ui','packaged-window-tabs','packaged-bookmarks-ui','packaged-pdf-links-ui','packaged-bookmark-recognition-papers','packaged-page-manager-input-ui','packaged-selection-scheduling-0826-ui','packaged-selection-test2-ui', 'packaged-selection-test3-ui','packaged-reading-navigation-ui','packaged-selection-chinese-ui','packaged-selection-bc-ui','packaged-heavy-image-page-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
+node -e "const fs=require('node:fs'); const [file,version,arch,app,dmg,zip,dmgHash,zipHash,signing,notarization]=process.argv.slice(1); fs.writeFileSync(file, JSON.stringify({product:'PDFuck',version,platform:'macOS',architecture:arch,generatedAt:new Date().toISOString(),appBundle:app,packagedAsarVersion:version,signing,notarization,artifacts:[{file:dmg,bytes:fs.statSync(dmg).size,sha256:dmgHash},{file:zip,bytes:fs.statSync(zip).size,sha256:zipHash}],skippedTests:[{name:'print-native',reason:'Windows-only native printer test; host is macOS'}],tests:['macos-installer','markdown-ui','markdown-layout-templates','packaged-markdown-ui','packaged-markdown-layout-templates','markdown-macos-launch','document-archives-ui','packaged-document-archives-ui','ai-settings-ui','packaged-ai-settings-ui','ocr-ui','packaged-ocr-ui','typography','typography-ui','packaged-typography-ui','annotation-dialog-ui','packaged-annotation-dialog-ui','ai-smoke','annotation-editor-ui','packaged-ai-smoke','packaged-annotation-editor-ui','popups-ui','eps-vector','packaged-popups-ui','packaged-eps-vector','typecheck','unit','i18n-catalogue','i18n-ui','workflow-state-ui','lab-features-ui','creative-tools-ui','print-ui','window-tabs','bookmarks-ui','pdf-links-ui','bookmark-recognition-papers','page-text-edit-ui','page-manager-input-ui','selection-scheduling','selection-scheduling-ui','selection-scheduling-0826','selection-scheduling-0826-ui','selection-test2','selection-test2-ui', 'selection-test3', 'selection-test3-ui', 'selection-m91474', 'selection-scheduling-inline','citations-scheduling-0826','reading-navigation-ui','selection-chinese','selection-chinese-ui','selection-bc','selection-bc-ui','heavy-image-page-ui','packaged-release-ui','packaged-workflow-state-ui','packaged-lab-features-ui','packaged-creative-tools-ui','packaged-print-ui','packaged-window-tabs','packaged-bookmarks-ui','packaged-pdf-links-ui','packaged-bookmark-recognition-papers','packaged-page-manager-input-ui','packaged-selection-scheduling-0826-ui','packaged-selection-test2-ui', 'packaged-selection-test3-ui','packaged-reading-navigation-ui','packaged-selection-chinese-ui','packaged-selection-bc-ui','packaged-heavy-image-page-ui']},null,2)+'\n')" "$manifest" "$version" "$(uname -m)" "$app_bundle" "$dmg" "$zip" "$dmg_hash" "$zip_hash" "$signing_mode" "$notarization"
 
 echo 'macOS release passed build, regression, bundle, DMG layout, packaged-app, version and hash checks.'
 echo "App:      $repo_root/$app_bundle"

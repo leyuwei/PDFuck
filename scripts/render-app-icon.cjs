@@ -34,6 +34,7 @@ function icoFromPng(image) {
 }
 
 app.whenReady().then(async () => {
+  const dmgBackground = process.argv.includes('--dmg-background')
   const documentIcon = process.argv.includes('--mac-document')
   const macIcon = documentIcon || process.argv.includes('--mac-app')
   if (macIcon && process.platform !== 'darwin') throw new Error('The document icon requires macOS iconutil.')
@@ -46,23 +47,21 @@ app.whenReady().then(async () => {
   }
   const logo = fs.readFileSync(source, 'utf8')
   // Vector-only document artwork has no font or locale-dependent glyphs.
-  const svg = documentIcon ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M96 24h224l112 112v328a24 24 0 0 1-24 24H96a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z" fill="#f4f7ff" stroke="#7893c4" stroke-width="12"/><path d="M320 24v112h112" fill="#c9dcff" stroke="#7893c4" stroke-width="12" stroke-linejoin="round"/><svg x="128" y="166" width="256" height="256" viewBox="0 0 512 512">${logo.replace(/<\/?svg[^>]*>/g, '')}</svg></svg>` : logo
+  const svg = dmgBackground ? fs.readFileSync(path.join(root, 'resources/dmg-background.svg'), 'utf8').replace('href="icon.svg"', `href="data:image/svg+xml,${encodeURIComponent(logo)}"`) : documentIcon ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M96 24h224l112 112v328a24 24 0 0 1-24 24H96a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z" fill="#f4f7ff" stroke="#7893c4" stroke-width="12"/><path d="M320 24v112h112" fill="#c9dcff" stroke="#7893c4" stroke-width="12" stroke-linejoin="round"/><svg x="128" y="166" width="256" height="256" viewBox="0 0 512 512">${logo.replace(/<\/?svg[^>]*>/g, '')}</svg></svg>` : logo
   const size = macIcon ? 1024 : 512
-  const window = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: '#00000000', width: size, height: size, useContentSize: true, webPreferences: { offscreen: true } })
-  const html = `<style>html,body{margin:0;width:${size}px;height:${size}px;overflow:hidden;background:transparent}img{display:block;width:${size}px;height:${size}px}</style><img src="data:image/svg+xml,${encodeURIComponent(svg)}">`
+  const width = dmgBackground ? 1520 : size, height = dmgBackground ? 1040 : size
+  const window = new BrowserWindow({ show: false, frame: false, transparent: true, backgroundColor: '#00000000', width, height, useContentSize: true, webPreferences: { offscreen: true } })
+  const html = `<style>html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:transparent}img{display:block;width:${width}px;height:${height}px}</style><img src="data:image/svg+xml,${encodeURIComponent(svg)}">`
   await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  const raster = await new Promise((resolve, reject) => {
-    const cleanup = () => { clearTimeout(timeout); window.webContents.removeListener('paint', onPaint) }
-    const onPaint = (_event, _dirty, image) => {
-      const dimensions = image.getSize()
-      if (image.isEmpty() || dimensions.width !== size || dimensions.height !== size || !image.toPNG().length) return
-      cleanup(); resolve(image)
-    }
-    const timeout = setTimeout(() => { cleanup(); reject(new Error('Timed out while rendering the app icon.')) }, 5000)
-    window.webContents.on('paint', onPaint)
-    window.webContents.invalidate()
-  })
-  if (macIcon) {
+  await window.webContents.executeJavaScript('document.querySelector("img").decode()')
+  await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  const captured = await window.webContents.capturePage(undefined, { stayHidden: true })
+  if (captured.isEmpty()) throw new Error('Unable to render the artwork')
+  const raster = captured.resize({ width, height, quality: 'best' })
+  if (dmgBackground) {
+    fs.writeFileSync(path.join(root, 'resources/dmg-background.png'), raster.resize({ width: 760, height: 520, quality: 'best' }).toPNG())
+    fs.writeFileSync(path.join(root, 'resources/dmg-background@2x.png'), raster.toPNG())
+  } else if (macIcon) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-icon-'))
     try {
       const iconset = path.join(temporary, 'pdf.iconset')

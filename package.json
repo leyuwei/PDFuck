@@ -83,6 +83,8 @@
     "render:pdf-icon": "electron scripts/render-app-icon.cjs --mac-document",
     "test:release-2.0.55": "node scripts/run-vitest.cjs run src/main/release-2.0.55.test.ts && electron-vite build && node scripts/release-2.0.55-macos-smoke.cjs",
     "render:mac-icon": "electron scripts/render-app-icon.cjs --mac-app",
+    "render:dmg-background": "electron scripts/render-app-icon.cjs --dmg-background",
+    "test:macos-installer": "node scripts/macos-installer-check.cjs",
     "test:release-2.0.56": "node scripts/run-vitest.cjs run src/main/release-2.0.56.test.ts src/renderer/src/lib/release-2.0.56.test.ts && electron-vite build && node scripts/release-2.0.56-ui-smoke.cjs",
     "test:markdown": "node scripts/run-vitest.cjs run src/main/markdown.test.ts src/renderer/src/lib/markdown-document.test.tsx && electron-vite build && node scripts/markdown-ui-smoke.cjs"
   },
@@ -132,6 +134,7 @@
       "package.json"
     ],
     "asar": true,
+    "artifactBuildCompleted": "scripts/macos-installer-icon.cjs",
     "asarUnpack": [
       "node_modules/koffi/**/*",
       "node_modules/{tesseract.js,tesseract.js-core,wasm-feature-detect,zlibjs,node-fetch,is-url,regenerator-runtime,idb-keyval,bmp-js,tr46,webidl-conversions,whatwg-url}/**/*",
@@ -253,22 +256,22 @@
     },
     "dmg": {
       "icon": "resources/icon.icns",
-      "backgroundColor": "#f4f6fa",
-      "iconSize": 96,
+      "background": "resources/dmg-background.png",
+      "iconSize": 108,
       "iconTextSize": 12,
       "window": {
-        "width": 620,
-        "height": 430
+        "width": 760,
+        "height": 520
       },
       "contents": [
         {
-          "x": 165,
-          "y": 220,
+          "x": 210,
+          "y": 280,
           "type": "file"
         },
         {
-          "x": 455,
-          "y": 220,
+          "x": 550,
+          "y": 280,
           "type": "link",
           "path": "/Applications"
         }

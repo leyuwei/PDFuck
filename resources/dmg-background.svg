@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="520" viewBox="0 0 760 520">
+  <defs>
+    <linearGradient id="sky" x2=".7" y2="1">
+      <stop stop-color="#e4eeff"/><stop offset=".55" stop-color="#f1f0ff"/><stop offset="1" stop-color="#fff3df"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dy="8" stdDeviation="10" flood-color="#5274b9" flood-opacity=".12"/>
+    </filter>
+    <g id="spark" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+      <path d="M0-7v14M-7 0H7"/>
+    </g>
+  </defs>
+  <rect width="760" height="520" fill="url(#sky)"/>
+  <circle cx="706" cy="46" r="96" fill="#ffdda0" opacity=".5"/>
+  <circle cx="-15" cy="312" r="110" fill="#cadcff" opacity=".48"/>
+  <path d="M0 455Q140 389 293 459T760 433V520H0Z" fill="#dceae7" opacity=".65"/>
+  <path d="M0 482Q170 434 358 486T760 473V520H0Z" fill="#fff7e8"/>
+  <g fill="#fff" opacity=".75">
+    <path d="M594 95c-12-20 9-39 25-31 5-31 49-31 53 0 26-8 40 23 21 31Z"/>
+    <path d="M22 170c-13-16 3-34 20-28 4-23 34-23 39 0 20-8 34 15 20 28Z"/>
+  </g>
+  <image href="icon.svg" x="40" y="32" width="66" height="66"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" fill="#233c72">
+    <text x="122" y="66" font-size="32" font-weight="750" letter-spacing="-.8">PDFuck</text>
+    <text x="124" y="91" font-size="13" fill="#5b6c8e" letter-spacing="1.2">A LITTLE DUCK. A LOT OF IDEAS.</text>
+    <text x="380" y="154" text-anchor="middle" font-size="22" font-weight="650">把小纸鸭拖进 Applications，开始创作</text>
+    <text x="380" y="181" text-anchor="middle" font-size="14" fill="#5b6c8e">Drag PDFuck into Applications to install</text>
+  </g>
+  <!-- Leave these two cards clear for Finder's real draggable icons and labels. -->
+  <g filter="url(#soft)">
+    <rect x="116" y="212" width="188" height="166" rx="28" fill="#fff" fill-opacity=".83" stroke="#c8d8fa" stroke-width="2"/>
+    <rect x="456" y="212" width="188" height="166" rx="28" fill="#fff" fill-opacity=".83" stroke="#c4ded9" stroke-width="2"/>
+  </g>
+  <g font-family="-apple-system, 'PingFang SC', sans-serif" font-size="11" font-weight="700" text-anchor="middle">
+    <rect x="177" y="200" width="66" height="24" rx="12" fill="#3157d5"/>
+    <text x="210" y="216" fill="#fff">01 · 拖动</text>
+    <rect x="517" y="200" width="66" height="24" rx="12" fill="#258578"/>
+    <text x="550" y="216" fill="#fff">02 · 安装</text>
+  </g>
+  <path d="M332 281h87m-16-16 16 16-16 16" fill="none" stroke="#5273cc" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M344 309q32 18 65 0" fill="none" stroke="#91aadf" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+  <g color="#edac4d"><use href="#spark" x="326" y="236"/><use href="#spark" x="685" y="339"/></g>
+  <g color="#9a8fcd"><use href="#spark" x="697" y="173"/><use href="#spark" x="83" y="361"/></g>
+  <g fill="#eeb7aa"><circle cx="94" cy="222" r="4"/><circle cx="667" cy="233" r="5"/><circle cx="430" cy="357" r="3"/></g>
+  <!-- A paper duck and pencil echo the folded paper and yellow beak in the logo. -->
+  <g transform="translate(53 370) rotate(-9)" stroke-linejoin="round">
+    <path d="M0 0h42l19 19v58H0Z" fill="#fff" stroke="#a5badd" stroke-width="2"/>
+    <path d="M42 0v19h19" fill="#d8e5ff" stroke="#a5badd" stroke-width="2"/>
+    <circle cx="19" cy="32" r="3" fill="#233c72"/><circle cx="41" cy="32" r="3" fill="#233c72"/>
+    <path d="M23 42q10-7 19 0-9 9-19 0" fill="#ffd05d" stroke="#dfaa41" stroke-width="1.5"/>
+    <path d="M14 57h31M14 65h21" stroke="#c6d6ef" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="12" cy="41" rx="4" ry="2" fill="#f4c3b9"/><ellipse cx="50" cy="41" rx="4" ry="2" fill="#f4c3b9"/>
+  </g>
+  <g transform="translate(657 368) rotate(17)">
+    <rect width="16" height="71" rx="3" fill="#f6cc6c"/>
+    <path d="M0 17h16M8 20v47" stroke="#dfa34b" stroke-width="2"/>
+    <path d="M0 71h16L8 89Z" fill="#ead8bc"/><path d="m5 82 3 7 3-7" fill="#405077"/>
+    <rect width="16" height="14" rx="3" fill="#eeb7aa"/>
+  </g>
+  <g text-anchor="middle" font-family="-apple-system, 'PingFang SC', sans-serif">
+    <text x="380" y="405" fill="#3b527a" font-size="16" font-weight="600">从一行灵感，到一页作品。</text>
+    <text x="380" y="431" fill="#65748e" font-size="13">Markdown + PDF · Write, read &amp; make it yours.</text>
+    <path d="M339 449h82" stroke="#e0b86d" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

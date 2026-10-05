@@ -18,6 +18,8 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.0 macOS 安装器升级（2026-10-05）**：版本仍为 2.1.0，不执行 `npm version`。应用、DMG 挂载卷和 DMG 文件均使用 `resources/icon.icns` 小纸鸭 Logo；Finder 背景采用蓝紫/奶油色渐变、云朵、纸鸭和铅笔，保留真实图标的可拖动区域与中英安装说明。背景矢量源为 `resources/dmg-background.svg`，通过既有 Electron 绘图脚本生成 760×520 普通 PNG 和 1520×1040 Retina PNG，无新增依赖。macOS 安装器及 Markdown 验证要求见第 6 节。本轮按当前用户要求测试 Markdown；下面“不重复测试”的说明属于此前 Windows 修正版的历史范围。
+
 2.1.0 增加 Markdown 文件编辑、五种 PDF 模板、可拖动/隐藏的双栏及十语言界面。无需新增依赖。Windows 在 `build.win.fileAssociations` 注册 `.md` Editor；macOS 在 `CFBundleDocumentTypes` 与 `UTImportedTypeDeclarations` 声明 Markdown，保留现有原生 ICNS。
 
 本轮仅运行 `npm run typecheck`、`npm run test:markdown`（新增 10 项单元测试、生产构建和 Markdown UI 冒烟）及 `git diff --check`；不运行旧测试全集或一键打包脚本。新增 UI 检查源码保存/另存、真实五模板 PDF、多语言双主题四字号、拖动/关闭/恢复分栏、已有 PDF 编辑保护与关闭提示。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版与解包 EXE。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包程序，重跑同一新增 UI 脚本；便携程序实际启动并检查 `.md` 参数与偏好重启恢复。保存版本、资源、签名、SHA-256 和测试范围至 `docs/VALIDATION-2.1.0.md` 与 release 清单。macOS 的 `.app`/DMG/ZIP 与 LaunchServices 默认程序行为需在 macOS 原生构建验收，不能将配置检查写成实机通过。
@@ -259,6 +261,22 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 ### 6.1 标准构建
 
+本次 2.1.0 安装器升级使用定向流程；依赖已按锁文件安装时，无需重复 `npm ci`。不调用旧测试全集或完整一键脚本：
+
+```bash
+npm run typecheck
+node scripts/run-vitest.cjs run src/main/markdown.test.ts src/renderer/src/lib/markdown-document.test.tsx src/renderer/src/lib/markdown-template-settings.test.ts
+npm run render:dmg-background
+npx --no-install electron-vite build
+node scripts/markdown-ui-smoke.cjs
+git diff --check
+npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist
+```
+
+完成下述签名、DMG 和 ZIP 后，以 `PDFUCK_SMOKE_EXECUTABLE` 指向本轮 `.app/Contents/MacOS/PDFuck`，运行 `scripts/markdown-ui-smoke.cjs` 与 `scripts/markdown-layout-template-check.cjs`。前者验收实际 `.MD` 冷启动、UTF-8 源码保存/另存和 ⌘+S、五种真实多页 A4 PDF、PDF 编辑保护/刷新确认、十语言×双主题×四字号、分栏与关闭提示；后者验证紧凑标题、真实打印区域样式及独立模板设置跨重启恢复。运行 `npm run test:macos-installer` 检查镜像和图标，并实际打开 DMG 目视确认 Finder 布局。macOS Markdown LaunchServices 文档事件另用 `scripts/markdown-macos-launch-smoke.cjs` 验证，不替换 `/Applications` 安装或更改默认应用。结果记录于 `docs/VALIDATION-2.1.0-macOS.md` 与 release JSON/SHA-256 文件。
+
+日常完整发布仍可使用：
+
 ```bash
 npm run dist:mac
 ```
@@ -303,8 +321,13 @@ npx electron-builder --prepackaged release/mac-arm64 --mac dmg
 DMG 配置必须位于 `package.json` 的 `build.dmg`，不能放进 `build.mac`。当前配置包含：
 
 - `resources/icon.icns` 原生应用/卷图标来源（`resources/icon.svg` 为绘图源）。
-- Finder 窗口尺寸和背景色。
-- `PDFuck.app` 与 `/Applications` 快捷方式的固定位置。
+- `background: resources/dmg-background.png`，同目录的 `dmg-background@2x.png` 由 electron-builder 自动合成为双倍率 TIFF 并嵌入镜像；不得同时设置 `backgroundColor`。
+- 760×520 Finder 窗口，108px 图标、12px 文件名；`PDFuck.app` 中心 (210, 280)，`/Applications` 中心 (550, 280)。背景卡片、箭头和说明按这些坐标设计，修改时必须一起调整；文字保留在 y≤450、主要插画在 y≤460 的安全区域，兼容系统标题、路径和状态栏，文件名不得与插画/说明重叠。
+- `build.artifactBuildCompleted: scripts/macos-installer-icon.cjs`，通过系统 `NSWorkspace` 给输出 DMG 文件设置同一个 Logo。`dmg.icon` 只负责挂载卷，不能代替文件自定义图标；该 hook 跳过其他格式/平台，失败则终止打包。
+
+编辑 SVG 或 Logo 后运行 `npm run render:dmg-background`，两份 PNG 都应提交。绘图脚本等待 SVG 解码再取图，防止首帧空白。不要只提交 SVG，也不要把 2x 图片直接作为唯一背景，否则窗口尺寸和图标定位会变化。DMG 文件自定义图标使用 macOS 扩展属性/资源叉；复制时须保留元数据，普通 HTTP 下载可能丢失文件图标。镜像内嵌的挂载卷 Logo 与安装背景不受影响。
+
+electron-builder 的 dmgbuild 使用系统 `SetFile` 启用卷自定义图标；打包前必须确认 `/usr/bin/SetFile -h` 能运行，不能只检查 `.VolumeIcon.icns` 存在。Xcode 许可未完成时，若本机另有可用 Command Line Tools，可仅在当前构建命令前加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`；不要自动接受许可或永久修改系统开发目录。`test:macos-installer` 会验证卷的 Finder 自定义图标标志，防止静默漏设 Logo。
 
 ### 6.4 生成 `.app` ZIP
 
@@ -328,6 +351,8 @@ shasum -a 256 "release/PDFuck-${VERSION}-macOS.dmg" "release/PDFuck-${VERSION}-m
 
 ```text
 .VolumeIcon.icns
+.background.tiff
+.DS_Store
 Applications -> /Applications
 PDFuck.app
 ```
@@ -397,7 +422,7 @@ Get-AuthenticodeSignature release\*.exe
 - `npm run typecheck`、`npm test`、`npm run build`、`npm run test:i18n-catalogue`、`npm run test:i18n-ui`、`npm run test:workflow-state-ui`、`npm run test:lab-features-ui`、`npm run test:creative-tools-ui`、`npm run test:print-native`、`npm run test:print-ui`、`npm run test:window-tabs`、`npm run test:bookmarks-ui`、`npm run test:pdf-links-ui`、`npm run test:bookmark-recognition-papers`、`npm run test:page-text-edit-ui`、`git diff --check` 全部通过。
 - macOS 的 `.app`、DMG、ZIP 或 Windows 的安装版、便携版均为本轮源码重新生成。
 - 最终包内的 `app.asar` 包含新版本和本次关键修改。
-- DMG 保留卷图标、应用图标、Applications 快捷入口和正确 Finder 布局。
+- DMG 保留软件 Logo 的文件/卷/应用图标、双倍率插画背景、Applications 快捷入口和正确 Finder 布局；运行 `npm run test:macos-installer` 并目视确认实际窗口。
 - 签名状态、公证状态和目标 CPU 架构已经记录。
 - 实际启动最终产物，而不是开发服务器或旧安装版本。
 - 对每个交付文件生成 SHA-256，并在交付信息中给出绝对路径和校验值。
