@@ -10,7 +10,7 @@
 
 **为论文精读、审稿与修改设计的 PDF 编辑器。** 支持 Windows、macOS 和十种界面语言。
 
-**2.0.55 macOS 修复**：双击 PDF 自动创建或恢复窗口并显示到前台；PDF 文件关联使用独立的原生文档图标；进入全屏时 Logo 自动移到左上角，退出后恢复窗口按钮留白，支持全部十种界面语言。
+**2.0.56 修复**：macOS 应用与 DMG 使用包含原生小尺寸表示的 ICNS，修复 Finder 小图标乱码；首页显示软件 Logo；AI 首次使用警告框改善按钮留白；工具栏与滚轮缩放保留鼠标在文档中的位置，支持页间空隙和十种界面语言。
 
 ## 核心亮点
 
@@ -66,7 +66,7 @@ npm run build
 
 **A PDF editor for close reading, peer review, and revision.** Available on Windows and macOS, with ten interface languages.
 
-**2.0.55 macOS fixes**: opening a PDF shows or recreates the window in front; PDF associations use a dedicated native document icon; the Logo moves to the upper left in fullscreen and restores the window-button spacing on exit, across all ten languages.
+**2.0.56 fixes**: native small-size ICNS representations fix corrupted macOS Finder icons; the welcome screen uses the app Logo; the first-use AI notice has properly spaced buttons; toolbar and wheel zoom retain the reading pointer, including page gaps, across all ten languages.
 
 ## Highlights
 

@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.55",
+  "version": "2.0.56",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -81,7 +81,9 @@
     "test:release-2.0.52": "node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.52.test.tsx && electron-vite build && node scripts/release-2.0.52-ui-smoke.cjs",
     "test:release-2.0.52-fixes": "node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.0.52.test.tsx -t \"renders the list|hides empty|places cards\" && electron-vite build && node scripts/release-2.0.52-fixes-ui-smoke.cjs",
     "render:pdf-icon": "electron scripts/render-app-icon.cjs --mac-document",
-    "test:release-2.0.55": "node scripts/run-vitest.cjs run src/main/release-2.0.55.test.ts && electron-vite build && node scripts/release-2.0.55-macos-smoke.cjs"
+    "test:release-2.0.55": "node scripts/run-vitest.cjs run src/main/release-2.0.55.test.ts && electron-vite build && node scripts/release-2.0.55-macos-smoke.cjs",
+    "render:mac-icon": "electron scripts/render-app-icon.cjs --mac-app",
+    "test:release-2.0.56": "node scripts/run-vitest.cjs run src/main/release-2.0.56.test.ts src/renderer/src/lib/release-2.0.56.test.ts && electron-vite build && node scripts/release-2.0.56-ui-smoke.cjs"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
@@ -186,7 +188,7 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.icns",
       "artifactName": "PDFuck-${version}-macOS.${ext}",
       "extendInfo": {
         "CFBundleDocumentTypes": [
@@ -212,7 +214,7 @@
       ]
     },
     "dmg": {
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.icns",
       "backgroundColor": "#f4f6fa",
       "iconSize": 96,
       "iconTextSize": 12,

@@ -1,5 +1,11 @@
 export const MAX_PAGE_CANVAS_PIXELS = 12_000_000
 
+export function virtualPageSpacerHeight(start: number, end: number, sizes: Record<number, { height: number }>, zoom: number): number {
+  let height = Math.max(0, end - start - 1) * 20
+  for (let page = start; page < end; page++) height += (sizes[page]?.height ?? 792) * zoom
+  return height
+}
+
 export function canvasOutputScale(width: number, height: number, deviceScale: number, maxPixels = MAX_PAGE_CANVAS_PIXELS): number {
   const safeArea = Math.max(1, width * height)
   const memoryScale = Math.sqrt(maxPixels / safeArea)

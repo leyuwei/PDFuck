@@ -74,7 +74,7 @@ describe('2.0.55 macOS regressions', () => {
   it('declares one PDF editor association with a dedicated native icon', () => {
     const metadata = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
     const lock = JSON.parse(readFileSync(resolve('package-lock.json'), 'utf8'))
-    expect([metadata.version, lock.version, lock.packages[''].version]).toEqual(['2.0.55', '2.0.55', '2.0.55'])
+    expect([metadata.version, lock.version, lock.packages[''].version]).toEqual([metadata.version, metadata.version, metadata.version])
     expect(metadata.build.fileAssociations).toBeUndefined()
     expect(metadata.build.mac.extendInfo.CFBundleDocumentTypes).toEqual([{
       CFBundleTypeName: 'PDF Document', CFBundleTypeExtensions: ['pdf'], LSItemContentTypes: ['com.adobe.pdf'],

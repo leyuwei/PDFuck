@@ -18,6 +18,12 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.0.56 修复 Finder 小图标、首页 Logo、首次 AI 警告框按钮留白及鼠标缩放锚点。electron-builder 26.15.3 自动转换 PNG 得到的 16/32px ICNS 条目不兼容原生小图标显示，因此应用和 DMG 均直接使用 `resources/icon.icns`；用 `npm run render:mac-icon` 从既有 SVG 经系统 `iconutil` 生成，16/32px 为原生 ARGB，包含全部十种标准/Retina 表示。PDF 文件关联继续使用同样完整的 `resources/pdf.icns`。不要再将 macOS 应用/卷图标配置退回 PNG。无需升级依赖。
+
+本版仅运行新增回归：`npm run test:release-2.0.56`（7 项新单元测试、生产构建和新 UI 测试），另执行 `npm run typecheck` 与 `git diff --check`。新 UI 测试覆盖首页和 AI 警告框的十语言 × 双主题 × 四字号、隐私确认行为、工具栏/真实 Ctrl 滚轮/快速滚轮/页间空隙/400% 上限、连续/单页及 96 页混合尺寸虚拟化、LTR/RTL，以及系统解码 ICNS 全尺寸。不要调用会执行旧测试的 `npm run build` 或一键发布脚本。
+
+通过后直接使用 `npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist` 打包，签名后由 electron-builder 生成 DMG，使用 `ditto` 生成 ZIP。通过 `PDFUCK_SMOKE_EXECUTABLE` 指向 `.app/Contents/MacOS/PDFuck` 复测同一个新增 UI 测试（独立临时用户资料），并核对成品中的 ICNS 与源文件一致。结果和截图位于 `output/playwright/release-2.0.56-*`；验收记录见 `docs/VALIDATION-2.0.56.md`。系统默认 PDF 应用与 `/Applications` 既有安装不由测试替换。
+
 2.0.55 修复 macOS 文件打开后窗口未创建/未激活、默认 PDF 文件图标及全屏 Logo 留白。原生 PDF 图标为 `resources/pdf.icns`，使用 `npm run render:pdf-icon` 在 macOS 上从现有矢量 Logo 重新生成；包含 16–1024 像素与 Retina 表示，无字体依赖。Windows 文件关联配置移至 `build.win.fileAssociations`；macOS 在 `build.mac.extendInfo.CFBundleDocumentTypes` 声明 `com.adobe.pdf`、Editor 和 `pdf.icns`，图标通过 macOS 专用 `extraResources` 放到 `Contents/Resources`。
 
 本版只运行新增测试：`node scripts/run-vitest.cjs run src/main/release-2.0.55.test.ts`、生产构建后的 `node scripts/release-2.0.55-macos-smoke.cjs`，以及必要的 `npm run typecheck` 和 `git diff --check`。也可用 `npm run test:release-2.0.55` 合并新增单元测试、生产构建和 macOS 窗口测试。不要调用会执行全部旧测试的 `npm run build` 或一键发布脚本。
@@ -286,7 +292,7 @@ npx electron-builder --prepackaged release/mac-arm64 --mac dmg
 
 DMG 配置必须位于 `package.json` 的 `build.dmg`，不能放进 `build.mac`。当前配置包含：
 
-- `resources/icon.png` 应用/卷图标来源。
+- `resources/icon.icns` 原生应用/卷图标来源（`resources/icon.svg` 为绘图源）。
 - Finder 窗口尺寸和背景色。
 - `PDFuck.app` 与 `/Applications` 快捷方式的固定位置。
 
