@@ -76,10 +76,10 @@ describe('2.0.55 macOS regressions', () => {
     const lock = JSON.parse(readFileSync(resolve('package-lock.json'), 'utf8'))
     expect([metadata.version, lock.version, lock.packages[''].version]).toEqual([metadata.version, metadata.version, metadata.version])
     expect(metadata.build.fileAssociations).toBeUndefined()
-    expect(metadata.build.mac.extendInfo.CFBundleDocumentTypes).toEqual([{
+    expect(metadata.build.mac.extendInfo.CFBundleDocumentTypes).toContainEqual({
       CFBundleTypeName: 'PDF Document', CFBundleTypeExtensions: ['pdf'], LSItemContentTypes: ['com.adobe.pdf'],
       CFBundleTypeRole: 'Editor', LSHandlerRank: 'Default', CFBundleTypeIconFile: 'pdf.icns'
-    }])
+    })
     expect(metadata.build.mac.extraResources).toContainEqual({ from: 'resources/pdf.icns', to: 'pdf.icns' })
     expect(metadata.build.win.fileAssociations[0].ext).toBe('pdf')
   })

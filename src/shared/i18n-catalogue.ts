@@ -1,3 +1,4 @@
+import { markdownMessages } from './markdown-messages'
 export const INTERFACE_LANGUAGES = ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar'] as const
 export type InterfaceLanguage = (typeof INTERFACE_LANGUAGES)[number]
 
@@ -5,6 +6,7 @@ type LocalizedMessage = Record<InterfaceLanguage, string>
 
 /** One semantic code maps to every complete interface-language value. */
 export const messages = {
+  ...markdownMessages,
   "crop.smart": {"zh": "智能裁切", "en": "Smart crop", "ja": "スマートトリミング", "ru": "Умная обрезка", "es": "Recorte inteligente", "fr": "Recadrage intelligent", "de": "Intelligent zuschneiden", "pt": "Recorte inteligente", "ko": "스마트 자르기", "ar": "قص ذكي"},
   "crop.margin": {"zh": "保护边界", "en": "Protective margin", "ja": "保護余白", "ru": "Защитное поле", "es": "Margen de protección", "fr": "Marge de protection", "de": "Schutzrand", "pt": "Margem de proteção", "ko": "보호 여백", "ar": "هامش الحماية"},
   "crop.marginHint": {"zh": "智能裁切后实时调整四周留白；0 为贴边，止于页面边缘。", "en": "Adjust space on all sides after smart crop. 0 fits tightly; limited by page edges.", "ja": "スマートトリミング後、四辺の余白を調整。0 はぴったり、ページ端まで。", "ru": "После умной обрезки настройте поля со всех сторон. 0 — вплотную; до края страницы.", "es": "Ajuste el espacio alrededor tras el recorte inteligente. 0 recorta al ras; hasta el borde de página.", "fr": "Ajustez les marges après le recadrage intelligent. 0 recadre au plus près ; jusqu’au bord de page.", "de": "Nach intelligentem Zuschnitt den Rand rundum anpassen. 0 liegt direkt an; begrenzt durch die Seite.", "pt": "Ajuste o espaço ao redor após o recorte inteligente. 0 recorta rente; até a borda da página.", "ko": "스마트 자르기 후 사방의 여백을 조정합니다. 0은 꼭 맞게, 페이지 가장자리까지만 적용됩니다.", "ar": "اضبط المسافة حول المحتوى بعد القص الذكي. 0 للقص المحكم؛ ضمن حدود الصفحة."},

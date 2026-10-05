@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 describe('2.0.56 native icons and release metadata', () => {
   it('keeps release metadata synchronized and bypasses the PNG-to-ICNS converter for app and DMG', () => {
     const metadata = JSON.parse(readFileSync('package.json', 'utf8')), lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
-    expect(metadata.version).toBe('2.0.56')
+    expect(metadata.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect([lock.version, lock.packages[''].version]).toEqual([metadata.version, metadata.version])
     expect(metadata.build.mac.icon).toBe('resources/icon.icns')
     expect(metadata.build.dmg.icon).toBe(metadata.build.mac.icon)

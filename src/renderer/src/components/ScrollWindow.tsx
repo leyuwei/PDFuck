@@ -1,7 +1,7 @@
-import { Children, isValidElement, useEffect, useRef, type ComponentPropsWithRef } from 'react'
+import { Children, isValidElement, useEffect, useRef, type ComponentPropsWithRef, type ReactNode } from 'react'
 
 /** The heading is outside the scrollport, so scrollbars cannot cross its title. */
-export function ScrollWindow({ children, className = '', autoHideScrollbar = false, ...props }: ComponentPropsWithRef<'div'> & { autoHideScrollbar?: boolean }) {
+export function ScrollWindow({ children, footer, className = '', autoHideScrollbar = false, ...props }: ComponentPropsWithRef<'div'> & { autoHideScrollbar?: boolean; footer?: ReactNode }) {
   const body = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!autoHideScrollbar || !body.current) return
@@ -28,5 +28,5 @@ export function ScrollWindow({ children, className = '', autoHideScrollbar = fal
   const items = Children.toArray(children)
   const first = items[0]
   const heading = isValidElement(first) ? first : undefined
-  return <div {...props} className={`${className} scroll-window`}>{heading}<div ref={body} className={`window-scroll-body${autoHideScrollbar ? ' auto-hide-scrollbar' : ''}`}>{heading ? items.slice(1) : items}</div></div>
+  return <div {...props} className={`${className} scroll-window`}>{heading}<div ref={body} className={`window-scroll-body${autoHideScrollbar ? ' auto-hide-scrollbar' : ''}`}>{heading ? items.slice(1) : items}</div>{footer}</div>
 }

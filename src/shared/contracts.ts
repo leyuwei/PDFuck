@@ -1,10 +1,12 @@
 import type { OcrPageRequest, OcrPageResult } from './ocr'
 import type { InterfaceLanguage } from './i18n-catalogue'
+import type { MarkdownDocument, MarkdownRenderRequest, SaveMarkdownRequest } from './markdown'
 
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
 export type RasterExportFormat = Exclude<ExportFormat, 'pdf' | 'eps'>
 
 export interface OpenedPdf {
+  markdown?: string
   path: string
   name: string
   data: Uint8Array
@@ -170,6 +172,9 @@ export interface DocumentTabsSnapshot {
  * selection state is intentionally not carried over.
  */
 export interface DetachedPdfDocument {
+  markdown?: MarkdownDocument
+  pdfDirty?: boolean
+  pdfPath?: string
   data?: Uint8Array
   filePath?: string
   fileName: string
@@ -226,6 +231,8 @@ export interface DesktopApi {
   openPdfFolder(path: string): Promise<void>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<SavePdfResult>
+  saveMarkdown(request: SaveMarkdownRequest): Promise<SavePdfResult>
+  renderMarkdown(request: MarkdownRenderRequest): Promise<Uint8Array>
   listPrinters(): Promise<PrinterDescriptor[]>
   openPrinterSettings(printerName: string): Promise<void>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>

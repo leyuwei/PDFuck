@@ -1,4 +1,7 @@
 import { createLabReport } from './lab-report'
+import { readMarkdown, renderMarkdownPdf } from './markdown'
+import { isDocumentPath, isMarkdownPath, MAX_MARKDOWN_LENGTH } from '../shared/markdown'
+import type { SaveMarkdownRequest } from '../shared/markdown'
 import type { LabReportRequest } from '../shared/contracts'
 import { cancelOcr, recognizeOcrPage } from './ocr'
 import type { OcrPageRequest } from '../shared/ocr'
@@ -281,7 +284,7 @@ async function openImageImport(path: string): Promise<ImageImportFile> {
 }
 
 function candidateFromArgs(args: string[]): string | null {
-  const value = args.find((arg) => isPdf(arg) && existsSync(resolve(arg)))
+  const value = args.find((arg) => isDocumentPath(arg) && existsSync(resolve(arg)))
   return value ? resolve(value) : null
 }
 
@@ -307,8 +310,13 @@ async function refreshMacPdfAssociation(): Promise<void> {
 }
 
 async function openPdfAt(path: string) {
+  if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('md.invalid')
   const absolute = resolve(path)
-  if (!isPdf(absolute)) throw new Error('只能打开 PDF 文件。')
+  if (isMarkdownPath(absolute)) {
+    const markdown = await readMarkdown(absolute)
+    await rememberRecentPdf(absolute).catch(() => undefined)
+    return { path: absolute, name: basename(absolute), data: new Uint8Array(), credentialKey: '', markdown }
+  }
   const data = await readFile(absolute)
   const credentialKey = createHash('sha256').update(data).digest('hex')
   await rememberRecentPdf(absolute).catch(() => undefined)
@@ -365,7 +373,7 @@ async function readRecentPdfs(): Promise<RecentPdf[]> {
     return parsed.flatMap((value): RecentPdf[] => {
       if (!value || typeof value !== 'object') return []
       const entry = value as Partial<RecentPdf>
-      if (typeof entry.path !== 'string' || !isPdf(entry.path) || !existsSync(entry.path)) return []
+      if (typeof entry.path !== 'string' || !isDocumentPath(entry.path) || !existsSync(entry.path)) return []
       return [{ path: resolve(entry.path), name: typeof entry.name === 'string' ? entry.name : basename(entry.path), lastOpened: typeof entry.lastOpened === 'string' ? entry.lastOpened : new Date(0).toISOString() }]
     }).slice(0, RECENT_PDF_LIMIT)
   } catch { return [] }
@@ -404,7 +412,7 @@ function showMainWindow(): void {
 
 function queuePdfPath(path: string): void {
   const absolute = resolve(path)
-  if (!isPdf(absolute) || !existsSync(absolute)) return
+  if (!isDocumentPath(absolute) || !existsSync(absolute)) return
   const primary = mainSession && !mainSession.window.isDestroyed() ? mainSession : undefined
   if (!primary) {
     pendingPaths.push(absolute)
@@ -505,6 +513,7 @@ function validDetachedDocument(value: unknown): value is DetachedPdfDocument {
   const document = value as Partial<DetachedPdfDocument>
   const validNumber = (candidate: unknown) => typeof candidate === 'number' && Number.isFinite(candidate)
   return (document.data === undefined || document.data instanceof Uint8Array)
+    && (document.markdown === undefined || (typeof document.markdown.source === 'string' && document.markdown.source.length <= MAX_MARKDOWN_LENGTH && typeof document.markdown.savedSource === 'string' && typeof document.markdown.path === 'string' && isMarkdownPath(document.markdown.path) && typeof document.markdown.renderedKey === 'string' && Boolean(document.markdown.options)))
     && typeof document.fileName === 'string'
     && typeof document.encrypted === 'boolean'
     && (document.password === undefined || typeof document.password === 'string')
@@ -520,6 +529,7 @@ const transferIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 function cloneDetachedDocument(document: DetachedPdfDocument): DetachedPdfDocument {
   return {
     ...document,
+    markdown: document.markdown ? { ...document.markdown, options: { ...document.markdown.options } } : undefined,
     data: document.data ? Uint8Array.from(document.data) : undefined,
     filePath: typeof document.filePath === 'string' ? document.filePath : undefined,
     password: typeof document.password === 'string' ? document.password : undefined,
@@ -641,7 +651,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
-    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, "ui.openPdf"), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, "ui.pdfFiles"), extensions: ['pdf'] }] })
+    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -651,7 +661,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('pdf:open-folder', (event, path: string) => {
     requireMainWindow(event.sender)
-    if (typeof path !== 'string' || !isPdf(path)) throw new Error('当前文件不是 PDF。')
+    if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('md.invalid')
     const absolute = resolve(path)
     if (!existsSync(absolute)) throw new Error('当前 PDF 文件已不存在。')
     shell.showItemInFolder(absolute)
@@ -722,18 +732,32 @@ app.whenReady().then(async () => {
   ipcMain.handle('pdf:recent-clear', (event) => { requireMainWindow(event.sender); return clearRecentPdfs() })
   ipcMain.handle('pdf:reading-position-get', (event, path: string) => {
     requireMainWindow(event.sender)
-    if (typeof path !== 'string' || !isPdf(path)) throw new Error('阅读位置请求无效。')
+    if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('阅读位置请求无效。')
     return readReadingPosition(path)
   })
   ipcMain.handle('pdf:reading-position-set', (event, request: { path: string; position: ReadingPosition }) => {
     requireMainWindow(event.sender)
-    if (!request || typeof request.path !== 'string' || !isPdf(request.path) || !request.position) throw new Error('阅读位置请求无效。')
+    if (!request || typeof request.path !== 'string' || !isDocumentPath(request.path) || !request.position) throw new Error('阅读位置请求无效。')
     return rememberReadingPosition(request.path, request.position)
   })
   ipcMain.on('pdf:reading-position-flush', (event, request: { path: string; position: ReadingPosition }) => {
     requireMainWindow(event.sender)
-    if (!request || typeof request.path !== 'string' || !isPdf(request.path) || !request.position) return
+    if (!request || typeof request.path !== 'string' || !isDocumentPath(request.path) || !request.position) return
     void rememberReadingPosition(request.path, request.position)
+  })
+  ipcMain.handle('markdown:render', (event, request) => { requireMainWindow(event.sender); return renderMarkdownPdf(request) })
+  ipcMain.handle('markdown:save', async (event, request: SaveMarkdownRequest) => {
+    const session = requireWindowSession(event.sender)
+    if (!request || typeof request.source !== 'string' || Buffer.byteLength(request.source, 'utf8') > MAX_MARKDOWN_LENGTH || typeof request.currentPath !== 'string' || !isMarkdownPath(request.currentPath)) throw new Error('md.invalid')
+    let target = request.currentPath
+    if (request.saveAs) {
+      const result = await dialog.showSaveDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.saveSource'), defaultPath: target, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+      if (result.canceled || !result.filePath) return { status: 'canceled' as const }
+      target = isMarkdownPath(result.filePath) ? result.filePath : `${result.filePath}.md`
+    }
+    const absolute = resolve(target)
+    try { await atomicWrite(absolute, new TextEncoder().encode(request.source)); await rememberRecentPdf(absolute).catch(() => undefined); return { status: 'saved' as const, path: absolute } }
+    catch (error) { if (requiresSaveAs(error)) return { status: 'save-as-required' as const, target: absolute }; throw error }
   })
   ipcMain.handle('pdf:save', async (event, request: SavePdfRequest) => {
     const session = requireWindowSession(event.sender)

@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.0.56",
+  "version": "2.1.0",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -83,7 +83,8 @@
     "render:pdf-icon": "electron scripts/render-app-icon.cjs --mac-document",
     "test:release-2.0.55": "node scripts/run-vitest.cjs run src/main/release-2.0.55.test.ts && electron-vite build && node scripts/release-2.0.55-macos-smoke.cjs",
     "render:mac-icon": "electron scripts/render-app-icon.cjs --mac-app",
-    "test:release-2.0.56": "node scripts/run-vitest.cjs run src/main/release-2.0.56.test.ts src/renderer/src/lib/release-2.0.56.test.ts && electron-vite build && node scripts/release-2.0.56-ui-smoke.cjs"
+    "test:release-2.0.56": "node scripts/run-vitest.cjs run src/main/release-2.0.56.test.ts src/renderer/src/lib/release-2.0.56.test.ts && electron-vite build && node scripts/release-2.0.56-ui-smoke.cjs",
+    "test:markdown": "node scripts/run-vitest.cjs run src/main/markdown.test.ts src/renderer/src/lib/markdown-document.test.tsx && electron-vite build && node scripts/markdown-ui-smoke.cjs"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
@@ -154,6 +155,14 @@
           "mimeType": "application/pdf",
           "role": "Viewer",
           "rank": "Default"
+        },
+        {
+          "ext": "md",
+          "name": "Markdown Document",
+          "description": "Markdown 文档",
+          "mimeType": "text/markdown",
+          "role": "Editor",
+          "rank": "Default"
         }
       ]
     },
@@ -203,6 +212,35 @@
             "CFBundleTypeRole": "Editor",
             "LSHandlerRank": "Default",
             "CFBundleTypeIconFile": "pdf.icns"
+          },
+          {
+            "CFBundleTypeName": "Markdown Document",
+            "CFBundleTypeExtensions": [
+              "md"
+            ],
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown"
+            ],
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Default",
+            "CFBundleTypeIconFile": "pdf.icns"
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown Document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md"
+              ],
+              "public.mime-type": [
+                "text/markdown"
+              ]
+            }
           }
         ]
       },

@@ -39,7 +39,8 @@ button, input, select, textarea { line-height: 1.35; }
 
 small { font-size: var(--ui-font-small); }
 h1, h2, h3, h4, h5, h6 { font-size: var(--ui-font-title); }
-.titlebar-tools button { height: auto; min-height: 32px; max-height: 50px; padding-block: 5px; }
+.titlebar-tools button, .titlebar-tools .history-controls, .titlebar-tools .page-controls > div { height: 36px; min-height: 36px; max-height: 36px; }
+.titlebar-tools button, .titlebar-tools .history-controls { padding-block: 0; }
 
 .tool-panel h2, .tool-panel h3 { min-width: 0; overflow-wrap: anywhere; }
 .annotation-lab-heading > div { min-width: 0; }

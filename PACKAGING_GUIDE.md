@@ -18,6 +18,16 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+2.1.0 增加 Markdown 文件编辑、五种 PDF 模板、可拖动/隐藏的双栏及十语言界面。无需新增依赖。Windows 在 `build.win.fileAssociations` 注册 `.md` Editor；macOS 在 `CFBundleDocumentTypes` 与 `UTImportedTypeDeclarations` 声明 Markdown，保留现有原生 ICNS。
+
+本轮仅运行 `npm run typecheck`、`npm run test:markdown`（新增 10 项单元测试、生产构建和 Markdown UI 冒烟）及 `git diff --check`；不运行旧测试全集或一键打包脚本。新增 UI 检查源码保存/另存、真实五模板 PDF、多语言双主题四字号、拖动/关闭/恢复分栏、已有 PDF 编辑保护与关闭提示。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版与解包 EXE。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包程序，重跑同一新增 UI 脚本；便携程序实际启动并检查 `.md` 参数与偏好重启恢复。保存版本、资源、签名、SHA-256 和测试范围至 `docs/VALIDATION-2.1.0.md` 与 release 清单。macOS 的 `.app`/DMG/ZIP 与 LaunchServices 默认程序行为需在 macOS 原生构建验收，不能将配置检查写成实机通过。
+
+本次用户在 Markdown 测试通过后明确要求“修改后已经做过的测试别再重复做”，因此最终图标修改只执行新增 `scripts/folder-button-ui-check.cjs`，不重跑上述已通过的单元或 Markdown UI 测试，也不在成品上重复同一套检查。更新生产构建后正常打包，保留此前结果；仅补做尚未执行过的 `scripts/markdown-portable-smoke.cjs` 重启持久化检查和成品版本、资源、签名、哈希核验。PDF 排版和 14 类快捷插入使用可拖动浮窗，底部操作栏固定；语法图标尺寸随界面字号变化并禁止换行。
+
+顶部等高修正版继续保留 2.1.0：操作按钮、撤销/重做组和页码框统一为 36px。仅执行新增 `scripts/titlebar-height-ui-check.cjs`（启用/禁用、十语言、双主题、四字号、两种窗宽共 320 组），不重复已完成的测试；生产构建后直接打包，核对最终资源并更新安装版、便携版、解包 EXE 的签名/版本/SHA-256 及发布清单。
+
+Markdown 紧凑标题与模板修正版仍为 2.1.0：PDF 排版/刷新/保存按钮及双栏面板标题统一 36px，单栏隐藏面板标题并保留保存入口；关闭按钮改用 SVG，与保存/另存为居中对齐。所选模板与每个模板的设置分别持久化，兼容旧偏好记录；五模板为标题、引用、代码、表格等区域提供不同样式。本轮仅执行新增 `src/renderer/src/lib/markdown-template-settings.test.ts`（3 项）、`scripts/markdown-layout-template-check.cjs`（80 组紧凑布局、实际打印窗口区域样式、独立模板跨重启记忆）及其 `--dirty-source` 定向检查（8 组保存图标对比度），以及类型检查和生产构建。通过的旧测试及本轮已通过项目均不重复；随后直接打包并更新成品资源和哈希。打印窗口仍禁用 JavaScript；检查脚本通过 DevTools 读取 CSS，不修改应用安全设置。
+
 2.0.56 修复 Finder 小图标、首页 Logo、首次 AI 警告框按钮留白及鼠标缩放锚点。electron-builder 26.15.3 自动转换 PNG 得到的 16/32px ICNS 条目不兼容原生小图标显示，因此应用和 DMG 均直接使用 `resources/icon.icns`；用 `npm run render:mac-icon` 从既有 SVG 经系统 `iconutil` 生成，16/32px 为原生 ARGB，包含全部十种标准/Retina 表示。PDF 文件关联继续使用同样完整的 `resources/pdf.icns`。不要再将 macOS 应用/卷图标配置退回 PNG。无需升级依赖。
 
 本版仅运行新增回归：`npm run test:release-2.0.56`（7 项新单元测试、生产构建和新 UI 测试），另执行 `npm run typecheck` 与 `git diff --check`。新 UI 测试覆盖首页和 AI 警告框的十语言 × 双主题 × 四字号、隐私确认行为、工具栏/真实 Ctrl 滚轮/快速滚轮/页间空隙/400% 上限、连续/单页及 96 页混合尺寸虚拟化、LTR/RTL，以及系统解码 ICNS 全尺寸。不要调用会执行旧测试的 `npm run build` 或一键发布脚本。

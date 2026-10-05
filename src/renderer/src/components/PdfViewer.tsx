@@ -1471,7 +1471,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const { currentPage, sizes, zoom } = resizeStateRef.current
     const size = sizes[currentPage]
     const page = viewport?.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
-    if (!viewport || !page || !size || size.width * zoom <= viewport.clientWidth - 56 + 1) return false
+    if (!viewport || !viewport.clientWidth || !page || !size || size.width * zoom <= viewport.clientWidth - 56 + 1) return false
     const nextZoom = Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width))
     if (nextZoom >= zoom) return false
     // Auto-fit uses the same draft/selection focus as explicit toolbar zoom.
@@ -1496,7 +1496,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const observer = new ResizeObserver(() => {
       const nextWidth = viewport.clientWidth
       if (nextWidth === width) return
-      const shrinking = nextWidth < width
+      const shrinking = nextWidth < width || width === 0
       width = nextWidth
       if (shrinking && fitOverflowingPage()) return
       const page = viewport.querySelector<HTMLElement>(`[data-page="${resizeStateRef.current.currentPage}"]`)
@@ -1509,12 +1509,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const fitWidth = useCallback(() => {
     const size = sizes[currentPage] || sizes[0]
     const viewport = viewportRef.current
-    if (size && viewport) onZoomChange(Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width)))
+    if (size && viewport?.clientWidth) onZoomChange(Math.max(0.25, Math.min(4, (viewport.clientWidth - 56) / size.width)))
   }, [currentPage, onZoomChange, sizes])
   const fitPage = useCallback(() => {
     const size = sizes[currentPage] || sizes[0]
     const viewport = viewportRef.current
-    if (size && viewport) {
+    if (size && viewport?.clientWidth && viewport.clientHeight) {
       const widthScale = (viewport.clientWidth - 56) / size.width
       const heightScale = (viewport.clientHeight - 72) / size.height
       onZoomChange(Math.max(0.25, Math.min(4, widthScale, heightScale)))

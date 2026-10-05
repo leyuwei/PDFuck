@@ -26,8 +26,8 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .document-encrypted-badge { flex: none; padding: 2px 5px; border: 1px solid #d29a38; border-radius: 4px; background: #fff7e8; color: #9a6311; font-size: var(--ui-font-small); font-weight: 750; }
 .file-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 .open-button, .folder-button { padding: 7px 11px; white-space: nowrap; }
-.folder-button { color: #52617c; background: #f8f9fc; }
-.folder-button span { margin-right: 4px; color: #5575de; font-size: var(--ui-font-small); }
+.titlebar-tools .folder-button { flex: none; display: grid; place-items: center; width: 36px; min-width: 36px; padding: 7px; color: #52617c; background: #f8f9fc; }
+.folder-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .history-controls { display: flex; align-items: center; gap: 3px; padding: 2px; border: 1px solid #e2e6ee; border-radius: 8px; background: #f7f8fb; -webkit-app-region: no-drag; }.history-controls button { width: 29px; min-width: 29px; height: 27px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #41506c; font-size: var(--ui-font-title); line-height: 1; }.history-controls button:hover:not(:disabled) { border: 0; background: #e8edfb; color: #3157d5; }.history-controls button:disabled { color: #aab1bf; opacity: .7; }
 .page-controls, .zoom-controls, .window-controls { display: flex; align-items: center; gap: 4px; }
 .page-controls button, .zoom-controls button, .window-controls button { height: 32px; min-width: 32px; padding: 0 8px; }
