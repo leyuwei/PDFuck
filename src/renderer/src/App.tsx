@@ -1,7 +1,7 @@
 import { AboutDialog } from './components/AboutDialog'
 import { MarkdownWorkspace } from './components/MarkdownWorkspace'
 import { isDocumentPath, markdownRenderKey, normalizeMarkdownOptions, type MarkdownDocument } from '../../shared/markdown'
-import { loadMarkdownPreferences, markdownHtml, saveMarkdownPreferences } from './lib/markdown-document'
+import { loadMarkdownPreferences, markdownHtml, MARKDOWN_REFRESH_DELAY, saveMarkdownPreferences } from './lib/markdown-document'
 import { OcrDialog } from './components/OcrDialog'
 import appLogo from '../../../resources/icon.svg'
 import { recognizePdf, type OcrOptions, type OcrProgress } from './lib/ocr'
@@ -311,6 +311,8 @@ export default function App() {
   const [data, setData] = useState<Uint8Array>()
   const [markdown, setMarkdown] = useState<MarkdownDocument>()
   const [markdownRendering, setMarkdownRendering] = useState(false)
+  const [markdownComposing, setMarkdownComposing] = useState(false)
+  const markdownRenderRequestsRef = useRef(new Set<number>())
   const [markdownError, setMarkdownError] = useState<string>()
   const [module, setModule] = useState<ModuleKey>('view')
   const [tool, setTool] = useState<Tool>('none')
@@ -388,7 +390,7 @@ export default function App() {
   useEffect(() => () => { if (imageDraftSource) URL.revokeObjectURL(imageDraftSource) }, [imageDraftSource])
   // A staged image belongs to the active document only. Do not let it leak to
   // an equally numbered page in another tab when the user switches documents.
-  useEffect(() => { setImageDraft(undefined) }, [activeDocumentId])
+  useEffect(() => { setImageDraft(undefined); setMarkdownComposing(false) }, [activeDocumentId])
 
   activeDocumentIdRef.current = activeDocumentId
   tabsSnapshotRef.current = documentTabs
@@ -654,16 +656,17 @@ export default function App() {
     const session = liveSessionRef.current
     if (!session.markdown || windowClosingRef.current || documentLifecycleLocksRef.current.has(session.id)) return
     const next = { ...session.markdown, source, options: normalizeMarkdownOptions(options) }
-    saveMarkdownPreferences({ options: next.options })
+    if (JSON.stringify(next.options) !== JSON.stringify(session.markdown.options)) saveMarkdownPreferences({ options: next.options })
     publishSession({ ...session, markdown: next, dirty: Boolean(session.model?.dirty) || source !== next.savedSource })
     setMarkdownError(undefined)
   }, [publishSession])
   const refreshMarkdown = useCallback(async (documentId: number, force = false) => {
     const session = sessionsRef.current.get(documentId), md = session?.markdown
-    if (!md || !session?.model) return
+    if (!md || !session?.model || markdownRenderRequestsRef.current.has(documentId)) return
     if (md.pdfModified && (!force || !await askConfirmation(ui('md.replace'), { confirmLabel: ui('md.refresh') }))) return
     const key = markdownRenderKey(md)
     if (!force && key === md.renderedKey) return
+    markdownRenderRequestsRef.current.add(documentId)
     try {
       await runDocumentOperation(documentId, async () => {
         const current = sessionsRef.current.get(documentId)
@@ -673,19 +676,21 @@ export default function App() {
         const latest = sessionsRef.current.get(documentId)
         if (!latest?.markdown || markdownRenderKey(latest.markdown) !== key) return
         const model = await PdfDocumentModel.load(bytes, undefined, latest.documentName.replace(/\.md$/i, '.pdf'))
-        const next = { ...latest, model, markdown: { ...latest.markdown, renderedKey: key, pdfModified: false }, selectedAnnotation: undefined, selection: undefined }
+        const ready = sessionsRef.current.get(documentId)
+        if (!ready?.markdown || markdownRenderKey(ready.markdown) !== key || !force && ready.markdown.pdfModified) return
+        const next = { ...ready, model, markdown: { ...ready.markdown, renderedKey: key, pdfModified: false }, selectedAnnotation: undefined, selection: undefined }
         sessionsRef.current.set(documentId, next)
         if (documentId === activeDocumentIdRef.current) { liveSessionRef.current = next; modelRef.current = model; setSelection(undefined); setSelectedAnnotation(undefined); setSelectedAnnotationIds([]); setImageDraft(undefined) }
         syncModel('准备就绪', true, model, documentId)
       })
     } catch { if (documentId === activeDocumentIdRef.current) setMarkdownError('md.error') }
-    finally { if (documentId === activeDocumentIdRef.current) setMarkdownRendering(false) }
+    finally { markdownRenderRequestsRef.current.delete(documentId); if (documentId === activeDocumentIdRef.current) setMarkdownRendering(false) }
   }, [askConfirmation, runDocumentOperation, syncModel])
   useEffect(() => {
-    if (!markdown || markdown.pdfModified || markdownRenderKey(markdown) === markdown.renderedKey) return
-    const timer = window.setTimeout(() => void refreshMarkdown(activeDocumentId), 650)
+    if (!markdown || markdown.pdfModified || markdownComposing || markdownRendering || markdownError || markdownRenderKey(markdown) === markdown.renderedKey) return
+    const timer = window.setTimeout(() => void refreshMarkdown(activeDocumentId), MARKDOWN_REFRESH_DELAY)
     return () => window.clearTimeout(timer)
-  }, [activeDocumentId, markdown, refreshMarkdown])
+  }, [activeDocumentId, markdown?.source, markdown?.path, markdown?.options, markdown?.renderedKey, markdown?.pdfModified, markdownComposing, markdownRendering, markdownError, refreshMarkdown])
   const forceEditableCopy = useCallback(async () => {
     const session = liveSessionRef.current
     if (!session.encrypted || !session.data?.length || securityConversionBusy) return
@@ -1716,7 +1721,7 @@ export default function App() {
     <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} aria-label={moduleName(key)} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} /><span className="nav-module-label">{ui(({ view: "ui.navView", edit: "ui.navEdit", annotate: "ui.navAnnotate", save: "ui.navSave" } as const)[key])}</span></button>)}<button type="button" disabled={!hasDocument || encrypted || printing} className={dialog?.type === 'print' ? 'active' : ''} aria-label={ui("ui.print")} title={ui("ui.print")} onClick={() => setDialog({ type: 'print' })}><ModuleIcon module="print" /><span className="nav-module-label">{ui("ui.print")}</span></button><button type="button" className="about-trigger" onClick={() => setAboutOpen(true)} title={ui('about.title')}><span aria-hidden="true">ⓘ</span><span>{ui('about.title')}</span><small>v{APP_VERSION}</small></button></nav>
       <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onWatermark={openWatermarks} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void savePdf(as)} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} onSearch={() => viewerRef.current?.openSearch()} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
       {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      {markdown ? <MarkdownWorkspace key={activeDocumentId} document={markdown} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
+      {markdown ? <MarkdownWorkspace key={activeDocumentId} document={markdown} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
       {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
     </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('md.drop')}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}

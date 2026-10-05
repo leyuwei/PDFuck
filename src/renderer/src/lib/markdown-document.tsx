@@ -1,9 +1,17 @@
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { Parent, PhrasingContent, Root } from 'mdast'
 import { MARKDOWN_TEMPLATES, normalizeMarkdownOptions, type MarkdownDocument, type MarkdownTemplate } from '../../../shared/markdown'
 
 export const MARKDOWN_PREFERENCES_KEY = 'pdfuck.markdown.v1'
+export const MARKDOWN_REFRESH_DELAY = 1500
+export const MARKDOWN_SHORTCUTS = { bold: 'B', italic: 'I', underline: 'U', strike: 'Shift+X', inline_code: 'E', link: 'K' } as const
+export function markdownShortcut(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; isComposing?: boolean }, platform: string): MarkdownInsertType | undefined {
+  if (event.isComposing || event.altKey || !(platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return
+  const key = `${event.shiftKey ? 'Shift+' : ''}${event.key.toUpperCase()}`
+  return (Object.keys(MARKDOWN_SHORTCUTS) as (keyof typeof MARKDOWN_SHORTCUTS)[]).find(type => MARKDOWN_SHORTCUTS[type] === key)
+}
 export type MarkdownView = 'both' | 'source' | 'pdf'
 export function normalizeMarkdownView(value: unknown): MarkdownView { return value === 'source' || value === 'pdf' ? value : 'both' }
 export function normalizeMarkdownRatio(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) ? Math.max(20, Math.min(80, value)) : 42 }
@@ -34,16 +42,32 @@ export function saveMarkdownPreferences(value: Partial<ReturnType<typeof loadMar
     localStorage.setItem(MARKDOWN_PREFERENCES_KEY, JSON.stringify({ ...next, templates }))
   } catch { /* Editing remains usable when storage is unavailable. */ }
 }
-export function markdownHtml(source: string): string {
-  return renderToStaticMarkup(<article dir="auto"><Markdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={(url, key) => key === 'src' && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(url) ? url : defaultUrlTransform(url)} components={{ img: props => <img {...props} loading="eager" />, p: props => <p dir="auto" {...props} />, h1: props => <h1 dir="auto" {...props} />, h2: props => <h2 dir="auto" {...props} />, li: props => <li dir="auto" {...props} /> }}>{source}</Markdown></article>)
+// Only paired, attribute-free underline tags become markup. All other raw HTML remains disabled.
+function remarkUnderline() {
+  return (tree: Root) => {
+    const visit = (parent: Parent) => {
+      for (const child of parent.children) if ('children' in child) visit(child as Parent)
+      for (let i = 0; i < parent.children.length; i++) {
+        const node = parent.children[i]
+        if (node.type !== 'html' || node.value !== '<u>') continue
+        const end = parent.children.findIndex((child, index) => index > i && child.type === 'html' && child.value === '</u>')
+        if (end > i) parent.children.splice(i, end - i + 1, { type: 'emphasis', data: { hName: 'u' }, children: parent.children.slice(i + 1, end) as PhrasingContent[] })
+      }
+    }
+    visit(tree)
+  }
 }
-export const MARKDOWN_INSERT_TYPES = ['heading', 'bold', 'italic', 'strike', 'inline_code', 'list', 'ordered', 'task', 'quote', 'code', 'link', 'image', 'table', 'rule'] as const
+export function markdownHtml(source: string): string {
+  return renderToStaticMarkup(<article dir="auto"><Markdown remarkPlugins={[remarkGfm, remarkUnderline]} skipHtml urlTransform={(url, key) => key === 'src' && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(url) ? url : defaultUrlTransform(url)} components={{ img: props => <img {...props} loading="eager" />, p: props => <p dir="auto" {...props} />, h1: props => <h1 dir="auto" {...props} />, h2: props => <h2 dir="auto" {...props} />, li: props => <li dir="auto" {...props} /> }}>{source}</Markdown></article>)
+}
+export const MARKDOWN_INSERT_TYPES = ['heading', 'bold', 'italic', 'underline', 'strike', 'inline_code', 'list', 'ordered', 'task', 'quote', 'code', 'link', 'image', 'table', 'rule'] as const
 export type MarkdownInsertType = typeof MARKDOWN_INSERT_TYPES[number]
 export interface MarkdownInsertionOptions { level?: number; language?: string; rows?: number; columns?: number }
 export function markdownInsertion(source: string, start: number, end: number, type: MarkdownInsertType, text: string, address = '', options: MarkdownInsertionOptions = {}): { source: string; start: number; end: number } {
   const selected = source.slice(start, end), content = text || selected
   let value: string, offset = 0
-  if (type === 'bold' || type === 'italic' || type === 'strike' || type === 'inline_code') {
+  if (type === 'underline') { value = `<u>${content}</u>`; offset = 3 }
+  else if (type === 'bold' || type === 'italic' || type === 'strike' || type === 'inline_code') {
     const marker = type === 'bold' ? '**' : type === 'italic' ? '*' : type === 'strike' ? '~~' : '`'.repeat(Math.max(0, ...(content.match(/`+/g) || []).map(run => run.length)) + 1)
     const padding = type === 'inline_code' && /^`|`$|^ | $/.test(content) ? ' ' : ''
     value = `${marker}${padding}${content}${padding}${marker}`; offset = marker.length + padding.length

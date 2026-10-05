@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { MARKDOWN_FONTS, MARKDOWN_TEMPLATES, MAX_MARKDOWN_LENGTH, type MarkdownDocument, type MarkdownOptions } from '../../../shared/markdown'
-import { loadMarkdownPreferences, loadMarkdownTemplateOptions, markdownInsertion, normalizeMarkdownRatio, saveMarkdownPreferences, type MarkdownInsertType, type MarkdownInsertionOptions, type MarkdownView } from '../lib/markdown-document'
+import { loadMarkdownPreferences, loadMarkdownTemplateOptions, markdownInsertion, markdownShortcut, MARKDOWN_SHORTCUTS, normalizeMarkdownRatio, saveMarkdownPreferences, type MarkdownInsertType, type MarkdownInsertionOptions, type MarkdownView } from '../lib/markdown-document'
 import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
@@ -14,16 +15,17 @@ interface Props {
   onSaveSource(saveAs: boolean): void
   onSavePdf(): void
   onRefresh(): void
+  onCompositionChange(composing: boolean): void
   children: ReactNode
 }
 const insertGroups = [
-  { label: 'md.format', types: ['bold', 'italic', 'strike', 'inline_code'] },
+  { label: 'md.format', types: ['bold', 'italic', 'underline', 'strike', 'inline_code'] },
   { label: 'md.blocks', types: ['heading', 'list', 'ordered', 'task', 'quote', 'code', 'rule'] },
   { label: 'md.media', types: ['link', 'image', 'table'] }
 ] as const
-const symbols: Record<MarkdownInsertType, string> = { heading: 'H', bold: 'B', italic: 'I', strike: 'S', inline_code: '</>', list: '•', ordered: '1.', task: '☑', quote: '❝', code: '{ }', link: '↗', image: '▧', table: '▦', rule: '―' }
+const symbols: Record<MarkdownInsertType, string> = { heading: 'H', bold: 'B', italic: 'I', underline: 'U', strike: 'S', inline_code: '</>', list: '•', ordered: '1.', task: '☑', quote: '❝', code: '{ }', link: '↗', image: '▧', table: '▦', rule: '―' }
 function LayoutIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16M8 3v4M16 10v4M10 17v4" /></svg> }
-function SaveAsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3H5v18h14v-9M13 3v6h6M12 15l8-8M15 7h5v5" /></svg> }
+function SaveAsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H4v18h16v-9M8 21v-8h8v8M8 3v5h4M15 3h6v6M14 10l7-7" /></svg> }
 function SaveIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h14l4 4v14H3zM7 3v6h9V3M7 21v-8h10v8" /></svg> }
 function CloseIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg> }
 
@@ -70,12 +72,25 @@ function MarkdownInsertDialog({ selectedText, initialType, onInsert, onClose }: 
   </div>
 }
 
-export function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, children }: Props) {
+export function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, onCompositionChange, children }: Props) {
   useInterfaceLanguage()
   const [view, setView] = useState<MarkdownView>(() => loadMarkdownPreferences().view), [ratio, setRatio] = useState(() => loadMarkdownPreferences().ratio)
   const [dialog, setDialog] = useState<'layout' | MarkdownInsertType>()
+  const [hint, setHint] = useState<{ button: HTMLButtonElement; text: string; left: number; top: number }>()
   const editor = useRef<HTMLTextAreaElement>(null), columns = useRef<HTMLDivElement>(null), selection = useRef({ start: 0, end: 0 })
   const { source, options } = document
+  const showHint = (event: SyntheticEvent) => {
+    const button = (event.target as Element).closest('button')
+    if (!button || hint?.button === button) return
+    const text = button.dataset.hint || button.getAttribute('aria-label') || button.textContent?.trim()
+    if (!text) return
+    const box = button.getBoundingClientRect()
+    setHint({ button, text, left: Math.max(8, Math.min(box.left, window.innerWidth - 288)), top: Math.min(box.bottom + 6, window.innerHeight - 100) })
+  }
+  const shortcutHint = (kind: MarkdownInsertType) => {
+    const key = MARKDOWN_SHORTCUTS[kind as keyof typeof MARKDOWN_SHORTCUTS]
+    return ui(`md.${kind}`) + (key ? ` · ${window.desktop.platform === 'darwin' ? '⌘+' : 'Ctrl+'}${key}` : '')
+  }
   const resize = (value: number) => { const next = normalizeMarkdownRatio(value); setRatio(next); saveMarkdownPreferences({ ratio: next }) }
   const show = (mode: MarkdownView) => { setView(mode); saveMarkdownPreferences({ view: mode }) }
   const insert = (kind: MarkdownInsertType, content = '', address = '', settings: MarkdownInsertionOptions = {}) => {
@@ -84,20 +99,27 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
     requestAnimationFrame(() => { editor.current?.focus(); editor.current?.setSelectionRange(result.start, result.end); selection.current = { start: result.start, end: result.end } })
   }
   const sourceActions = <div className="md-source-actions"><button type="button" className={`md-icon-button md-source-save${source !== document.savedSource ? ' primary' : ''}`} aria-label={ui('md.saveSource')} title={ui('md.saveSource')} disabled={source === document.savedSource} onClick={() => onSaveSource(false)}><SaveIcon /></button><button type="button" className="md-icon-button" aria-label={ui('md.sourceAs')} title={ui('md.sourceAs')} onClick={() => onSaveSource(true)}><SaveAsIcon /></button>{view === 'both' && <button type="button" className="md-pane-close" aria-label={ui('ui.close')} title={ui('ui.close')} onClick={() => show('pdf')}><CloseIcon /></button>}</div>
-  return <div className={`md-workspace md-view-${view}`}>
+  return <div className={`md-workspace md-view-${view}`} onPointerOver={showHint} onFocus={showHint} onPointerOut={event => { if (hint && !hint.button.contains(event.relatedTarget as Node | null)) setHint(undefined) }} onBlur={() => setHint(undefined)} onClickCapture={() => setHint(undefined)}>
     <header className="md-workspace-header"><span className="md-workspace-brand">MD <b>Markdown</b></span><div className="md-view-controls">{(['both', 'source', 'pdf'] as const).map(mode => <button key={mode} type="button" aria-pressed={view === mode} onClick={() => show(mode)}>{ui(`md.${mode}`)}</button>)}</div><div className="md-pdf-tools"><button type="button" className="md-layout-trigger" onClick={() => setDialog('layout')}><LayoutIcon />{ui('md.layout')}</button><div className="md-pdf-actions"><button type="button" disabled={rendering} onClick={onRefresh}>{ui('md.refresh')}</button><button type="button" onClick={onSavePdf}>{ui('md.savePdf')}</button></div></div></header>
     {(rendering || document.pdfModified || error) && <p className={`md-render-status${error ? ' md-error' : ''}`} role="status">{error || ui(rendering ? 'md.rendering' : 'md.paused')}</p>}
     <div className="md-columns" ref={columns} style={{ gridTemplateColumns: view === 'both' ? `minmax(0, ${ratio}fr) 10px minmax(0, ${100 - ratio}fr)` : 'minmax(0, 1fr)' }}>
       <section className="md-source-pane" aria-label={ui('md.source')} hidden={view === 'pdf'}>
         {view === 'both' && <header className="md-pane-heading"><h2 className="md-pane-title" title={ui('md.editorHint')}>{ui('md.source')}{source !== document.savedSource ? ' *' : ''}</h2>{sourceActions}</header>}
-        <div className="md-editor-tools"><div className="md-syntax-toolbar"><div role="group" aria-label={ui('md.format')}>{(['bold', 'italic', 'strike', 'inline_code'] as const).map(kind => <button key={kind} className={`md-symbol md-symbol-${kind}`} type="button" aria-label={ui(`md.${kind}`)} title={ui(`md.${kind}`)} onClick={() => insert(kind)}>{symbols[kind]}</button>)}</div><div role="group" aria-label={ui('md.blocks')}>{(['heading', 'list', 'ordered', 'quote'] as const).map(kind => <button key={kind} className="md-symbol" type="button" aria-label={ui(`md.${kind}`)} title={ui(`md.${kind}`)} onClick={() => kind === 'heading' ? setDialog('heading') : insert(kind)}>{symbols[kind]}</button>)}</div></div><button type="button" className="md-quick-trigger" onClick={() => setDialog('link')}><span aria-hidden="true">+</span>{ui('md.quick')}</button>{view === 'source' && sourceActions}</div>
-        <textarea ref={editor} className="md-source-editor" aria-label={ui('md.source')} dir="auto" spellCheck={false} maxLength={MAX_MARKDOWN_LENGTH} value={source} onSelect={event => { selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onChange={event => onChange(event.target.value, options)} />
+        <div className="md-editor-tools"><div className="md-syntax-toolbar"><div role="group" aria-label={ui('md.format')}>{(['bold', 'italic', 'underline', 'strike', 'inline_code'] as const).map(kind => <button key={kind} className={`md-symbol md-symbol-${kind}`} type="button" aria-label={ui(`md.${kind}`)} data-hint={shortcutHint(kind)} onClick={() => insert(kind)}>{symbols[kind]}</button>)}</div><div role="group" aria-label={ui('md.blocks')}>{(['heading', 'list', 'ordered', 'quote'] as const).map(kind => <button key={kind} className="md-symbol" type="button" aria-label={ui(`md.${kind}`)} onClick={() => kind === 'heading' ? setDialog('heading') : insert(kind)}>{symbols[kind]}</button>)}</div><button type="button" className="md-quick-trigger" aria-label={ui('md.quick')} onClick={() => setDialog('link')}><span aria-hidden="true">+</span></button></div>{view === 'source' && sourceActions}</div>
+        <textarea ref={editor} className="md-source-editor" aria-label={ui('md.source')} dir="auto" spellCheck={false} maxLength={MAX_MARKDOWN_LENGTH} value={source} onSelect={event => { selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onChange={event => onChange(event.target.value, options)} onCompositionStart={() => onCompositionChange(true)} onCompositionEnd={() => onCompositionChange(false)} onKeyDown={event => {
+          const kind = markdownShortcut({ ...event, isComposing: event.nativeEvent.isComposing }, window.desktop.platform)
+          if (!kind) return
+          event.preventDefault(); event.stopPropagation()
+          selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }
+          if (kind === 'link') setDialog(kind); else insert(kind)
+        }} />
         <footer className="md-source-footer"><span>UTF-8 · {t('md.characters', { count: source.length.toLocaleString() })}</span><span>{window.desktop.platform === 'darwin' ? '⌘' : 'Ctrl'}+S · {ui('md.saveSource')}</span></footer>
       </section>
-      {view === 'both' && <div className="md-divider" role="separator" tabIndex={0} aria-label={ui('md.divider')} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(ratio)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) { event.preventDefault(); resize(event.key === 'Home' ? 42 : ratio + (event.key === 'ArrowLeft' ? -2 : 2)) } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId) }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId) && columns.current) { const box = columns.current.getBoundingClientRect(); resize((event.clientX - box.left) / box.width * 100) } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}><span /></div>}
+      {view === 'both' && <div className="md-divider" role="separator" tabIndex={0} aria-label={ui('md.divider')} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(ratio)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) { event.preventDefault(); resize(event.key === 'Home' ? 42 : ratio + (event.key === 'ArrowLeft' ? -2 : 2)) } }} onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId) }} onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId) && columns.current) { const box = columns.current.getBoundingClientRect(); resize((event.clientX - box.left - 17) / (box.width - 34) * 100) } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}><span /></div>}
       <div className="md-pdf-pane" role="region" aria-label={ui('md.pdf')} hidden={view === 'source'}>{view === 'both' && <header className="md-pane-heading"><h2 className="md-pane-title" title={ui('md.pdfHint')}>{ui('md.pdf')}</h2><span className="md-template-label" title={`A4 · ${ui(`md.${options.template}`)}`}>A4 · {ui(`md.${options.template}`).split(' · ')[0]}</span><button type="button" className="md-pane-close" aria-label={ui('ui.close')} title={ui('ui.close')} onClick={() => show('source')}><CloseIcon /></button></header>}{children}</div>
     </div>
     {dialog === 'layout' && <MarkdownLayoutDialog document={document} onChange={next => onChange(source, next)} onClose={() => setDialog(undefined)} />}
     {dialog && dialog !== 'layout' && <MarkdownInsertDialog initialType={dialog} selectedText={source.slice(selection.current.start, selection.current.end)} onInsert={insert} onClose={() => setDialog(undefined)} />}
+    {hint && createPortal(<div className="md-tooltip" role="tooltip" style={{ left: hint.left, top: hint.top }}>{hint.text}</div>, window.document.body)}
   </div>
 }

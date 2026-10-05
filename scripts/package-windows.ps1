@@ -49,6 +49,7 @@ try {
   Write-Host "Packaging PDFuck $currentVersion for Windows" -ForegroundColor Cyan
   Invoke-Native -Command 'npm' -Arguments @('ci')
   if (-not (Test-Path 'node_modules/electron/dist')) { Invoke-Native -Command 'node' -Arguments @('node_modules/electron/install.js') }
+  Invoke-Native -Command 'npm' -Arguments @('run', 'render:windows-installer')
   Invoke-Native -Command 'npm' -Arguments @('run', 'build')
   Invoke-Native -Command 'npm' -Arguments @('run', 'test:i18n-ui')
   Invoke-Native -Command 'node' -Arguments @('scripts/ai-smoke.cjs')

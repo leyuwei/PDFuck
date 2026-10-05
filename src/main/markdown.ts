@@ -78,6 +78,7 @@ export function markdownPrintCss(options: MarkdownOptions): string {
   const o = normalizeMarkdownOptions(options)
   return `
     @page { size: A4; margin: 18mm 18mm 20mm }
+    @page { @bottom-center { content: counter(page) " / " counter(pages); font: 9pt Arial, sans-serif; color: #68768d } }
     * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact }
     body { margin: 0; font: ${o.fontSize}pt/${o.lineHeight} ${families[o.font]}; color: #232937; overflow-wrap: anywhere }
     article { white-space: normal }

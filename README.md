@@ -10,11 +10,11 @@
 
 **为论文精读、审稿与修改设计的 PDF 编辑器。** 支持 Windows、macOS 和十种界面语言。
 
-**2.1.0 新增 Markdown 文档工作区**：直接打开 `.md`，左侧编辑源码，右侧显示真实 PDF 页面；可拖动分割线、关闭任一栏并随时恢复。五种模板分别设计标题、引用、代码和表格样式，并持久保存所选模板及每个模板的字体、字号、行距、段距。源码与 PDF 分别保存。
+**2.1.1 改进 Markdown 文档工作区**：直接打开 `.md`，左侧编辑源码，右侧显示真实 PDF 页面；可拖动分割线、关闭任一栏并随时恢复。五种模板分别设计标题、引用、代码和表格样式，并持久保存所选模板及每个模板的字体、字号、行距、段距。源码与 PDF 分别保存。
 
 ## 核心亮点
 
-- **从 Markdown 写作到 PDF 编辑**：双栏使用紧凑的单行标题，单栏隐藏标题以留出阅读空间；保存、另存为和关闭图标居中对齐。常用语法工具及可拖动的快捷插入浮窗提供 14 类语法、六级标题、代码语言、表格行列设置与插入预览。PDF 排版浮窗展示五种 A4 模板：简洁的细线与浅蓝引用、学术的居中标题与三线表、商务的绿色分区与深色表头、书刊的暖色引言与斜体引用、技术的紫色提示与深色代码块。支持快速字号选择、可选择文字及自动分页。生成的 PDF 直接复用阅读、编辑、批注、搜索、打印与导出工具。十语言、双主题和四档界面字号均适配；分栏比例、所选模板及各模板的自定义排版设置会分别保存，切换模板或重启后恢复。
+- **从 Markdown 写作到 PDF 编辑**：双栏使用紧凑的单行标题，单栏隐藏标题以留出阅读空间；保存、另存为和关闭图标居中对齐。常用语法工具及可拖动的快捷插入浮窗提供 15 类语法、六级标题、代码语言、表格行列设置与插入预览。PDF 排版浮窗展示五种 A4 模板：简洁的细线与浅蓝引用、学术的居中标题与三线表、商务的绿色分区与深色表头、书刊的暖色引言与斜体引用、技术的紫色提示与深色代码块。支持快速字号选择、可选择文字及自动分页。生成的 PDF 直接复用阅读、编辑、批注、搜索、打印与导出工具。十语言、双主题和四档界面字号均适配；分栏比例、所选模板及各模板的自定义排版设置会分别保存，切换模板或重启后恢复。
 - **专门处理复杂论文版式的框选**：兼顾双栏、行内公式、上下标与跨页选区；支持手动校正栏界，复制时自动整理断行与断词。
 - **AI 审稿直接生成文内批注**：对全文或选区逐项检查语言、逻辑、数学推导和篇章结构；可选择批注力度、添加自定义标准，并随时暂停、继续。
 - **结合原文生成修改建议**：从批注位置自动提取附近正文，也可加入多段选区作为上下文。建议在同一编辑窗口中填入回复草稿，确认后保存到 PDF。
@@ -30,11 +30,11 @@
 
 ## 安装与配置
 
-- **Windows**：从 [Releases](https://github.com/leyuwei/PDFuck/releases) 下载 `Windows-Setup.exe` 安装；`Windows.exe` 为便携版。
+- **Windows**：从 [Releases](https://github.com/leyuwei/PDFuck/releases) 下载 `Windows-Setup.exe` 安装；安装器采用软件 Logo，并显示是否已有安装及其版本、路径。`Windows.exe` 为便携版。
 - **macOS**：下载对应 DMG，将 PDFuck 拖入 Applications。各平台产物以 Releases 实际提供的文件为准。
 - **日常使用**：打开 PDF 或 Markdown 即可开始。“查看”中可切换语言、主题和界面字号；字号支持预览后确认，不影响 PDF 缩放。欢迎页和打开文件窗口中的最近打开列表可随时清空，且不会删除本机文档。
-- **Markdown**：支持“打开文档”、拖入、最近文档和系统“打开方式”；Windows 安装版与 macOS 应用均注册 `.md` 编辑器，可在系统中选为默认程序。默认双栏，拖动中间分割线调整比例，也可用方向键调整、Home 复位；顶部选择源码、PDF 或双栏，两栏右上角可关闭对应栏。单栏不显示面板标题；源码单栏的保存图标保留在语法工具栏。源码“保存／另存为”和源码编辑器中的 Ctrl/⌘+S 保存 UTF-8 `.md`；“保存 PDF”输出独立 PDF。“PDF 排版”提供三种字体族、8–24 pt 字号、1.2–2.4 行距及 0–24 pt 段距；每种模板独立记住自定义设置，重新选择当前模板也不会重置。
-- **Markdown 更新与图片**：源码修改自动延迟刷新；右侧 PDF 已有编辑或批注时暂停自动替换，需显式刷新并确认，建议先保存 PDF。PDF 修改不会写进 Markdown 源码，关闭标签时会检查双方未保存状态。本地渲染不执行原始 HTML 或脚本；支持文档目录及子目录内 PNG/JPEG/GIF/WebP 和嵌入图片，远端或目录外图片显示替代文字。
+- **Markdown**：支持“打开文档”、拖入、最近文档和系统“打开方式”；Windows 安装版与 macOS 应用均注册 `.md` 编辑器，可在系统中选为默认程序。默认双栏，拖动中间分割线调整比例，也可用方向键调整、Home 复位；顶部选择源码、PDF 或双栏，两栏右上角可关闭对应栏。单栏不显示面板标题；源码单栏的保存图标保留在语法工具栏。源码“保存／另存为”和源码编辑器中的 Ctrl/⌘+S 保存 UTF-8 `.md`；支持 Ctrl/⌘+B 加粗、I 斜体、U 下划线、E 行内代码、K 链接和 Shift+X 删除线，悬浮提示同时显示快捷键；“保存 PDF”输出独立 PDF，五种模板每页底部均显示当前页码与总页数。“PDF 排版”提供三种字体族、8–24 pt 字号、1.2–2.4 行距及 0–24 pt 段距；每种模板独立记住自定义设置，重新选择当前模板也不会重置。
+- **Markdown 更新与图片**：源码停止编辑 1.5 秒后自动刷新，输入法组字期间暂停；右侧 PDF 已有编辑或批注时暂停自动替换，需显式刷新并确认，建议先保存 PDF。PDF 修改不会写进 Markdown 源码，关闭标签时会检查双方未保存状态。本地渲染不执行原始 HTML 或脚本；支持文档目录及子目录内 PNG/JPEG/GIF/WebP 和嵌入图片，远端或目录外图片显示替代文字。
 - **文档标签档案**：点击左上角“文档标签”，为当前窗口的文件列表命名保存，支持多个档案、改名和删除。之后点击档案即可补开文档，已打开的标签保留；缺失或无法打开的文件集中提示。档案只记录文件位置，不包含未保存的编辑，未落盘文档需先保存。
 - **OCR**：“编辑 → OCR 识别”设置页码范围和主要语言。引擎与语言数据随包内置，无需联网、配置 AI 或另装 OCR 软件。
 - **打印**：点击左侧“打印”直接打开原有打印设置与预览，在弹窗中选择页码；书签、批注列表等侧栏展开或拖宽后，当前 PDF 页面若放不下，会自动适合宽度并保留阅读位置。
@@ -69,11 +69,11 @@ npm run build
 
 **A PDF editor for close reading, peer review, and revision.** Available on Windows and macOS, with ten interface languages.
 
-**2.1.0 adds a Markdown workspace**: open `.md` files directly, edit the source alongside real PDF pages, resize the divider, hide either pane and restore it anytime. Five templates style headings, quotations, code and tables independently. The selected template and each template's font, point size and spacing are remembered. Save source and PDF separately.
+**2.1.1 improves the Markdown workspace**: open `.md` files directly, edit the source alongside real PDF pages, resize the divider, hide either pane and restore it anytime. Five templates style headings, quotations, code and tables independently. The selected template and each template's font, point size and spacing are remembered. Save source and PDF separately.
 
 ## Highlights
 
-- **Markdown writing with PDF tools**: compact single-line panel headings disappear in single-pane mode; save, Save As and close icons share aligned centers. Syntax buttons and a draggable insertion window cover 14 types, six heading levels, code languages, table dimensions and an insertion preview. Five A4 styles offer distinct content treatments: Clean uses fine rules and blue quotes; Academic uses centered titles and formal tables; Business uses green sections and dark table headers; Editorial uses warm lead text and italic quotes; Technical uses purple notes and dark code blocks. The draggable layout window offers quick point-size presets, selectable text and automatic pagination. Generated PDFs use the existing reading, editing, annotation, search, printing and export modules. Ten languages, both themes and four interface size presets are supported; pane proportions, template selection and each template's customized typography survive switching and restart.
+- **Markdown writing with PDF tools**: compact single-line panel headings disappear in single-pane mode; save, Save As and close icons share aligned centers. Syntax buttons and a draggable insertion window cover 15 types, six heading levels, code languages, table dimensions and an insertion preview. Five A4 styles offer distinct content treatments: Clean uses fine rules and blue quotes; Academic uses centered titles and formal tables; Business uses green sections and dark table headers; Editorial uses warm lead text and italic quotes; Technical uses purple notes and dark code blocks. The draggable layout window offers quick point-size presets, selectable text and automatic pagination. Generated PDFs use the existing reading, editing, annotation, search, printing and export modules. Ten languages, both themes and four interface size presets are supported; pane proportions, template selection and each template's customized typography survive switching and restart.
 - **Selection built for complex papers**: Handles two-column layouts, inline equations, superscripts, subscripts, and cross-page selections. Correct column boundaries manually; copying cleans up line breaks and split words.
 - **AI review that becomes in-document annotations**: Check a whole paper or a selection for language, logic, mathematical reasoning, and structure. Choose review intensity, add custom criteria, and pause or resume the review.
 - **Revision advice grounded in the source**: Automatically collect nearby text from an annotation’s position, or add multiple selections as context. Use suggestions in a reply draft within the same editor, then confirm to save them into the PDF.
@@ -91,7 +91,7 @@ npm run build
 
 Download the Windows installer/portable executable or the macOS DMG from [Releases](https://github.com/leyuwei/PDFuck/releases). Available builds are listed there. Open PDF or Markdown to start; language, theme, and previewable interface font sizes are under **View**. The recent-files list can be cleared from either the welcome screen or the Open document dialog without deleting files from your computer.
 
-**Markdown**: open through the file chooser, drag and drop, recent documents or your system’s Open With menu. The Windows installer and macOS app register `.md` editor support so you can select PDFuck as the default application. Drag the splitter or use its arrow keys (Home resets); switch between source, PDF and both, or close either pane. Source Save/Save As and Ctrl/Cmd+S in the source editor write UTF-8 `.md`; Save PDF exports independently. PDF layout offers three font families, 8–24 pt text, 1.2–2.4 line spacing and 0–24 pt paragraph gaps. Typing automatically refreshes a clean PDF; once PDF edits or annotations exist, rebuilding pauses until explicitly confirmed. Save the edited PDF before rebuilding. PDF edits are separate from source, and closing checks both for unsaved changes. Rendering is local and script-free, with GFM rather than raw HTML; raster images inside the document directory or its subdirectories and embedded PNG/JPEG/GIF/WebP are supported. Remote and out-of-directory images show alternative text.
+**Markdown**: open through the file chooser, drag and drop, recent documents or your system’s Open With menu. The Windows installer and macOS app register `.md` editor support so you can select PDFuck as the default application. Drag the splitter or use its arrow keys (Home resets); switch between source, PDF and both, or close either pane. Source Save/Save As and Ctrl/Cmd+S in the source editor write UTF-8 `.md`; Save PDF exports independently. Formatting shortcuts are Ctrl/Cmd+B (bold), I (italic), U (underline), E (inline code), K (link), and Shift+X (strikethrough). Every template prints current / total page numbers at the bottom. PDF layout offers three font families, 8–24 pt text, 1.2–2.4 line spacing and 0–24 pt paragraph gaps. Typing refreshes a clean PDF after 1.5 seconds of inactivity; IME composition pauses rendering. once PDF edits or annotations exist, rebuilding pauses until explicitly confirmed. Save the edited PDF before rebuilding. PDF edits are separate from source, and closing checks both for unsaved changes. Rendering is local and script-free, with GFM rather than raw HTML; raster images inside the document directory or its subdirectories and embedded PNG/JPEG/GIF/WebP are supported. Remote and out-of-directory images show alternative text.
 
 **About**, below the module buttons, keeps the current version visible on a second line, checks for updates and links to the official Releases page.
 

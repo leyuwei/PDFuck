@@ -18,6 +18,10 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.1 Markdown 与 Windows 安装器（2026-10-05）**：本轮版本同步为 2.1.1，无新增依赖。快捷插入入口只显示 `+`，常用语法工具紧凑排列，窄栏按组换行；源码停止修改 1.5 秒后自动更新 PDF，输入法组字、正在渲染、已有 PDF 编辑及上次渲染失败时暂停自动刷新。过期结果不替换当前预览。源码快捷键为 Ctrl/⌘+B（加粗）、I（斜体）、U（下划线）、E（行内代码）、K（链接）及 Shift+X（删除线）；下划线仅解析无属性的成对 `<u>` 标记，其他原始 HTML 仍禁用。五种模板每页底部统一显示“当前页 / 总页数”，分栏拖拽比例继续在打开其他 Markdown 及重启后复用。另存为图标重绘，Markdown 按钮使用不受栏内裁切影响的应用内悬浮提示，兼容十语言、双主题和四档界面字号。
+
+本次只执行新增测试与必要检查：`npm run typecheck`、`node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.1.1.test.tsx`、`npx --no-install electron-vite build`、`node scripts/release-2.1.1-ui-smoke.cjs`、`git diff --check`。UI 脚本支持 `--checks=debounce,shortcuts,layout,footer,ratio`，失败后只重试受影响部分；旧测试全集和一键打包流程不在此次验收范围内。通过后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`。成品执行新增 `node scripts/release-2.1.1-packaged-smoke.cjs`，检查解包/便携启动、Unicode Markdown 参数、实际 PDF 和便携重启比例恢复。安装器执行新增 `npm run test:windows-installer`。验收、签名与 SHA-256 记录于 `docs/VALIDATION-2.1.1.md` 和 release 清单。Windows 本机可交付安装版、便携版和解包 EXE；macOS 成品仍需在 macOS 原生构建与验收。
+
 **2.1.0 macOS 安装器升级（2026-10-05）**：版本仍为 2.1.0，不执行 `npm version`。应用、DMG 挂载卷和 DMG 文件均使用 `resources/icon.icns` 小纸鸭 Logo；Finder 背景采用蓝紫/奶油色渐变、云朵、纸鸭和铅笔，保留真实图标的可拖动区域与中英安装说明。背景矢量源为 `resources/dmg-background.svg`，通过既有 Electron 绘图脚本生成 760×520 普通 PNG 和 1520×1040 Retina PNG，无新增依赖。macOS 安装器及 Markdown 验证要求见第 6 节。本轮按当前用户要求测试 Markdown；下面“不重复测试”的说明属于此前 Windows 修正版的历史范围。
 
 2.1.0 增加 Markdown 文件编辑、五种 PDF 模板、可拖动/隐藏的双栏及十语言界面。无需新增依赖。Windows 在 `build.win.fileAssociations` 注册 `.md` Editor；macOS 在 `CFBundleDocumentTypes` 与 `UTImportedTypeDeclarations` 声明 Markdown，保留现有原生 ICNS。
@@ -388,6 +392,16 @@ npm run dist:win:portable
 `dist:win` 会同时生成 NSIS 安装版和便携版。构建前仍必须完成第 3、5 节的版本同步、类型检查和测试。
 
 ### 7.2 Windows 签名
+
+### Windows 安装器 Logo 与已有版本提示（2.1.1 起复用）
+
+- 安装器/卸载器 EXE 使用 `build.nsis.installerIcon`、`uninstallerIcon` 指向 `resources/icon.ico`。应用 Logo 源为 `resources/icon.svg`；更新 Logo 后先运行 `npm run render:icon` 更新 PNG/ICO，再运行 `npm run render:windows-installer`。后者只使用既有 Electron `nativeImage` 和 Node 生成 24-bit BMP，不需要图像处理依赖。
+- `installerHeader: resources/installer-header.bmp`（150×57，Logo 在右侧）替换安装页默认图案；`installerSidebar`、`uninstallerSidebar` 使用 `resources/installer-sidebar.bmp`（164×314）。BMP 与绘图脚本一起保留。标准 `scripts/package-windows.ps1` 已在构建前更新安装器 BMP；本次精简交付手动运行生成命令，不调用全量发布脚本。
+- `build.nsis.include: resources/installer.nsh` 通过 electron-builder 的 `customWelcomePage` 和 `customHeader` 加入安装前状态页，不改 vendor 模板。复用稳定 `appId: cn.pdfuck.app` / GUID，先读 HKLM 再读 HKCU 的 InstallLocation 和 DisplayVersion，并确认安装目录内 EXE 存在。显示已有版本、路径和继续更新时保留用户设置的说明；无安装或失效记录则显示首次安装说明。状态页提供十种安装器语言，西班牙语常量须使用 NSIS 的 `LANG_SPANISHINTERNATIONAL`。
+- 不要随版本升级修改 appId/GUID，不要将旧版本检测写成硬编码 `C:\\Program Files` 路径。64-bit 构建依赖 electron-builder 初始化的 64-bit 注册表视图；独立测试页也需 `SetRegView 64`。保留 electron-builder 既有更新、卸载和文件关联流程，状态页只读应用安装记录。
+- `npm run test:windows-installer` 用同一生产 NSIS include 编译空安装测试页，检查无安装、HKCU 旧版本、失效记录，以及本机已有 HKLM 安装（如有）；仅创建唯一 HKCU 测试键并在结束后清理，实际 HKLM 安装只读，不执行真实安装。还从最终 Setup EXE 提取图标，与应用 ICO 逐像素比较。普通真实安装、UAC、更新与卸载仍需用户在目标环境手动抽检，不能将测试页验证写成真实系统更新已通过。
+
+### Windows 签名策略
 
 正式分发应使用可信代码签名证书。可按 electron-builder 的 Windows 签名方式配置 `CSC_LINK`、`CSC_KEY_PASSWORD` 或证书存储；敏感信息不得提交到仓库。
 
