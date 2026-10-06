@@ -10,7 +10,7 @@
 
 **为论文精读、审稿与修改设计的 PDF 编辑器。** 支持 Windows、macOS 和十种界面语言。
 
-**2.1.3 优化 Markdown 阅读空间**：去掉 Markdown 总工具栏和两栏面板标题，源码与 PDF 从文档标签栏下沿铺满工作区；Markdown 只保留一条底部控制栏，统一放置视图切换、同步滚动、源码字号/保存/另存、PDF 排版/刷新/保存和关闭分栏；框选文字或右键时，文本样式工具栏直接出现在选区/鼠标旁，支持键盘选区及 Shift+F10；快捷插入后保留源码视区及插入选区，不跳到文档底部；插入后、按 Escape、滚动或点击其他区域时收起，不占正文高度。源码和 PDF 操作各自对齐对应分栏，S/M/L 字号恢复 A− / 当前档位 / A＋ 选择器，字符统计放入其提示。图标提供完整多语言悬浮提示及键盘焦点反馈，提示按实际尺寸定位到对应按钮旁，渲染/暂停/错误状态在底栏显示，不再挤占正文高度。保留分栏拖动与恢复、同步滚动、独立历史、五种模板及持久化设置，支持十语言、双主题和四档界面字号。
+**2.1.4 统一 PDF 与 Markdown 搜索**：重新设计可拖动搜索窗，按字号和视区自适应，复选框与完整选项文字独立排版，避免 Markdown 样式污染导致逐字换行。支持十语言、明暗主题、主题强调色和四档界面字号。Markdown 源码支持 Ctrl/⌘+F，复用 PDF 的大小写、模糊匹配（忽略空白）、正则及预设；结果显示行号，点击直接选中并滚动到原文。输入框中 Enter/Shift+Enter 跳到下一个/上一个结果，Escape 关闭并恢复焦点。PDF 区域继续按页查找；搜索入口跟随当前区域，源码单栏也可使用，修改源码后自动清除旧结果。
 
 ## 核心亮点
 
@@ -69,7 +69,7 @@ npm run build
 
 **A PDF editor for close reading, peer review, and revision.** Available on Windows and macOS, with ten interface languages.
 
-**2.1.3 gives Markdown more reading space**: removes the Markdown header and both pane headings so source and PDF begin directly below the document tabs and fill the workspace. A single bottom control bar contains view selection, synchronized scrolling, source font size and Save/Save As, PDF layout/refresh/export, and pane closing. Selecting text or right-clicking opens syntax tools beside the selection or pointer, with keyboard selection and Shift+F10 support. Quick insertion preserves the source viewport and inserted selection without jumping to the document end. The panel dismisses after insertion, Escape, scrolling or an outside click. Source and PDF controls align with their respective panes; the original A− / current S·M·L size / A＋ selector includes character counts in its tooltip. Icons provide localized tooltips positioned beside each button using their actual dimensions, plus keyboard focus feedback. Render, pause and error messages share the bottom bar. Existing independent histories, five templates, pane resizing and remembered preferences are retained across ten languages, both themes and all four interface sizes.
+**2.1.4 unifies PDF and Markdown search**: a redesigned draggable search window adapts to viewport and interface size. Checkboxes and complete option labels stay together without inheriting Markdown form styles. Ten languages, both themes, custom accents and all four interface sizes are supported. Ctrl/Cmd+F searches the active Markdown source or PDF pane. Source search shares case matching, fuzzy matching (ignoring whitespace), regex and presets; line-numbered results select and reveal the original text. Enter/Shift+Enter in the search input move through results, and Escape closes the window and restores focus. Search works in source-only view and clears stale results after source edits.
 
 ## Highlights
 

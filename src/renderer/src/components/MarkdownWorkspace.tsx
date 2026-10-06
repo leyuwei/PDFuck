@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { MARKDOWN_FONTS, MARKDOWN_TEMPLATES, MAX_MARKDOWN_LENGTH, type MarkdownDocument, type MarkdownOptions } from '../../../shared/markdown'
 import { loadMarkdownPreferences, loadMarkdownTemplateOptions, markdownInsertion, markdownShortcut, MARKDOWN_SHORTCUTS, normalizeMarkdownRatio, saveMarkdownPreferences, type MarkdownInsertType, type MarkdownInsertionOptions, type MarkdownView } from '../lib/markdown-document'
@@ -8,6 +8,8 @@ import type { ViewMode } from '../types'
 import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { clampFloatingPosition, floatingTop, useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
+import { SearchPanel, type SearchMatch } from './SearchPanel'
+import { isImeCompositionKey } from '../lib/keyboard-input'
 import './markdown-workspace.css'
 
 interface Props {
@@ -27,6 +29,8 @@ interface Props {
   onSavePdf(): void
   onRefresh(): void
   onCompositionChange(composing: boolean): void
+  onSearchPdf(): void
+  onClosePdfSearch(): void
   children: ReactNode
 }
 const insertGroups = [
@@ -44,13 +48,18 @@ function RefreshIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><pat
 function PdfSaveIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3H5v18h14v-8M13 3v6h6zM12 11v7m-3-3 3 3 3-3" /></svg> }
 
 // Textareas have no DOM range: mirror their native wrapping for keyboard selections.
-function sourceCaretPoint(editor: HTMLTextAreaElement) {
+function sourceCaretPoint(editor: HTMLTextAreaElement, reveal = false) {
   const css = getComputedStyle(editor), mirror = window.document.createElement('div'), caret = window.document.createElement('span')
   for (const key of ['font', 'lineHeight', 'letterSpacing', 'padding', 'whiteSpace', 'overflowWrap', 'tabSize', 'direction', 'textAlign'] as const) mirror.style[key] = css[key]
   Object.assign(mirror.style, { position: 'fixed', left: '-10000px', top: '0', width: `${editor.clientWidth}px`, boxSizing: 'border-box', visibility: 'hidden' })
   const offset = editor.selectionDirection === 'backward' ? editor.selectionStart : editor.selectionEnd
   mirror.textContent = editor.value.slice(0, offset); caret.textContent = editor.value.slice(offset) || '\u200b'; mirror.append(caret); window.document.body.append(mirror)
   const rect = caret.getClientRects()[0] || caret.getBoundingClientRect(), origin = mirror.getBoundingClientRect(), box = editor.getBoundingClientRect()
+  if (reveal) {
+    const top = rect.top - origin.top, bottom = rect.bottom - origin.top
+    if (top < editor.scrollTop) editor.scrollTop = Math.max(0, top - 12)
+    else if (bottom > editor.scrollTop + editor.clientHeight) editor.scrollTop = bottom - editor.clientHeight + 12
+  }
   const point = { x: Math.max(box.left + 8, Math.min(box.right - 8, box.left + rect.left - origin.left - editor.scrollLeft)), y: Math.max(box.top + 8, Math.min(box.bottom - 8, box.top + rect.bottom - origin.top - editor.scrollTop)) }
   mirror.remove(); return point
 }
@@ -98,13 +107,16 @@ function MarkdownInsertDialog({ selectedText, initialType, onInsert, onClose }: 
   </div>
 }
 
-export function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, onCompositionChange, onHistory, onHistoryTarget, historyTarget, selectionRequest, pdfMode, pdfPageCount, pdfPage, onPdfNavigate, children }: Props) {
+export interface MarkdownWorkspaceHandle { openSearch(): void }
+export const MarkdownWorkspace = forwardRef<MarkdownWorkspaceHandle, Props>(function MarkdownWorkspace({ document, rendering, error, onChange, onSaveSource, onSavePdf, onRefresh, onCompositionChange, onHistory, onHistoryTarget, historyTarget, selectionRequest, pdfMode, pdfPageCount, pdfPage, onPdfNavigate, onSearchPdf, onClosePdfSearch, children }, ref) {
   const language = useInterfaceLanguage()
   const [view, setView] = useState<MarkdownView>(() => loadMarkdownPreferences().view), [ratio, setRatio] = useState(() => loadMarkdownPreferences().ratio)
   const [syncScroll, setSyncScroll] = useState(() => loadMarkdownPreferences().syncScroll), [sourceFontSize, setSourceFontSize] = useState(() => loadMarkdownPreferences().sourceFontSize)
   const scrollLeader = useRef(historyTarget); scrollLeader.current = historyTarget
   const [dialog, setDialog] = useState<'layout' | MarkdownInsertType>()
   const [syntaxAnchor, setSyntaxAnchor] = useState<{ x: number; y: number }>()
+  const [sourceSearch, setSourceSearch] = useState(false), [searchToken, setSearchToken] = useState(0)
+  const searchSeed = useRef('')
   const [hint, setHint] = useState<{ button: HTMLButtonElement; text: string }>()
   const editor = useRef<HTMLTextAreaElement>(null), columns = useRef<HTMLDivElement>(null), selection = useRef({ start: 0, end: 0 })
   const syntaxPanel = useRef<HTMLDivElement>(null), tooltip = useRef<HTMLDivElement>(null), composing = useRef(false)
@@ -143,6 +155,21 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
   }, [syntaxAnchor])
   const { source, options } = document
   const rememberSelection = () => { if (editor.current) selection.current = { start: editor.current.selectionStart, end: editor.current.selectionEnd } }
+  const openSearch = () => {
+    setSyntaxAnchor(undefined); setHint(undefined)
+    if (view === 'source' || (view === 'both' && historyTarget === 'source')) {
+      rememberSelection()
+      if (!sourceSearch) searchSeed.current = source.slice(selection.current.start, selection.current.end).slice(0, 160)
+      onClosePdfSearch(); setSourceSearch(true); setSearchToken(token => token + 1)
+    } else { setSourceSearch(false); onSearchPdf() }
+  }
+  useImperativeHandle(ref, () => ({ openSearch }))
+  const focusSearchMatch = (match: SearchMatch) => {
+    const text = editor.current
+    if (!text) return
+    text.setSelectionRange(match.start, match.end); text.focus({ preventScroll: true }); sourceCaretPoint(text, true)
+    selection.current = { start: match.start, end: match.end }; onHistoryTarget('source')
+  }
   const openSyntax = (point?: { x: number; y: number }, focus = false) => {
     if (!editor.current || composing.current) return
     rememberSelection(); setHint(undefined); setSyntaxAnchor(point || sourceCaretPoint(editor.current))
@@ -202,7 +229,7 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
     return ui(`md.${kind}`) + (key ? ` · ${window.desktop.platform === 'darwin' ? '⌘+' : 'Ctrl+'}${key}` : '')
   }
   const resize = (value: number) => { const next = normalizeMarkdownRatio(value); setRatio(next); saveMarkdownPreferences({ ratio: next }) }
-  const show = (mode: MarkdownView) => { setSyntaxAnchor(undefined); if (mode !== 'both') onHistoryTarget(mode); setView(mode); saveMarkdownPreferences({ view: mode }) }
+  const show = (mode: MarkdownView) => { setSyntaxAnchor(undefined); if (mode === 'pdf') setSourceSearch(false); if (mode === 'source') onClosePdfSearch(); if (mode !== 'both') onHistoryTarget(mode); setView(mode); saveMarkdownPreferences({ view: mode }) }
   const insert = (kind: MarkdownInsertType, content = '', address = '', settings: MarkdownInsertionOptions = {}) => {
     const result = markdownInsertion(source, selection.current.start, selection.current.end, kind, content || (selection.current.start === selection.current.end ? ui(`md.${kind}`) : ''), address, settings)
     onChange(result.source, options, { before: selection.current, after: { start: result.start, end: result.end } }); setDialog(undefined); setSyntaxAnchor(undefined)
@@ -210,7 +237,7 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
       selectionFrame.current = requestAnimationFrame(() => { editor.current?.setSelectionRange(result.start, result.end); editor.current?.focus({ preventScroll: true }); selection.current = { start: result.start, end: result.end } })
   }
   const sourceActions = <div className="md-source-actions"><button type="button" className={`md-icon-button md-source-save${source !== document.savedSource ? ' primary' : ''}`} aria-label={ui('md.saveSource')} disabled={source === document.savedSource} onClick={() => onSaveSource(false)}><SaveIcon /></button><button type="button" className="md-icon-button" aria-label={ui('md.sourceAs')} onClick={() => onSaveSource(true)}><SaveAsIcon /></button>{view === 'both' && <button type="button" className="md-pane-close" aria-label={`${ui('ui.close')} · ${ui('md.source')}`} onClick={() => show('pdf')}><CloseIcon /></button>}</div>
-  return <div className={`md-workspace md-view-${view}`} onPointerDownCapture={choosePane} onWheelCapture={choosePane} onKeyDownCapture={event => { choosePane(event); if (event.key === 'Escape' && syntaxAnchor) { event.preventDefault(); event.stopPropagation(); setSyntaxAnchor(undefined); editor.current?.focus({ preventScroll: true }) } }} onFocusCapture={choosePane} onScrollCapture={event => { const side = event.target === editor.current ? 'source' : (event.target as Element).classList.contains('viewer') ? 'pdf' : undefined; if (side) setSyntaxAnchor(undefined); if (side && side === scrollLeader.current) syncFrom(side) }} onPointerOver={showHint} onFocus={showHint} onPointerOut={event => { if (hint && !hint.button.contains(event.relatedTarget as Node | null)) setHint(undefined) }} onBlur={() => setHint(undefined)} onClickCapture={() => setHint(undefined)}>
+  return <div className={`md-workspace md-view-${view}`} onPointerDownCapture={choosePane} onWheelCapture={choosePane} onKeyDownCapture={event => { choosePane(event); if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !isImeCompositionKey(event.nativeEvent) && event.key.toLowerCase() === 'f' && !(event.target as Element).closest('.md-dialog')) { event.preventDefault(); event.stopPropagation(); openSearch(); return } if (event.key === 'Escape' && syntaxAnchor) { event.preventDefault(); event.stopPropagation(); setSyntaxAnchor(undefined); editor.current?.focus({ preventScroll: true }) } }} onFocusCapture={choosePane} onScrollCapture={event => { const side = event.target === editor.current ? 'source' : (event.target as Element).classList.contains('viewer') ? 'pdf' : undefined; if (side) setSyntaxAnchor(undefined); if (side && side === scrollLeader.current) syncFrom(side) }} onPointerOver={showHint} onFocus={showHint} onPointerOut={event => { if (hint && !hint.button.contains(event.relatedTarget as Node | null)) setHint(undefined) }} onBlur={() => setHint(undefined)} onClickCapture={() => setHint(undefined)}>
     <div className="md-columns" ref={columns} style={{ gridTemplateColumns: view === 'both' ? `minmax(0, ${ratio}fr) 10px minmax(0, ${100 - ratio}fr)` : 'minmax(0, 1fr)' }}>
       <section className="md-source-pane" aria-label={ui('md.source')} hidden={view === 'pdf'}>
         <textarea ref={editor} className="md-source-editor" style={{ fontSize: `calc(var(--ui-font-body) * ${[0.9, 1, 1.2][sourceFontSize]})` }} aria-label={ui('md.source')} dir="auto" spellCheck={false} maxLength={MAX_MARKDOWN_LENGTH} value={source} onSelect={event => { selection.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd } }} onPointerUp={event => { if (event.button === 0 && event.currentTarget.selectionStart !== event.currentTarget.selectionEnd) openSyntax({ x: event.clientX, y: event.clientY }) }} onContextMenu={event => { event.preventDefault(); openSyntax(event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : undefined, !event.clientX && !event.clientY) }} onKeyUp={event => { if (!event.nativeEvent.isComposing && (event.shiftKey || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) && event.currentTarget.selectionStart !== event.currentTarget.selectionEnd) openSyntax() }} onBeforeInput={rememberSelection} onChange={event => { setSyntaxAnchor(undefined); const input = event.nativeEvent as InputEvent; const after = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }; onChange(event.target.value, options, { before: selection.current, after, typing: ['insertText', 'insertCompositionText', 'deleteContentBackward', 'deleteContentForward'].includes(input.inputType) }); selection.current = after }} onCompositionStart={() => { composing.current = true; setSyntaxAnchor(undefined); onCompositionChange(true) }} onCompositionEnd={() => { composing.current = false; onCompositionChange(false) }} onKeyDown={event => {
@@ -240,6 +267,7 @@ export function MarkdownWorkspace({ document, rendering, error, onChange, onSave
     {syntaxAnchor && view !== 'pdf' && <div ref={syntaxPanel} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault() }} className="md-editor-tools md-floating-tools" id="md-syntax-tools" role="toolbar" aria-label={ui('md.format')}><div className="md-syntax-toolbar"><div role="group" aria-label={ui('md.format')}>{(['bold', 'italic', 'underline', 'strike', 'inline_code'] as const).map(kind => <button key={kind} className={`md-symbol md-symbol-${kind}`} type="button" aria-label={ui(`md.${kind}`)} data-hint={shortcutHint(kind)} onClick={() => insert(kind)}>{symbols[kind]}</button>)}</div><div role="group" aria-label={ui('md.blocks')}>{(['heading', 'list', 'ordered', 'quote'] as const).map(kind => <button key={kind} className="md-symbol" type="button" aria-label={ui(`md.${kind}`)} onClick={() => { if (kind === 'heading') { setSyntaxAnchor(undefined); setDialog('heading') } else insert(kind) }}>{symbols[kind]}</button>)}</div><button type="button" className="md-quick-trigger" aria-label={ui('md.quick')} onClick={() => { setSyntaxAnchor(undefined); setDialog('link') }}><span aria-hidden="true">+</span></button></div></div>}
     {dialog === 'layout' && <MarkdownLayoutDialog document={document} onChange={next => onChange(source, next)} onClose={() => setDialog(undefined)} />}
     {dialog && dialog !== 'layout' && <MarkdownInsertDialog initialType={dialog} selectedText={source.slice(selection.current.start, selection.current.end)} onInsert={insert} onClose={() => setDialog(undefined)} />}
+    {sourceSearch && <SearchPanel source={source} focusToken={searchToken} initialQuery={searchSeed.current} onClose={() => setSourceSearch(false)} onFocusTarget={focusSearchMatch} />}
     {hint && createPortal(<div ref={tooltip} className="md-tooltip" role="tooltip">{hint.text}</div>, window.document.body)}
   </div>
-}
+})

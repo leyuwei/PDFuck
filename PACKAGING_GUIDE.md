@@ -18,6 +18,10 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.4 搜索窗与 Markdown 搜索（2026-10-06）**：清单及锁文件同步为 2.1.4，无新增依赖。共用搜索窗通过 portal 放在 app-shell 内，避开 Markdown 表单样式并继承真实明暗主题及自定义强调色。按正文档字号和视区设置宽度，复选框不压缩、完整选项块换行，标题固定、正文滚动，复用浮窗避让/拖动。源码 Ctrl/⌘+F、PDF 搜索和工具面板入口按当前区域路由；源码结果显示行号、精确选区并滚动定位，支持 Enter/Shift+Enter 遍历、Escape 焦点恢复、大小写/忽略空白/正则及预设，修改后取消过期结果。
+
+本轮仅执行新增 `src/renderer/src/lib/release-2.1.4.test.ts` 和 `scripts/release-2.1.4-search-ui.cjs`（可用 `--checks=behavior,layout,pdf,accessibility,contrast,navigation` 定向执行），以及必要 typecheck、生产构建和 diff 检查。新布局验收覆盖十语言 × 双主题 × 四字号 × 两种窗口，共 160 组，附加字体族及极窄视区。无需调用旧测试全集、`npm run build` 或一键发布脚本。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`，再运行新增 `node scripts/release-2.1.4-search-packaged.cjs` 实际启动解包、便携及便携重启，检查源码单栏搜索、Unicode 参数、精确定位、真实深色主题和布局。核对版本、包内生产文件、Authenticode 及 SHA-256，记录至 `docs/VALIDATION-2.1.4.md` 与 release 清单。目视后新增结果标题对比度及首次 Shift+Enter 检查；最终修正后仅运行 `--checks=contrast,navigation` 成品阶段，更新所有交付哈希。安装器资源及文件关联沿用原配置，不重复旧安装测试；不宣称 macOS 实机验收。
+
 **2.1.3 Markdown 无标题工作区及交互修复（2026-10-06）**：清单和锁文件同步为 2.1.3，无新增依赖。删除 Markdown 总工具栏与双栏面板标题、外侧留白及卡片边框；源码和 PDF 自标签栏下沿铺满可用区域。只保留一条 47px 底栏，源码/PDF 操作分别与各自分栏对齐；统一 28px 图标按钮，源码 S/M/L 恢复 A− / 当前档位 / A＋ 选择器，字符统计放入提示。取消文本样式底栏入口，改为框选或右键直接在选区/鼠标旁显示工具栏，支持键盘选区、Shift+F10 和 Escape；不抢占正文焦点，保留选区，插入、滚动或外部点击后关闭。提示根据实际按钮和提示尺寸定位，随视区、分栏和字号变化重新计算。渲染状态共用底栏，复用十语言、双主题、四档界面字号和原有偏好。
 
 本轮仅执行新增 `node scripts/release-2.1.3-interaction-fixes-ui.cjs`，支持 `--checks=selection,layout,hints` 分阶段。选区阶段检查真实鼠标/键盘框选、格式插入和撤销、右键插入、键盘菜单焦点、边缘避让及收起；布局覆盖 80 组语言 × 主题 × 字号及最小窗口 20/80/42% 分栏；提示检查 560 个源码/PDF 按钮定位。先前本次新增的保存/另存/真实 PDF 导出、模板/刷新等基础检查结果保留；替换掉依赖旧底栏语法入口的中间脚本。只重测受后续修复影响的阶段，未运行旧测试全集或一键发布。执行 typecheck、生产构建及 diff 检查后，直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`。随后执行新增 `node scripts/release-2.1.3-interaction-fixes-packaged.cjs`，验证实际解包/便携 EXE、Unicode Markdown 参数、选区和右键工具栏、按钮对齐、提示、真实 PDF 和便携重启偏好。核对最终成品版本、包内资源、Authenticode 与 SHA-256，记录于 `docs/VALIDATION-2.1.3.md` 及 release 清单。安装器资源沿用已验收配置，不重复旧安装测试，不修改本机安装或默认文件关联，不宣称 macOS 实机验收。

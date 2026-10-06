@@ -9,38 +9,6 @@
 .annotation-resize-handle:hover::after { background: #5575de; }
 .annotation-statuses { min-width: 0; display: flex; align-items: center; gap: 0; }
 .annotation-status-button { width: 20px; min-width: 20px; height: 21px; padding: 0; }
-.pdf-search-panel { position: fixed; z-index: 100; width: min(440px, calc(100vw - 24px)); max-height: min(720px, calc(100vh - 128px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #cfd9eb; border-radius: 12px; background: #fff; box-shadow: 0 18px 42px #1b294538; }
-.pdf-search-heading { min-height: 48px; padding: 0 12px 0 16px; display: flex; align-items: center; justify-content: space-between; color: #283a60; background: #f5f8ff; border-bottom: 1px solid #dfe7f5; cursor: grab; user-select: none; }
-.pdf-search-heading:active { cursor: grabbing; }
-.pdf-search-heading b { font-size: var(--ui-font-title); }
-.pdf-search-heading button { width: 30px; height: 30px; padding: 0; border: 0; background: transparent; color: #66758f; font-size: var(--ui-font-title); }
-.pdf-search-input-row { display: flex; gap: 8px; padding: 14px 16px 10px; }
-.pdf-search-input-row input { min-width: 0; flex: 1; height: 40px; padding: 0 11px; border: 1px solid #cbd6e9; border-radius: 8px; outline: 0; font-size: var(--ui-font-body); }
-.pdf-search-input-row input:focus { border-color: #6d86dc; box-shadow: 0 0 0 2px #5575de18; }
-.pdf-search-input-row button { min-width: 72px; padding: 0 10px; font-size: var(--ui-font-body); }
-.pdf-search-options { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 16px 14px; color: #52627d; font-size: var(--ui-font-body); }
-.pdf-search-options label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-.pdf-search-options input { accent-color: #5575de; }
-.pdf-regex-presets { width: calc(100% - 32px); min-height: 34px; margin: 0 16px 12px; border: 1px solid #cbd6e9; border-radius: 7px; color: #52627d; font-size: var(--ui-font-body); }
-.pdf-search-error { margin: 0 16px 12px; color: #b92f3e; font-size: var(--ui-font-body); }
-.pdf-search-state { min-height: 92px; padding: 22px 16px; display: grid; align-content: center; justify-items: center; gap: 5px; border-top: 1px solid #e7ecf5; color: #63728c; text-align: center; font-size: var(--ui-font-body); }
-.pdf-search-state b { color: #344868; font-size: var(--ui-font-body); }
-.pdf-search-state.muted { min-height: 68px; }
-.pdf-search-results { min-height: 0; overflow: auto; border-top: 1px solid #e2e8f2; }
-.pdf-search-results header { position: sticky; top: 0; z-index: 1; padding: 10px 16px; color: #52627d; background: #f8faff; border-bottom: 1px solid #e7ecf5; font-size: var(--ui-font-body); font-weight: 700; }
-.pdf-search-results button { width: 100%; min-height: 64px; padding: 10px 16px; display: grid; gap: 5px; text-align: start; border: 0; border-bottom: 1px solid #edf1f7; border-radius: 0; background: #fff; }
-.pdf-search-results button:hover, .pdf-search-results button:focus-visible { background: #eef3ff; }
-.pdf-search-results button b { color: #3157d5; font-size: var(--ui-font-body); }
-.pdf-search-results button span { overflow: hidden; color: #485975; font-size: var(--ui-font-body); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-.pdf-search-results mark { padding: 0 2px; border-radius: 3px; background: #ffe29a; color: #493a18; font-weight: 750; }
-.theme-dark .pdf-search-panel { border-color: #455a79; background: #202b3e; color: #dce6f5; }
-.theme-dark .pdf-search-heading, .theme-dark .pdf-search-results header { background: #263650; border-color: #405574; color: #e4edfc; }
-.theme-dark .pdf-search-input-row input, .theme-dark .pdf-regex-presets { background: #172438; border-color: #526582; color: #f1f5fb; }
-.theme-dark .pdf-search-options, .theme-dark .pdf-search-state, .theme-dark .pdf-search-results button span { color: #bdcbe0; }
-.theme-dark .pdf-search-state, .theme-dark .pdf-search-results { border-color: #405574; }
-.theme-dark .pdf-search-state b { color: #ecf3fc; }
-.theme-dark .pdf-search-results button { background: #202b3e; border-color: #384c69; }
-.theme-dark .pdf-search-results button:hover, .theme-dark .pdf-search-results button:focus-visible { background: #2d4264; }
 .tool-action-button.active { border-color: #8bc8a7; background: #eef9f2; color: #237653; }
 .pdf-page.search-focused { outline: 3px solid #5575de; outline-offset: 5px; animation: search-page-focus 1s ease-out forwards; }
 .insight-focus-ring { z-index: 17; }

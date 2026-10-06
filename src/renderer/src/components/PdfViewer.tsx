@@ -1,3 +1,4 @@
+import { SearchPanel } from './SearchPanel'
 import { AiAnnotationBadge } from './AnnotationContent'
 import { InlineAnnotation, PageAnnotationSummary } from './InlineAnnotation'
 import { useAnnotationView } from '../lib/annotation-preferences'
@@ -36,7 +37,7 @@ import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { pdfPageLinks, type PdfLinkTarget, type PdfPageLink } from '../lib/pdfjs-links'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
-export interface ViewerHandle { captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; closeSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
   const viewportBounds = viewport.getBoundingClientRect(), pageBounds = page.getBoundingClientRect()
@@ -208,13 +209,6 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   </div>
 }
 
-interface SearchMatch { pageIndex: number; context: string; highlightStart: number; highlightEnd: number; match: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean }
-interface SearchFocusTarget { pageIndex: number; text: string; occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean }
-function searchContext(text: string, start: number, end: number): Pick<SearchMatch, 'context' | 'highlightStart' | 'highlightEnd'> {
-  const from = Math.max(0, start - 52), to = Math.min(text.length, end + 84)
-  return { context: text.slice(from, to), highlightStart: start - from, highlightEnd: end - from }
-}
-
 type PdfMatrix = [number, number, number, number, number, number]
 function multiplyPdfMatrix(left: PdfMatrix, right: PdfMatrix): PdfMatrix {
   return [left[0] * right[0] + left[2] * right[1], left[1] * right[0] + left[3] * right[1], left[0] * right[2] + left[2] * right[3], left[1] * right[2] + left[3] * right[3], left[0] * right[4] + left[2] * right[5] + left[4], left[1] * right[4] + left[3] * right[5] + left[5]]
@@ -237,117 +231,6 @@ function imageRectsForPage(viewportTransform: PdfMatrix, operators: Awaited<Retu
     }
   }
   return rects
-}
-
-const REGEX_PRESETS = [
-  { label: "ui.emailAddress", value: '[\\w.+-]+@[\\w-]+\\.[A-Za-z]{2,}' },
-  { label: "ui.website", value: 'https?://[^\\s]+' },
-  { label: "ui.chineseMobileNumber", value: '1[3-9]\\d{9}' },
-  { label: "ui.date", value: '(?:19|20)\\d{2}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?' },
-  { label: "ui.number", value: '\\b\\d+(?:\\.\\d+)?%?\\b' },
-  { label: "ui.englishWord", value: '\\b[A-Za-z]{2,}\\b' },
-  { label: "ui.citationNumber", value: '\\[\\d+(?:[-,]\\d+)*\\]' },
-  { label: 'ui.doi', value: '10\\.\\d{4,9}/[-._;()/:A-Z0-9]+' },
-  { label: 'ui.isbn', value: 'ISBN(?:-1[03])?:?[-\\dXx ]{10,}' },
-  { label: "ui.bracketedContent", value: '[（(][^）)]{1,80}[）)]' }
-] as const
-
-function SearchPanel({ document, onClose, onFocusTarget }: { document: PDFDocumentProxy; onClose(): void; onFocusTarget(target: SearchFocusTarget): void }) {
-  const [query, setQuery] = useState('')
-  const [caseSensitive, setCaseSensitive] = useState(false)
-  const [fuzzy, setFuzzy] = useState(true)
-  const [regex, setRegex] = useState(false)
-  const [results, setResults] = useState<SearchMatch[]>([])
-  const [searched, setSearched] = useState(false)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const searchRunRef = useRef(0)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState(() => ({ x: Math.max(12, (typeof window === 'undefined' ? 1200 : window.innerWidth) - 462), y: 108 }))
-  const dragRef = useRef<{ startX: number; startY: number; x: number; y: number } | undefined>(undefined)
-  useEffect(() => { inputRef.current?.focus() }, [])
-  useEffect(() => {
-    const move = (event: PointerEvent) => {
-      const drag = dragRef.current
-      if (!drag) return
-      const maxX = Math.max(12, window.innerWidth - (panelRef.current?.offsetWidth || 440) - 12)
-      const maxY = Math.max(12, window.innerHeight - (panelRef.current?.offsetHeight || 120) - 12)
-      setPosition({ x: Math.max(12, Math.min(maxX, drag.x + event.clientX - drag.startX)), y: Math.max(12, Math.min(maxY, drag.y + event.clientY - drag.startY)) })
-    }
-    const stop = () => { dragRef.current = undefined }
-    const clamp = () => setPosition((current) => ({
-      x: Math.max(12, Math.min(current.x, window.innerWidth - (panelRef.current?.offsetWidth || 440) - 12)),
-      y: Math.max(12, Math.min(current.y, window.innerHeight - (panelRef.current?.offsetHeight || 120) - 12))
-    }))
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-    window.addEventListener('resize', clamp)
-    const observer = new ResizeObserver(clamp)
-    if (panelRef.current) observer.observe(panelRef.current)
-    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); window.removeEventListener('resize', clamp); observer.disconnect() }
-  }, [])
-  const resetResults = () => { searchRunRef.current += 1; setResults([]); setSearched(false); setBusy(false); setError('') }
-  const search = async () => {
-    const run = ++searchRunRef.current
-    if (!query.trim()) { setResults([]); setSearched(false); return }
-    setBusy(true); setError(''); setResults([]); setSearched(false)
-    try {
-      const flags = caseSensitive ? 'g' : 'gi'
-      const pattern = regex ? new RegExp(query, flags) : undefined
-      const next: SearchMatch[] = []
-      for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
-        const content = await document.getPage(pageIndex + 1).then((page) => page.getTextContent())
-        if (run !== searchRunRef.current) return
-        const text = content.items.filter((item): item is TextItem => 'str' in item).flatMap((item) => Array.from(item.str.matchAll(/\S+/gu), (match) => match[0])).join(' ')
-        const normalizedQuery = query.trim().replace(/\s+/g, ' ')
-        const ignoreWhitespace = fuzzy && !regex
-        const source = ignoreWhitespace ? text.replace(/\s+/g, '') : text
-        const rawNeedle = fuzzy && !regex ? normalizedQuery.replace(/\s+/g, '') : normalizedQuery
-        const needle = caseSensitive ? rawNeedle : rawNeedle.toLowerCase()
-        if (regex) {
-          pattern!.lastIndex = 0
-          const occurrences = new Map<string, number>()
-          let match: RegExpExecArray | null
-          while ((match = pattern!.exec(text))) {
-            const matchedText = match[0].trim().replace(/\s+/g, ' ')
-            if (matchedText) {
-              const key = caseSensitive ? matchedText : matchedText.toLocaleLowerCase()
-              const occurrence = occurrences.get(key) || 0
-              occurrences.set(key, occurrence + 1)
-              next.push({ pageIndex, match: matchedText, occurrence, caseSensitive, ignoreWhitespace: false, ...searchContext(text, match.index, match.index + match[0].length) })
-            }
-            if (!match[0]) pattern!.lastIndex += 1
-          }
-        } else {
-          const haystack = caseSensitive ? source : source.toLowerCase()
-          const compactOffsets = ignoreWhitespace ? Array.from({ length: text.length }, (_, index) => index).filter((index) => !/\s/u.test(text[index])) : []
-          let occurrence = 0
-          let offset = haystack.indexOf(needle)
-          while (offset >= 0) {
-            const contextOffset = ignoreWhitespace ? compactOffsets[offset] ?? 0 : offset
-            const contextEnd = ignoreWhitespace ? (compactOffsets[offset + needle.length - 1] ?? contextOffset) + 1 : contextOffset + rawNeedle.length
-            next.push({ pageIndex, match: normalizedQuery, occurrence: occurrence++, caseSensitive, ignoreWhitespace, ...searchContext(text, contextOffset, contextEnd) })
-            offset = haystack.indexOf(needle, offset + Math.max(1, needle.length))
-          }
-        }
-      }
-      if (run === searchRunRef.current) { setResults(next.slice(0, 200)); setSearched(true) }
-    } catch (cause) { if (run === searchRunRef.current) setError(cause instanceof SyntaxError ? ui('ui.invalidSearchExpression') : cause instanceof Error ? cause.message : ui('ui.invalidSearchExpression')) }
-    finally { if (run === searchRunRef.current) setBusy(false) }
-  }
-  return <div ref={panelRef} role="dialog" aria-label={ui('ui.searchDocument')} className={`pdf-search-panel${results.length ? ' expanded' : ''}`} style={{ left: position.x, top: position.y }} onPointerDown={(event) => event.stopPropagation()}>
-    <div className="pdf-search-heading" onPointerDown={(event) => { if ((event.target as HTMLElement).closest('button')) return; dragRef.current = { startX: event.clientX, startY: event.clientY, x: position.x, y: position.y }; event.preventDefault() }}><b>{ui("ui.searchDocument")}</b><button type="button" onClick={onClose} aria-label={ui("ui.closeSearch")} title={ui("ui.closeSearch")}>×</button></div>
-    <div className="pdf-search-input-row"><input ref={inputRef} value={query} aria-label={ui('ui.searchDocument')} placeholder={ui("ui.enterTextOrARegularExpression")} onChange={(event) => { resetResults(); setQuery(event.target.value) }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } if (event.key === 'Escape') onClose() }} /><button type="button" className="primary" disabled={busy || !query.trim()} onClick={() => void search()}>{ui("ui.search")}</button></div>
-    <div className="pdf-search-options"><label><input type="checkbox" checked={caseSensitive} onChange={(event) => { resetResults(); setCaseSensitive(event.target.checked) }} />{ui("ui.matchCase")}</label><label><input type="checkbox" checked={fuzzy} onChange={(event) => { resetResults(); setFuzzy(event.target.checked) }} disabled={regex} />{ui("ui.fuzzyMatch")}</label><label><input type="checkbox" checked={regex} onChange={(event) => { resetResults(); setRegex(event.target.checked) }} />{ui("ui.regularExpression")}</label></div>
-    {regex && <select className="pdf-regex-presets" value="" onChange={(event) => { resetResults(); setQuery(event.target.value) }}><option value="">{ui("ui.commonRegularExpressions")}</option>{REGEX_PRESETS.map((preset) => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
-    {error && <p className="pdf-search-error">{error}</p>}
-    {busy && <div className="pdf-search-state" role="status">{ui('search.searching')}</div>}
-    {!busy && !error && searched && !results.length && <div className="pdf-search-state" role="status"><b>{ui('search.noResults')}</b><span>{ui('ui.tryADifferentSearchTerm')}</span></div>}
-    {!busy && !searched && !error && <div className="pdf-search-state muted"><span>{ui('search.startHint')}</span></div>}
-    {results.length > 0 && <div className="pdf-search-results"><header><span>{t('search.results', { count: `${results.length}${results.length >= 200 ? '+' : ''}` })}</span></header>{results.map((result, index) => <button type="button" key={`${result.pageIndex}-${index}`} onClick={() => onFocusTarget({ pageIndex: result.pageIndex, text: result.match, occurrence: result.occurrence, caseSensitive: result.caseSensitive, ignoreWhitespace: result.ignoreWhitespace })}><b>{t('search.page', { page: result.pageIndex + 1 })}</b><span>{result.context.slice(0, result.highlightStart)}<mark>{result.context.slice(result.highlightStart, result.highlightEnd)}</mark>{result.context.slice(result.highlightEnd)}</span></button>)}</div>}
-  </div>
 }
 
 function AnnotationOverlay({ annotation, zoom, focused, focusToken, onMove, onSelect, onEdit, onContext }: { annotation: AnnotationRecord; zoom: number; focused: boolean; focusToken: number; onMove(id: string, dx: number, dy: number): void; onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void; onEdit(annotation: AnnotationRecord): void; onContext(annotation: AnnotationRecord, clientX: number, clientY: number): void }) {
@@ -1256,7 +1139,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   resizeStateRef.current = { currentPage, sizes, zoom }
   const initialSidebarFitRef = useRef<string | undefined>(undefined)
   const [renderZoom, setRenderZoom] = useState(zoom)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false), [searchToken, setSearchToken] = useState(0)
   const [navigationRequest, setNavigationRequest] = useState(0)
   const [textFocus, setTextFocus] = useState<{ pageIndex: number; text: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean; token: number }>()
   const [visualFocus, setVisualFocus] = useState<{ pageIndex: number; rects?: PdfRect[]; token: number }>()
@@ -1658,7 +1541,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     captureFigure: async (pageIndex, rect) => {
       if (!document) throw new Error('ui.targetPageUnavailable')
       return (await renderFigureRegion(await document.getPage(pageIndex + 1), rect)).toDataURL('image/png')
-    }, fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => setSearchOpen(true), showVisuals, linkCitations, clearCitations, checkGrammar }))
+    }, fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => { setSearchOpen(true); setSearchToken(token => token + 1) }, closeSearch: () => setSearchOpen(false), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -1773,6 +1656,6 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={(annotation, options) => { setInlineAnnotationId(annotation.id); onAnnotationSelect(annotation, options) }} onAnnotationReply={onAnnotationReply} inlineAnnotationId={inlineAnnotationId} inlineMode={annotationView.mode === 'document'} annotationMarkdown={annotationView.markdown} onInlineClose={() => setInlineAnnotationId(undefined)} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages.at(-1)! + 1, document.numPages, sizes, zoom) }} aria-hidden />}</div>
       </ZoomScrollAnchor>
-    {document && searchOpen && <SearchPanel document={document} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.text, target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
+    {document && searchOpen && <SearchPanel key={document.fingerprints[0]} document={document} focusToken={searchToken} onClose={() => setSearchOpen(false)} onFocusTarget={(target) => focusText(target.pageIndex, target.match.trim().replace(/\s+/g, ' '), target.occurrence, target.caseSensitive, target.ignoreWhitespace)} />}
   </div>
 })
