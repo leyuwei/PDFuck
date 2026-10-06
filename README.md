@@ -1,6 +1,6 @@
 <img width="1113" height="171" alt="ScreenShot_2026-09-18_114316_102" src="https://github.com/user-attachments/assets/8b1517a2-abdd-4431-a987-ba6768226433" />
 
-# PDFuck
+# PDFuck - A Tiny AI-Empowered PDF & Markdown Editor
 
 [简体中文](#chinese) · [English](#english)
 
