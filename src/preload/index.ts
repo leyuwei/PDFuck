@@ -19,6 +19,7 @@ const api: DesktopApi = {
   updatePdfPassword: (request: PdfPasswordUpdate) => ipcRenderer.invoke('pdf:password-update', request),
   savePdf: (request: SavePdfRequest) => ipcRenderer.invoke('pdf:save', request),
   saveMarkdown: (request) => ipcRenderer.invoke('markdown:save', request),
+  readTextEncoding: (path, encoding) => ipcRenderer.invoke('text:read-encoding', path, encoding),
   renderMarkdown: (request) => ipcRenderer.invoke('markdown:render', request),
   listPrinters: () => ipcRenderer.invoke('pdf:list-printers'),
   openPrinterSettings: (printerName) => ipcRenderer.invoke('pdf:open-printer-settings', printerName),

@@ -21,7 +21,7 @@ const REGEX_PRESETS = [
   { label: 'ui.bracketedContent', value: '[（(][^）)]{1,80}[）)]' }
 ] as const
 
-export function SearchPanel({ document: pdf, source, focusToken = 0, initialQuery = '', onClose, onFocusTarget }: { document?: PDFDocumentProxy; source?: string; focusToken?: number; initialQuery?: string; onClose(): void; onFocusTarget(target: SearchMatch): void }) {
+export function SearchPanel({ document: pdf, source, sourceLabel, sourceHint, focusToken = 0, initialQuery = '', onClose, onFocusTarget }: { document?: PDFDocumentProxy; source?: string; sourceLabel?: string; sourceHint?: string; focusToken?: number; initialQuery?: string; onClose(): void; onFocusTarget(target: SearchMatch): void }) {
   useInterfaceLanguage()
   const [query, setQuery] = useState(initialQuery), [caseSensitive, setCaseSensitive] = useState(false), [fuzzy, setFuzzy] = useState(true), [regex, setRegex] = useState(false)
   const [results, setResults] = useState<SearchMatch[]>([]), [searched, setSearched] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false), [active, setActive] = useState(-1), [more, setMore] = useState(false)
@@ -70,10 +70,10 @@ export function SearchPanel({ document: pdf, source, focusToken = 0, initialQuer
     } catch (cause) { if (run === runRef.current) setError(cause instanceof SyntaxError ? ui('ui.invalidSearchExpression') : cause instanceof Error ? cause.message : ui('ui.invalidSearchExpression')) }
     finally { if (run === runRef.current) setBusy(false) }
   }
-  return createPortal(<div ref={floating.ref} role="dialog" aria-label={`${ui('ui.searchDocument')} · ${ui(pdf ? 'md.pdf' : 'md.source')}`} className="pdf-search-panel" style={floating.style} onPointerDown={event => event.stopPropagation()} onKeyDown={event => {
+  return createPortal(<div ref={floating.ref} role="dialog" aria-label={`${ui('ui.searchDocument')} · ${pdf ? ui('md.pdf') : sourceLabel || ui('md.source')}`} className="pdf-search-panel" style={floating.style} onPointerDown={event => event.stopPropagation()} onKeyDown={event => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !isImeCompositionKey(event.nativeEvent) && event.key.toLowerCase() === 'f') { event.preventDefault(); event.stopPropagation(); inputRef.current?.focus(); inputRef.current?.select() }
   }}>
-    <div className="pdf-search-heading" {...floating.dragHandlers}><div><b>{ui('ui.searchDocument')}</b><small>{ui(pdf ? 'md.pdf' : 'md.source')}</small></div><button type="button" onClick={close} aria-label={ui('ui.closeSearch')} title={ui('ui.closeSearch')}>×</button></div>
+    <div className="pdf-search-heading" {...floating.dragHandlers}><div><b>{ui('ui.searchDocument')}</b><small>{pdf ? ui('md.pdf') : sourceLabel || ui('md.source')}</small></div><button type="button" onClick={close} aria-label={ui('ui.closeSearch')} title={ui('ui.closeSearch')}>×</button></div>
     <div className="pdf-search-body">
       <div className="pdf-search-input-row"><input ref={inputRef} dir="auto" value={query} aria-label={ui('ui.searchDocument')} placeholder={ui('ui.enterTextOrARegularExpression')} onChange={event => { resetResults(); setQuery(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter' && !isImeCompositionKey(event.nativeEvent)) { event.preventDefault(); if (results.length) navigate(event.shiftKey && active < 0 ? results.length - 1 : active + (event.shiftKey ? -1 : 1), true); else void search() } }} /><button type="button" className="primary" disabled={busy || !query.trim()} onClick={() => void search()}>{ui('ui.search')}</button></div>
       <div className="pdf-search-options">{([
@@ -83,7 +83,7 @@ export function SearchPanel({ document: pdf, source, focusToken = 0, initialQuer
       {error && <p className="pdf-search-error" role="alert">{error}</p>}
       {busy && <div className="pdf-search-state" role="status">{ui('search.searching')}</div>}
       {!busy && !error && searched && !results.length && <div className="pdf-search-state" role="status"><b>{ui('search.noResults')}</b><span>{ui('ui.tryADifferentSearchTerm')}</span></div>}
-      {!busy && !searched && !error && <div className="pdf-search-state muted"><span>{ui(pdf ? 'search.startHint' : 'search.sourceHint')}</span></div>}
+      {!busy && !searched && !error && <div className="pdf-search-state muted"><span>{pdf ? ui('search.startHint') : sourceHint || ui('search.sourceHint')}</span></div>}
       {results.length > 0 && <div className="pdf-search-results"><header><span role="status">{t('search.results', { count: `${results.length}${more ? '+' : ''}` })}{active >= 0 ? ` · ${active + 1}/${results.length}` : ''}</span><div><button type="button" aria-label={ui('search.previous')} title={ui('search.previous')} onClick={() => navigate(active < 0 ? results.length - 1 : active - 1, true)}>↑</button><button type="button" aria-label={ui('search.next')} title={ui('search.next')} onClick={() => navigate(active + 1, true)}>↓</button></div></header>{results.map((result, index) => <button className="pdf-search-result" aria-current={active === index ? 'true' : undefined} type="button" key={`${result.pageIndex}-${index}`} onClick={() => navigate(index)}><b>{t(pdf ? 'search.page' : 'search.line', { page: result.pageIndex + 1, line: result.line })}</b><span dir="auto">{result.context.slice(0, result.highlightStart)}<mark>{result.context.slice(result.highlightStart, result.highlightEnd)}</mark>{result.context.slice(result.highlightEnd)}</span></button>)}</div>}
     </div>
   </div>, window.document.querySelector('.app-shell') || window.document.body)

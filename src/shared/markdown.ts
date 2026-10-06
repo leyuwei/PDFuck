@@ -16,19 +16,30 @@ export const MARKDOWN_PRESETS: Record<MarkdownTemplate, MarkdownOptions> = {
   technical: { template: 'technical', font: 'sans', fontSize: 10, lineHeight: 1.6, paragraphSpacing: 7 }
 }
 export const MAX_MARKDOWN_LENGTH = 5 * 1024 * 1024
+export const TEXT_ENCODINGS = ['utf-8', 'utf-8-bom', 'utf-16le', 'utf-16be', 'gb18030', 'big5', 'shift_jis', 'euc-kr', 'windows-1251', 'windows-1252'] as const
+export type TextEncoding = typeof TEXT_ENCODINGS[number]
+export type TextLineEnding = '\n' | '\r\n' | '\r'
+export function isTextLineEnding(value: unknown): value is TextLineEnding { return value === '\n' || value === '\r\n' || value === '\r' }
+export function isTextEncoding(value: unknown): value is TextEncoding { return TEXT_ENCODINGS.includes(value as TextEncoding) }
+export function isTextPath(path: string): boolean { return /\.(md|txt)$/i.test(path) }
+export function documentType(path = ''): 'TXT' | 'Markdown' | 'PDF' { return /\.txt$/i.test(path) ? 'TXT' : isMarkdownPath(path) ? 'Markdown' : 'PDF' }
+export function sourceDirty(document: MarkdownDocument): boolean { return document.source !== document.savedSource || (document.encoding || 'utf-8') !== (document.savedEncoding || 'utf-8') }
 export interface MarkdownDocument {
   path: string
   source: string
   savedSource: string
+  encoding?: TextEncoding
+  savedEncoding?: TextEncoding
+  lineEnding?: TextLineEnding
   options: MarkdownOptions
   renderedKey: string
   /** PDF edits, including already exported edits, must survive source typing. */
   pdfModified?: boolean
 }
 export interface MarkdownRenderRequest { html: string; sourcePath: string; options: MarkdownOptions }
-export interface SaveMarkdownRequest { source: string; currentPath: string; saveAs?: boolean }
+export interface SaveMarkdownRequest { source: string; currentPath: string; saveAs?: boolean; encoding?: TextEncoding; lineEnding?: TextLineEnding }
 export function isMarkdownPath(path: string): boolean { return /\.md$/i.test(path) }
-export function isDocumentPath(path: string): boolean { return /\.(pdf|md)$/i.test(path) }
+export function isDocumentPath(path: string): boolean { return /\.(pdf|md|txt)$/i.test(path) }
 export function normalizeMarkdownOptions(value: Partial<MarkdownOptions> | null = {}): MarkdownOptions {
   value = value && typeof value === 'object' ? value : {}
   const template = MARKDOWN_TEMPLATES.includes(value.template!) ? value.template! : 'clean'

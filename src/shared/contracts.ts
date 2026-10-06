@@ -1,12 +1,14 @@
 import type { OcrPageRequest, OcrPageResult } from './ocr'
 import type { InterfaceLanguage } from './i18n-catalogue'
-import type { MarkdownDocument, MarkdownRenderRequest, SaveMarkdownRequest } from './markdown'
+import type { MarkdownDocument, MarkdownRenderRequest, SaveMarkdownRequest, TextEncoding, TextLineEnding } from './markdown'
 
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
 export type RasterExportFormat = Exclude<ExportFormat, 'pdf' | 'eps'>
 
 export interface OpenedPdf {
   markdown?: string
+  encoding?: TextEncoding
+  lineEnding?: TextLineEnding
   path: string
   name: string
   data: Uint8Array
@@ -232,6 +234,7 @@ export interface DesktopApi {
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>
   savePdf(request: SavePdfRequest): Promise<SavePdfResult>
   saveMarkdown(request: SaveMarkdownRequest): Promise<SavePdfResult>
+  readTextEncoding(path: string, encoding: TextEncoding): Promise<{ source: string; encoding: TextEncoding; lineEnding: TextLineEnding }>
   renderMarkdown(request: MarkdownRenderRequest): Promise<Uint8Array>
   listPrinters(): Promise<PrinterDescriptor[]>
   openPrinterSettings(printerName: string): Promise<void>

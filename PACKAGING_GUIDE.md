@@ -18,6 +18,16 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.5 TXT 与共用文字编辑器（2026-10-06）**：版本和锁文件同步为 2.1.5，复用 Markdown 文档状态、历史、搜索、模板及 Chromium PDF 渲染。TXT 使用转义后的纯文本排版；Windows/macOS 配置增加 `.txt` Editor 关联。编码转换直接使用既有 `iconv-lite` 0.6.3，统计检测新增 `chardet` 2.2.0；两者为运行时依赖。先处理 BOM/严格 UTF-8，再检测常见传统编码；保留换行，显式重读处理歧义，不能无损转换则拒绝写入。
+
+共用编辑器固定左侧虚拟行号，以逻辑行显示，底栏图标切换横向滚动/自动换行并保存偏好；续行留白，行号使用独立主题底色与较淡、稍小的数字。底部状态栏显示全文/选区字数及编码。文字颜色按纸张背景计算，复用十语言、双主题、界面四档字号和编辑器 S/M/L。实验室对文字选区润色、修订、翻译及自动检查直接写回原文，评价追加文末；写回进入原有撤销历史，过期/冲突目标拒绝覆盖。仅编辑器视图禁用 PDF 页面、批注、OCR、图像选择和打印入口；保存、搜索、主题、提示及标签按实际文档类型显示。
+
+本轮仅运行新增 `src/main/release-2.1.5.test.ts` 与 `src/renderer/src/lib/release-2.1.5.test.tsx`（共 8 项），新增 `scripts/release-2.1.5-ui.cjs --checks=editor,encoding,lab,layout,labels,font,boundary,policy`（支持分阶段），以及必要 typecheck、生产构建、diff 检查。已通过部分保留，修改后仅重测受影响部分；不调用旧测试全集、`npm run build` 或一键发布脚本。新增 UI 覆盖真实 TXT/Markdown 打开、搜索、选区统计、PDF 导出、转换保存、失真保存保护、AI 写回/撤销/过期保护，以及十语言 × 双主题 × 四字号的 80 组布局。
+
+2.1.5 后续修正统一编码弹窗下拉框/按钮高度，区分行号栏颜色与底色，并加入持久化自动换行开关。复用原生 textarea 排版和 DOM Range 定位逻辑行，仅保留可见行号；续行不重复编号，避免序号与正文混淆。追加 `src/renderer/src/lib/source-editor-layout.test.ts` 和 `scripts/release-2.1.5-wrap-ui.cjs`（可执行 `npm run test:release-2.1.5-wrap`），只补测逻辑偏移、换行偏好、新多语言提示、源码软换行、稀疏行号、空行输入/撤销、搜索定位、20/70% 分栏、S/M/L，以及 80 组主题/语言/界面字号的控件高度与行号布局。重新打包后仅执行 `node scripts/release-2.1.5-packaged.cjs --checks=wrap` 的解包/便携/重启阶段，另核对最终生产资源、版本、签名及哈希；保留此前已通过的验收结果。
+
+通过后直接运行 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`，生成安装版、便携版、解包 EXE；运行新增 `node scripts/release-2.1.5-packaged.cjs`，实际启动解包、便携及便携重启，核对 Unicode TXT 参数、运行时编码检测、字面 PDF、状态栏、行号、仅编辑器功能边界与偏好。核对最终版本、app.asar 生产文件、编码依赖/许可、原生打印和 OCR 资源、Authenticode 与 SHA-256，记录至 `docs/VALIDATION-2.1.5.md` 和 release 清单。最后的快捷键/保存状态修正仅补测 `--checks=boundary` 成品阶段，并更新哈希；修订请求始终附加仅输出可替换文字的约束。TXT 文件关联配置属于本次新增静态核验；不修改本机默认关联或执行旧安装/卸载全集，Windows 不宣称 macOS 实机验收。
+
 **2.1.4 搜索窗与 Markdown 搜索（2026-10-06）**：清单及锁文件同步为 2.1.4，无新增依赖。共用搜索窗通过 portal 放在 app-shell 内，避开 Markdown 表单样式并继承真实明暗主题及自定义强调色。按正文档字号和视区设置宽度，复选框不压缩、完整选项块换行，标题固定、正文滚动，复用浮窗避让/拖动。源码 Ctrl/⌘+F、PDF 搜索和工具面板入口按当前区域路由；源码结果显示行号、精确选区并滚动定位，支持 Enter/Shift+Enter 遍历、Escape 焦点恢复、大小写/忽略空白/正则及预设，修改后取消过期结果。
 
 本轮仅执行新增 `src/renderer/src/lib/release-2.1.4.test.ts` 和 `scripts/release-2.1.4-search-ui.cjs`（可用 `--checks=behavior,layout,pdf,accessibility,contrast,navigation` 定向执行），以及必要 typecheck、生产构建和 diff 检查。新布局验收覆盖十语言 × 双主题 × 四字号 × 两种窗口，共 160 组，附加字体族及极窄视区。无需调用旧测试全集、`npm run build` 或一键发布脚本。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist`，再运行新增 `node scripts/release-2.1.4-search-packaged.cjs` 实际启动解包、便携及便携重启，检查源码单栏搜索、Unicode 参数、精确定位、真实深色主题和布局。核对版本、包内生产文件、Authenticode 及 SHA-256，记录至 `docs/VALIDATION-2.1.4.md` 与 release 清单。目视后新增结果标题对比度及首次 Shift+Enter 检查；最终修正后仅运行 `--checks=contrast,navigation` 成品阶段，更新所有交付哈希。安装器资源及文件关联沿用原配置，不重复旧安装测试；不宣称 macOS 实机验收。

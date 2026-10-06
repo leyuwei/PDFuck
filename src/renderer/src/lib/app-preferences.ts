@@ -35,11 +35,11 @@ export function loadPreferences(): AppPreferences {
 
 export function savePreferences(value: AppPreferences): void { localStorage.setItem(KEY, JSON.stringify(value)) }
 
-export function contrastText(color: string): '#111827' | '#ffffff' {
+export function contrastText(color: string, pureBlack = false): '#111827' | '#000000' | '#ffffff' {
   const rgb = color.slice(1).match(/.{2}/g)?.map((part) => Number.parseInt(part, 16) / 255)
   if (!rgb || rgb.length !== 3) return '#ffffff'
   const luminance = rgb.map((channel) => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
   const whiteContrast = 1.05 / (luminance + .05)
   const darkContrast = (luminance + .05) / .05
-  return darkContrast > whiteContrast ? '#111827' : '#ffffff'
+  return darkContrast > whiteContrast ? pureBlack ? '#000000' : '#111827' : '#ffffff'
 }

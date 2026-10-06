@@ -1,6 +1,6 @@
 <img width="1113" height="171" alt="ScreenShot_2026-09-18_114316_102" src="https://github.com/user-attachments/assets/8b1517a2-abdd-4431-a987-ba6768226433" />
 
-# PDFuck - A Tiny AI-Empowered PDF & Markdown Editor
+# PDFuck - A Tiny AI-Empowered PDF, Markdown & TXT Editor
 
 [简体中文](#chinese) · [English](#english)
 
@@ -10,7 +10,7 @@
 
 ## 简体中文
 
-**为论文精读、审稿与修改设计的 PDF 与 Markdown 编辑器。**
+**为论文精读、审稿与修改设计的 PDF、Markdown 与 TXT 编辑器。**
 
 支持 Windows、macOS 和十种界面语言，将阅读、写作、编辑与审稿放在同一个工作区。
 
@@ -18,7 +18,8 @@
 
 ### 核心亮点
 
-- **Markdown 写作，直接生成 PDF**：源码与真实 PDF 双栏预览，支持同步滚动、独立撤销和搜索。五种排版模板可自定义字体与间距；生成的 PDF 可继续编辑、批注、打印，源码与 PDF 分别保存。
+- **Markdown / TXT 写作，直接生成 PDF**：共用带左侧行号的编辑器、真实 PDF 双栏预览、同步滚动、独立撤销和搜索。TXT 保留字面文字，不解释 Markdown 语法。五种排版模板可自定义字体与间距；生成的 PDF 可继续编辑、批注、打印，原文与 PDF 分别保存。
+- **文字与编码清楚可控**：状态栏显示全文、选区字数和编码；自动识别常见编码，可手动重新解码或转换保存编码。编辑器跟随纸张背景与主题，自动选择清晰的文字颜色。
 - **读懂复杂论文版式**：框选兼顾双栏、行内公式、上下标与跨页文本，复制时整理断行与断词。通过图表定位、章节书签与参考文献关联快速回到原文。
 - **AI 审稿落到原文**：检查语言、逻辑、数学推导与篇章结构，直接生成文内批注；结合上下文给出修改建议，也可翻译选区、解读图片，将结果导出为带原文的 PDF 报告。
 - **让批注成为修改清单**：区分批注人，用“已处理／想一想／不做了”跟进进度；支持 Markdown 内容、文内浮窗和回复，随 PDF 保存。
@@ -34,15 +35,21 @@
 | Windows | 下载文件名以 `Windows-Setup.exe` 结尾的安装包；以 `Windows.exe` 结尾的文件为便携版。 |
 | macOS | 下载适合本机架构的 DMG，将 PDFuck 拖入 Applications。 |
 
-打开或拖入 PDF、Markdown 即可开始。“查看”中可调整语言、主题与界面字号；“文档标签”可保存和恢复一组文件。
+打开或拖入 PDF、Markdown、TXT 即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
 
-Markdown 源码使用 Ctrl/⌘+S 保存，“保存 PDF”单独导出预览。PDF 编辑与批注不会写回源码；预览已有修改时，重新生成需确认，建议先保存 PDF。
+Markdown / TXT 原文使用 Ctrl/⌘+S 保存，“保存 PDF”单独导出预览。在仅编辑器视图中，页面编辑、批注、OCR 和打印等 PDF 操作禁用；切回双栏或 PDF 视图可使用。
+
+源码底栏的自动换行图标可切换横向滚动和按编辑区宽度回行，并记住选择。左侧行号使用独立底色和较淡、稍小的数字；每个原始行只在第一条显示行编号，自动换行的续行留白，不改动文档内容。
+
+“批注 → 实验室”可对文字选区润色、修订、翻译或自动检查；结果直接替换原文，全文评价追加至文末，均可撤销。普通 PDF 编辑与批注不会写回源码；预览已有修改时，重新生成需确认，建议先保存 PDF。
+
+底栏编码按钮支持 UTF-8（含 BOM）、UTF-16 LE/BE、GB18030、Big5、Shift JIS、EUC-KR、Windows-1251/1252。无编码标记的文件可能有多种解释，可选择读取编码重新打开；转换后保存才写入文件，不能表示原文字符时拒绝保存，避免静默丢字。保留原有换行格式。字数按汉字及日文假名逐字、其他语言按词统计，忽略空白、标点和 emoji；Markdown 按原文统计。
 
 ### 可选功能与数据处理
 
 **AI**：在“批注 → 实验室 → 模型设置”填写接口地址、API Key 和模型名，并激活配置。支持多个服务商及兼容接口；图片解读需要模型支持图片输入。
 
-普通编辑、Markdown 渲染和 OCR 在本地执行。使用 AI 时，所选文字、文档内容或图片区域会发送给当前激活的服务。
+普通编辑、Markdown / TXT 渲染、编码转换和 OCR 在本地执行。使用 AI 时，所选文字、文档内容或图片区域会发送给当前激活的服务。
 
 **格式转换**：EPS 导入需要 Ghostscript，矢量 EPS 导出需要 Poppler 的 `pdftocairo`；Office 导入可使用 Windows 上的 Microsoft Office，或跨平台的 LibreOffice。macOS 可通过 `brew install ghostscript poppler` 安装 EPS 工具。
 
@@ -71,7 +78,7 @@ Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 
 
 ## English
 
-**A PDF and Markdown editor for close reading, peer review, and revision.**
+**A PDF, Markdown, and TXT editor for close reading, peer review, and revision.**
 
 Available on Windows and macOS in ten interface languages. Read, write, edit, and review in one workspace.
 
@@ -79,7 +86,8 @@ Available on Windows and macOS in ten interface languages. Read, write, edit, an
 
 ### Highlights
 
-- **Write Markdown, work with real PDFs**: edit source alongside a PDF preview, with synchronized scrolling, independent undo, and search. Customize five layout templates, then edit, annotate, or print the generated PDF. Save source and PDF separately.
+- **Write Markdown or TXT, work with real PDFs**: share an editor with left line numbers, synchronized scrolling, independent undo, and search. TXT stays literal, without Markdown parsing. Customize five layout templates, then edit, annotate, or print the generated PDF. Save source and PDF separately.
+- **Keep text and encoding readable**: see document and selection counts plus encoding in the status bar. Detect common encodings, reread with a chosen encoding, or convert on save. Editor colors adapt to the paper background and theme.
 - **Read complex papers comfortably**: select text across columns and pages, including inline equations, superscripts, and subscripts. Copying cleans up line breaks and split words; figure lookup, section bookmarks, and citation links help you find the source.
 - **AI review anchored to the text**: check language, logic, mathematical reasoning, and structure with in-document annotations. Get contextual revision suggestions, translate selections, interpret figures, and export reports with their source material.
 - **Turn annotations into a revision checklist**: identify reviewers and track items as Done, Think about it, or Won’t do. Markdown content, in-document cards, and replies are saved with the PDF.
@@ -95,15 +103,21 @@ Choose a build for your platform from the [download page](https://github.com/ley
 | Windows | Use the file ending in `Windows-Setup.exe` to install, or `Windows.exe` for the portable app. |
 | macOS | Download the DMG for your architecture and drag PDFuck into Applications. |
 
-Open or drop a PDF or Markdown file to begin. Change language, theme, and interface size under **View**; use **Document tabs** to save and restore a group of files.
+Open or drop a PDF, Markdown, or TXT file to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
 
-In Markdown, Ctrl/Cmd+S saves the source; **Save PDF** exports the preview separately. PDF edits and annotations do not change the source. Rebuilding an edited preview requires confirmation, so save the PDF first.
+In Markdown and TXT, Ctrl/Cmd+S saves the source; **Save PDF** exports the preview separately. PDF page tools, annotations, OCR, and printing are disabled in editor-only view and available with the PDF preview.
+
+The wrap icon in the source footer switches between horizontal scrolling and wrapping to the editor width, and remembers your choice. The left gutter uses a separate background and smaller, muted digits. Each source line is numbered once; wrapped continuation rows stay blank without changing the document.
+
+Under **Annotations → Lab**, polish, revise, translate, or automatically review source selections. Apply results directly to the source, append full reviews at the end, and undo changes. Ordinary PDF edits and annotations do not change the source. Rebuilding an edited preview requires confirmation, so save the PDF first.
+
+The encoding button supports UTF-8 with or without BOM, UTF-16 LE/BE, GB18030, Big5, Shift JIS, EUC-KR, and Windows-1251/1252. Ambiguous files can be reread using a chosen encoding. Conversion writes on save and rejects unrepresentable characters instead of silently losing text. Original line endings are retained. Counts treat Han characters and Japanese kana individually and other languages as words, excluding whitespace, punctuation, and emoji; Markdown is counted as raw source.
 
 ### Optional features and data handling
 
 **AI**: enter an endpoint, API key, and model name under **Annotations → Lab → Model settings**, then activate the configuration. Multiple providers and compatible endpoints are supported; figure interpretation requires an image-capable model.
 
-Ordinary editing, Markdown rendering, and OCR run locally. AI features send selected text, document content, or an image region to the active provider.
+Ordinary editing, Markdown/TXT rendering, encoding conversion, and OCR run locally. AI features send selected text, document content, or an image region to the active provider.
 
 **Format conversion**: EPS import requires Ghostscript; vector EPS export requires Poppler’s `pdftocairo`. Office import uses Microsoft Office on Windows or LibreOffice across platforms. On macOS, install the EPS tools with `brew install ghostscript poppler`.
 

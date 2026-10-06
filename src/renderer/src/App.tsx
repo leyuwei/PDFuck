@@ -1,14 +1,15 @@
 import { AboutDialog } from './components/AboutDialog'
 import { MarkdownWorkspace, type MarkdownWorkspaceHandle } from './components/MarkdownWorkspace'
 import { recordMarkdownEdit, stepMarkdownHistory, type MarkdownEdit, type MarkdownHistory, type MarkdownSelection } from './lib/markdown-history'
-import { isDocumentPath, markdownRenderKey, normalizeMarkdownOptions, type MarkdownDocument } from '../../shared/markdown'
-import { loadMarkdownPreferences, markdownHtml, MARKDOWN_REFRESH_DELAY, saveMarkdownPreferences } from './lib/markdown-document'
+import { documentType, isDocumentPath, markdownRenderKey, normalizeMarkdownOptions, sourceDirty, type TextEncoding, type MarkdownDocument } from '../../shared/markdown'
+import { applySourceResult, applySourceFindings, countTextWords, sourceAnnotationPages, type SourceTarget } from './lib/text-document'
+import { loadMarkdownPreferences, markdownHtml, MARKDOWN_REFRESH_DELAY, saveMarkdownPreferences, type MarkdownView } from './lib/markdown-document'
 import { OcrDialog } from './components/OcrDialog'
 import appLogo from '../../../resources/icon.svg'
 import { recognizePdf, type OcrOptions, type OcrProgress } from './lib/ocr'
 import type { AnnotationSuggestionEditor } from './components/AnnotationLab'
 import type { TextMark } from './lib/annotation-rich-text'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnnotationPanel } from './components/AnnotationPanel'
 import { activeBookmarkIdForPosition, BookmarkPanel } from './components/BookmarkPanel'
 import { BookmarkRecognitionDialog, type BookmarkWriteMode } from './components/BookmarkRecognitionDialog'
@@ -54,7 +55,7 @@ const LAB_PREFERENCES_KEY = 'pdfuck.lab-preferences.v1'
 type PdfExportMode = 'combined' | 'separate'
 type AvailableUpdate = UpdateCheckResult & { status: 'available'; latestVersion: string; releaseUrl: string }
 type TargetedAnnotationSuggestionRequest = AnnotationSuggestionRequest & { documentId: number }
-interface TranslationTask { token: number; documentId: number; selection: TextSelection; source: string; context?: string; target: InterfaceLanguage; busy: boolean; adding?: boolean; result?: string; error?: string; progress?: AiStreamProgress }
+interface TranslationTask { token: number; documentId: number; selection: TextSelection; source: string; sourceTarget?: SourceTarget; context?: string; target: InterfaceLanguage; busy: boolean; adding?: boolean; result?: string; error?: string; progress?: AiStreamProgress }
 
 function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes('Files')
@@ -199,7 +200,7 @@ function RecentWelcome({ recent, onOpen, onChoose, onClear }: { recent: RecentPd
   return <div className="welcome-layout">
     <section className="welcome-hero"><img className="welcome-icon" src={appLogo} alt="" aria-hidden="true" /><h1>{ui('md.welcome')}</h1><p>{ui("ui.readEditAnnotateAndExportInOneFocusedWorkspace")}</p><button className="primary" onClick={onChoose}>{ui('md.choose')}</button><small>{ui('md.drop')}</small></section>
     <section className="recent-panel"><div className="recent-heading"><div><small>{ui("ui.quickOpen")}</small><h2>{ui("ui.recentFiles")}</h2></div><div className="recent-heading-actions"><span>{recent.length ? `${recent.length} ${ui("ui.files")}` : ui("ui.noRecentFiles")}</span>{recent.length > 0 && <button type="button" onClick={onClear}>{ui('ui.clearRecentFiles')}</button>}</div></div>
-      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">{item.path.toLowerCase().endsWith(".md") ? "MD" : "PDF"}</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>{ui("ui.noRecentFiles")}</b><small>{ui("ui.recentlyOpenedPdfsAppearHere")}</small></div>}</div>
+      <div className="recent-list">{recent.length ? recent.map((item) => <button key={item.path} className="recent-item" onClick={() => onOpen(item.path)} title={item.path}><span className="recent-pdf-icon">{documentType(item.path) === "Markdown" ? "MD" : documentType(item.path)}</span><span className="recent-copy"><b>{item.name}</b><small>{item.path}</small></span><time>{recentTime(item.lastOpened)}</time><i>›</i></button>) : <div className="recent-empty"><span>⌁</span><b>{ui("ui.noRecentFiles")}</b><small>{ui("ui.recentlyOpenedPdfsAppearHere")}</small></div>}</div>
     </section>
   </div>
 }
@@ -313,6 +314,13 @@ export default function App() {
   const windowClosingRef = useRef(false)
   const [data, setData] = useState<Uint8Array>()
   const [markdown, setMarkdown] = useState<MarkdownDocument>()
+  const [markdownView, setMarkdownView] = useState<MarkdownView>(() => loadMarkdownPreferences().view)
+  const [sourceRange, setSourceRange] = useState<MarkdownSelection>({ start: 0, end: 0 })
+  const sourceRanges = useRef(new Map<number, MarkdownSelection>())
+  const selectSourceRange = useCallback((range: MarkdownSelection) => {
+    sourceRanges.current.set(activeDocumentIdRef.current, range)
+    setSourceRange(current => current.start === range.start && current.end === range.end ? current : range)
+  }, [])
   const [markdownRendering, setMarkdownRendering] = useState(false)
   const [markdownComposing, setMarkdownComposing] = useState(false)
   const markdownHistories = useRef(new Map<number, MarkdownHistory>())
@@ -387,9 +395,13 @@ export default function App() {
   const [toolPanelCollapsed, setToolPanelCollapsed] = useState(false)
   const [preferences, setPreferences] = useState<AppPreferences>(loadPreferences)
   const hasDocument = Boolean(data?.length)
+  const pdfAvailable = hasDocument && (!markdown || markdownView !== 'source')
+  const sourceWords = useMemo(() => countTextWords(markdown?.source || '', interfaceLanguage), [markdown?.source, interfaceLanguage])
+  const selectedSourceWords = useMemo(() => countTextWords(markdown?.source.slice(sourceRange.start, sourceRange.end) || '', interfaceLanguage), [markdown?.source, sourceRange, interfaceLanguage])
   const appAccent = preferences.accent || DEFAULT_ACCENT
   const documentBackgroundKey = markdown?.path || modelRef.current?.filePath || documentName
-  const documentBackground = preferences.documentBackgrounds[documentBackgroundKey] || (preferences.theme === 'dark' ? '#afbbd0' : '#ffffff')
+  const documentBackground = preferences.documentBackgrounds[documentBackgroundKey] || (preferences.theme === 'dark' ? markdown ? '#202a3b' : '#afbbd0' : '#ffffff')
+  useEffect(() => { if (!pdfAvailable) { setTool('none'); setInsight(undefined) } }, [pdfAvailable])
 
   useEffect(() => { window.desktop.setInterfaceLanguage(interfaceLanguage) }, [interfaceLanguage])
   const imageDraftSource = imageDraft?.source
@@ -427,7 +439,7 @@ export default function App() {
       textObjects: viewerTextObjects(model),
       imageObjects: model.images(),
       bookmarks: model.bookmarks(),
-      dirty: model.dirty || Boolean(session.markdown && session.markdown.source !== session.markdown.savedSource),
+      dirty: model.dirty || Boolean(session.markdown && sourceDirty(session.markdown)),
       markdown: session.markdown ? { ...session.markdown, pdfModified: session.markdown.pdfModified || model.canUndo || model.dirty } : undefined,
       canUndo: model.canUndo,
       canRedo: model.canRedo,
@@ -491,28 +503,28 @@ export default function App() {
         const latest = sessionsRef.current.get(session.id)
         const md = latest?.markdown
         if (!latest || !md) return false
-        if (saveAs || md.source !== md.savedSource) {
-          let result = await window.desktop.saveMarkdown({ source: md.source, currentPath: md.path, saveAs })
-          if (result.status === 'save-as-required') result = await window.desktop.saveMarkdown({ source: md.source, currentPath: md.path, saveAs: true })
+        if (saveAs || sourceDirty(md)) {
+          let result = await window.desktop.saveMarkdown({ source: md.source, currentPath: md.path, encoding: md.encoding, lineEnding: md.lineEnding, saveAs })
+          if (result.status === 'save-as-required') result = await window.desktop.saveMarkdown({ source: md.source, currentPath: md.path, encoding: md.encoding, lineEnding: md.lineEnding, saveAs: true })
           if (result.status !== 'saved') return false
           const current = sessionsRef.current.get(session.id)
           if (!current?.markdown) return false
-          const nextMd = { ...current.markdown, path: result.path, savedSource: md.source }
-          publishSession({ ...current, markdown: nextMd, filePath: result.path, documentName: result.path.split(/[\\/]/).pop()!, dirty: model.dirty || nextMd.source !== nextMd.savedSource, status: `已保存 · ${result.path}` })
+          const nextMd = { ...current.markdown, path: result.path, savedSource: md.source, savedEncoding: md.encoding }
+          publishSession({ ...current, markdown: nextMd, filePath: result.path, documentName: result.path.split(/[\\/]/).pop()!, dirty: model.dirty || sourceDirty(nextMd), status: `已保存 · ${result.path}` })
           window.desktop.recentPdfs().then(setRecentFiles).catch(() => undefined)
         }
         if (target === 'source' || !model.dirty) return true
       }
       if (!saveAs && !model.dirty) return true
       try {
-        let result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath || session.markdown?.path.replace(/\.md$/i, '.pdf'), saveAs: saveAs || Boolean(session.markdown && !model.filePath) })
+        let result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath || session.markdown?.path.replace(/\.(md|txt)$/i, '.pdf'), saveAs: saveAs || Boolean(session.markdown && !model.filePath) })
         if (result.status === 'save-as-required' && automaticSaveAs) result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath, saveAs: true })
         if (result.status === 'canceled') return false
         if (result.status === 'save-as-required') { setStatus('无法直接保存：请选择其他位置另存'); setDialog({ type: 'save_as_required', target: result.target }); return false }
         model.markSaved(result.path)
         const latest = session.id === activeDocumentIdRef.current && modelRef.current === model ? liveSessionRef.current : sessionsRef.current.get(session.id)
         if (!latest || latest.model !== model) return false
-        const nextSession = { ...latest, filePath: latest.markdown?.path || model.filePath, documentName: latest.markdown ? latest.documentName : model.fileName, data: model.bytes, dirty: Boolean(latest.markdown && latest.markdown.source !== latest.markdown.savedSource), status: `已保存 · ${result.path}` }
+        const nextSession = { ...latest, filePath: latest.markdown?.path || model.filePath, documentName: latest.markdown ? latest.documentName : model.fileName, data: model.bytes, dirty: Boolean(latest.markdown && sourceDirty(latest.markdown)), status: `已保存 · ${result.path}` }
         publishSession(nextSession)
         return true
       } catch (error) { showError(error); return false }
@@ -557,7 +569,7 @@ export default function App() {
     annotationFocusTimer.current = undefined; setFocusedAnnotation(undefined)
     sessionsRef.current.set(session.id, session); liveSessionRef.current = session; activeDocumentIdRef.current = session.id; modelRef.current = session.model; dirtyRef.current = session.dirty; readingPositionRef.current = session.readingPosition
     setActiveDocumentId(session.id); setData(session.data); setImageDraft(undefined); setModule(session.module); setTool(session.tool); setViewMode(session.viewMode); setZoom(session.zoom); setFitWidthRequest(session.fitWidthRequest); setFitPageRequest(session.fitPageRequest)
-    setMarkdown(session.markdown); setMarkdownError(undefined); setMarkdownRendering(false); setMarkdownHistoryTarget(session.markdown && loadMarkdownPreferences().view === 'pdf' ? 'pdf' : 'source'); setMarkdownSelection(undefined)
+    setSourceRange(sourceRanges.current.get(session.id) || { start: 0, end: 0 }); setMarkdown(session.markdown); setMarkdownError(undefined); setMarkdownRendering(false); setMarkdownHistoryTarget(session.markdown && loadMarkdownPreferences().view === 'pdf' ? 'pdf' : 'source'); setMarkdownSelection(undefined)
     setPageCount(session.pageCount); setCurrentPage(session.currentPage); setAnnotations(session.annotations); setTextObjects(session.textObjects); setImageObjects(session.imageObjects); setBookmarks(session.bookmarks)
     setSelectedAnnotation(session.selectedAnnotation); setSelectedAnnotationIds(session.selectedAnnotation ? [session.selectedAnnotation] : []); setAnnotationFocusToken(session.annotationFocusToken); setSelection(session.selection)
     setDirty(session.dirty); setCanUndo(session.canUndo); setCanRedo(session.canRedo); setEncrypted(session.encrypted); setSecurity(session.security); setDocumentPassword(session.password); setDocumentName(session.documentName); setStatus(session.status); setDialog(null); setErrorMessage(undefined)
@@ -570,12 +582,12 @@ export default function App() {
   const addOpened = useCallback(async (opened: Awaited<ReturnType<typeof window.desktop.readPdf>>) => {
     if (opened.markdown !== undefined) {
       const options = loadMarkdownPreferences().options
-      const bytes = await window.desktop.renderMarkdown({ html: markdownHtml(opened.markdown), sourcePath: opened.path, options })
-      const model = await PdfDocumentModel.load(bytes, undefined, opened.name.replace(/\.md$/i, '.pdf'))
+      const bytes = await window.desktop.renderMarkdown({ html: markdownHtml(opened.markdown, opened.path), sourcePath: opened.path, options })
+      const model = await PdfDocumentModel.load(bytes, undefined, opened.name.replace(/\.(md|txt)$/i, '.pdf'))
       sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
       const replaceBlank = !liveSessionRef.current.data?.length && tabsSnapshotRef.current.documents.length === 1
       const id = replaceBlank ? activeDocumentIdRef.current : nextDocumentId.current++
-      const md: MarkdownDocument = { path: opened.path, source: opened.markdown, savedSource: opened.markdown, options, renderedKey: markdownRenderKey({ path: opened.path, source: opened.markdown, options }) }
+      const md: MarkdownDocument = { path: opened.path, source: opened.markdown, savedSource: opened.markdown, encoding: opened.encoding || 'utf-8', savedEncoding: opened.encoding || 'utf-8', lineEnding: opened.lineEnding, options, renderedKey: markdownRenderKey({ path: opened.path, source: opened.markdown, options }) }
       const session: DocumentSession = { ...emptySession(id), markdown: md, model, data: model.bytes, filePath: opened.path, documentName: opened.name, pageCount: model.pageCount, fitWidthRequest: nextFitRequest.current++, status: `已打开 · ${opened.path}` }
       const current = tabsSnapshotRef.current
       const snapshot = { currentId: id, documents: replaceBlank ? [sessionSummary(session)] : [...current.documents, sessionSummary(session)] }
@@ -668,9 +680,41 @@ export default function App() {
     }
     const next = { ...session.markdown, source, options: normalizeMarkdownOptions(options) }
     if (JSON.stringify(next.options) !== JSON.stringify(session.markdown.options)) saveMarkdownPreferences({ options: next.options })
-    publishSession({ ...session, markdown: next, dirty: Boolean(session.model?.dirty) || source !== next.savedSource })
+    publishSession({ ...session, markdown: next, dirty: Boolean(session.model?.dirty) || sourceDirty(next) })
     setMarkdownError(undefined)
   }, [publishSession])
+  const writeSourceChange = useCallback((id: number, source: string, range?: MarkdownSelection, status = ui('text.applied')) => {
+    const session = id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(id)
+    if (!session?.markdown || windowClosingRef.current || documentLifecycleLocksRef.current.has(id)) throw new Error('text.sourceChanged')
+    const before = sourceRanges.current.get(id) || { start: 0, end: 0 }, after = range || before
+    markdownHistories.current.set(id, recordMarkdownEdit(markdownHistories.current.get(id), session.markdown.source, source, { before, after }))
+    const next = { ...session.markdown, source }
+    publishSession({ ...session, markdown: next, dirty: Boolean(session.model?.dirty) || sourceDirty(next), status })
+    if (id === activeDocumentIdRef.current) { setMarkdownHistoryTarget('source'); selectSourceRange(after); setMarkdownSelection(current => ({ ...after, token: (current?.token || 0) + 1 })) }
+  }, [publishSession, selectSourceRange])
+  const applyTextResult = useCallback((id: number, target: SourceTarget, content: string, append = false) => {
+    const session = id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(id)
+    if (!session?.markdown) throw new Error('text.sourceChanged')
+    const result = applySourceResult(session.markdown.source, target, content, append)
+    writeSourceChange(id, result.source, { start: result.start, end: result.end })
+  }, [writeSourceChange])
+  const changeSourceEncoding = useCallback(async (encoding: TextEncoding, reread: boolean) => {
+    const session = liveSessionRef.current, md = session.markdown
+    if (!md) return false
+    try {
+      if (reread && sourceDirty(md) && !await askConfirmation(ui('text.rereadConfirm'))) return false
+      return await runDocumentOperation(session.id, async () => {
+        const decoded = reread ? await window.desktop.readTextEncoding(md.path, encoding) : undefined
+        const latest = session.id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(session.id)
+        if (!latest?.markdown || latest.markdown.path !== md.path || latest.markdown.source !== md.source || latest.markdown.encoding !== md.encoding) throw new Error('text.sourceChanged')
+        if (decoded) writeSourceChange(session.id, decoded.source, { start: 0, end: 0 }, `${ui('text.encoding')} · ${encoding.toUpperCase()}`)
+        const current = session.id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(session.id)!
+        const next = { ...current.markdown!, encoding, ...(decoded ? { savedSource: decoded.source, savedEncoding: encoding, lineEnding: decoded.lineEnding } : {}) }
+        publishSession({ ...current, markdown: next, dirty: Boolean(current.model?.dirty) || sourceDirty(next) })
+        return true
+      })
+    } catch (cause) { showError(cause); return false }
+  }, [askConfirmation, publishSession, runDocumentOperation, showError, writeSourceChange])
   const sourceHistory = useCallback((direction: 'undo' | 'redo') => {
     const session = liveSessionRef.current, history = markdownHistories.current.get(session.id)
     if (!session.markdown || !history || markdownComposing || windowClosingRef.current || documentLifecycleLocksRef.current.has(session.id)) return
@@ -692,10 +736,10 @@ export default function App() {
         const current = sessionsRef.current.get(documentId)
         if (!current?.markdown || !force && current.markdown.pdfModified || markdownRenderKey(current.markdown) !== key) return
         if (documentId === activeDocumentIdRef.current) { setMarkdownRendering(true); setMarkdownError(undefined) }
-        const bytes = await window.desktop.renderMarkdown({ html: markdownHtml(md.source), sourcePath: md.path, options: md.options })
+        const bytes = await window.desktop.renderMarkdown({ html: markdownHtml(md.source, md.path), sourcePath: md.path, options: md.options })
         const latest = sessionsRef.current.get(documentId)
         if (!latest?.markdown || markdownRenderKey(latest.markdown) !== key) return
-        const model = await PdfDocumentModel.load(bytes, undefined, latest.documentName.replace(/\.md$/i, '.pdf'))
+        const model = await PdfDocumentModel.load(bytes, undefined, latest.documentName.replace(/\.(md|txt)$/i, '.pdf'))
         const ready = sessionsRef.current.get(documentId)
         if (!ready?.markdown || markdownRenderKey(ready.markdown) !== key || !force && ready.markdown.pdfModified) return
         const next = { ...ready, model, markdown: { ...ready.markdown, renderedKey: key, pdfModified: false }, selectedAnnotation: undefined, selection: undefined }
@@ -743,7 +787,7 @@ export default function App() {
   }, [activateSession, askConfirmation, runDocumentOperation, securityConversionBusy, showError])
   const restoreDetachedDocument = useCallback(async (handoff: DetachedPdfDocument) => {
     const id = activeDocumentIdRef.current
-    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.markdown ? handoff.pdfPath : handoff.filePath, handoff.markdown ? handoff.fileName.replace(/\.md$/i, '.pdf') : handoff.fileName)
+    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.markdown ? handoff.pdfPath : handoff.filePath, handoff.markdown ? handoff.fileName.replace(/\.(md|txt)$/i, '.pdf') : handoff.fileName)
     if ((handoff.markdown ? handoff.pdfDirty : handoff.dirty) && model) model.markUnsaved()
     const pageCountFromModel = model?.pageCount || handoff.pageCount
     const currentPage = Math.min(Math.max(0, handoff.currentPage), Math.max(0, pageCountFromModel - 1))
@@ -761,7 +805,7 @@ export default function App() {
   }, [activateSession])
   const addTransferredDocument = useCallback(async (handoff: DetachedPdfDocument) => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
-    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.markdown ? handoff.pdfPath : handoff.filePath, handoff.markdown ? handoff.fileName.replace(/\.md$/i, '.pdf') : handoff.fileName)
+    const model = handoff.encrypted || !handoff.data?.length ? undefined : await PdfDocumentModel.load(handoff.data, handoff.markdown ? handoff.pdfPath : handoff.filePath, handoff.markdown ? handoff.fileName.replace(/\.(md|txt)$/i, '.pdf') : handoff.fileName)
     if ((handoff.markdown ? handoff.pdfDirty : handoff.dirty) && model) model.markUnsaved()
     const pageCountFromModel = model?.pageCount || handoff.pageCount
     const currentPage = Math.min(Math.max(0, handoff.currentPage), Math.max(0, pageCountFromModel - 1))
@@ -1246,12 +1290,12 @@ export default function App() {
     }, segments.length > 1 ? `已在 ${segments.length} 页添加${translateMessage('zh', KIND_LABEL[kind])}` : `${translateMessage('zh', KIND_LABEL[kind])}已添加`, false)
   }, [currentPage, mutate, preferences.annotationAuthor])
 
-  const requestTranslation = useCallback(async (value: TextSelection, target = translationTarget, context?: string) => {
-    const source = normalizeCopiedText(value.text || '')
+  const requestTranslation = useCallback(async (value: TextSelection, target = translationTarget, context?: string, sourceTarget?: SourceTarget) => {
+    const source = sourceTarget ? value.text : normalizeCopiedText(value.text || '')
     if (!source) return
     const token = ++translationToken.current
     const documentId = activeDocumentIdRef.current
-    setTranslationTask({ token, documentId, selection: value, source, context, target, busy: true })
+    setTranslationTask({ token, documentId, selection: value, source, sourceTarget, context, target, busy: true })
     try {
       const result = await translateText(loadAiSettings(), target, source, (progress) => setTranslationTask((current) => current?.token === token ? { ...current, progress } : current), context)
       setTranslationTask((current) => current?.token === token ? { ...current, busy: false, result } : current)
@@ -1275,10 +1319,11 @@ export default function App() {
     if (task.documentId !== activeDocumentIdRef.current) { setTranslationTask((current) => current ? { ...current, error: 'ui.translationDocumentChanged' } : current); return }
     setTranslationTask({ ...task, adding: true, error: undefined })
     try {
-      await addSelectionAnnotations('highlight', task.selection, task.result, DEFAULT_ANNOTATION_COLOR.highlight, task.selection.segments?.[0]?.pageIndex ?? currentPage, undefined, true)
-      setStatus(ui('ui.translationAddedAsHighlight')); setTranslationTask(undefined)
+      if (task.sourceTarget) applyTextResult(task.documentId, task.sourceTarget, task.result)
+      else await addSelectionAnnotations('highlight', task.selection, task.result, DEFAULT_ANNOTATION_COLOR.highlight, task.selection.segments?.[0]?.pageIndex ?? currentPage, undefined, true)
+      setStatus(ui(task.sourceTarget ? 'text.applied' : 'ui.translationAddedAsHighlight')); setTranslationTask(undefined)
     } catch (cause) { setTranslationTask((current) => current?.token === task.token ? { ...current, adding: false, error: cause instanceof Error ? cause.message : String(cause) } : current) }
-  }, [addSelectionAnnotations, currentPage, translationTask])
+  }, [addSelectionAnnotations, applyTextResult, currentPage, translationTask])
 
   const handleCanvasAction = useCallback(async (action: CanvasAction) => {
     const model = modelRef.current; if (!model) return
@@ -1423,7 +1468,7 @@ export default function App() {
         imageObjects: model.images(),
         bookmarks: model.bookmarks(),
         selectedAnnotation: annotationId,
-        dirty: model.dirty || Boolean(latestSession.markdown && latestSession.markdown.source !== latestSession.markdown.savedSource),
+        dirty: model.dirty || Boolean(latestSession.markdown && sourceDirty(latestSession.markdown)),
         markdown: latestSession.markdown ? { ...latestSession.markdown, pdfModified: true } : undefined,
         canUndo: model.canUndo,
         canRedo: model.canRedo,
@@ -1620,18 +1665,18 @@ export default function App() {
     const command = event.ctrlKey || event.metaKey
     const editingText = isTextEntryEvent(event)
     if (event.key === 'Escape' && !editingText) setTool((current) => current === 'explain_image' ? 'none' : current)
-    if (event.altKey && !command && !editingText && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && data?.length) {
+    if (pdfAvailable && event.altKey && !command && !editingText && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && data?.length) {
       event.preventDefault(); setMarkdownHistoryTarget('pdf')
       const page = Math.max(0, Math.min(pageCount - 1, currentPage + (event.key === 'ArrowLeft' ? -1 : 1)))
       setCurrentPage(page); viewerRef.current?.goToPage(page)
     }
     else if (command && !event.altKey && !event.shiftKey && !editingText && event.key.toLowerCase() === 'f') { event.preventDefault(); openDocumentSearch() }
-    else if (!editingText && module === 'annotate' && (event.key === 'Delete' || event.key === 'Backspace')) {
+    else if (pdfAvailable && !editingText && module === 'annotate' && (event.key === 'Delete' || event.key === 'Backspace')) {
       event.preventDefault()
       if (selection?.text) { void handleCanvasAction({ pageIndex: selection.pageIndex, tool: 'delete_text', selection }); setSelection(undefined); return }
       deleteAnnotations(selectedAnnotationIds)
     }
-    else if (module === 'annotate' && !editingText && selection?.text && (event.key === 'Insert' || (command && ['u', 'h', 'r', 'n'].includes(event.key.toLowerCase())))) {
+    else if (pdfAvailable && module === 'annotate' && !editingText && selection?.text && (event.key === 'Insert' || (command && ['u', 'h', 'r', 'n'].includes(event.key.toLowerCase())))) {
       event.preventDefault()
       const key = event.key.toLowerCase()
       const selectedTool: Tool = event.key === 'Insert' ? 'insert' : key === 'u' ? 'underline' : key === 'h' ? 'highlight' : key === 'r' ? 'replace' : 'note'
@@ -1644,13 +1689,13 @@ export default function App() {
     }
     else if (command && !editingText && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) void redoDocument(); else void undoDocument() }
     else if (command && !editingText && event.key.toLowerCase() === 'y') { event.preventDefault(); void redoDocument() }
-    else if (command && event.key.toLowerCase() === 's') { event.preventDefault(); if (liveSessionRef.current.markdown && document.activeElement?.classList.contains('md-source-editor')) void saveSession(liveSessionRef.current, isTemporaryDocumentPath(liveSessionRef.current.markdown.path), true, false, 'source'); else void savePdf(isTemporaryDocumentPath(liveSessionRef.current.markdown?.path || modelRef.current?.filePath || liveSessionRef.current.filePath)) }
-    else if (command && event.key.toLowerCase() === 'p' && modelRef.current) { event.preventDefault(); setDialog({ type: 'print' }) }
-    else if (command && event.key.toLowerCase() === 'c' && selection?.text) {
+    else if (command && event.key.toLowerCase() === 's') { event.preventDefault(); if (liveSessionRef.current.markdown && (markdownView === 'source' || document.activeElement?.classList.contains('md-source-editor'))) void saveSession(liveSessionRef.current, isTemporaryDocumentPath(liveSessionRef.current.markdown.path), true, false, 'source'); else void savePdf(isTemporaryDocumentPath(liveSessionRef.current.markdown?.path || modelRef.current?.filePath || liveSessionRef.current.filePath)) }
+    else if (command && event.key.toLowerCase() === 'p') { event.preventDefault(); if (pdfAvailable) setDialog({ type: 'print' }) }
+    else if (pdfAvailable && command && event.key.toLowerCase() === 'c' && selection?.text) {
       if (editingText) return
       event.preventDefault(); void copyText(selection.text)
     }
-  }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [copyText, currentPage, data, deleteAnnotations, handleCanvasAction, module, pageCount, redoDocument, savePdf, saveSession, selectedAnnotationIds, selection, undoDocument])
+  }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [copyText, currentPage, data, deleteAnnotations, handleCanvasAction, markdownView, module, openDocumentSearch, pageCount, pdfAvailable, redoDocument, savePdf, saveSession, selectedAnnotationIds, selection, undoDocument])
 
   const exportPages = useCallback(async (selectedPages: number[]) => {
     const model = modelRef.current; if (!model) return
@@ -1688,7 +1733,7 @@ export default function App() {
     if (value === 'annotate' && bookmarks.length && !annotationPanelCollapsed && window.innerWidth < 1240) { setBookmarkPanelCollapsed(true); bookmarkAutoCollapsedRef.current = true }
     else if (value !== 'annotate' && bookmarkAutoCollapsedRef.current) { setBookmarkPanelCollapsed(false); bookmarkAutoCollapsedRef.current = false }
     setTool('none')
-    setStatus(value === 'annotate' ? '批注模式：按字符精准框选文字；右键可复制或添加批注' : '可直接按字符框选 PDF 文字，按 Ctrl+C 或右键复制')
+    setStatus(markdown && markdownView === 'source' ? ui('text.selectFirst') : value === 'annotate' ? '批注模式：按字符精准框选文字；右键可复制或添加批注' : '可直接按字符框选 PDF 文字，按 Ctrl+C 或右键复制')
   }
   const toggleBookmarkPanel = () => {
     if (bookmarkPanelCollapsed) {
@@ -1704,6 +1749,7 @@ export default function App() {
   const activeSourceHistory = markdownHistories.current.get(activeDocumentId)
   const historyCanUndo = sourceHistoryActive ? !markdownComposing && Boolean(activeSourceHistory?.past.length) : canUndo
   const historyCanRedo = sourceHistoryActive ? !markdownComposing && Boolean(activeSourceHistory?.future.length) : canRedo
+  const quickSaveDirty = markdown ? sourceDirty(markdown) : dirty
   const temporaryDocument = hasDocument && isTemporaryDocumentPath(liveSessionRef.current.markdown?.path || modelRef.current?.filePath || liveSessionRef.current.filePath)
   const insightTitle = insight?.kind === 'visual' ? ui("ui.figuresTables") : insight?.kind === 'citation' ? ui("ui.citationLinks") : ui("ui.grammarResults")
 
@@ -1715,7 +1761,13 @@ export default function App() {
     if (!session) return null
     const visible = id === activeDocumentId && module === 'annotate'
     const request = annotationSuggestionRequest?.documentId === id ? annotationSuggestionRequest : undefined
-    return <AnnotationLab key={id} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} translationEnabled={translationEnabled} translationTarget={translationTarget} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} onTranslationSettingsChange={changeTranslationSettings} getDocument={visible ? getLabDocument : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} figureSelection={figureSelection?.documentId === id ? figureSelection : undefined} onSelectFigure={() => { setTool('explain_image'); setStatus('ui.figureSelecting') }} onCancelFigureSelection={() => { if (activeDocumentIdRef.current === id) setTool((current) => current === 'explain_image' ? 'none' : current) }} onAddFigureExplanation={async (figure, content) => {
+    let range = sourceRanges.current.get(id) || { start: 0, end: 0 }
+    if (session.markdown && id === activeDocumentId && markdownHistoryTarget === 'pdf' && session.selection?.text) {
+      const start = session.markdown.source.indexOf(session.selection.text)
+      range = start >= 0 && session.markdown.source.indexOf(session.selection.text, start + 1) < 0 ? { start, end: start + session.selection.text.length } : { start: 0, end: 0 }
+    }
+    const sourceTarget = session.markdown ? { source: session.markdown.source, ...range } : undefined
+    return <AnnotationLab key={id} sourceTarget={sourceTarget} pdfAvailable={id !== activeDocumentId || pdfAvailable} onApplySource={(content, target, append) => applyTextResult(id, target, content, append)} getSourcePages={async range => { const current = id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(id); if (!current?.markdown) throw new Error('text.sourceChanged'); return sourceAnnotationPages(current.markdown.source, range) }} onApplySourceFindings={async (findings, blocks) => { const current = id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(id); if (!current?.markdown) throw new Error('text.sourceChanged'); const result = applySourceFindings(current.markdown.source, findings, blocks); writeSourceChange(id, result.source); return result.editDelta }} onTranslateSource={target => { if (!sourceTarget || !sourceTarget.source.slice(sourceTarget.start, sourceTarget.end).trim()) { showError(new Error('text.selectFirst')); return } void requestTranslation({ text: sourceTarget.source.slice(sourceTarget.start, sourceTarget.end), rects: [] }, target, sourceTarget.source.slice(Math.max(0, sourceTarget.start - 1000), sourceTarget.end + 1000), sourceTarget) }} visible={visible} platform={window.desktop.platform} disabled={!session.data?.length || session.encrypted} selection={session.selection} selectionKey={sourceTarget ? `source:${id}:${sourceTarget.start}:${sourceTarget.end}` : labSelectionKey(id, session.selection)} documentKey={session.model?.filePath || session.filePath} annotationSuggestionsEnabled={annotationSuggestionsEnabled} translationEnabled={translationEnabled} translationTarget={translationTarget} suggestionRequest={request} suggestionEditor={annotationSuggestionEditor?.documentId === id ? annotationSuggestionEditor : undefined} onSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} onTranslationSettingsChange={changeTranslationSettings} getDocument={visible ? async mode => { const current = id === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(id); return current?.markdown ? { name: current.documentName, bytes: current.model?.bytes || new Uint8Array(), text: current.markdown.source } : getLabDocument(mode) } : undefined} getAutomaticContext={id === activeDocumentId ? getAutomaticAnnotationContext : undefined} getAutomaticAnnotationPages={visible ? getAutomaticAnnotationPages : undefined} onAdd={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddSuggestion={(annotationId, content) => addAnnotationSuggestion(id, annotationId, content)} onAddAutomaticAnnotations={(annotations) => addAutomaticAnnotations(id, annotations)} figureSelection={figureSelection?.documentId === id ? figureSelection : undefined} onSelectFigure={() => { setTool('explain_image'); setStatus('ui.figureSelecting') }} onCancelFigureSelection={() => { if (activeDocumentIdRef.current === id) setTool((current) => current === 'explain_image' ? 'none' : current) }} onAddFigureExplanation={async (figure, content) => {
       const model = id === activeDocumentIdRef.current ? modelRef.current : sessionsRef.current.get(id)?.model
       if (!model || figure.documentId !== id) throw new Error('ui.translationDocumentChanged')
       await runDocumentOperation(id, async () => {
@@ -1741,21 +1793,21 @@ export default function App() {
     void openPath(path)
   }}>
     <header className="titlebar"><div className="titlebar-identity"><div className="brand"><img className="app-logo" src={appLogo} alt="" aria-hidden="true" /><span className="brand-wordmark">PDF<span>uck</span></span></div><DocumentTitle text={`${visibleDocumentName}${dirty ? ui("ui.unsaved") : ''}`} encrypted={encrypted} /></div><div className="titlebar-tools"><div className="file-actions"><button className="open-button" onClick={() => setDialog({ type: 'open_pdf' })}>{ui('md.open')}</button><button className="folder-button" disabled={!hasDocument} title={ui("ui.showTheCurrentPdfInFinderOrFileExplorer")} aria-label={ui("ui.openFolder")} onClick={() => void openCurrentFolder()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h6l2 3h8v2M3 7h6l2 2h10l-2 11H3z" /></svg></button></div><div className="history-controls"><button disabled={!historyCanUndo} title={`${ui("ui.undo")} (${shortcutLabel('undo', window.desktop.platform)})`} aria-label={ui("ui.undo")} onClick={() => void undoDocument()}>↶</button><button disabled={!historyCanRedo} title={`${ui("ui.redo")} (${shortcutLabel('redo', window.desktop.platform)})`} aria-label={ui("ui.redo")} onClick={() => void redoDocument()}>↷</button></div>
-      <div className="page-controls" onPointerDownCapture={() => setMarkdownHistoryTarget('pdf')} onFocusCapture={() => setMarkdownHistoryTarget('pdf')}><button disabled={!hasDocument || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!hasDocument} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!hasDocument || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
-      <div className="zoom-controls"><button disabled={!hasDocument} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!hasDocument} onClick={() => activatePageFit('width')}>{Math.round(zoom * 100)}%</button><button disabled={!hasDocument} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button className="fit-control" disabled={!hasDocument} onClick={() => activatePageFit('width')} title={ui("ui.fitWidth")} aria-label={ui("ui.fitWidth")}><FitIcon mode="width" /></button><button className="fit-control" disabled={!hasDocument} onClick={() => activatePageFit('page')} title={ui("ui.fitPage")} aria-label={ui("ui.fitPage")}><FitIcon mode="page" /></button></div>
-      <button className={`quick-save${dirty ? ' primary' : ''}`} disabled={!hasDocument || !dirty || encrypted} onClick={() => void savePdf(false)}>{ui("ui.save")}</button></div>{!isMac && <div className="window-controls"><button className="window-minimize" aria-label={ui("ui.minimizeWindow")} title={ui("ui.minimizeWindow")} onClick={window.desktop.windowMinimize}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5h9" /></svg></button><button className={maximized ? 'window-restore' : 'window-maximize'} aria-label={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} title={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} onClick={window.desktop.windowToggleMaximize}>{maximized ? <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 1.5h7v7M1.5 3.5h7v7h-7z" /></svg> : <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" /></svg>}</button><button className="close window-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={closeCurrentWindow}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2 2 10" /></svg></button></div>}</header>
+      <div className="page-controls" onPointerDownCapture={() => setMarkdownHistoryTarget('pdf')} onFocusCapture={() => setMarkdownHistoryTarget('pdf')}><button disabled={!pdfAvailable || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!pdfAvailable} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!pdfAvailable || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
+      <div className="zoom-controls"><button disabled={!pdfAvailable} onClick={() => setZoom(Math.max(.25, zoom / 1.15))}>−</button><button className="zoom-value" disabled={!pdfAvailable} onClick={() => activatePageFit('width')}>{Math.round(zoom * 100)}%</button><button disabled={!pdfAvailable} onClick={() => setZoom(Math.min(4, zoom * 1.15))}>＋</button><button className="fit-control" disabled={!pdfAvailable} onClick={() => activatePageFit('width')} title={ui("ui.fitWidth")} aria-label={ui("ui.fitWidth")}><FitIcon mode="width" /></button><button className="fit-control" disabled={!pdfAvailable} onClick={() => activatePageFit('page')} title={ui("ui.fitPage")} aria-label={ui("ui.fitPage")}><FitIcon mode="page" /></button></div>
+      <button className={`quick-save${quickSaveDirty ? ' primary' : ''}`} disabled={!hasDocument || !quickSaveDirty || encrypted} onClick={() => void (markdown ? saveSession(liveSessionRef.current, false, true, false, 'source') : savePdf(false))}>{ui("ui.save")}</button></div>{!isMac && <div className="window-controls"><button className="window-minimize" aria-label={ui("ui.minimizeWindow")} title={ui("ui.minimizeWindow")} onClick={window.desktop.windowMinimize}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6.5h9" /></svg></button><button className={maximized ? 'window-restore' : 'window-maximize'} aria-label={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} title={maximized ? ui("ui.restoreWindow") : ui("ui.maximizeWindow")} onClick={window.desktop.windowToggleMaximize}>{maximized ? <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 1.5h7v7M1.5 3.5h7v7h-7z" /></svg> : <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" /></svg>}</button><button className="close window-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={closeCurrentWindow}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2 2 8 8M10 2 2 10" /></svg></button></div>}</header>
     <WindowManagerBar onRestoreArchive={restoreArchive} snapshot={documentTabs} onFocus={switchDocument} onClose={closeDocument} onReorder={reorderDocuments} onDetach={(id, position) => void detachDocument(id, position)} onBeginTransfer={beginDocumentTransfer} onTabDragStateChange={setDraggingDocumentTab} />
-    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} aria-label={moduleName(key)} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} /><span className="nav-module-label">{ui(({ view: "ui.navView", edit: "ui.navEdit", annotate: "ui.navAnnotate", save: "ui.navSave" } as const)[key])}</span></button>)}<button type="button" disabled={!hasDocument || encrypted || printing} className={dialog?.type === 'print' ? 'active' : ''} aria-label={ui("ui.print")} title={ui("ui.print")} onClick={() => setDialog({ type: 'print' })}><ModuleIcon module="print" /><span className="nav-module-label">{ui("ui.print")}</span></button><button type="button" className="about-trigger" onClick={() => setAboutOpen(true)} title={ui('about.title')}><span aria-hidden="true">ⓘ</span><span>{ui('about.title')}</span><small>v{APP_VERSION}</small></button></nav>
-      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onWatermark={openWatermarks} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void savePdf(as)} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} searchSource={Boolean(markdown)} onSearch={openDocumentSearch} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
-      {hasDocument && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
-      {markdown ? <MarkdownWorkspace ref={markdownWorkspaceRef} key={activeDocumentId} onSearchPdf={() => viewerRef.current?.openSearch()} onClosePdfSearch={() => viewerRef.current?.closeSearch()} document={markdown} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onHistory={sourceHistory} onHistoryTarget={setMarkdownHistoryTarget} historyTarget={markdownHistoryTarget} selectionRequest={markdownSelection} pdfMode={viewMode} pdfPageCount={pageCount} pdfPage={currentPage} onPdfNavigate={(page, offset) => viewerRef.current?.goToPage(page, offset)} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
-      {module === 'annotate' && hasDocument && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
-    </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span>{selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
+    <main className="workspace"><div className={`left-dock${toolPanelCollapsed ? ' collapsed' : ''}`}><nav className="nav-rail">{(['view', 'edit', 'annotate', 'save'] as ModuleKey[]).map((key) => <button key={key} disabled={encrypted && key !== 'view'} className={module === key ? 'active' : ''} aria-expanded={module === key ? !toolPanelCollapsed : undefined} aria-label={moduleName(key)} title={moduleTitle(key, encrypted, module, toolPanelCollapsed)} onClick={() => selectModule(key)}><ModuleIcon module={key} /><span className="nav-module-label">{ui(({ view: "ui.navView", edit: "ui.navEdit", annotate: "ui.navAnnotate", save: "ui.navSave" } as const)[key])}</span></button>)}<button type="button" disabled={!pdfAvailable || encrypted || printing} className={dialog?.type === 'print' ? 'active' : ''} aria-label={ui("ui.print")} title={ui("ui.print")} onClick={() => setDialog({ type: 'print' })}><ModuleIcon module="print" /><span className="nav-module-label">{ui("ui.print")}</span></button><button type="button" className="about-trigger" onClick={() => setAboutOpen(true)} title={ui('about.title')}><span aria-hidden="true">ⓘ</span><span>{ui('about.title')}</span><small>v{APP_VERSION}</small></button></nav>
+      <ToolPanel annotationLabHost={annotationLabHost} platform={window.desktop.platform} module={module} activeTool={tool} mode={viewMode} hasDocument={hasDocument} dirty={dirty} readOnly={encrypted} onTool={setTool} onMode={setViewMode} onDeletePages={() => setDialog({ type: 'manage_pages' })} onMergeFiles={() => void mergeFiles()} onAddImage={() => void beginImagePlacement()} onAddShape={(png) => addGeneratedImage(activeDocumentId, png, `${ui("ui.shape")}.png`, 'ui.shapeReadyToPlace', false)} onPageNumbers={openPageNumbers} onWatermark={openWatermarks} ocrWindowState={ocrDocuments.includes(activeDocumentId) ? dialog?.type === 'ocr' ? 'open' : 'minimized' : 'closed'} onOcr={() => { setOcrDocuments(ids => ids.includes(activeDocumentId) ? ids : [...ids, activeDocumentId]); setDialog({ type: 'ocr' }) }} onSave={(as) => void saveSession(liveSessionRef.current, as, true, false, 'pdf')} pdfAvailable={pdfAvailable} sourceType={markdown ? documentType(markdown.path) as 'TXT' | 'Markdown' : undefined} sourceDirty={markdown && sourceDirty(markdown)} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onExport={() => setDialog({ type: 'page_selection', purpose: 'export' })} exportFormat={exportFormat} exportDpi={exportDpi} pdfExportMode={pdfExportMode} onExportFormat={setExportFormat} onExportDpi={setExportDpi} onPdfExportMode={setPdfExportMode} searchSource={Boolean(markdown)} onSearch={openDocumentSearch} onRecognizeBookmarks={() => setDialog({ type: 'recognize_bookmarks' })} onVisuals={() => void viewerRef.current?.showVisuals()} onCitations={() => { const next = !citationsEnabled; setCitationsEnabled(next); if (next) void viewerRef.current?.linkCitations(); else { viewerRef.current?.clearCitations(); setInsight(undefined) } }} citationsEnabled={citationsEnabled} onGrammar={() => void viewerRef.current?.checkGrammar()} theme={preferences.theme} accent={appAccent} hasCustomAccent={Boolean(preferences.accent)} documentBackground={documentBackground} hasCustomDocumentBackground={Boolean(preferences.documentBackgrounds[documentBackgroundKey])} onTheme={(theme) => setPreferences((value) => { const next = { ...value, theme }; savePreferences(next); return next })} onAccent={(accent) => setPreferences((value) => { const next = { ...value, accent }; savePreferences(next); return next })} onClearAccent={() => setPreferences((value) => { const { accent: _removed, ...next } = value; savePreferences(next); return next })} onDocumentBackground={(background) => setPreferences((value) => { const next = { ...value, documentBackgrounds: { ...value.documentBackgrounds, [documentBackgroundKey]: background } }; savePreferences(next); return next })} onClearDocumentBackground={() => setPreferences((value) => { const { [documentBackgroundKey]: _removed, ...documentBackgrounds } = value.documentBackgrounds; const next = { ...value, documentBackgrounds }; savePreferences(next); return next })} selection={selection} selectionKey={selection ? `${activeDocumentId}:${selection.segments?.map((segment) => `${segment.pageIndex}:${segment.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`).join('|') || `${selection.pageIndex}:${selection.rects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(';')}`}` : undefined} labDocumentKey={modelRef.current?.filePath} documentSessionKey={activeDocumentId} annotationSuggestionsEnabled={annotationSuggestionsEnabled} suggestionRequest={annotationSuggestionRequest} onAnnotationSuggestionRequestConsumed={consumeAnnotationSuggestionRequest} onAnnotationSuggestionsEnabledChange={toggleAnnotationSuggestions} getLabDocument={getLabDocument} onAddAiAnnotation={addAiAnnotation} onAddFullReview={addFullReviewAnnotation} onAddAnnotationSuggestion={addAnnotationSuggestion} onCopy={(content) => void copyAiResponse(content)} /></div>
+      {pdfAvailable && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
+      {markdown ? <MarkdownWorkspace ref={markdownWorkspaceRef} key={activeDocumentId} onSearchPdf={() => viewerRef.current?.openSearch()} onClosePdfSearch={() => viewerRef.current?.closeSearch()} document={markdown} background={documentBackground} foreground={contrastText(documentBackground, true)} onViewChange={setMarkdownView} onSelection={selectSourceRange} onEncoding={changeSourceEncoding} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onHistory={sourceHistory} onHistoryTarget={setMarkdownHistoryTarget} historyTarget={markdownHistoryTarget} selectionRequest={markdownSelection} pdfMode={viewMode} pdfPageCount={pageCount} pdfPage={currentPage} onPdfNavigate={(page, offset) => viewerRef.current?.goToPage(page, offset)} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
+      {module === 'annotate' && pdfAvailable && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
+    </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span className={markdown ? 'text-document-statistics' : undefined} title={markdown ? ui('text.countHint') : undefined}>{markdown ? <><b>{t('text.words', { count: sourceWords.toLocaleString() })}</b><b>{t('text.selectedWords', { count: selectedSourceWords.toLocaleString() })}</b><b>{(markdown.encoding || 'utf-8').toUpperCase()}</b></> : selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('md.drop')}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
     {draggingDocumentTransfer && <div className="document-transfer-overlay"><div><b>{ui("ui.dropToMoveIntoDocumentTabs")}</b><span>{ui("ui.theCurrentPdfWillReturnHereFromItsSeparateWindow")}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog key={dialog.value.annotationId || 'new'} aiSuggestionsEnabled={annotationSuggestionsEnabled} state={dialog.value} onSuggestionEnd={endAnnotationSuggestion} onSuggest={(value, editor) => { const annotation = modelRef.current?.annotations().find(item => item.id === dialog.value.annotationId); if (annotation) requestAnnotationSuggestion({ ...annotation, content: value.content }, editor) }} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
     {dialog?.type === 'text' && <TextDialog initial={dialog.initial} edit={dialog.edit} onCancel={() => { setDialog(null); textResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); textResolve.current?.(value) }} />}
-    {translationTask && <TranslationDialog source={translationTask.source} target={AI_LANGUAGE_NAMES[translationTask.target]} result={translationTask.result} busy={translationTask.busy} adding={translationTask.adding} error={translationTask.error} recovery={Boolean(translationTask.progress?.recovery)} onCancel={closeTranslation} onRetry={() => void requestTranslation(translationTask.selection, translationTask.target, translationTask.context)} onAdd={() => void addTranslationHighlight()} />}
+    {translationTask && <TranslationDialog sourceDocument={Boolean(translationTask.sourceTarget)} source={translationTask.source} target={AI_LANGUAGE_NAMES[translationTask.target]} result={translationTask.result} busy={translationTask.busy} adding={translationTask.adding} error={translationTask.error} recovery={Boolean(translationTask.progress?.recovery)} onCancel={closeTranslation} onRetry={() => void requestTranslation(translationTask.selection, translationTask.target, translationTask.context, translationTask.sourceTarget)} onAdd={() => void addTranslationHighlight()} />}
     {aboutOpen && <AboutDialog version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
     {security && (security.encrypted || security.signatures.length > 0) && <PdfSecurityNotice security={security} busy={securityConversionBusy} onForceEditableCopy={() => void forceEditableCopy()} />}
     {documentTabs.documents.filter(({ id }) => ocrDocuments.includes(id)).map(({ id }) => <OcrDialog key={id} hidden={id !== activeDocumentId || dialog?.type !== 'ocr'} pageCount={id === activeDocumentId ? pageCount : sessionsRef.current.get(id)?.pageCount || 0} currentPage={id === activeDocumentId ? currentPage : sessionsRef.current.get(id)?.currentPage || 0} onMinimize={() => setDialog(null)} onClose={() => { setOcrDocuments(ids => ids.filter(value => value !== id)); if (id === activeDocumentId) setDialog(null) }} onRecognize={recognizeDocument} />)}

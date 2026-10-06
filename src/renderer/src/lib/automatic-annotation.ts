@@ -1,6 +1,7 @@
 import type { AddAnnotationRequest, AnnotationKind, PdfPoint, PdfRect } from '../types'
 import type { PageTextSelection } from './page-text-selection'
 import { textSelectionForQuery, type WordBox } from './text-layout'
+import { sourceQuoteMatch } from './text-document'
 
 export const AUTOMATIC_ANNOTATION_SCHEMA_VERSION = 1
 export const MAX_AUTOMATIC_ANNOTATION_BLOCKS_PER_PAGE = 80
@@ -320,7 +321,9 @@ export function parseAutomaticAnnotationResponse(raw: string, blocks: AutomaticA
     const quote = limitedString(candidate.quote, `${label}.quote`, MAX_AUTOMATIC_ANNOTATION_QUOTE_CHARS)
     if (!Number.isInteger(candidate.occurrence) || (candidate.occurrence as number) < 0 || (candidate.occurrence as number) > 99) invalidResponse(`${label}.occurrence 必须是 0 到 99 的整数。`)
     const occurrence = candidate.occurrence as number
-    if (!textSelectionForQuery(block.words, quote, { occurrence, caseSensitive: true, ignoreWhitespace: true, includeAllMatchedWords: true })) invalidResponse(`${label}.quote 不是指定块中的精确原文。`)
+    const exactQuote = /^source:\d+:\d+$/.test(block.id) && !block.words.length ? sourceQuoteMatch(block.text, quote, occurrence)
+      : textSelectionForQuery(block.words, quote, { occurrence, caseSensitive: true, ignoreWhitespace: true, includeAllMatchedWords: true })
+    if (!exactQuote) invalidResponse(`${label}.quote 不是指定块中的精确原文。`)
     const insertSide = candidate.insertSide
     if (action === 'insert') {
       if (insertSide !== 'before' && insertSide !== 'after') invalidResponse(`${label}.insertSide 必须指定 before 或 after。`)

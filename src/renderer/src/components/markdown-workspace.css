@@ -42,6 +42,20 @@
 .md-workspace input, .md-workspace select, .md-insert-fields textarea { border: 1px solid var(--md-border); border-radius: 7px; padding: 9px 10px; min-width: 0; width: 100%; background: var(--md-surface); color: inherit; font-size: var(--ui-font-body); }
 .md-workspace .md-source-editor { flex: 1; min-height: 80px; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; padding: 20px; font: var(--ui-font-body)/1.8 Consolas, Menlo, 'Microsoft YaHei', monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; background: var(--md-surface); color: inherit; }
 .md-workspace .md-source-editor:focus, .md-workspace .md-source-editor:focus-visible { outline: 0; box-shadow: none; }
+.md-workspace .md-source-pane { position: relative; flex-direction: row; direction: ltr; background: var(--source-background); color: var(--source-foreground); }
+.md-workspace .md-source-editor { font-size: var(--source-font-size); background: var(--source-background); color: var(--source-foreground); white-space: pre; overflow-wrap: normal; min-width: 0; padding-left: 12px; }
+.md-workspace .md-source-editor.md-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-line-numbers { overflow: hidden; flex: none; width: calc(var(--line-digits) * 1ch + 28px); font: calc(var(--source-font-size) * .9)/calc(var(--source-font-size) * 1.8) Consolas, Menlo, 'Microsoft YaHei', monospace; text-align: right; color: #607089; background: var(--md-subtle); border-right: 1px solid var(--md-border); user-select: none; pointer-events: none; }
+.theme-dark .md-line-numbers { color: #a5b4ca; }
+.md-line-numbers > div { position: relative; height: 100%; }
+.md-line-numbers > div > div { position: absolute; inset-inline: 0; height: 1lh; padding-right: 9px; }
+.md-workspace .md-encoding-dialog { width: min(560px, calc(100vw - 24px)); height: auto; max-height: calc(100vh - 110px); margin: auto; }
+.md-encoding-dialog > header { cursor: default; }
+.md-encoding-dialog > header h2 { flex: 1; }
+.md-encoding-dialog p { font-size: var(--ui-font-body); line-height: 1.5; }
+.md-encoding-dialog section { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.md-encoding-dialog label { flex: 1; min-width: 160px; display: grid; gap: 7px; font-size: var(--ui-font-body); }
+.md-workspace .md-encoding-dialog select, .md-workspace .md-encoding-dialog section > button { box-sizing: border-box; height: calc(var(--ui-font-body) * 1.5 + 20px); min-height: calc(var(--ui-font-body) * 1.5 + 20px); font-size: var(--ui-font-body); line-height: 1.5; padding: 9px 10px; white-space: nowrap; }
 .md-divider { display: grid; place-items: center; cursor: col-resize; touch-action: none; border-radius: 5px; outline: 0; }
 .md-divider span { height: 36px; width: 3px; border-radius: 3px; background: #a6b4c9; }
 .md-workspace [hidden] { display: none !important; }
@@ -83,6 +97,7 @@
 .theme-dark .md-workspace { --md-surface: #202a3b; --md-subtle: #253146; --md-border: #3b4a63; --md-muted: #afbdd2; background: #171f2d; color: #dce5f4; }
 .theme-dark .md-render-status.md-error { color: #ffadb5; }
 [dir="rtl"] .md-source-pane { direction: rtl; }
+[dir="rtl"] .md-workspace .md-source-pane { direction: ltr; }
 .md-tooltip { position: fixed; width: max-content; z-index: 10000; pointer-events: none; max-width: min(280px, calc(100vw - 16px)); padding: 7px 10px; border: 1px solid #dce3ef; border-radius: 7px; background: #fff; color: #263247; box-shadow: 0 4px 16px #172b4626; font-size: var(--ui-font-small); line-height: 1.5; overflow-wrap: anywhere; animation: md-hint-in .25s; }
 .theme-dark .md-tooltip { background: #253146; color: #dce5f4; border-color: #3b4a63; }
 @keyframes md-hint-in { 0%, 80% { opacity: 0 } 100% { opacity: 1 } }

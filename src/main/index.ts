@@ -1,6 +1,7 @@
 import { createLabReport } from './lab-report'
-import { readMarkdown, renderMarkdownPdf } from './markdown'
-import { isDocumentPath, isMarkdownPath, MAX_MARKDOWN_LENGTH } from '../shared/markdown'
+import { readTextDocument, renderMarkdownPdf } from './markdown'
+import { encodeText } from './text-encoding'
+import { documentType, isDocumentPath, isTextPath, isTextEncoding, isTextLineEnding, MAX_MARKDOWN_LENGTH, type TextEncoding } from '../shared/markdown'
 import type { SaveMarkdownRequest } from '../shared/markdown'
 import type { LabReportRequest } from '../shared/contracts'
 import { cancelOcr, recognizeOcrPage } from './ocr'
@@ -312,10 +313,10 @@ async function refreshMacPdfAssociation(): Promise<void> {
 async function openPdfAt(path: string) {
   if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('md.invalid')
   const absolute = resolve(path)
-  if (isMarkdownPath(absolute)) {
-    const markdown = await readMarkdown(absolute)
+  if (isTextPath(absolute)) {
+    const { source: markdown, encoding, lineEnding } = await readTextDocument(absolute)
     await rememberRecentPdf(absolute).catch(() => undefined)
-    return { path: absolute, name: basename(absolute), data: new Uint8Array(), credentialKey: '', markdown }
+    return { path: absolute, name: basename(absolute), data: new Uint8Array(), credentialKey: '', markdown, encoding, lineEnding }
   }
   const data = await readFile(absolute)
   const credentialKey = createHash('sha256').update(data).digest('hex')
@@ -513,7 +514,7 @@ function validDetachedDocument(value: unknown): value is DetachedPdfDocument {
   const document = value as Partial<DetachedPdfDocument>
   const validNumber = (candidate: unknown) => typeof candidate === 'number' && Number.isFinite(candidate)
   return (document.data === undefined || document.data instanceof Uint8Array)
-    && (document.markdown === undefined || (typeof document.markdown.source === 'string' && document.markdown.source.length <= MAX_MARKDOWN_LENGTH && typeof document.markdown.savedSource === 'string' && typeof document.markdown.path === 'string' && isMarkdownPath(document.markdown.path) && typeof document.markdown.renderedKey === 'string' && Boolean(document.markdown.options)))
+    && (document.markdown === undefined || (typeof document.markdown.source === 'string' && document.markdown.source.length <= MAX_MARKDOWN_LENGTH && typeof document.markdown.savedSource === 'string' && typeof document.markdown.path === 'string' && isTextPath(document.markdown.path) && (document.markdown.encoding === undefined || isTextEncoding(document.markdown.encoding)) && (document.markdown.savedEncoding === undefined || isTextEncoding(document.markdown.savedEncoding)) && (document.markdown.lineEnding === undefined || isTextLineEnding(document.markdown.lineEnding)) && typeof document.markdown.renderedKey === 'string' && Boolean(document.markdown.options)))
     && typeof document.fileName === 'string'
     && typeof document.encrypted === 'boolean'
     && (document.password === undefined || typeof document.password === 'string')
@@ -651,7 +652,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
-    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md'] }] })
+    const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md', 'txt'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
@@ -746,17 +747,26 @@ app.whenReady().then(async () => {
     void rememberReadingPosition(request.path, request.position)
   })
   ipcMain.handle('markdown:render', (event, request) => { requireMainWindow(event.sender); return renderMarkdownPdf(request) })
+  ipcMain.handle('text:read-encoding', (event, path: string, encoding: TextEncoding) => {
+    requireMainWindow(event.sender)
+    if (typeof path !== 'string' || !isTextPath(path) || !isTextEncoding(encoding)) throw new Error('text.invalidEncoding')
+    return readTextDocument(resolve(path), encoding)
+  })
   ipcMain.handle('markdown:save', async (event, request: SaveMarkdownRequest) => {
     const session = requireWindowSession(event.sender)
-    if (!request || typeof request.source !== 'string' || Buffer.byteLength(request.source, 'utf8') > MAX_MARKDOWN_LENGTH || typeof request.currentPath !== 'string' || !isMarkdownPath(request.currentPath)) throw new Error('md.invalid')
+    if (!request || typeof request.source !== 'string' || request.source.length > MAX_MARKDOWN_LENGTH || typeof request.currentPath !== 'string' || !isTextPath(request.currentPath) || request.encoding !== undefined && !isTextEncoding(request.encoding)) throw new Error('md.invalid')
+    if (request.lineEnding !== undefined && !isTextLineEnding(request.lineEnding)) throw new Error('md.invalid')
+    const data = encodeText(request.source.replace(/\r\n?/g, '\n').replace(/\n/g, request.lineEnding || '\n'), request.encoding)
+    if (data.length > MAX_MARKDOWN_LENGTH) throw new Error('md.invalid')
     let target = request.currentPath
     if (request.saveAs) {
-      const result = await dialog.showSaveDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.saveSource'), defaultPath: target, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+      const extension = documentType(target) === 'TXT' ? 'txt' : 'md'
+      const result = await dialog.showSaveDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.saveSource'), defaultPath: target, filters: [{ name: documentType(target), extensions: [extension] }] })
       if (result.canceled || !result.filePath) return { status: 'canceled' as const }
-      target = isMarkdownPath(result.filePath) ? result.filePath : `${result.filePath}.md`
+      target = new RegExp(`\\.${extension}$`, 'i').test(result.filePath) ? result.filePath : `${result.filePath}.${extension}`
     }
     const absolute = resolve(target)
-    try { await atomicWrite(absolute, new TextEncoder().encode(request.source)); await rememberRecentPdf(absolute).catch(() => undefined); return { status: 'saved' as const, path: absolute } }
+    try { await atomicWrite(absolute, data); await rememberRecentPdf(absolute).catch(() => undefined); return { status: 'saved' as const, path: absolute } }
     catch (error) { if (requiresSaveAs(error)) return { status: 'save-as-required' as const, target: absolute }; throw error }
   })
   ipcMain.handle('pdf:save', async (event, request: SavePdfRequest) => {

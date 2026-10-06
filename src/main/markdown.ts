@@ -1,12 +1,17 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
-import { isMarkdownPath, MAX_MARKDOWN_LENGTH, normalizeMarkdownOptions, type MarkdownOptions, type MarkdownRenderRequest } from '../shared/markdown'
+import { isTextPath, MAX_MARKDOWN_LENGTH, normalizeMarkdownOptions, type MarkdownOptions, type MarkdownRenderRequest, type TextEncoding, type TextLineEnding } from '../shared/markdown'
+import { decodeText } from './text-encoding'
 import { printHtmlPdf } from './html-pdf'
 
 export async function readMarkdown(path: string): Promise<string> {
-  if (!isMarkdownPath(path) || (await stat(path)).size > MAX_MARKDOWN_LENGTH) throw new Error('md.invalid')
-  try { return new TextDecoder('utf-8', { fatal: true }).decode(await readFile(path)) }
-  catch { throw new Error('md.invalid') }
+  return (await readTextDocument(path)).source
+}
+export async function readTextDocument(path: string, encoding?: TextEncoding) {
+  if (!isTextPath(path) || (await stat(path)).size > MAX_MARKDOWN_LENGTH) throw new Error('md.invalid')
+  const decoded = decodeText(await readFile(path), encoding)
+  const lineEnding: TextLineEnding = decoded.source.includes('\r\n') ? '\r\n' : decoded.source.includes('\r') ? '\r' : '\n'
+  return { ...decoded, lineEnding, source: decoded.source.replace(/\r\n?/g, '\n') }
 }
 
 const families = {
@@ -81,7 +86,7 @@ export function markdownPrintCss(options: MarkdownOptions): string {
     @page { @bottom-center { content: counter(page) " / " counter(pages); font: 9pt Arial, sans-serif; color: #68768d } }
     * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact }
     body { margin: 0; font: ${o.fontSize}pt/${o.lineHeight} ${families[o.font]}; color: #232937; overflow-wrap: anywhere }
-    article { white-space: normal }
+    article { white-space: normal } article.plain-text { white-space: pre-wrap; tab-size: 4 }
     p, ul, ol, pre, table, blockquote { margin-block: 0 ${o.paragraphSpacing}pt }
     h1,h2,h3,h4,h5,h6 { color: ${accents[o.template]}; line-height: 1.3; margin: 1.3em 0 .6em; break-after: avoid; page-break-after: avoid }
     h1 { font-size: 2em; margin-top: 0 } h2 { font-size: 1.5em } h3 { font-size: 1.2em } h4,h5,h6 { font-size: 1em }
@@ -134,7 +139,7 @@ export async function inlineMarkdownImages(html: string, sourcePath: string): Pr
   return html
 }
 export async function renderMarkdownPdf(request: MarkdownRenderRequest): Promise<Uint8Array> {
-  if (!request || typeof request.html !== 'string' || request.html.length > 20_000_000 || typeof request.sourcePath !== 'string' || !isMarkdownPath(request.sourcePath) || !request.options) throw new Error('md.invalid')
+  if (!request || typeof request.html !== 'string' || request.html.length > 40_000_000 || typeof request.sourcePath !== 'string' || !isTextPath(request.sourcePath) || !request.options) throw new Error('md.invalid')
   const options = normalizeMarkdownOptions(request.options)
   if (Object.keys(options).some(key => options[key as keyof MarkdownOptions] !== request.options[key as keyof MarkdownOptions])) throw new Error('md.invalid')
   return printHtmlPdf(await inlineMarkdownImages(request.html, request.sourcePath), markdownPrintCss(options))

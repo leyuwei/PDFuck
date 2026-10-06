@@ -32,7 +32,7 @@ export function loadMarkdownTemplateOptions(template: MarkdownTemplate) {
 }
 export function loadMarkdownPreferences() {
   const value = readMarkdownPreferences()
-  return { view: normalizeMarkdownView(value.view), ratio: normalizeMarkdownRatio(value.ratio), syncScroll: value.syncScroll === true, sourceFontSize: normalizeMarkdownSourceSize(value.sourceFontSize), options: normalizeMarkdownOptions(value.options as MarkdownDocument['options'] | undefined) }
+  return { view: normalizeMarkdownView(value.view), ratio: normalizeMarkdownRatio(value.ratio), syncScroll: value.syncScroll === true, wordWrap: value.wordWrap === true, sourceFontSize: normalizeMarkdownSourceSize(value.sourceFontSize), options: normalizeMarkdownOptions(value.options as MarkdownDocument['options'] | undefined) }
 }
 export function saveMarkdownPreferences(value: Partial<ReturnType<typeof loadMarkdownPreferences>>): void {
   try {
@@ -59,7 +59,8 @@ function remarkUnderline() {
     visit(tree)
   }
 }
-export function markdownHtml(source: string): string {
+export function markdownHtml(source: string, path = ''): string {
+  if (/\.txt$/i.test(path)) return renderToStaticMarkup(<article className="plain-text" dir="auto">{source}</article>)
   return renderToStaticMarkup(<article dir="auto"><Markdown remarkPlugins={[remarkGfm, remarkUnderline]} skipHtml urlTransform={(url, key) => key === 'src' && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(url) ? url : defaultUrlTransform(url)} components={{ img: props => <img {...props} loading="eager" />, p: props => <p dir="auto" {...props} />, h1: props => <h1 dir="auto" {...props} />, h2: props => <h2 dir="auto" {...props} />, li: props => <li dir="auto" {...props} /> }}>{source}</Markdown></article>)
 }
 export const MARKDOWN_INSERT_TYPES = ['heading', 'bold', 'italic', 'underline', 'strike', 'inline_code', 'list', 'ordered', 'task', 'quote', 'code', 'link', 'image', 'table', 'rule'] as const
