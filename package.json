@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -90,7 +90,8 @@
     "render:windows-installer": "electron scripts/windows-installer-artwork.cjs",
     "test:release-2.1.2": "node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.1.2.test.ts && electron-vite build && node scripts/release-2.1.2-ui-smoke.cjs",
     "test:release-2.1.1": "node scripts/run-vitest.cjs run src/renderer/src/lib/release-2.1.1.test.tsx && electron-vite build && node scripts/release-2.1.1-ui-smoke.cjs",
-    "test:windows-installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-installer-check.ps1"
+    "test:windows-installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-installer-check.ps1",
+    "test:release-2.1.3": "electron-vite build && node scripts/release-2.1.3-interaction-fixes-ui.cjs"
   },
   "dependencies": {
     "pdf-lib": "1.17.1",
