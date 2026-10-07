@@ -1,0 +1,19 @@
+.titlebar-tools .new-document-button { display: grid; place-items: center; flex: none; width: 36px; min-width: 36px; padding: 7px; }
+.new-document-button svg, .new-document-dialog svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.new-document-dialog { position: relative; width: min(460px, calc(100vw - 36px)); max-height: calc(100dvh - 130px); overflow: auto; border: 1px solid #dce3ef; border-radius: 18px; padding: 44px 22px 22px; background: #fff; color: #182033; box-shadow: 0 20px 70px #10203c40; }
+.new-document-dialog .new-document-close { position: absolute; inset-inline-end: 10px; top: 10px; width: 28px; height: 28px; padding: 4px; display: grid; place-items: center; border-color: transparent; background: transparent; }
+.new-document-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.new-document-choice { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; padding: 20px 12px 14px; border-radius: 12px; background: var(--theme-accent-faint, #f8fafd); white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.new-document-choice > b { font-size: var(--ui-font-title); }
+.new-document-choice small { flex: 1; font-size: var(--ui-font-small); line-height: 1.5; color: #68768d; }
+.new-document-choice em { font-size: var(--ui-font-small); font-style: normal; color: var(--theme-accent-strong, #3157d5); }
+.new-document-file { position: relative; display: grid; place-items: center; width: 58px; height: 64px; color: var(--theme-accent-strong, #3157d5); }
+.new-document-file svg { width: 58px; height: 64px; stroke-width: .9; }
+.new-document-file b { position: absolute; top: 30px; font-size: var(--ui-font-body); }
+.new-document-choice:focus-visible { outline: 2px solid var(--app-accent, #3157d5); outline-offset: 3px; }
+.md-unsaved-warning b { font-weight: 400; overflow-wrap: anywhere; }
+.md-unsaved-warning.temporary-document-warning { position: relative; top: auto; left: auto; transform: none; min-width: 0; max-width: none; flex: none; margin: 8px; }
+.theme-dark .new-document-dialog { background: #192231; color: #e4ebf7; border-color: #475a73; }
+.theme-dark .new-document-choice small { color: #b3c0d1; }
+.theme-dark .md-unsaved-warning { background: #382f20; color: #efd597; border-color: #826c3f; }
+.theme-dark .md-unsaved-warning button { background: transparent; color: #efd597; }

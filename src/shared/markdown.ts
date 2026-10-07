@@ -23,8 +23,10 @@ export function isTextLineEnding(value: unknown): value is TextLineEnding { retu
 export function isTextEncoding(value: unknown): value is TextEncoding { return TEXT_ENCODINGS.includes(value as TextEncoding) }
 export function isTextPath(path: string): boolean { return /\.(md|txt)$/i.test(path) }
 export function documentType(path = ''): 'TXT' | 'Markdown' | 'PDF' { return /\.txt$/i.test(path) ? 'TXT' : isMarkdownPath(path) ? 'Markdown' : 'PDF' }
-export function sourceDirty(document: MarkdownDocument): boolean { return document.source !== document.savedSource || (document.encoding || 'utf-8') !== (document.savedEncoding || 'utf-8') }
+export function sourceDirty(document: MarkdownDocument): boolean { return Boolean(document.unsaved) || document.source !== document.savedSource || (document.encoding || 'utf-8') !== (document.savedEncoding || 'utf-8') }
 export interface MarkdownDocument {
+  /** The display path has no file on disk until the first successful source save. */
+  unsaved?: boolean
   path: string
   source: string
   savedSource: string
@@ -36,7 +38,7 @@ export interface MarkdownDocument {
   /** PDF edits, including already exported edits, must survive source typing. */
   pdfModified?: boolean
 }
-export interface MarkdownRenderRequest { html: string; sourcePath: string; options: MarkdownOptions }
+export interface MarkdownRenderRequest { html: string; sourcePath: string; options: MarkdownOptions; unsaved?: boolean }
 export interface SaveMarkdownRequest { source: string; currentPath: string; saveAs?: boolean; encoding?: TextEncoding; lineEnding?: TextLineEnding }
 export function isMarkdownPath(path: string): boolean { return /\.md$/i.test(path) }
 export function isDocumentPath(path: string): boolean { return /\.(pdf|md|txt)$/i.test(path) }

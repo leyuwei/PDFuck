@@ -37,6 +37,8 @@
 
 打开或拖入 PDF、Markdown、TXT 即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
 
+顶部“保存”左侧的新建图标可创建空白 Markdown 或 TXT。选择类型后进入编辑器，并提醒尽快保存；首次保存选择本地位置。Tab 插入制表符或缩进多行，Shift+Tab 反缩进，Esc 将焦点移出编辑区；缩进支持撤销和重做。
+
 Markdown / TXT 原文使用 Ctrl/⌘+S 保存，“保存 PDF”单独导出预览。在仅编辑器视图中，页面编辑、批注、OCR 和打印等 PDF 操作禁用；切回双栏或 PDF 视图可使用。
 
 源码底栏的自动换行图标可切换横向滚动和按编辑区宽度回行，并记住选择。左侧行号使用独立底色和较淡、稍小的数字；每个原始行只在第一条显示行编号，自动换行的续行留白，不改动文档内容。
@@ -104,6 +106,8 @@ Choose a build for your platform from the [download page](https://github.com/ley
 | macOS | Download the DMG for your architecture and drag PDFuck into Applications. |
 
 Open or drop a PDF, Markdown, or TXT file to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
+
+Use the new-document icon immediately before **Save** to create a blank Markdown or TXT document. The editor then reminds you to save; the first save asks for a local path. Tab inserts a tab or indents selected lines, Shift+Tab outdents, and Esc moves focus out of the editor. Indentation supports undo and redo.
 
 In Markdown and TXT, Ctrl/Cmd+S saves the source; **Save PDF** exports the preview separately. PDF page tools, annotations, OCR, and printing are disabled in editor-only view and available with the PDF preview.
 

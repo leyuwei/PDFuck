@@ -115,8 +115,8 @@ function imageMime(bytes: Uint8Array): string | undefined {
   return undefined
 }
 function decodeAttribute(value: string): string { return value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>') }
-export async function inlineMarkdownImages(html: string, sourcePath: string): Promise<string> {
-  const root = await realpath(dirname(sourcePath))
+export async function inlineMarkdownImages(html: string, sourcePath: string, unsaved = false): Promise<string> {
+  const root = unsaved ? undefined : await realpath(dirname(sourcePath))
   const tags = [...html.matchAll(/<img\b[^>]*>/gi)]
   // Process sequentially to bound disk reads and base64 memory for image-heavy documents.
   for (const match of tags) {
@@ -126,7 +126,7 @@ export async function inlineMarkdownImages(html: string, sourcePath: string): Pr
       if (/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(src) && src.length < 28_000_000) {
         const bytes = Buffer.from(src.slice(src.indexOf(',') + 1), 'base64'), mime = imageMime(bytes)
         if (mime) data = `data:${mime};base64,${bytes.toString('base64')}`
-      } else if (src && !/^(?:[a-z][\w+.-]*:|[/\\])/i.test(src)) {
+      } else if (root && src && !/^(?:[a-z][\w+.-]*:|[/\\])/i.test(src)) {
         const file = await realpath(resolve(root, decodeURIComponent(src))), rel = relative(root, file)
         if (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`) && (await stat(file)).size <= 20 * 1024 * 1024) {
           const bytes = await readFile(file), mime = imageMime(bytes)
@@ -139,8 +139,9 @@ export async function inlineMarkdownImages(html: string, sourcePath: string): Pr
   return html
 }
 export async function renderMarkdownPdf(request: MarkdownRenderRequest): Promise<Uint8Array> {
+  if (request?.unsaved !== undefined && typeof request.unsaved !== 'boolean') throw new Error('md.invalid')
   if (!request || typeof request.html !== 'string' || request.html.length > 40_000_000 || typeof request.sourcePath !== 'string' || !isTextPath(request.sourcePath) || !request.options) throw new Error('md.invalid')
   const options = normalizeMarkdownOptions(request.options)
   if (Object.keys(options).some(key => options[key as keyof MarkdownOptions] !== request.options[key as keyof MarkdownOptions])) throw new Error('md.invalid')
-  return printHtmlPdf(await inlineMarkdownImages(request.html, request.sourcePath), markdownPrintCss(options))
+  return printHtmlPdf(await inlineMarkdownImages(request.html, request.sourcePath, request.unsaved), markdownPrintCss(options))
 }
