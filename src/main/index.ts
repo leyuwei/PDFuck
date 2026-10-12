@@ -1,5 +1,6 @@
 import { createLabReport } from './lab-report'
 import { readTextDocument, renderMarkdownPdf } from './markdown'
+import { renderPageText } from './page-text'
 import { encodeText } from './text-encoding'
 import { documentType, isDocumentPath, isTextPath, isTextEncoding, isTextLineEnding, MAX_MARKDOWN_LENGTH, type TextEncoding } from '../shared/markdown'
 import type { SaveMarkdownRequest } from '../shared/markdown'
@@ -747,6 +748,7 @@ app.whenReady().then(async () => {
     void rememberReadingPosition(request.path, request.position)
   })
   ipcMain.handle('markdown:render', (event, request) => { requireMainWindow(event.sender); return renderMarkdownPdf(request) })
+  ipcMain.handle('pdf:render-page-text', (event, request) => { requireMainWindow(event.sender); return renderPageText(request) })
   ipcMain.handle('text:read-encoding', (event, path: string, encoding: TextEncoding) => {
     requireMainWindow(event.sender)
     if (typeof path !== 'string' || !isTextPath(path) || !isTextEncoding(encoding)) throw new Error('text.invalidEncoding')

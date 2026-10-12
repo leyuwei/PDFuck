@@ -21,6 +21,7 @@ const api: DesktopApi = {
   saveMarkdown: (request) => ipcRenderer.invoke('markdown:save', request),
   readTextEncoding: (path, encoding) => ipcRenderer.invoke('text:read-encoding', path, encoding),
   renderMarkdown: (request) => ipcRenderer.invoke('markdown:render', request),
+  renderPageText: (request) => ipcRenderer.invoke('pdf:render-page-text', request),
   listPrinters: () => ipcRenderer.invoke('pdf:list-printers'),
   openPrinterSettings: (printerName) => ipcRenderer.invoke('pdf:open-printer-settings', printerName),
   printPdf: (request: PrintPdfRequest) => ipcRenderer.invoke('pdf:print', request),

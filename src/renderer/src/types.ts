@@ -66,7 +66,7 @@ export interface TextStyle {
   bold: boolean
   italic: boolean
   align: 'left' | 'center' | 'right'
-  lineHeight?: 1 | 1.25 | 1.5 | 2
+  lineHeight?: number
   paragraphBefore?: number
   paragraphAfter?: number
   letterSpacing?: number
@@ -78,8 +78,26 @@ export interface EditableTextRegion {
   text: string
   rect: PdfRect
   sourceRects: PdfRect[]
-  lines: Array<{ text: string; rect: PdfRect }>
+  lines: Array<{ text: string; rect: PdfRect; sources?: Array<{ text: string; font: string; x: number; y: number; rtl: boolean }> }>
+  nativeFonts?: Record<string, NativeTextFont>
+  layoutWidth?: number
+  justified?: boolean
   style: TextStyle
+}
+
+/** Original character codes and metrics, never a system-font approximation. */
+export interface NativeTextFont {
+  type3?: boolean
+  name: string
+  unicode: Record<number, string>
+  widths: Record<number, number>
+  codeLengths: Array<number[]>
+  matrix: number
+  vertical: boolean
+  program?: Uint8Array
+  fontChars?: Record<number, number>
+  loadedName?: string
+  postscriptName?: string
 }
 
 export interface AddAnnotationRequest {
@@ -97,10 +115,12 @@ export interface AddAnnotationRequest {
 }
 
 export interface PageTextEdit {
+  onFailure?: (error: unknown) => void
   region: EditableTextRegion
   text: string
   style: TextStyle
   backgroundColor: string
+  preserveSourceAppearance?: boolean
 }
 
 export interface TextObjectRecord {

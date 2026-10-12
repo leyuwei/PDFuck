@@ -543,3 +543,5 @@ footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-s
 .theme-dark .page-annotation-summary .thinking, .theme-dark .inline-annotation-statuses .thinking { color: #ebc879; }
 .theme-dark .page-annotation-summary .declined, .theme-dark .inline-annotation-statuses .declined { color: #eba4b5; }
 .theme-dark .annotation-editor-fields > .annotation-markdown, .theme-dark .inline-annotation-body section { border-color: #475a73; }
+
+.page-text-save-status { color: inherit; font-size: var(--ui-font-small); padding: 4px; }

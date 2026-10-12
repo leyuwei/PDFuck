@@ -43,6 +43,8 @@ export function fontCategory(value: string): FontCategory {
 export function normalizeFontFamily(...candidates: Array<string | undefined>): string {
   const joined = candidates.filter(Boolean).join(' ')
   const font = joined.toLowerCase().replace(/\s+/g, '')
+  if (/pingfang/.test(font)) return 'PingFang SC'
+  if (/hiragino.*sans|hiraginokaku/.test(font)) return 'Hiragino Sans'
   if (/microsoftyahei|msyh|yahei/.test(font)) return 'Microsoft YaHei'
   if (/simsun|nsimsun|songti|song|sung|mingliu|ming/.test(font)) return 'SimSun'
   if (/simhei|heiti|hei/.test(font)) return 'SimHei'

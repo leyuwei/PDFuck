@@ -5,6 +5,17 @@ import type { MarkdownDocument, MarkdownRenderRequest, SaveMarkdownRequest, Text
 export type ExportFormat = 'pdf' | 'png' | 'jpg' | 'eps'
 export type RasterExportFormat = Exclude<ExportFormat, 'pdf' | 'eps'>
 
+export interface PageTextRenderRequest {
+  text: string; originalText: string; width: number; size: number; color: string; family: string
+  bold: boolean; italic: boolean; align: 'left' | 'center' | 'right'; leading: number; baseline: number
+  spacing: number; wordSpacing: number; scale: number; firstIndent: number
+  justified?: boolean
+  bottom?: number
+  kerning?: Record<string, number>
+  source?: { name: string; loadedName: string; postscriptName?: string; program: Uint8Array; unicode: Record<number, string>; fontChars: Record<number, number>; widths: Record<number, number>; matrix: number }
+}
+export interface PageTextRenderResult { pdf: Uint8Array; width: number; height: number; fallbackUsed: boolean }
+
 export interface OpenedPdf {
   markdown?: string
   encoding?: TextEncoding
@@ -236,6 +247,7 @@ export interface DesktopApi {
   saveMarkdown(request: SaveMarkdownRequest): Promise<SavePdfResult>
   readTextEncoding(path: string, encoding: TextEncoding): Promise<{ source: string; encoding: TextEncoding; lineEnding: TextLineEnding }>
   renderMarkdown(request: MarkdownRenderRequest): Promise<Uint8Array>
+  renderPageText(request: PageTextRenderRequest): Promise<PageTextRenderResult>
   listPrinters(): Promise<PrinterDescriptor[]>
   openPrinterSettings(printerName: string): Promise<void>
   printPdf(request: PrintPdfRequest): Promise<PrintPdfResult>

@@ -6,7 +6,7 @@ import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import { createPortal } from 'react-dom'
 import { ContextMenu } from './ContextMenu'
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnnotationMode, getDocument, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, normalizeUnicode, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
@@ -19,7 +19,9 @@ import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPo
 import { canvasOutputScale, singlePageWheelDecision, virtualPageSpacerHeight, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
-import { pageTextCaretOffsetAt, pageTextRegionHasReplacement, replacementTextRect } from '../lib/page-text-edit'
+import { pageTextCaretOffsetAt, pageTextPreservesStyle, pageTextRegionHasReplacement, replacementTextRect } from '../lib/page-text-edit'
+import { nativeTextFont } from '../lib/native-page-text'
+import { nativeTextPreview, nativeTextPreviewPage } from '../lib/page-text-preview'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
 import { AnnotationColorPicker } from './AnnotationControls'
 import { citationLinks, grammarIssues, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
@@ -68,7 +70,7 @@ interface ViewerProps {
   onReadingPositionChange(position: ReadingPosition): void
   onDocumentReady(pageCount: number): void
   onDocumentBookmarks?(bookmarks: PdfBookmark[]): void
-  onAction(action: CanvasAction): void | Promise<void>
+  onAction(action: CanvasAction): void | Promise<void | boolean>
   onSelectionChange(pageIndex: number, selection?: TextSelection): void
   onCopyText(text: string): void
   translationEnabled?: boolean
@@ -113,7 +115,7 @@ interface PageProps {
   editableTextObjects: boolean
   activePage: boolean
   annotationMode: boolean
-  onAction(action: CanvasAction): void | Promise<void>
+  onAction(action: CanvasAction): void | Promise<void | boolean>
   onSelectionChange(selection?: TextSelection): void
   onTextMap(pageIndex: number, words: WordBox[]): void
   onCrossSelectionStart(pageIndex: number, position?: TextPosition, extend?: boolean): void
@@ -334,15 +336,7 @@ function TextObjectOverlay({ textObject, zoom, pageSize, editable, onMove, onRes
 }
 
 function automaticBoundaryFractions(words: WordBox[], pageWidth: number): number[] {
-  const columns = [...new Set(words.flatMap((word) => word.column === undefined || word.columnAmbiguous ? [] : [word.column]))].sort((left, right) => left - right)
-  return columns.slice(0, -1).flatMap((column, index) => {
-    if (columns[index + 1] !== column + 1) return []
-    const left = words.filter((word) => word.column === column && !word.columnAmbiguous)
-    const right = words.filter((word) => word.column === column + 1 && !word.columnAmbiguous)
-    const leftEdge = Math.max(...left.map((word) => word.rect.x + word.rect.width))
-    const rightEdge = Math.min(...right.map((word) => word.rect.x))
-    return left.length && right.length && leftEdge < rightEdge ? [(leftEdge + rightEdge) / 2 / pageWidth] : []
-  })
+  return (words[0]?.columnBoundaries || []).map((boundary) => boundary / pageWidth)
 }
 
 function SavedImageOverlay({ image, zoom, editable, onEdit }: { image: ImageObjectRecord; zoom: number; editable: boolean; onEdit(image: ImageObjectRecord): void }) {
@@ -450,12 +444,25 @@ function ImageDraftOverlay({ draft, zoom, bounds, busy = false, onChange, onConf
   </>
 }
 
-function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor, initialCaret, onCancel, onSave }: { region: EditableTextRegion; zoom: number; pageSize: { width: number; height: number }; initialColor: string; backgroundColor: string; initialCaret: number; onCancel(): void; onSave(text: string, style: TextStyle): Promise<void> }) {
+function PageTextEditor({ region, sourceDocument, pageIndex, zoom, pageSize, initialColor, backgroundColor, initialCaret, onCancel, onSave }: { region: EditableTextRegion; sourceDocument: PDFDocumentProxy; pageIndex: number; zoom: number; pageSize: { width: number; height: number }; initialColor: string; backgroundColor: string; initialCaret: number; onCancel(): void; onSave(text: string, style: TextStyle, onFailure: (error: unknown) => void): Promise<void> }) {
   const [text, setText] = useState(region.text)
   const [style, setStyle] = useState<TextStyle>({ ...region.style, color: initialColor })
   const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
   const savingRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [nativePreview, setNativePreview] = useState<{ source: string; text: string; rect: EditableTextRegion['rect']; fallbackUsed: boolean }>()
+  const previewPage = useMemo(() => sourceDocument.getData().then((data) => nativeTextPreviewPage(data, pageIndex)), [sourceDocument, pageIndex])
+  const preservesStyle = pageTextPreservesStyle(region, style, initialColor)
+  useEffect(() => {
+    let active = true
+    const timer = setTimeout(() => {
+      previewPage.then((data) => nativeTextPreview(data, region, text, canvasOutputScale(region.rect.width, region.rect.height, Math.max(3, zoom * (window.devicePixelRatio || 1))), style, preservesStyle))
+        .then((value) => { if (active) setNativePreview({ ...value, text }) })
+        .catch((error) => { console.debug('Page text preview:', error); if (active) setNativePreview(undefined) })
+    }, 150)
+    return () => { active = false; clearTimeout(timer) }
+  }, [preservesStyle, previewPage, region, text, zoom, style])
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -468,34 +475,36 @@ function PageTextEditor({ region, zoom, pageSize, initialColor, backgroundColor,
   const sourceFont = style.sourceFont?.replace(/["']/g, '')
   const fontFamily = sourceFont ? `"${sourceFont}", ${fontCssFamily(style.font)}` : fontCssFamily(style.font)
   const fontOptions = fontOptionsFor(style.font)
-  const geometryChanged = text !== region.text || style.font !== region.style.font || style.size !== region.style.size || style.bold !== region.style.bold || style.italic !== region.style.italic || style.align !== region.style.align || lineHeight !== (region.style.lineHeight || 1.25) || paragraphBefore !== (region.style.paragraphBefore || 0) || paragraphAfter !== (region.style.paragraphAfter || 0) || (style.letterSpacing || 0) !== (region.style.letterSpacing || 0) || (style.horizontalScale || 100) !== (region.style.horizontalScale || 100)
-  const editorRect = geometryChanged ? replacementTextRect(region.rect, text, style, pageSize) : region.rect
+  const geometryChanged = !preservesStyle
+  const editorRect = nativePreview?.rect || (geometryChanged ? replacementTextRect(region.rect, text, style, pageSize) : region.rect)
   const editorWidth = editorRect.width * zoom
   const editorHeight = editorRect.height * zoom
   const toolbarWidth = Math.min(550, Math.max(300, pageSize.width * zoom - 12))
   const toolbarLeft = Math.max(6, Math.min(pageSize.width * zoom - toolbarWidth - 6, region.rect.x * zoom))
-  const toolbarHeight = 78
+  const toolbarHeight = failed ? 106 : 78
   const toolbarTop = region.rect.y * zoom >= toolbarHeight + 8 ? region.rect.y * zoom - toolbarHeight - 6 : Math.min(pageSize.height * zoom - toolbarHeight, region.rect.y * zoom + editorHeight + 7)
   const submit = async () => {
     if (savingRef.current) return
-    savingRef.current = true; setSaving(true)
-    await onSave(text, style)
+    savingRef.current = true; setSaving(true); setFailed(false)
+    try { await onSave(text, style, () => setFailed(true)) } finally { savingRef.current = false; setSaving(false) }
   }
   return <>
-    <div className="page-text-edit-masks" aria-hidden>{region.sourceRects.map((rect, index) => <span key={index} style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom, color: backgroundColor, backgroundColor }} />)}</div>
-    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("ui.editPageTextContent")} spellCheck={false} style={{ left: editorRect.x * zoom, top: editorRect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: paragraphBefore * zoom, paddingBottom: paragraphAfter * zoom, color: style.color, backgroundColor: 'transparent', fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape' && !saving) onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); void submit() } }} />
+    <div className="page-text-edit-masks" aria-hidden>{!nativePreview && region.sourceRects.map((rect, index) => <span key={index} style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom, color: backgroundColor, backgroundColor }} />)}</div>
+    {nativePreview && <img className="page-text-native-preview" src={nativePreview.source} data-preview-text={nativePreview.text} data-fallback-font={nativePreview.fallbackUsed} alt="" aria-hidden style={{ position: 'absolute', zIndex: 23, pointerEvents: 'none', left: nativePreview.rect.x * zoom, top: nativePreview.rect.y * zoom, width: nativePreview.rect.width * zoom, height: nativePreview.rect.height * zoom }} />}
+    <textarea ref={textareaRef} className="page-text-inline-editor" value={text} aria-label={ui("ui.editPageTextContent")} spellCheck={false} style={{ left: editorRect.x * zoom, top: editorRect.y * zoom, width: editorWidth, height: editorHeight, paddingTop: paragraphBefore * zoom, paddingBottom: paragraphAfter * zoom, color: nativePreview ? 'transparent' : style.color, backgroundColor: 'transparent', fontFamily, fontSize: style.size * zoom, fontWeight: style.bold ? 700 : 400, fontStyle: style.italic ? 'italic' : 'normal', fontStretch: `${style.horizontalScale || 100}%`, letterSpacing: (style.letterSpacing || 0) * zoom, textAlign: style.align, lineHeight }} onChange={(event) => setText(event.target.value)} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape' && !saving) onCancel(); else if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key.toLowerCase() === 's')) { event.preventDefault(); void submit() } }} />
     <div className="page-text-format-toolbar" style={{ left: toolbarLeft, top: toolbarTop, width: toolbarWidth }} onPointerDown={(event) => event.stopPropagation()}>
+      {failed && <div className="page-text-save-status" role="status">{ui('ui.pageTextSaveFailed')}</div>}
       <div className="format-toolbar-row"><span className="format-toolbar-grip" aria-hidden="true">Aa</span>
-        <label title={ui("ui.font")}><select aria-label={ui("ui.font")} value={normalizeFontFamily(style.font)} disabled={saving} onChange={(event) => setStyle({ ...style, font: event.target.value, sourceFont: undefined })}>{fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label.endsWith('（原文字体）') ? `${option.label.slice(0, -6)} (${ui("ui.originalFont")})` : translateUiText(option.label)}</option>)}</select></label>
+        <label title={ui("ui.font")}><select aria-label={ui("ui.font")} value={style.sourceFont ? '' : normalizeFontFamily(style.font)} disabled={saving} onChange={(event) => setStyle({ ...style, font: event.target.value || region.style.font, sourceFont: event.target.value ? undefined : region.style.sourceFont })}><option value="">{ui(nativePreview?.fallbackUsed ? "ui.originalFontWithFallback" : "ui.originalFont")}</option>{fontOptions.map((option) => <option key={option.value} value={option.value}>{translateUiText(option.value)}</option>)}</select></label>
         <label className="format-size" title={ui("ui.fontSize")}><input aria-label={ui("ui.fontSize")} type="number" min="6" max="144" step=".5" value={style.size} onChange={(event) => setStyle({ ...style, size: Math.max(6, Math.min(144, Number(event.target.value) || 6)) })} /></label>
-        <button type="button" disabled={saving} className={style.bold ? 'active' : ''} aria-label={ui("ui.bold")} title={ui("ui.bold")} onClick={() => setStyle({ ...style, bold: !style.bold, sourceFont: undefined })}><b>B</b></button>
-        <button type="button" disabled={saving} className={style.italic ? 'active' : ''} aria-label={ui("ui.italic")} title={ui("ui.italic")} onClick={() => setStyle({ ...style, italic: !style.italic, sourceFont: undefined })}><i>I</i></button>
+        <button type="button" disabled={saving} className={style.bold ? 'active' : ''} aria-label={ui("ui.bold")} title={ui("ui.bold")} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b></button>
+        <button type="button" disabled={saving} className={style.italic ? 'active' : ''} aria-label={ui("ui.italic")} title={ui("ui.italic")} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i></button>
         <label className="format-color" title={ui("ui.textColor")}><input aria-label={ui("ui.textColor")} type="color" value={style.color} onChange={(event) => setStyle({ ...style, color: event.target.value })} /></label>
         <span className="toolbar-spacer" /><button type="button" disabled={saving} className="toolbar-cancel" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" disabled={saving} className="primary toolbar-apply" onClick={() => void submit()}>{ui("ui.apply")}</button>
       </div>
       <div className="format-toolbar-row secondary"><span className="format-group-label">{ui("ui.paragraph")}</span>
         {(['left', 'center', 'right'] as const).map((align) => <button type="button" key={align} className={style.align === align ? 'active' : ''} aria-label={align === 'left' ? ui("ui.left") : align === 'center' ? ui("ui.center") : ui("ui.right")} title={align === 'left' ? ui("ui.left") : align === 'center' ? ui("ui.center") : ui("ui.right")} onClick={() => setStyle({ ...style, align })}><span className={`align-glyph ${align}`} /></button>)}
-        <label className="format-line-height" title={ui("ui.paragraphLineSpacing")}><select aria-label={ui("ui.paragraphLineSpacing")} value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label>
+        <label className="format-line-height" title={ui("ui.paragraphLineSpacing")}><select aria-label={ui("ui.paragraphLineSpacing")} value={lineHeight} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) })}>{![1, 1.25, 1.5, 2].includes(lineHeight) && <option value={lineHeight}>{Number(lineHeight.toFixed(4))}×</option>}<option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label>
         <label className="format-number" title={ui("ui.spaceBeforeParagraph")}><span>{ui("ui.before")}</span><input aria-label={ui("ui.spaceBeforeParagraph")} type="number" min="0" max="144" step=".5" value={paragraphBefore} onChange={(event) => setStyle({ ...style, paragraphBefore: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
         <label className="format-number" title={ui("ui.spaceAfterParagraph")}><span>{ui("ui.after")}</span><input aria-label={ui("ui.spaceAfterParagraph")} type="number" min="0" max="144" step=".5" value={paragraphAfter} onChange={(event) => setStyle({ ...style, paragraphAfter: Math.max(0, Math.min(144, Number(event.target.value) || 0)) })} /></label>
         <span className="toolbar-divider" /><span className="format-group-label">{ui("ui.character")}</span>
@@ -582,12 +591,19 @@ function pdfDocumentKey(document: PDFDocumentProxy): string {
   return document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
 }
 
-function fontDetailsForPage(page: PDFPageProxy, items: TextItem[]): Record<string, PdfFontDetails> {
+async function fontDetailsForPage(page: PDFPageProxy, items: TextItem[]): Promise<Record<string, PdfFontDetails>> {
+  const operators = await page.getOperatorList()
+  const operatorFonts = operators.argsArray.flatMap((args, index) => {
+    if (operators.fnArray[index] === OPS.setFont) return [args[0] as string]
+    if (operators.fnArray[index] === OPS.dependency) return args.filter((value: unknown): value is string => typeof value === 'string')
+    if (operators.fnArray[index] === OPS.setGState) return args[0].flatMap(([key, value]: [string, unknown[]]) => key === 'Font' ? [value[0] as string] : [])
+    return []
+  })
   const details: Record<string, PdfFontDetails> = {}
-  for (const fontName of new Set(items.map((item) => item.fontName))) {
+  for (const fontName of new Set([...items.map((item) => item.fontName), ...operatorFonts])) {
     try {
-      const font = page.commonObjs.get(fontName) as PdfFontDetails | undefined
-      if (font) details[fontName] = { name: font.name, loadedName: font.loadedName, bold: font.bold, italic: font.italic }
+      const font = page.commonObjs.get(fontName) as (PdfFontDetails & Parameters<typeof nativeTextFont>[0]) | undefined
+      if (font?.name) details[fontName] = { name: font.name, loadedName: font.loadedName, bold: Boolean(font.bold || font.black || /bold|semibold|demi/i.test(font.name)), italic: font.italic, native: nativeTextFont(font, normalizeUnicode) }
     } catch { /* PDF.js can defer an uncommon font object; family/size still remain available. */ }
   }
   return details
@@ -704,10 +720,11 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     textLoadedRef.current = true
     let cancelled = false
     const viewport = page.getViewport({ scale: 1 })
-    page.getTextContent().then((content) => {
+    page.getTextContent().then(async content => {
       if (cancelled) return
       const items = content.items.filter((item): item is TextItem => 'str' in item)
-      const fontDetails = fontDetailsForPage(page, items)
+      const fontDetails = await fontDetailsForPage(page, items)
+      if (cancelled) return
       const rebuild = (override?: PageLayoutOverride) => {
         const nextWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, scaledLayoutOverride(override, viewport.width, viewport.height))
         setWords(nextWords); onTextMap(pageIndex, nextWords)
@@ -715,7 +732,16 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       }
       rebuildTextMapRef.current = rebuild
       rebuild(layoutOverrideRef.current)
-      setTextRegions(textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails))
+      const regions = textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
+      const layout = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
+      const boundaries = layout[0]?.columnBoundaries || [], margin = Math.max(12, Math.min(...layout.map(word => word.rect.x)))
+      const longEdges = regions.flatMap(region => region.lines.filter(line => line.rect.width > viewport.width * .45).map(line => line.rect.x + line.rect.width)).sort((a, b) => a - b)
+      const bodyRight = longEdges.length >= 3 ? longEdges[Math.floor(longEdges.length * .75)] : viewport.width - margin
+      setTextRegions(regions.map(region => {
+        const edge = boundaries.find(boundary => boundary > region.rect.x + region.rect.width / 2)
+        const right = edge ? edge - region.style.size * .5 : boundaries.length ? viewport.width - margin : bodyRight
+        return { ...region, layoutWidth: Math.max(region.rect.width, right - region.rect.x) }
+      }))
     }).catch((error) => { if (!cancelled) { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) } })
     return () => { cancelled = true }
   }, [page, pageIndex, textRequested, onError, onTextMap])
@@ -1080,8 +1106,8 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     </div>}
     {citationMatches.flatMap((match) => match.rects.map((rect, index) => { const labels = [...new Set(match.hits.map((hit) => hit.citation))].join(', '); return <button type="button" key={`${match.key}-${index}`} className={`citation-link-mark${citationPopup?.key === match.key ? ' active' : ''}`} style={{ left: rect.x * zoom, top: rect.y * zoom, width: Math.max(5, rect.width * zoom), height: Math.max(8, rect.height * zoom) }} aria-label={`${ui("ui.viewCitation")}${labels}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCopiedCitation(false); setCitationPopup({ key: match.key, hits: match.hits, rect }) }} /> }))}
     {grammarMatches.map((word) => <span key={`grammar-${word.order}`} className="grammar-mark" style={{ left: word.rect.x * zoom, top: (word.rect.y + word.rect.height - 2) * zoom, width: Math.max(4, word.rect.width * zoom) }} title={ui("ui.grammarOrSpellingResults")} />)}
-    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} aria-label={`${ui("ui.editText2")}${region.text.slice(0, 40)}`} title={ui("ui.clickToEditThisText")} style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} />)}
-    {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} initialCaret={pageTextEditor.caretOffset} onCancel={() => setPageTextEditor(undefined)} onSave={async (text, style) => { await onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background } }); setPageTextEditor(undefined) }} />}
+    {tool === 'edit_text' && activePage && editableRegions.map((region) => <button type="button" key={region.id} className={`page-text-region${pageTextEditor?.region.id === region.id ? ' active' : ''}`} data-font-size={region.style.size} aria-label={`${ui("ui.editText2")}${region.text.slice(0, 40)}`} title={ui("ui.clickToEditThisText")} style={{ left: region.rect.x * zoom - 2, top: region.rect.y * zoom - 2, width: Math.max(8, region.rect.width * zoom + 4), height: Math.max(8, region.rect.height * zoom + 4) }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openPageTextEditor(region, pointFor(event)) }} />)}
+    {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} sourceDocument={document} pageIndex={pageIndex} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} initialCaret={pageTextEditor.caretOffset} onCancel={() => setPageTextEditor(undefined)} onSave={async (text, style, onFailure) => { const saved = await onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background, preserveSourceAppearance: pageTextPreservesStyle(pageTextEditor.region, style, pageTextEditor.foreground), onFailure } }); if (saved !== false) setPageTextEditor(undefined) }} />}
     {activeSelection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textFocus?.text && textFocus.token > 0 && textFocus.text && preciseFocus?.rects.map((rect, index) => <div ref={index === 0 ? preciseFocusRef : undefined} key={`precise-focus-${textFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus?.rects?.map((rect, index) => <div ref={index === 0 ? visualFocusRef : undefined} key={`visual-focus-${visualFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
@@ -1299,7 +1325,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     // user confirms a new image on the same page.
     setDocument(undefined); setSizes({})
     let active = true
-    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, ...(password === undefined ? {} : { password }) })
+    const task = getDocument({ data: data.slice(), fontExtraProperties: true, wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, ...(password === undefined ? {} : { password }) })
     task.promise.then((value) => { if (active) { wordMapsDocumentRef.current = value; wordMapsRef.current.clear(); setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
     return () => { active = false; task.destroy().catch(() => undefined) }
   }, [data, password, onDocumentReady, onError])
@@ -1467,7 +1493,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const viewport = page.getViewport({ scale: 1 })
     const content = await page.getTextContent()
     const items = content.items.filter((item): item is TextItem => 'str' in item)
-    const words = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetailsForPage(page, items), scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height))
+    const words = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], await fontDetailsForPage(page, items), scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height))
     if (wordMapsDocumentRef.current === document) wordMapsRef.current.set(pageIndex, words)
     return words
   }, [document])
@@ -1649,9 +1675,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   }
   return <div className="viewer" ref={viewportRef} onPointerMove={(event) => { zoomPointerRef.current = { clientX: event.clientX, clientY: event.clientY } }}>
       <ZoomScrollAnchor zoom={zoom} currentPage={currentPage} viewport={viewportRef} anchor={wheelAnchorRef} pointer={zoomPointerRef} sizes={sizes} pages={virtualized ? visiblePages : undefined}>
-      <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(0, visiblePages[0], sizes, zoom) }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.fingerprints[0]}-${pageIndex}`}>
+      <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(0, visiblePages[0], sizes, zoom) }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.loadingTask.docId}-${pageIndex}`}>
       {virtualized && index > 0 && pageIndex > visiblePages[index - 1] + 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages[index - 1] + 1, pageIndex, sizes, zoom) }} aria-hidden />}
-      <PdfPage key={`${document.fingerprints[0]}-${pageIndex}`} document={document} pageIndex={pageIndex} initialSize={sizes[pageIndex]} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
+      <PdfPage key={`${document.loadingTask.docId}-${pageIndex}`} document={document} pageIndex={pageIndex} initialSize={sizes[pageIndex]} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={(annotation, options) => { setInlineAnnotationId(annotation.id); onAnnotationSelect(annotation, options) }} onAnnotationReply={onAnnotationReply} inlineAnnotationId={inlineAnnotationId} inlineMode={annotationView.mode === 'document'} annotationMarkdown={annotationView.markdown} onInlineClose={() => setInlineAnnotationId(undefined)} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} grammarTerms={grammarTerms} citationHits={citationHits.filter((hit) => hit.pageIndex === pageIndex)} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages.at(-1)! + 1, document.numPages, sizes, zoom) }} aria-hidden />}</div>

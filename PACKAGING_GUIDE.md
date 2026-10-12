@@ -18,6 +18,12 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.7 可用性修复与重新交付（2026-10-12）**：版本与锁文件保持 2.1.7，无新增依赖。普通增字、换行、缺字和格式调整自动进入既有 Chromium PDF 矢量排版流程；小改动继续复用原指令。编辑前加载与预览相同的保存快照，避免后续编辑解析内存指令流失败。自动复用嵌入字体程序、基线与间距，字体子集缺字时自动补齐并标明。修复段落合并公式编号、平台字体影响几何，以及短行和公式使同一栏沟的候选中心漂移的问题。选择、段落宽度与可视栏线共用实际栏沟。
+
+用户 Markdown 后续可用性修复：完整读取绘制指令中使用的字体，按完整 ToUnicode 字符表区分同名字体子集（包括新子集是原子集的一部分的情况），合并同一字族的段落与字宽，兼容 ExtGState 字体，并将同一字体的自动补字合回原行；打印输出同样读取 Type3 FontDescriptor 字体名，并处理 Chromium 对嵌套子集名中加号的改写，还原私有字形的原文与标点。自动排版的系统补字保留原字体类别。页面编辑失败反馈留在格式栏，保留草稿并可重试，不弹通用错误窗口。
+
+本轮仅执行关键 `src/renderer/src/lib/release-2.1.7-repair.test.ts`、`src/renderer/src/lib/release-2.1.7-markdown.test.ts` 共 13 项，以及 `scripts/release-2.1.7-repair-ui.cjs`、`scripts/release-2.1.7-markdown-ui.cjs`、typecheck、生产构建和 diff 检查。新 UI 验收使用用户提供的实际 section_vii_changes.md，验证无衬线/衬线 14pt、连续修改、格式、保存重开再次修改、段落外像素保持，以及模拟输出失败时无弹窗且草稿保留并可重试。命令为 `npm run typecheck`、`npm run test:release-2.1.7`；旧 UI 入口转发至当前验收。计划与记录见 `docs/PLAN-2.1.7-repair.md`、`docs/VALIDATION-2.1.7.md`。生成 macOS arm64 APP / DMG / ZIP；以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品执行上述两项关键 UI 验收，使用独立 `--user-data-dir`。随后运行 `node scripts/release-2.1.7-package-check.cjs` 核对生产字节、版本、签名、DMG 和 ZIP，并更新 SHA-256 清单。本机没有 Developer ID，采用 ad-hoc 签名且未公证；不调用旧测试全集或一键打包脚本。
+
 **2.1.6 新建文档与 Tab 缩进（2026-10-07）**：版本及锁文件同步为 2.1.6，无新增依赖。保存左侧增加同高 36px 的新建图标，无标题浮窗仅提供 Markdown/TXT 类型选择；按用户最终要求，选择前不显示警示框。创建后在源码工作区显示临时目录警告风格的保存提醒，空白文件也视为未保存，首次保存强制选择路径，取消保留文档；关闭复用原保存/放弃/取消确认，标签存档不会收录无磁盘路径的新文件。新文档保留字号与换行偏好，原先仅 PDF 视图时自动露出源码。源码 Tab 插入真实制表符或逐行缩进，Shift+Tab 删除一档前导 Tab/最多四空格；保留选区，进入既有撤销历史，兼容输入法，Esc 可离开编辑区。制表符显示宽度为四字符，与 TXT PDF 一致。新浮窗和提醒支持十语言、双主题及四档界面字号，编辑器 S/M/L 沿用原设置。
 
 本轮只运行新增 `src/renderer/src/lib/release-2.1.6.test.ts`（6 项）、`src/main/release-2.1.6.test.ts`（2 项），以及新增 `scripts/release-2.1.6-ui.cjs` 的 behavior/layout/labels/edge 阶段；通过后只补测受修改影响项。验收覆盖首次取消/空文件保存/实际 Unicode 文件、Tab/反缩进/选区/撤销重做/输入法/键盘退出、S/M/L/换行、空文档关闭提示，以及最小窗口十语言 × 双主题 × 四字号 80 组布局。最后执行必要 typecheck、生产构建与 diff 检查；不运行旧测试全集、`npm run build` 或一键打包脚本。

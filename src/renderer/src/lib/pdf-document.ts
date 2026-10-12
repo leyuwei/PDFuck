@@ -5,7 +5,7 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, PDFString,
   StandardFonts, degrees, type PDFFont, type PDFPage
 } from 'pdf-lib'
-import type { AddAnnotationRequest, AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle, WatermarkRecord, WatermarkSettings } from '../types'
+import type { AddAnnotationRequest, AnnotationKind, AnnotationRecord, AnnotationReply, AnnotationReplyStatus, EditableTextRegion, ImageObjectRecord, PageNumberRecord, PageNumberSettings, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextStyle, WatermarkRecord, WatermarkSettings } from '../types'
 import { clampRectDelta, rectUnion } from './geometry'
 import {
   displayRectToPdfBounds, displayRectsToPdfQuads, inverseMatrix, pageViewportMatrix, pdfBoundsToDisplayRect, pdfQuadsToDisplayRects,
@@ -20,6 +20,8 @@ import type { PdfImportFile } from '../../../shared/contracts'
 import { normalizeAnnotationAuthor } from './annotation-author'
 import { appendPdfBookmarks, deletePdfBookmark, readPdfBookmarks, remapPdfBookmarks, renamePdfBookmark, replacePdfBookmarks } from './pdf-bookmarks'
 import { translateMessage, type TranslationKey } from '../../../shared/i18n-catalogue'
+import { writePageText } from './page-text-write'
+import type { PageTextRenderRequest, PageTextRenderResult } from '../../../shared/contracts'
 
 const KIND_LABEL: Record<AnnotationKind, TranslationKey> = {
   highlight: "ui.highlightText", note: "ui.note", replace: "ui.replaceText", insert: "ui.insertText", delete: "ui.deleteText", underline: "ui.underlineText", ai_polish: "ui.aiPolish"
@@ -851,6 +853,21 @@ export class PdfDocumentModel {
     const removed = this.removeWatermarkEntries()
     if (removed) await this.commit()
     return removed
+  }
+
+  async editPageText(pageIndex: number, region: EditableTextRegion, text: string, style = region.style, preserve = true, render?: (request: PageTextRenderRequest) => Promise<PageTextRenderResult>): Promise<void> {
+    if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= this.pageCount) throw new Error('ui.nativeTextStale')
+    try {
+      // The viewer reads saved bytes. Reload the same snapshot so subsequent
+      // edits see raw streams rather than pdf-lib's in-memory operator streams.
+      this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+      const page = this.document.getPage(pageIndex)
+      const result = await writePageText(this.document, page, pageViewportMatrix(pageGeometry(page)), region, text, style, preserve, render)
+      if (result.changed) await this.commit()
+    } catch (error) {
+      this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+      throw error
+    }
   }
 
   async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect, backgroundColor = '#ffffff'): Promise<string> {

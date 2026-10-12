@@ -1,5 +1,9 @@
 import type { EditableTextRegion, PdfPoint, PdfRect, TextObjectRecord, TextStyle } from '../types'
 
+export function pageTextPreservesStyle(region: EditableTextRegion, style: TextStyle, initialColor: string): boolean {
+  return style.color === initialColor && (['font', 'sourceFont', 'size', 'bold', 'italic', 'align', 'lineHeight', 'paragraphBefore', 'paragraphAfter', 'letterSpacing', 'horizontalScale'] as const).every((key) => style[key] === region.style[key])
+}
+
 function estimatedCharacterWidth(character: string, size: number): number {
   if (/[^\x00-\xff]/.test(character)) return size
   if (character === ' ') return size * .33

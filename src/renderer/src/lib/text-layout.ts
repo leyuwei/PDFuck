@@ -1,13 +1,13 @@
 import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src/display/api'
-import type { EditableTextRegion, PdfPoint, PdfRect, TextStyle } from '../types'
+import type { EditableTextRegion, NativeTextFont, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
-export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect }
+export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
-export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean }
+export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
 export interface TextLayoutOverride { columnBoundaries?: number[]; spanningRegions?: Array<{ top: number; bottom: number }> }
 export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean; includeAllMatchedWords?: boolean }
 
@@ -375,19 +375,15 @@ function measuredFontAscentRatio(fontFamily?: string): number | undefined {
 }
 
 function ascentRatio(style?: PdfJsTextStyle): number {
-  // Match PDF.js' text-layer placement whenever the browser exposes font-box
-  // metrics. Some embedded subset fonts report ascent/descent in a scaled
-  // coordinate system (for example 0.107/-0.018 instead of roughly
-  // 0.8/-0.2), which previously moved every selection box below the glyphs.
-  const measured = measuredFontAscentRatio(style?.fontFamily)
-  if (measured !== undefined) return measured
+  // Use the PDF metrics before platform fallback fonts. Otherwise the same
+  // page gets different rows and gutters in Chromium and in headless tests.
   const ascent = style?.ascent
   const descent = style?.descent ? Math.abs(style.descent) : 0
   const extent = ascent && ascent > 0 ? ascent + descent : 0
   if (ascent && ascent > 0 && descent > 0 && (extent < 0.5 || extent > 1.5)) return ascent / extent
   if (ascent && ascent > 0) return ascent
   if (style?.descent) return 1 + style.descent
-  return 0.8
+  return measuredFontAscentRatio(style?.fontFamily) ?? 0.8
 }
 
 function itemRect(item: TextItem, style: PdfJsTextStyle | undefined, viewportTransform: Matrix): { rect: PdfRect; fontHeight: number; origin: PdfPoint } {
@@ -412,7 +408,8 @@ function itemRect(item: TextItem, style: PdfJsTextStyle | undefined, viewportTra
 }
 
 export function textItemsToEditableRegions(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}): EditableTextRegion[] {
-  interface Fragment { index: number; text: string; rect: PdfRect; style: TextStyle; baselineY: number; lineBreakAfter: boolean }
+  const nativeFonts = Object.fromEntries(Object.entries(fontDetails).flatMap(([name, details]) => details.native ? [[name, details.native]] : []))
+  interface Fragment { index: number; text: string; rect: PdfRect; style: TextStyle; baselineY: number; baselineX: number; font: string; rtl: boolean; lineBreakAfter: boolean }
   interface TextLine { fragments: Fragment[]; rect: PdfRect; style: TextStyle; baselineY: number; closed: boolean }
   interface TextBlock { lines: TextLine[]; rect: PdfRect; style: TextStyle }
 
@@ -420,25 +417,33 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
     const x = Math.min(left.x, right.x), y = Math.min(left.y, right.y)
     return { x, y, width: Math.max(left.x + left.width, right.x + right.width) - x, height: Math.max(left.y + left.height, right.y + right.height) - y }
   }
-  const compatible = (left: TextStyle, right: TextStyle): boolean => left.font === right.font && (!left.sourceFont || !right.sourceFont || left.sourceFont === right.sourceFont) && left.bold === right.bold && left.italic === right.italic && Math.abs(left.size - right.size) <= Math.max(0.75, Math.max(left.size, right.size) * 0.08)
+  // Resource names change across subsets and reprints of the same typeface.
+  // Keep distinct physical typefaces and each fragment's source binding.
+  const typefaces = new Map<string, string>()
+  for (const details of Object.values(fontDetails)) for (const name of [details.loadedName, details.name]) if (name) typefaces.set(name, (details.name || name).replace(/^(?:[A-Z]{6}[+_])+/, '').replace(/-PDFuckEdit-[\da-f]+$/, ''))
+  const compatible = (left: TextStyle, right: TextStyle): boolean => left.font === right.font && (!left.sourceFont || !right.sourceFont || left.sourceFont === right.sourceFont || typefaces.has(left.sourceFont) && typefaces.get(left.sourceFont) === typefaces.get(right.sourceFont)) && left.bold === right.bold && left.italic === right.italic && Math.abs(left.size - right.size) <= Math.max(0.75, Math.max(left.size, right.size) * 0.08)
 
   const fragments: Fragment[] = items.flatMap((item, index) => {
     if (!item.str.trim()) return []
     const pdfStyle = styles[item.fontName]
     const details = fontDetails[item.fontName]
     const { rect, fontHeight } = itemRect(item, pdfStyle, viewportTransform)
-    const baselineY = multiplyMatrix(viewportTransform, item.transform as Matrix)[5]
+    const transform = multiplyMatrix(viewportTransform, item.transform as Matrix)
+    const baselineY = transform[5]
     const fontDescription = `${pdfStyle?.fontFamily || ''} ${details?.name || ''}`
     return [{
       index,
       text: item.str,
       rect,
       baselineY,
+      baselineX: transform[4],
+      font: item.fontName,
+      rtl: item.dir === 'rtl',
       lineBreakAfter: Boolean(item.hasEOL),
       style: {
         font: normalizeFontFamily(details?.name, pdfStyle?.fontFamily),
-        sourceFont: details?.loadedName || details?.name || pdfStyle?.fontFamily,
-        size: Math.max(6, Math.min(144, Math.round(fontHeight * 100) / 100)),
+        sourceFont: details?.native?.type3 ? details.name : details?.loadedName || details?.name || pdfStyle?.fontFamily,
+        size: fontHeight,
         color: '#182033',
         bold: details?.bold ?? /bold|black|heavy|semibold|demi|medi/i.test(fontDescription),
         italic: details?.italic ?? /italic|oblique/i.test(fontDescription),
@@ -466,10 +471,13 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
         const centerDistance = Math.abs(line.rect.y + line.rect.height / 2 - fragment.rect.y - fragment.rect.height / 2)
         if (!baselineMatches && centerDistance > Math.max(line.rect.height, fragment.rect.height) * 0.34) return false
         const gap = fragment.rect.x - (line.rect.x + line.rect.width)
+        const previous = line.fragments.at(-1)!
+        const spaces = items.slice(previous.index + 1, fragment.index)
+        const explicitSpace = spaces.length > 0 && spaces.every((item) => Boolean(item.str) && !item.str.trim() && !item.hasEOL)
         // PDF text items at a column boundary often sit only a few points
         // apart after scaling. Keep the same-line threshold tight enough to
         // split that gutter while still joining ordinary word fragments.
-        return gap >= -fragment.style.size * 0.45 && gap <= fragment.style.size * 1.2
+        return gap >= -fragment.style.size * 0.45 && gap <= fragment.style.size * (explicitSpace ? 3 : 1.2)
       })
       .sort((left, right) => Math.abs(fragment.rect.x - left.rect.x - left.rect.width) - Math.abs(fragment.rect.x - right.rect.x - right.rect.width))[0]
     if (candidate) {
@@ -478,7 +486,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
     } else lines.push({ fragments: [fragment], rect: { ...fragment.rect }, style: fragment.style, baselineY: fragment.baselineY, closed: fragment.lineBreakAfter })
     if (candidate) candidate.closed = candidate.closed || fragment.lineBreakAfter
   }
-  lines.forEach((line) => line.fragments.sort((left, right) => left.rect.x - right.rect.x))
+  lines.forEach((line) => line.fragments.sort((left, right) => (line.fragments[0].rtl ? -1 : 1) * (left.rect.x - right.rect.x)))
   lines.sort((left, right) => left.baselineY - right.baselineY || left.rect.x - right.rect.x)
 
   const blocks: TextBlock[] = []
@@ -488,7 +496,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
         const previous = block.lines.at(-1)!
         if (!compatible(previous.style, line.style)) return undefined
         const verticalGap = line.rect.y - previous.rect.y - previous.rect.height
-        const maxGap = Math.max(previous.style.size, line.style.size) * 1.7
+        const maxGap = Math.max(previous.style.size, line.style.size)
         if (verticalGap < -Math.min(previous.rect.height, line.rect.height) * 0.2 || verticalGap > maxGap) return undefined
         const leftDistance = Math.abs(previous.rect.x - line.rect.x)
         const rightDistance = Math.abs((previous.rect.x + previous.rect.width) - (line.rect.x + line.rect.width))
@@ -496,6 +504,11 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
         const overlap = Math.max(0, Math.min(previous.rect.x + previous.rect.width, line.rect.x + line.rect.width) - Math.max(previous.rect.x, line.rect.x))
         const overlapRatio = overlap / Math.max(1, Math.min(previous.rect.width, line.rect.width))
         const size = Math.max(previous.style.size, line.style.size)
+        if (block.lines.length === 1 && previous.rect.width < line.rect.width * .5 && leftDistance > size * 2.2) return undefined
+        // A fresh indentation after a vertical gap starts a new paragraph.
+        // Joining it made one edit unexpectedly typeset the rest of the page.
+        if (line.rect.x > block.rect.x + size * .8) return undefined
+        if (Math.min(previous.rect.width, line.rect.width) < size * 3 && Math.max(previous.rect.width, line.rect.width) > size * 6 && leftDistance > size * 2.2) return undefined
         // A paragraph normally keeps one edge aligned (including justified
         // lines). A mere partial overlap is not enough: in a two-column page
         // a short line from the neighboring column can otherwise be absorbed
@@ -528,15 +541,17 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
       if (tops.length > 1) {
         const leading = tops.slice(1).map((top, index) => top - tops[index]).sort((left, right) => left - right)
         const ratio = leading[Math.floor(leading.length / 2)] / Math.max(1, block.style.size)
-        block.style.lineHeight = ([1, 1.25, 1.5, 2] as const).reduce((best, value) => Math.abs(value - ratio) < Math.abs(best - ratio) ? value : best, 1.25)
+        block.style.lineHeight = ratio
         const lefts = block.lines.map((line) => line.rect.x), rights = block.lines.map((line) => line.rect.x + line.rect.width), centers = block.lines.map((line) => line.rect.x + line.rect.width / 2)
         const spread = (values: number[]) => Math.max(...values) - Math.min(...values)
         if (spread(centers) < block.style.size * 0.4 && spread(lefts) > block.style.size * 0.7) block.style.align = 'center'
         else if (spread(rights) < block.style.size * 0.4 && spread(lefts) > block.style.size * 0.7) block.style.align = 'right'
       } else block.style.lineHeight = 1
       const sourceRects = block.lines.flatMap((line) => line.fragments.map((fragment) => fragment.rect))
-      const editableLines = block.lines.map((line, index) => ({ text: lineText[index], rect: { ...line.rect } }))
-      return { id: `page-text-${blockIndex}-${block.lines[0].fragments[0].index}`, text: lineText.join('\n'), rect: block.rect, sourceRects, lines: editableLines, style: block.style }
+      const editableLines = block.lines.map((line, index) => ({ text: lineText[index], rect: { ...line.rect }, sources: line.fragments.map((fragment) => ({ text: fragment.text, font: fragment.font, x: fragment.baselineX, y: fragment.baselineY, rtl: fragment.rtl })) }))
+      const rights = block.lines.slice(0, -1).map(line => line.rect.x + line.rect.width)
+      const justified = rights.length >= 2 && Math.max(...rights) - Math.min(...rights) < block.style.size * .5
+      return { id: `page-text-${blockIndex}-${block.lines[0].fragments[0].index}`, text: lineText.join('\n'), rect: block.rect, sourceRects, lines: editableLines, ...(Object.keys(nativeFonts).length ? { nativeFonts } : {}), style: block.style, justified }
     })
 }
 
@@ -563,6 +578,7 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
 
 export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride): WordBox[] {
   const words: WordBox[] = []
+  const fontWidths = new Map<NativeTextFont, Map<string, number>>()
   let order = 0
   for (const [textRun, item] of items.entries()) {
     if (!item.str) continue
@@ -580,7 +596,14 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const italic = details?.italic ?? /italic|oblique|ital/i.test(fontDescription)
     const measure = textMeasure(fontHeight, family, bold, italic)
     const characters = Array.from(item.str)
-    const naturalAdvances = measure ? characters.map((_character, index) => {
+    const native = details?.native
+    if (native && !fontWidths.has(native)) {
+      const subsets = native.type3 ? Object.values(fontDetails).flatMap(value => value.native?.type3 && value.native.name === native.name ? [value.native] : []) : [native]
+      const widths = new Map(subsets.flatMap(font => Object.entries(font.unicode).map(([code, text]) => [text, font.widths[Number(code)] * font.matrix] as const)))
+      subsets.forEach(font => fontWidths.set(font, widths))
+    }
+    const widths = native && fontWidths.get(native)
+    const naturalAdvances = widths ? characters.map(character => (widths.get(character) ?? .5) * fontHeight) : measure ? characters.map((_character, index) => {
       const end = measure(characters.slice(0, index + 1).join(''))
       const start = index ? measure(characters.slice(0, index).join('')) : 0
       return Math.max(0, end - start)
@@ -677,12 +700,15 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   // this gap is measured across repeated visual rows, a fraction of the
   // median glyph height is enough to distinguish it from ordinary word gaps.
   const minimumGutter = Math.max(3, medianHeight * 0.45)
-  interface GutterCluster { center: number; count: number; rows: Set<number>; maxGap: number }
+  interface GutterCluster { center: number; left: number; right: number; gaps: Array<{ left: number; right: number }>; rows: Set<number> }
+  const median = (values: number[]) => [...values].sort((left, right) => left - right)[Math.floor(values.length / 2)]
   const gutterClusters: GutterCluster[] = []
+  const candidateGaps: Array<{ left: number; right: number; row: number }> = []
   const visualRows: WordBox[][] = []
-  for (const word of [...words].sort((left, right) => left.rect.y - right.rect.y || left.rect.x - right.rect.x)) {
+  const rowY = (word: WordBox) => word.baselineY ?? word.rect.y
+  for (const word of [...words].sort((left, right) => rowY(left) - rowY(right) || left.rect.x - right.rect.x)) {
     const row = visualRows.at(-1)
-    if (row && Math.abs(row[0].rect.y - word.rect.y) <= medianHeight * 0.65) row.push(word)
+    if (row && Math.abs(rowY(row[0]) - rowY(word)) <= medianHeight * 0.65) row.push(word)
     else visualRows.push([word])
   }
   visualRows.forEach((row, lineIndex) => {
@@ -706,21 +732,31 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       // (the common one-word-per-column case), or require the gap to be
       // materially larger than the row's normal spacing. This remains
       // adaptive for compact layouts where the gutter is below 15pt.
-      const evenlySpacedWideRow = gaps.length > 1 && rowMedianGap >= medianHeight * 2 && gap >= rowMedianGap * 0.8
+      const evenlySpacedWideRow = gaps.length > 1 && (rowMedianGap >= medianHeight * 2 || merged.every((interval) => interval.right - interval.left >= medianHeight * 4)) && gap >= rowMedianGap * 0.8
       if (gaps.length > 1 && gap < rowMedianGap * 1.7 && !evenlySpacedWideRow) continue
-      const center = (merged[index].left + merged[index - 1].right) / 2
-      const cluster = gutterClusters.find((candidate) => Math.abs(candidate.center - center) <= medianHeight * 1.5)
-      if (cluster) {
-        cluster.center = (cluster.center * cluster.count + center) / (cluster.count + 1)
-        cluster.count += 1
-        cluster.rows.add(lineIndex)
-        cluster.maxGap = Math.max(cluster.maxGap, gap)
-      } else gutterClusters.push({ center, count: 1, rows: new Set([lineIndex]), maxGap: gap })
+      candidateGaps.push({ left: merged[index - 1].right, right: merged[index].left, row: lineIndex })
     }
   })
+  // Seed with narrow gaps and intersect their empty corridors. Short lines
+  // widen a gutter asymmetrically; averaging gap centers splits the same
+  // gutter into competing clusters and lets formulas pull it into prose.
+  for (const gap of candidateGaps.sort((a, b) => a.right - a.left - (b.right - b.left))) {
+    const cluster = gutterClusters.find(candidate => Math.min(candidate.right, gap.right) - Math.max(candidate.left, gap.left) >= minimumGutter * .4)
+    if (cluster) {
+      cluster.left = Math.max(cluster.left, gap.left); cluster.right = Math.min(cluster.right, gap.right)
+      cluster.center = (cluster.left + cluster.right) / 2
+      cluster.gaps.push(gap); cluster.rows.add(gap.row)
+    } else gutterClusters.push({ center: (gap.left + gap.right) / 2, left: gap.left, right: gap.right, gaps: [gap], rows: new Set([gap.row]) })
+  }
   const gutterCorridor = Math.max(1.5, minimumGutter * 0.45)
   const automaticColumnBoundaries = gutterClusters
     .filter((cluster) => cluster.rows.size >= Math.max(3, Math.ceil(visualRows.length * 0.2)))
+    // Short lines and equation indentation widen gaps asymmetrically.
+    // Cluster first, then use repeated edges to keep the boundary out of prose.
+    .map((cluster) => {
+      const typical = [...cluster.gaps].sort((left, right) => left.right - left.left - (right.right - right.left)).slice(0, Math.ceil(cluster.gaps.length / 2))
+      return { ...cluster, center: (median(typical.map((value) => value.left)) + median(typical.map((value) => value.right))) / 2 }
+    })
     // A real column gutter stays empty down the page. Indented equations and
     // matrices repeat large internal gaps, but ordinary prose crosses them.
     .filter((cluster) => visualRows.filter((row) => row.some((word) => word.rect.x < cluster.center + gutterCorridor && word.rect.x + word.rect.width > cluster.center - gutterCorridor)).length <= visualRows.length * 0.25)
@@ -729,6 +765,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   const columnBoundaries = override?.columnBoundaries === undefined
     ? automaticColumnBoundaries
     : [...new Set(override.columnBoundaries.filter(Number.isFinite))].sort((left, right) => left - right)
+  words.forEach((word) => { word.columnBoundaries = columnBoundaries })
   interface VisualRun { words: WordBox[]; left: number; right: number; baselineY: number; column?: number }
   const runs: VisualRun[] = []
   // Split a visual row at the gutter between newspaper columns. Ordinary
@@ -738,7 +775,8 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const sorted = [...line.words].sort((left, right) => left.rect.x - right.rect.x || left.rect.y - right.rect.y || left.order - right.order)
     let current: VisualRun | undefined
     for (const word of sorted) {
-      const crossesColumnBoundary = current ? columnBoundaries.some((boundary) => current!.right <= boundary && word.rect.x >= boundary) : false
+      const previousWord = current?.words.at(-1)
+      const crossesColumnBoundary = previousWord ? columnBoundaries.some((boundary) => previousWord.rect.x + previousWord.rect.width / 2 < boundary && word.rect.x + word.rect.width / 2 >= boundary) : false
       if (!current || crossesColumnBoundary) {
         current = { words: [word], left: word.rect.x, right: word.rect.x + word.rect.width, baselineY: line.baselineY ?? line.top }
         runs.push(current)
@@ -799,7 +837,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   for (const block of blockRuns) {
     const blockTop = Math.min(...block.map((run) => run.baselineY))
     const blockBottom = Math.max(...block.map((run) => run.baselineY))
-    const expandedBottom = blockBottom + medianHeight * 1.75
+    const expandedBottom = blockBottom + medianHeight * (block.some(captionStart) ? 1.75 : .55)
     const blockLeft = Math.min(...block.map((run) => run.left))
     const blockRight = Math.max(...block.map((run) => run.right))
     // Include non-ambiguous fragments on the same visual row as a structural

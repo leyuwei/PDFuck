@@ -39,6 +39,8 @@
 
 顶部“保存”左侧的新建图标可创建空白 Markdown 或 TXT。选择类型后进入编辑器，并提醒尽快保存；首次保存选择本地位置。Tab 插入制表符或缩进多行，Shift+Tab 反缩进，Esc 将焦点移出编辑区；缩进支持撤销和重做。
 
+2.1.7 的“编辑页面文字”支持直接修改、增字、换行及格式调整。小改动复用原文字指令；需要重排时自动按原字体程序、字号、基线、字距和栏内宽度生成可复制的矢量文字，缺字自动补齐并在字体栏标明。预览与写回共用流程，支持连续编辑、撤销重做及保存重开。多栏选择与可视栏线复用 PDF 字体度量及多行共同栏沟。同时兼容 Chromium 输出的 Type3 字体子集：按字形编码定位同名字体、合并分散字宽，连续编辑与保存重开沿用相同解析。页面文字编辑的失败反馈留在编辑器内，保留草稿供继续修改或重试，不弹通用错误窗口。修复根因、关键复测与交付包见 [2.1.7 验证记录](docs/VALIDATION-2.1.7.md)。
+
 Markdown / TXT 原文使用 Ctrl/⌘+S 保存，“保存 PDF”单独导出预览。在仅编辑器视图中，页面编辑、批注、OCR 和打印等 PDF 操作禁用；切回双栏或 PDF 视图可使用。
 
 源码底栏的自动换行图标可切换横向滚动和按编辑区宽度回行，并记住选择。左侧行号使用独立底色和较淡、稍小的数字；每个原始行只在第一条显示行编号，自动换行的续行留白，不改动文档内容。
@@ -108,6 +110,8 @@ Choose a build for your platform from the [download page](https://github.com/ley
 Open or drop a PDF, Markdown, or TXT file to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
 
 Use the new-document icon immediately before **Save** to create a blank Markdown or TXT document. The editor then reminds you to save; the first save asks for a local path. Tab inserts a tab or indents selected lines, Shift+Tab outdents, and Esc moves focus out of the editor. Indentation supports undo and redo.
+
+In 2.1.7, page text supports ordinary additions, newlines, and formatting. Small edits reuse native instructions; paragraph reflow uses the embedded font program, size, baseline, spacing, and column width to produce selectable vector text. Missing glyphs use an indicated fallback font. Preview and saving share the same pipeline, including repeated edits, undo/redo, and reopening. Column selection and visible guides share PDF font metrics and repeated empty gutter corridors. Chromium Type3 subsets are identified by their glyph mappings, with complete font collection and shared width metrics for repeated edits. Save failures keep the draft and show feedback inside the editor without a blocking error dialog. See the [2.1.7 validation record](docs/VALIDATION-2.1.7.md) for causes, focused checks, and packages.
 
 In Markdown and TXT, Ctrl/Cmd+S saves the source; **Save PDF** exports the preview separately. PDF page tools, annotations, OCR, and printing are disabled in editor-only view and available with the PDF preview.
 

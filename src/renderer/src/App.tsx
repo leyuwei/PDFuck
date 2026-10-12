@@ -32,7 +32,6 @@ import { cleanDocumentName } from '../../shared/window-session'
 import { isInterfaceLanguage, translateMessage, type InterfaceLanguage } from '../../shared/i18n-catalogue'
 import { normalizeCopiedText } from './lib/clipboard-text'
 import type { UpdateCheckResult } from '../../shared/contracts'
-import { replacementTextRect } from './lib/page-text-edit'
 import { imposePdfForPrintBatches } from './lib/print-layout'
 import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
 import { watermarkTiles } from './lib/watermarks'
@@ -1153,9 +1152,9 @@ export default function App() {
       return layers.length
     })
   }, [runDocumentOperation, syncModel])
-  const mutate = useCallback(async (operation: (model: PdfDocumentModel) => Promise<unknown>, message: string, refreshDocument = true) => {
+  const mutate = useCallback(async (operation: (model: PdfDocumentModel) => Promise<unknown>, message: string, refreshDocument = true, onFailure = showError) => {
     const model = modelRef.current, documentId = activeDocumentIdRef.current; if (!model) return false
-    try { return await runDocumentOperation(documentId, async () => { await operation(model); syncModel(message, refreshDocument, model, documentId); return true }) } catch (error) { showError(error); return false }
+    try { return await runDocumentOperation(documentId, async () => { await operation(model); syncModel(message, refreshDocument, model, documentId); return true }) } catch (error) { onFailure(error); return false }
   }, [runDocumentOperation, showError, syncModel])
   const mergeFiles = useCallback(async () => {
     try {
@@ -1355,11 +1354,7 @@ export default function App() {
       await mutate((modelValue) => modelValue.addText(action.pageIndex, action.rect!, value.text, value.style, image), '文字已添加；可拖动位置，双击重新编辑', false)
     } else if (action.tool === 'edit_text' && action.pageTextEdit) {
       const edit = action.pageTextEdit
-      const replacementRect = replacementTextRect(edit.region.rect, edit.text, edit.style, model.getPageSize(action.pageIndex))
-      const value: TextDialogValue = { text: edit.text, style: edit.style }
-      const image = await styledTextRaster(edit.text, replacementRect, value, true)
-      if (!originIsActive()) return
-      await mutate((modelValue) => modelValue.replacePageText(action.pageIndex, edit.region.sourceRects, edit.text, edit.style, image, replacementRect, edit.backgroundColor), '页面文字已更新；可继续点击当前页其他文本块')
+      return mutate((modelValue) => modelValue.editPageText(action.pageIndex, edit.region, edit.text, edit.style, Boolean(edit.preserveSourceAppearance), window.desktop.renderPageText), '页面文字已更新；可继续点击当前页其他文本块', true, edit.onFailure)
     } else if (action.tool === 'highlight' && action.selection) {
       const annotation = await askAnnotation({ kind: 'highlight', optional: true }); if (annotation === null || !originIsActive()) return
       await addSelectionAnnotations('highlight', action.selection, annotation.content, annotation.color, action.pageIndex, annotation.marks)
