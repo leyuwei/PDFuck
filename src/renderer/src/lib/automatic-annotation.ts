@@ -110,6 +110,7 @@ function sliceWord(word: WordBox, start: number, end: number, lineBreakAfter: bo
   const right = boundaries[end]
   return {
     ...word,
+    spaceAfter: undefined,
     text: characters.slice(start, end).join(''),
     rect: { ...word.rect, x: word.rect.x + left, width: right - left },
     boundaries: boundaries.slice(start, end + 1).map((boundary) => boundary - left),

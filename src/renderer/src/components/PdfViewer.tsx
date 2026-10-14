@@ -34,12 +34,13 @@ import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { shortcutLabel } from '../lib/platform-shortcuts'
 import type { AutomaticAnnotationSourcePage } from '../lib/automatic-annotation'
 import { automaticPageContext, type AutomaticAnnotationContextRequest, type AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
+import { annotationSourceForPage, type AnnotationSourcePassage } from '../lib/annotation-source'
 import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecognitionOptions, type RecognizedBookmark } from '../lib/bookmark-recognition'
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { pdfPageLinks, type PdfLinkTarget, type PdfPageLink } from '../lib/pdfjs-links'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
 
-export interface ViewerHandle { captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(): Promise<AutomaticAnnotationSourcePage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; closeSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(pageIndices?: number[]): Promise<AutomaticAnnotationSourcePage[]>; annotationSourceContext(request: AutomaticAnnotationContextRequest): Promise<AnnotationSourcePassage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(): void; closeSearch(): void; showVisuals(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
   const viewportBounds = viewport.getBoundingClientRect(), pageBounds = page.getBoundingClientRect()
@@ -585,7 +586,7 @@ function CropDraftOverlay({ rect, zoom, bounds, marginMm, onMarginChange, onChan
   </>
 }
 
-interface PageDrag { start: PdfPoint; current: PdfPoint; moved: boolean }
+interface PageDrag { start: PdfPoint; current: PdfPoint; moved: boolean; anchor?: TextPosition }
 
 function pdfDocumentKey(document: PDFDocumentProxy): string {
   return document.fingerprints.filter(Boolean).join('-') || String(document.numPages)
@@ -819,7 +820,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
         setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
         return
       }
-      const next: PageDrag = { start: point, current: point, moved: false }
+      const next: PageDrag = { start: point, current: point, moved: false, anchor: position }
       dragRef.current = next
       onCrossSelectionStart(pageIndex, position, event.shiftKey)
       setSelection(undefined); setTextCaret(undefined); setSelectionAnchor(undefined)
@@ -841,7 +842,9 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     const activeDrag = dragRef.current
     if (!activeDrag) return
     if (canSelectText) {
-      const moved = activeDrag.moved || Math.hypot(point.x - activeDrag.start.x, point.y - activeDrag.start.y) * zoom >= 4
+      const distance = Math.hypot(point.x - activeDrag.start.x, point.y - activeDrag.start.y) * zoom
+      const focus = !activeDrag.moved && distance >= 1 && distance < 4 ? textCaretAtPoint(words, point) : undefined
+      const moved = activeDrag.moved || distance >= 4 || Boolean(focus && activeDrag.anchor && (focus.wordIndex !== activeDrag.anchor.wordIndex || focus.offset !== activeDrag.anchor.offset))
       const next = { ...activeDrag, current: point, moved }
       dragRef.current = next
       if (moved) onCrossSelectionMove(pageIndex, event.clientX, event.clientY)
@@ -1401,9 +1404,11 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
-    let width = viewport.clientWidth
+    // Scrollbars change clientWidth during zoom without changing the actual
+    // viewport allocation. Only a window/sidebar resize should trigger fit.
+    let width = viewport.getBoundingClientRect().width
     const observer = new ResizeObserver(() => {
-      const nextWidth = viewport.clientWidth
+      const nextWidth = viewport.getBoundingClientRect().width
       if (nextWidth === width) return
       const shrinking = nextWidth < width || width === 0
       width = nextWidth
@@ -1530,10 +1535,13 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const hits = grammarIssues(await pageSnapshots()); setGrammarTerms([]); onInsight('grammar', hits)
   }
   const documentText = async () => (await pageSnapshots()).map((page) => `--- Page ${page.pageIndex + 1} ---\n${page.text}`).join('\n\n')
-  const autoAnnotationPages = useCallback(async (): Promise<AutomaticAnnotationSourcePage[]> => {
+  const autoAnnotationPages = useCallback(async (pageIndices?: number[]): Promise<AutomaticAnnotationSourcePage[]> => {
     if (!document) return []
     const pages: AutomaticAnnotationSourcePage[] = []
-    for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) pages.push({ pageIndex, words: await wordsForPage(pageIndex) })
+    for (const pageIndex of pageIndices || Array.from({ length: document.numPages }, (_, index) => index)) {
+      if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= document.numPages) continue
+      pages.push({ pageIndex, words: await wordsForPage(pageIndex) })
+    }
     return pages
   }, [document, wordsForPage])
   const automaticAnnotationContext = useCallback(async (request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult> => {
@@ -1552,6 +1560,15 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (!passages.length) return { issue: issue || 'no-text' }
     return { context: { text: passages.map((passage) => passage.text).join('\n\n'), pageIndexes: passages.map((passage) => passage.pageIndex) } }
   }, [document, wordsForPage])
+  const annotationSourceContext = useCallback(async (request: AutomaticAnnotationContextRequest): Promise<AnnotationSourcePassage[]> => {
+    const anchors = new Map<number, PdfRect[]>()
+    request.anchors.forEach(anchor => anchors.set(anchor.pageIndex, [...(anchors.get(anchor.pageIndex) || []), ...anchor.rects]))
+    const passages: AnnotationSourcePassage[] = []
+    for (const [pageIndex, rects] of [...anchors].sort((a, b) => a[0] - b[0])) {
+      passages.push(annotationSourceForPage(await wordsForPage(pageIndex), rects, request.kind, pageIndex))
+    }
+    return passages
+  }, [wordsForPage])
   const recognizeBookmarks = useCallback(async (options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]> => {
     if (!document) return []
     const lines = []
@@ -1567,7 +1584,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     captureFigure: async (pageIndex, rect) => {
       if (!document) throw new Error('ui.targetPageUnavailable')
       return (await renderFigureRegion(await document.getPage(pageIndex + 1), rect)).toDataURL('image/png')
-    }, fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, recognizeBookmarks, openSearch: () => { setSearchOpen(true); setSearchToken(token => token + 1) }, closeSearch: () => setSearchOpen(false), showVisuals, linkCitations, clearCitations, checkGrammar }))
+    }, fitWidth, fitPage, goToPage, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, annotationSourceContext, recognizeBookmarks, openSearch: () => { setSearchOpen(true); setSearchToken(token => token + 1) }, closeSearch: () => setSearchOpen(false), showVisuals, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined

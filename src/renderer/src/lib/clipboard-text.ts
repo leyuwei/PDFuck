@@ -10,17 +10,20 @@ function joinWithoutInsertedSpace(left: string, right: string): boolean {
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
 /** Convert PDF line-wrapped text into clipboard text that reads like normal prose. */
-export function normalizeCopiedText(value: string): string {
+export function normalizeCopiedText(value: string, preserveEdgeWhitespace = false): string {
   const dehyphenated = normalizeTextSpacing(value)
     .replace(/\r\n?/g, '\n')
     .replace(/\u00ad/g, '')
     .replace(/(\p{L}{2,})-[ \t]*\n[ \t]*(?=\p{Ll}{2})/gu, '$1')
     .replace(/(\p{L}{2,})-[ \t]+(?=\p{Ll}{2})/gu, '$1')
   const lines = dehyphenated.split('\n').map((line) => line.replace(/[\t\u00a0 ]+/g, ' ').trim()).filter(Boolean)
-  return lines.reduce((result, line) => {
+  const normalized = lines.reduce((result, line) => {
     if (!result) return line
     const left = Array.from(result).at(-1) || ''
     const right = Array.from(line)[0] || ''
     return `${result}${joinWithoutInsertedSpace(left, right) ? '' : ' '}${line}`
   }, '').replace(/[\t\u00a0 ]+/g, ' ').trim()
+  if (!preserveEdgeWhitespace) return normalized
+  if (!normalized && /^[\t\u00a0 ]+$/u.test(value)) return value.replace(/\u00a0/g, ' ')
+  return `${value.match(/^[\t\u00a0 ]+/u)?.[0] || ''}${normalized}${value.match(/[\t\u00a0 ]+$/u)?.[0] || ''}`.replace(/\u00a0/g, ' ')
 }

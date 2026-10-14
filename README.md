@@ -1,6 +1,6 @@
 <img width="1113" height="171" alt="ScreenShot_2026-09-18_114316_102" src="https://github.com/user-attachments/assets/8b1517a2-abdd-4431-a987-ba6768226433" />
 
-# PDFuck - A Tiny AI-Empowered PDF, Markdown & TXT Editor
+# PDFuck - A Tiny AI-Empowered Document Editor
 
 [简体中文](#chinese) · [English](#english)
 
@@ -10,7 +10,7 @@
 
 ## 简体中文
 
-**为论文精读、审稿与修改设计的 PDF、Markdown 与 TXT 编辑器。**
+**为论文精读、审稿与修改设计的文档编辑器。**
 
 支持 Windows、macOS 和十种界面语言，将阅读、写作、编辑与审稿放在同一个工作区。
 
@@ -35,7 +35,11 @@
 | Windows | 下载文件名以 `Windows-Setup.exe` 结尾的安装包；以 `Windows.exe` 结尾的文件为便携版。 |
 | macOS | 下载适合本机架构的 DMG，将 PDFuck 拖入 Applications。 |
 
-打开或拖入 PDF、Markdown、TXT 即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
+打开或拖入文档即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
+
+2.1.9 修复压缩标点与后续文字块重叠导致的选区溢出，保留前面字符的光标位置，支持双向选择与缩放。批注编辑顶部显示被批注原文、前后文和页码；跨页批注分页面展示，便笺展示附近文字，无文字位置明确提示。通用打开和拖入提示统一为“文档”，支持十种语言、双主题及四档界面字号。验收与 Windows 交付见 [2.1.9 验证记录](docs/VALIDATION-2.1.9.md)。
+
+2.1.9 后续修复补齐英文空格与词尾空格的选择/复制，校正特殊符号及跨栏图注的选区。自动批注可选择“指定页码”，填写如 `1-3, 5` 的范围；只处理并发送所选页面，进度显示实际页码，报告保留相同范围。导出与运行控制统一放在浮窗固定底栏。书签底部提示按完整宽度自然换行。
 
 顶部“保存”左侧的新建图标可创建空白 Markdown 或 TXT。选择类型后进入编辑器，并提醒尽快保存；首次保存选择本地位置。Tab 插入制表符或缩进多行，Shift+Tab 反缩进，Esc 将焦点移出编辑区；缩进支持撤销和重做。
 
@@ -82,7 +86,7 @@ Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 
 
 ## English
 
-**A PDF, Markdown, and TXT editor for close reading, peer review, and revision.**
+**A document editor for close reading, peer review, and revision.**
 
 Available on Windows and macOS in ten interface languages. Read, write, edit, and review in one workspace.
 
@@ -107,7 +111,11 @@ Choose a build for your platform from the [download page](https://github.com/ley
 | Windows | Use the file ending in `Windows-Setup.exe` to install, or `Windows.exe` for the portable app. |
 | macOS | Download the DMG for your architecture and drag PDFuck into Applications. |
 
-Open or drop a PDF, Markdown, or TXT file to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
+Open or drop a document to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
+
+2.1.9 corrects selection overflow where compressed punctuation overlaps the next text run, preserving earlier caret positions across drag directions and zoom levels. The annotation editor shows highlighted source text, surrounding context and page numbers, including separate passages for cross-page annotations and nearby text for notes. Generic open/drop labels use “document” in all ten languages, with both themes and four interface sizes. See the [2.1.9 validation record](docs/VALIDATION-2.1.9.md).
+
+The 2.1.9 follow-up fixes selection and copying of spaces, trailing whitespace, special symbols and spanning legends. Automatic annotation supports **Specific pages**, such as `1-3, 5`; only chosen pages are processed and sent, and progress and reports retain that scope. Export and run controls share a fixed footer. Bookmark hints wrap across the full sidebar width.
 
 Use the new-document icon immediately before **Save** to create a blank Markdown or TXT document. The editor then reminds you to save; the first save asks for a local path. Tab inserts a tab or indents selected lines, Shift+Tab outdents, and Esc moves focus out of the editor. Indentation supports undo and redo.
 

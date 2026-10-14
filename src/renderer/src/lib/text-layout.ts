@@ -4,18 +4,21 @@ import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
-export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
+export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
 export interface TextLayoutOverride { columnBoundaries?: number[]; spanningRegions?: Array<{ top: number; bottom: number }> }
 export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean; includeAllMatchedWords?: boolean }
 
-function characterCount(word: WordBox): number { return Math.max(1, Array.from(word.text).length) }
+export function selectionWordText(word: WordBox): string { return word.text + (word.spaceAfter?.text || '') }
+function characterCount(word: WordBox): number { return Math.max(1, Array.from(selectionWordText(word)).length) }
 
 function boundaryAt(word: WordBox, offset: number): number {
   const count = characterCount(word)
   const normalized = Math.max(0, Math.min(count, offset))
+  const textCount = Array.from(word.text).length
+  if (normalized > textCount && word.spaceAfter) return (word.rtl ? 0 : word.rect.width) + (word.rtl ? -1 : 1) * word.spaceAfter.width * (normalized - textCount) / Array.from(word.spaceAfter.text).length
   const measured = word.boundaries?.[normalized]
   return Number.isFinite(measured) ? measured! : word.rect.width * (word.rtl ? 1 - normalized / count : normalized / count)
 }
@@ -35,12 +38,12 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret |
   let nearestColumnDistance = Number.POSITIVE_INFINITY
   words.forEach((word) => {
     if (word.column === undefined || word.columnAmbiguous) return
-    const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
+    const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
     if (dx < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = dx }
   })
   words.forEach((word, index) => {
     if (nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
-    const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
+    const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
     // Lock ordinary text to the closest detected column, then weight vertical
     // distance so modest line-end overshoot stays on its visual row.
@@ -49,7 +52,7 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret |
   })
   if (nearestIndex < 0) return undefined
   const nearest = words[nearestIndex], count = characterCount(nearest)
-  const localX = Math.max(0, Math.min(nearest.rect.width, point.x - nearest.rect.x))
+  const localX = Math.max(nearest.rtl ? -(nearest.spaceAfter?.width || 0) : 0, Math.min(nearest.rect.width + (!nearest.rtl ? nearest.spaceAfter?.width || 0 : 0), point.x - nearest.rect.x))
   let offset = 0, distance = Number.POSITIVE_INFINITY
   for (let candidate = 0; candidate <= count; candidate += 1) {
     const candidateDistance = Math.abs(boundaryAt(nearest, candidate) - localX)
@@ -172,7 +175,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const focusColumn = words[focus.wordIndex]?.column
   const constrainedColumn = anchorColumn !== undefined && anchorColumn === focusColumn ? anchorColumn : undefined
   const hasColumnEndpoints = anchorColumn !== undefined && focusColumn !== undefined
-  const pieces: string[] = [], rects: PdfRect[] = [], rectColumns: Array<number | undefined> = [], rectBaselines: Array<number | undefined> = []
+  const pieces: string[] = [], rects: PdfRect[] = [], rectColumns: Array<number | string | undefined> = [], rectBaselines: Array<number | undefined> = []
   const startWord = words[start.wordIndex], endWord = words[end.wordIndex]
   if (!startWord || !endWord) return undefined
   const endpointHeight = Math.max(startWord?.rect.height || 0, endWord?.rect.height || 0)
@@ -268,7 +271,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
       const low = Math.min(visualStart, visualEnd), high = Math.max(visualStart, visualEnd)
       const lowPosition = visualStart <= visualEnd ? start : end
       const highPosition = visualStart <= visualEnd ? end : start
-      return visualBandIndices.slice(low, high + 1).map((wordIndex) => ({ wordIndex, from: wordIndex === lowPosition.wordIndex ? lowPosition.offset : 0, to: wordIndex === highPosition.wordIndex ? highPosition.offset : Array.from(words[wordIndex].text).length }))
+      return visualBandIndices.slice(low, high + 1).map((wordIndex) => ({ wordIndex, from: wordIndex === lowPosition.wordIndex ? lowPosition.offset : 0, to: wordIndex === highPosition.wordIndex ? highPosition.offset : characterCount(words[wordIndex]) }))
     })()
     : Array.from({ length: end.wordIndex - start.wordIndex + 1 }, (_value, index) => {
       const wordIndex = start.wordIndex + index
@@ -279,19 +282,21 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const word = words[wordIndex]
     const useVisualBand = Boolean(visualBandIndices?.length)
     if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
-    const chars = Array.from(word.text), count = Math.max(1, chars.length)
+    const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
     const to = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.to)) : count
     if (to <= from) continue
-    pieces.push(chars.slice(from, to).join(''))
+    const piece = chars.slice(from, to).join('')
+    if (pieces.length && !/\s$/u.test(pieces.at(-1)!) && !/^\s/u.test(piece)) pieces.push(' ')
+    pieces.push(piece)
     const left = boundaryAt(word, from), right = boundaryAt(word, to)
     rects.push({ x: word.rect.x + Math.min(left, right), y: word.rect.y, width: Math.abs(right - left), height: word.rect.height })
-    rectColumns.push(word.column)
+    rectColumns.push(word.columnAmbiguous && word.visualBlock !== undefined ? `block:${word.visualBlock}` : word.column)
     rectBaselines.push(word.baselineY)
   }
   if (!rects.length) return undefined
   const lines: PdfRect[] = []
-  const lineColumns: Array<number | undefined> = []
+  const lineColumns: Array<number | string | undefined> = []
   for (const [index, rect] of rects.entries()) {
     const column = rectColumns[index]
     const previous = lines.at(-1)
@@ -312,10 +317,12 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     // from the other column, especially around short formula glyphs.
     if (previous && lineColumns.at(-1) === column && sameBaseline && horizontalGap <= Math.max(previous.height, rect.height) * 1.6) {
       const right = Math.max(previous.x + previous.width, rect.x + rect.width)
-      previous.x = Math.min(previous.x, rect.x); previous.width = right - previous.x; previous.height = Math.max(previous.height, rect.height)
+      const bottom = Math.max(previous.y + previous.height, rect.y + rect.height)
+      previous.x = Math.min(previous.x, rect.x); previous.y = Math.min(previous.y, rect.y)
+      previous.width = right - previous.x; previous.height = bottom - previous.y
     } else { lines.push({ ...rect }); lineColumns.push(column) }
   }
-  return { text: normalizeTextSpacing(pieces.join(' ')), rects: lines }
+  return { text: normalizeTextSpacing(pieces.join('')), rects: lines }
 }
 
 export function textSelectionForQuery(words: WordBox[], query: string, options: TextQueryOptions = {}): { text: string; rects: PdfRect[] } | undefined {
@@ -326,22 +333,47 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
     const comparable = caseSensitive ? char : char.toLocaleLowerCase()
     for (const normalizedChar of Array.from(comparable)) indexed.push({ char: normalizedChar, start, end })
   }
-  words.forEach((word, wordIndex) => {
-    if (wordIndex > 0) append(' ', { wordIndex: wordIndex - 1, offset: Array.from(words[wordIndex - 1].text).length }, { wordIndex, offset: 0 })
-    Array.from(word.text).forEach((char, offset) => append(char, { wordIndex, offset }, { wordIndex, offset: offset + 1 }))
+  const entries = words.map((word, wordIndex) => ({ word, wordIndex }))
+  const spanningBlocks = new Set(words.filter(word => word.columnAmbiguous && word.visualBlock !== undefined).map(word => word.visualBlock!))
+  const emitted = new Set<number>()
+  const readingOrder = entries.flatMap(entry => {
+    const block = entry.word.visualBlock
+    if (block === undefined || !spanningBlocks.has(block)) return [entry]
+    if (emitted.has(block)) return []
+    emitted.add(block)
+    return entries.filter(value => value.word.visualBlock === block).sort((a, b) => {
+      const dy = (a.word.baselineY ?? a.word.rect.y) - (b.word.baselineY ?? b.word.rect.y)
+      return Math.abs(dy) > Math.min(a.word.rect.height, b.word.rect.height) * .18 ? dy : (a.word.rtl && b.word.rtl ? -1 : 1) * (a.word.rect.x - b.word.rect.x)
+    })
   })
+  const indexOrder = (order: typeof entries) => {
+    indexed.length = 0
+    order.forEach(({ word, wordIndex }, index) => {
+      const previous = order[index - 1]
+      if (previous && !previous.word.spaceAfter) append(' ', { wordIndex: previous.wordIndex, offset: Array.from(previous.word.text).length }, { wordIndex, offset: 0 })
+      Array.from(selectionWordText(word)).forEach((char, offset) => append(char, { wordIndex, offset }, { wordIndex, offset: offset + 1 }))
+    })
+  }
   const normalizedNeedle = Array.from(query.trim().replace(/\s+/gu, ' ')).flatMap((char) => {
     if (ignoreWhitespace && /\s/u.test(char)) return []
     return Array.from(caseSensitive ? char : char.toLocaleLowerCase())
   }).join('')
-  if (!normalizedNeedle || !indexed.length) return undefined
-  const source = indexed.map((entry) => entry.char).join('')
-  let start = -1, cursor = 0
-  for (let index = 0; index <= occurrence; index += 1) {
-    start = source.indexOf(normalizedNeedle, cursor)
-    if (start < 0) return undefined
-    cursor = start + Math.max(1, normalizedNeedle.length)
+  if (!normalizedNeedle || !entries.length) return undefined
+  let start = -1
+  // AI blocks may already have their own reading order. Preserve their exact
+  // quotes first, then repair page-wide queries crossing a spanning caption.
+  for (const order of [entries, readingOrder]) {
+    indexOrder(order)
+    const source = indexed.map(entry => entry.char).join('')
+    let cursor = 0
+    for (let index = 0; index <= occurrence; index++) {
+      start = source.indexOf(normalizedNeedle, cursor)
+      if (start < 0) break
+      cursor = start + Math.max(1, normalizedNeedle.length)
+    }
+    if (start >= 0) break
   }
+  if (start < 0) return undefined
   const first = indexed[start], last = indexed[start + normalizedNeedle.length - 1]
   if (!first || !last) return undefined
   // Exact model/search quotes already define their source range. Automatic
@@ -380,6 +412,9 @@ function ascentRatio(style?: PdfJsTextStyle): number {
   const ascent = style?.ascent
   const descent = style?.descent ? Math.abs(style.descent) : 0
   const extent = ascent && ascent > 0 ? ascent + descent : 0
+  // A symbol font may have a valid ascent and an unrelated extreme descender.
+  // Preserve its actual ascent instead of scaling it down with that outlier.
+  if (ascent && ascent >= .5 && ascent <= 1.2) return ascent
   if (ascent && ascent > 0 && descent > 0 && (extent < 0.5 || extent > 1.5)) return ascent / extent
   if (ascent && ascent > 0) return ascent
   if (style?.descent) return 1 + style.descent
@@ -568,16 +603,17 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
   const total = natural.reduce((sum, value) => sum + Math.max(0, value), 0)
   if (!Number.isFinite(total) || total <= 0) return natural.map(() => fullWidth / natural.length)
   const spaces = natural.flatMap((_, index) => /\s/u.test(Array.from(text)[index] || '') ? [index] : [])
-  const scale = fullWidth / total
-  if (spaces.length && scale > 1 && scale < 1.45) {
+  if (spaces.length) {
     const extra = (fullWidth - total) / spaces.length
-    return natural.map((value, index) => Math.max(0, value) + (spaces.includes(index) ? extra : 0))
+    if (spaces.every(index => natural[index] + extra > 0)) return natural.map((value, index) => Math.max(0, value) + (spaces.includes(index) ? extra : 0))
   }
+  const scale = fullWidth / total
   return natural.map((value) => Math.max(0, value) * scale)
 }
 
 export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride): WordBox[] {
   const words: WordBox[] = []
+  const horizontalWords = new Set<WordBox>()
   const fontWidths = new Map<NativeTextFont, Map<string, number>>()
   let order = 0
   for (const [textRun, item] of items.entries()) {
@@ -603,11 +639,19 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       subsets.forEach(font => fontWidths.set(font, widths))
     }
     const widths = native && fontWidths.get(native)
-    const naturalAdvances = widths ? characters.map(character => (widths.get(character) ?? .5) * fontHeight) : measure ? characters.map((_character, index) => {
+    const naturalAdvances = widths ? characters.map(character => (widths.get(character) ?? (character === '\u3000' ? 1 : /\s/u.test(character) ? .25 : .5)) * fontHeight) : measure ? characters.map((_character, index) => {
       const end = measure(characters.slice(0, index + 1).join(''))
       const start = index ? measure(characters.slice(0, index).join('')) : 0
       return Math.max(0, end - start)
     }) : []
+    const ligatures = widths ? [...widths.keys()].filter(text => Array.from(text).length > 1).sort((a, b) => b.length - a.length) : []
+    if (widths && ligatures.length) for (let index = 0; index < characters.length; index++) {
+      const ligature = ligatures.find(text => characters.slice(index, index + Array.from(text).length).join('') === text)
+      if (!ligature) continue
+      const length = Array.from(ligature).length, total = naturalAdvances.slice(index, index + length).reduce((sum, value) => sum + value, 0)
+      for (let offset = 0; offset < length; offset++) naturalAdvances[index + offset] = (total ? naturalAdvances[index + offset] / total : 1 / length) * widths.get(ligature)! * fontHeight
+      index += length - 1
+    }
     const advances = naturalAdvances.length === characters.length ? fitTextAdvances(naturalAdvances, fullWidth, item.str) : characters.map(() => fullWidth / Math.max(1, characters.length))
     const prefixAdvances = [0]
     for (const advance of advances) prefixAdvances.push(prefixAdvances[prefixAdvances.length - 1] + advance)
@@ -632,6 +676,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
       const boundaries = [0, ...wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || logicalOffset) - logicalOffset)]
       words.push({ text: match[0], order: order++, rect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
+      if (Math.abs(angle) < .01 && !native?.vertical) horizontalWords.add(words.at(-1)!)
     }
   }
   // PDF.js generally follows content-stream order, but mathematical
@@ -692,6 +737,26 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       target.words.push(word)
       target.rect = lineBounds(target)
     }
+  }
+  for (const line of lines) {
+    const neighbors = [...line.words].sort((left, right) => left.rect.x - right.rect.x)
+    neighbors.forEach((word, index) => {
+      const next = neighbors[index + 1]
+      if (!next || word.textRun === next.textRun || !horizontalWords.has(word) || !horizontalWords.has(next)) return
+      if (Math.abs(word.rect.height - next.rect.height) > word.rect.height * .05 || Math.abs(word.baselineY! - next.baselineY!) > word.rect.height * .06) return
+      const edges = [...(word.boundaries || [])].sort((a, b) => a - b)
+      const lastAdvance = edges.at(-1)! - edges.at(-2)!
+      const overlap = word.rect.x + word.rect.width - next.rect.x
+      if (!(overlap > .001 && overlap < lastAdvance * .65)) return
+      // A negative TJ adjustment can place the next run inside the final
+      // character's advance box (notably compressed CJK punctuation). Keep
+      // earlier carets intact; the next origin is the actual trailing edge.
+      const right = word.rect.x + word.rect.width
+      word.rect.width -= overlap
+      word.boundaries = word.boundaries?.map(edge => Math.min(edge, word.rect.width))
+      if (word.textRunRect && Math.abs(word.textRunRect.x + word.textRunRect.width - right) < .01) word.textRunRect.width -= overlap
+    })
+    line.rect = lineBounds(line)
   }
   lines.sort((left, right) => (left.baselineY ?? left.top) - (right.baselineY ?? right.top) || Math.min(...left.words.map((word) => word.rect.x)) - Math.min(...right.words.map((word) => word.rect.x)))
   const heights = words.map((word) => word.rect.height).sort((left, right) => left - right)
@@ -861,5 +926,19 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   const ordered = columns.flatMap((column) => column.runs
     .sort((left, right) => left.baselineY - right.baselineY || left.left - right.left)
     .flatMap((run) => run.words.filter(word => word.rtl).length > run.words.length / 2 ? [...run.words].reverse() : run.words))
+  // Keep whitespace out of column/paragraph detection, but give a real inline
+  // gap its own caret interval. This also covers PDF.js synthetic space items.
+  for (const line of lines) {
+    const row = [...line.words].sort((a, b) => a.rect.x - b.rect.x)
+    row.forEach((word, index) => {
+      const next = row[index + (word.rtl ? -1 : 1)]
+      if (!next || !horizontalWords.has(word) || !horizontalWords.has(next) || Boolean(next.rtl) !== Boolean(word.rtl) || word.lineBreakAfter) return
+      const sameBlock = word.columnAmbiguous && next.columnAmbiguous && word.visualBlock !== undefined && word.visualBlock === next.visualBlock
+      if (word.column !== next.column && !sameBlock) return
+      if (Math.abs(word.baselineY! - next.baselineY!) > Math.min(word.rect.height, next.rect.height) * .18) return
+      const gap = word.rtl ? word.rect.x - next.rect.x - next.rect.width : next.rect.x - word.rect.x - word.rect.width
+      if (gap > .01 && gap <= Math.min(word.rect.height, next.rect.height) * 1.6) word.spaceAfter = { text: ' ', width: gap }
+    })
+  }
   return columns.flatMap((_column, columnIndex) => ordered.filter((word) => word.column === columnIndex))
 }

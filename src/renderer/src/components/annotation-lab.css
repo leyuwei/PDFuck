@@ -13,6 +13,18 @@
 .annotation-lab-launch[data-window-state="minimized"], .annotation-lab-settings-trigger[data-window-state="minimized"] { background: #fff1d6; border-color: #cf9b38; box-shadow: inset 3px 0 #cf9b38; }
 .theme-dark .annotation-lab-launch[data-window-state="minimized"], .theme-dark .annotation-lab-settings-trigger[data-window-state="minimized"] { background: #48391e; border-color: #c49a4b; }
 .automatic-custom-issue textarea { min-height: 70px; resize: vertical; max-height: 180px; }
+.automatic-option-grid.automatic-scope-grid { grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); }
+.automatic-page-range { display: grid; gap: 7px; margin-top: 12px; min-width: 0; }
+.automatic-page-range > label { margin: 0; font-size: var(--ui-font-body); }
+.automatic-page-range input { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid #ccd6e8; border-radius: 8px; font-size: var(--ui-font-body); background: #fff; color: #20283a; }
+.automatic-page-range small { font-size: var(--ui-font-small); line-height: 1.45; overflow-wrap: anywhere; }
+.automatic-annotation-footer { display: flex; flex: none; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; padding: 14px 16px; border-top: 1px solid #d6deeb; background: inherit; }
+.automatic-annotation-footer > .lab-export-control { margin-inline-end: auto; max-width: 100%; }
+.automatic-annotation-footer > .automatic-annotation-controls { margin: 0; flex: 1 1 auto; }
+.automatic-annotation-footer > .automatic-control-note { flex-basis: 100%; margin: 0; }
+.lab-export-control .ai-polish-error { max-width: 100%; margin: 0; overflow-wrap: anywhere; }
+.theme-dark .automatic-page-range input { background: #243147; color: #e7eef9; border-color: #475a73; }
+.theme-dark .automatic-annotation-footer { border-color: #475a73; }
 .annotation-lab .annotation-lab-settings-backdrop, .annotation-lab .lab-modal-backdrop { padding-top: 88px; }
 .annotation-lab .lab-modal-backdrop { place-items: end; padding: 120px 16px 36px; }
 .annotation-lab .lab-modal-backdrop .lab-disclaimer { max-height: calc(100dvh - 156px); }

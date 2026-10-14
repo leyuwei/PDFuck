@@ -18,6 +18,10 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.9 后续修复重新交付（2026-10-14）**：版本保持 2.1.9，以下现行验收覆盖初次交付与用户补充。`npm run test:release-2.1.9` 现为 4 个新增测试文件、16 项；保留 `scripts/release-2.1.9-ui.cjs` 的中文压缩标点与原文卡片检查，新增 `scripts/release-2.1.9-survey-ui.cjs` 使用 `tmp/inter_agent_trust_comst_survey.pdf` 第 17/20 页检查纯空格与词尾空格双向选择/复制、特殊符号与跨栏图注、指定页码与上下文/报告隔离、暂停/继续/导出失败恢复、固定操作区与书签底栏。两套新 UI 分别覆盖十语言 × 双主题 × 四字号各 80 组，并在源码和最终解包成品运行；AI 集成通过本地 IPC 测试夹具，不调用外部模型。源码和最终包均用本轮修改重新生成，更新原有同名 Windows 2.1.9 安装包/便携包与 SHA-256；实际运行便携版的新增检查。仅执行本轮新增项、typecheck、直接生产构建、diff 与包内资源检查，不执行历史全量回归。当前记录以 `docs/VALIDATION-2.1.9.md` 与本轮发布 JSON 为准。
+
+**2.1.9 选区、批注原文与简洁文案（2026-10-14）**：本轮按用户要求只运行新增 `npm run test:release-2.1.9`（10 项）与 `node scripts/release-2.1.9-ui.cjs`，另执行 typecheck、直接 `electron-vite build`、diff 检查。新 UI 验证使用 `tmp/selection-fix.pdf` 实际双向拖选、正常/高缩放、剪贴板、批注原文卡片、保存重开，以及十语言 × 双主题 × 四字号的 80 组布局；新增检查也覆盖滚动条出现时缩放不回退。计划与结果见 `docs/PLAN-2.1.9.md` 和 `docs/VALIDATION-2.1.9.md`。不调用旧测试全集、`npm run build`、`dist:win` 或一键全量打包脚本。通过后直接 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows x64 安装包/便携版/解包程序，以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品运行本轮新增 UI 检查；运行新增 `node scripts/release-2.1.9-package-check.cjs` 核对所有生产资源、版本、文件属性、签名和 SHA-256。Windows 没有可信签名证书时明确标记未签名；本轮不宣称完成 macOS 构建或全量历史回归。
+
 **2.1.7 可用性修复与重新交付（2026-10-12）**：版本与锁文件保持 2.1.7，无新增依赖。普通增字、换行、缺字和格式调整自动进入既有 Chromium PDF 矢量排版流程；小改动继续复用原指令。编辑前加载与预览相同的保存快照，避免后续编辑解析内存指令流失败。自动复用嵌入字体程序、基线与间距，字体子集缺字时自动补齐并标明。修复段落合并公式编号、平台字体影响几何，以及短行和公式使同一栏沟的候选中心漂移的问题。选择、段落宽度与可视栏线共用实际栏沟。
 
 用户 Markdown 后续可用性修复：完整读取绘制指令中使用的字体，按完整 ToUnicode 字符表区分同名字体子集（包括新子集是原子集的一部分的情况），合并同一字族的段落与字宽，兼容 ExtGState 字体，并将同一字体的自动补字合回原行；打印输出同样读取 Type3 FontDescriptor 字体名，并处理 Chromium 对嵌套子集名中加号的改写，还原私有字形的原文与标点。自动排版的系统补字保留原字体类别。页面编辑失败反馈留在格式栏，保留草稿并可重试，不弹通用错误窗口。

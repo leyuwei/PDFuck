@@ -6,6 +6,7 @@ import { AnnotationContent } from './AnnotationContent'
 import { AiMarkdown } from './AiMarkdown'
 import { LabExportButton } from './LabExportButton'
 import { AnnotationRichEditor } from './AnnotationRichText'
+import type { AnnotationSourcePassage } from '../lib/annotation-source'
 import type { TextMark } from '../lib/annotation-rich-text'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, PageNumberSettings, TextStyle, WatermarkSettings } from '../types'
@@ -30,7 +31,7 @@ function localizedFontLabel(label: string): string {
 
 function printScaleLabel(value: number): string { return `${value}%` }
 
-export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; marks?: TextMark[]; annotationId?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean }
+export interface AnnotationDialogState { kind: AnnotationKind; initial?: string; marks?: TextMark[]; annotationId?: string; initialColor?: string; reply?: AnnotationReply; optional?: boolean; edit?: boolean; source?: AnnotationSourcePassage[]; sourceLoading?: boolean }
 export interface AnnotationDialogResult { content: string; color: string; reply?: AnnotationReply; marks?: TextMark[] }
 
 function useDeferredFocus<T extends HTMLElement>() {
@@ -73,6 +74,17 @@ export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabl
     } })
   }
   return <div className={`modal-backdrop annotation-dialog-backdrop${suggesting ? ' annotation-suggestion-mode' : ''}`} onPointerDown={(event) => { backgroundPointer.current = event.button === 0 && event.target === event.currentTarget }} onPointerCancel={() => { backgroundPointer.current = false }} onClick={(event) => { if (!suggesting && backgroundPointer.current && event.target === event.currentTarget) onCancel(); backgroundPointer.current = false }} onKeyDownCapture={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); if (suggesting) returnToEditor(); else onCancel() } }}><ScrollWindow ref={floating.ref} className="modal annotation-dialog" role="dialog" aria-modal={!suggesting} aria-labelledby="annotation-dialog-title" style={floating.style}><div className="annotation-dialog-heading" {...floating.dragHandlers}><h2 id="annotation-dialog-title">{suggesting ? ui("ui.annotationSuggestions") : state.edit ? ui("ui.editAnnotation") : labels[state.kind]}</h2>{suggesting && <button type="button" className="annotation-suggestion-back" onClick={returnToEditor}>{ui("ui.backToAnnotationEditor")}</button>}<button type="button" className="annotation-dialog-close" aria-label={ui("ui.close")} title={ui("ui.close")} onClick={onCancel}>×</button></div>
+    <section className="annotation-source" aria-labelledby="annotation-source-title" aria-busy={state.sourceLoading || false}>
+      <div className="annotation-source-heading"><b id="annotation-source-title">{ui('ui.annotationSource')}</b><span>{ui('ui.annotationSourceHint')}</span></div>
+      <div className="annotation-source-passages" tabIndex={0}>
+        {state.sourceLoading ? <p className="annotation-source-empty">{ui('ui.annotationSourceLoading')}</p>
+          : state.source?.length ? state.source.map(passage => <div className="annotation-source-passage" key={passage.pageIndex}>
+            <small>{ui('ui.page')} {passage.pageIndex + 1}{passage.nearby && <> · {ui('ui.annotationNearbyText')}</>}</small>
+            {passage.pieces.length ? <p dir="auto">{passage.pieces.map((piece, index) => piece.selected ? <mark key={index}>{piece.text}</mark> : <span key={index}>{piece.text}</span>)}</p>
+              : <p className="annotation-source-empty">{ui('ui.annotationSourceEmpty')}</p>}
+          </div>) : <p className="annotation-source-empty">{ui('ui.annotationSourceEmpty')}</p>}
+      </div>
+    </section>
     <div className="annotation-editor-fields" hidden={suggesting}><label className="annotation-markdown-toggle"><input type="checkbox" checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label>{annotationView.markdown && value.trim() && <AnnotationContent text={value} marks={marks} markdown />}<AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
     {state.edit && <details ref={replySection} className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
     <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={suggest}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></div><div className="annotation-suggestion-stage" hidden={!suggesting}><p className="annotation-suggestion-draft-hint">{ui("ui.annotationSuggestionDraftHint")}</p><div ref={suggestionHost} /></div></ScrollWindow></div>
