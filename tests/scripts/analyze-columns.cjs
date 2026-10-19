@@ -11,7 +11,7 @@ const loaded = new Module(__filename, module); loaded._compile(bundled.outputFil
   const { getDocument, normalizeUnicode } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const fontBundle = require('esbuild').buildSync({ entryPoints: [path.join(root, 'src/renderer/src/lib/native-page-text.ts')], bundle: true, platform: 'node', format: 'cjs', write: false })
   const fontsModule = new Module(__filename, module); fontsModule._compile(fontBundle.outputFiles[0].text, __filename)
-  const file = process.argv[2] || 'tests/fixtures/test_multi_col.pdf'
+  const file = process.argv[2] || 'tests/fixtures/785904351dabdab98176b914912cc8dd.pdf'
   const task = getDocument({ data: new Uint8Array(fs.readFileSync(path.resolve(root, file))), fontExtraProperties: true })
   try {
     const pdf = await task.promise

@@ -471,7 +471,7 @@ describe('PDF text layout', () => {
   it('keeps a completed line free of a list marker emitted out of PDF stream order', () => {
     const words = [
       { text: 'as', order: 0, column: 0, rect: { x: 10, y: 20, width: 12, height: 10 } },
-      // This is the actual ordering pattern seen in Scheduling0821m.pdf:
+      // This is the actual ordering pattern seen in 83de88429dff8585d63f1e444786c262.pdf:
       // the next-line bullet occurs before the rest of the current line.
       { text: '•', order: 1, column: 0, rect: { x: 18, y: 35, width: 5, height: 7 } },
       { text: 'follows:', order: 2, column: 0, rect: { x: 26, y: 20, width: 40, height: 10 } }

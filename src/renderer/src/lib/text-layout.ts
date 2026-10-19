@@ -252,7 +252,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
         // column even though it visibly sits inside this paragraph, so retain
         // such fragments only when their centre stays inside the unexpanded
         // endpoint-run corridor.  Full prose from the other side of the gutter
-        // (the test2.pdf regression) remains outside that seed corridor.
+        // (the adjacent-column regression fixture) remains outside that seed corridor.
         if (word.column !== anchorColumn && startWord.textRunRect && endWord.textRunRect) {
           const seedLeft = Math.min(startWord.textRunRect.x, endWord.textRunRect.x)
           const seedRight = Math.max(startWord.textRunRect.x + startWord.textRunRect.width, endWord.textRunRect.x + endWord.textRunRect.width)

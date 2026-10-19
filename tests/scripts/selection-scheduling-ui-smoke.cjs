@@ -4,7 +4,7 @@ const path = require('path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0821m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '83de88429dff8585d63f1e444786c262.pdf')
 const userData = path.join(root, 'tests/tmp', 'scheduling-selection-ui-user')
 
 async function main() {

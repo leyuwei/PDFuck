@@ -38,7 +38,7 @@ function columnBounds(words, column) {
 async function main() {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const { textItemsToWordBoxes, textSelectionBetween } = loadTextLayout()
-  const pdfPath = path.join(root, 'tests/fixtures/cpaper.pdf')
+  const pdfPath = path.join(root, 'tests/fixtures/6fa8dadce18511ed3878289ff187a9c0.pdf')
   assert.ok(fs.existsSync(pdfPath), `missing ${pdfPath}`)
   const document = await getDocument({
     data: new Uint8Array(fs.readFileSync(pdfPath)),

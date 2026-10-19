@@ -6,7 +6,7 @@ const { _electron: electron } = require('playwright')
 const root = path.resolve(__dirname, '../..')
 const executable = process.env.PDFUCK_RELEASE_EXECUTABLE
 const version = process.env.PDFUCK_RELEASE_VERSION || require('../../package.json').version
-const fixture = path.join(root, 'tests/fixtures', 'Scheduling0821m.pdf')
+const fixture = path.join(root, 'tests/fixtures', '83de88429dff8585d63f1e444786c262.pdf')
 const userData = path.join(root, 'tests/tmp', `release-ui-smoke-user-${process.pid}`)
 
 assert.ok(executable, 'PDFUCK_RELEASE_EXECUTABLE is required')

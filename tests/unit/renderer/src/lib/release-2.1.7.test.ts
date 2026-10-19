@@ -74,7 +74,7 @@ function select(words: Awaited<ReturnType<typeof extract>>['words'], startText: 
 
 describe('2.1.7 selection and native page text regressions', () => {
   it('retains the true gutter on testOct page 9 and isolates both columns in either drag direction', async () => {
-    const { words } = await extract(new Uint8Array(readFileSync(resolve('tests/fixtures/testOct.pdf'))), 9)
+    const { words } = await extract(new Uint8Array(readFileSync(resolve('tests/fixtures/15b0dac9d0578d2802c4235a5ab881ed.pdf'))), 9)
     expect([...new Set(words.map((word) => word.column))]).toEqual([0, 1])
     const selected = select(words, 'establishes', 'theorem.', 310, 547)
     expect(selected.text).toMatch(/^establishes[\s\S]*optimal sampling strategy[\s\S]*theorem\.$/)
@@ -189,7 +189,7 @@ describe('2.1.7 selection and native page text regressions', () => {
   })
 
   it('edits a real embedded Chinese subset without substituting a font or changing following lines', async () => {
-    const bytes = new Uint8Array(readFileSync(resolve('tests/fixtures/7.申报书原件.pdf'))), before = await extract(bytes, 3)
+    const bytes = new Uint8Array(readFileSync(resolve('tests/fixtures/c6bcff07d57312a4c5fe42a891c01e52.pdf'))), before = await extract(bytes, 3)
     const region = before.regions.find((value) => value.text.includes('未来'))!
     expect(region).toBeTruthy()
     const model = await PdfDocumentModel.load(bytes)

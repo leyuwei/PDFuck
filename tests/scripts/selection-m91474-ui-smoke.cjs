@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'm91474-li paper.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '3657778f5908b894acc031634ea41488.pdf')
 const userData = path.join(root, 'tests/tmp', 'm91474-selection-ui-user')
 
 async function main() {

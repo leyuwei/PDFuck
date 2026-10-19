@@ -92,7 +92,9 @@ def main():
             text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', link, text)
         if text != before:
             p.write_text(text, encoding='utf-8', newline='\n')
-    (ROOT / 'tests/migration-map.json').write_text(json.dumps(mapping, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    # Fixture aliases are private migration-only state, never a saved lookup.
+    recorded = {old: new for old, new in mapping.items() if not new.startswith('tests/fixtures/')}
+    (ROOT / 'tests/migration-map.json').write_text(json.dumps(recorded, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({'moved': len(mapping), 'unit': sum('.test.' in x for x in mapping), 'scripts': sum(x.startswith('scripts/') for x in mapping), 'fixtures': len(fixtures)}, ensure_ascii=False))
 
 if __name__ == '__main__':

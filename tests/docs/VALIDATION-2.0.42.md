@@ -5,7 +5,7 @@
 
 ## 根因与修复
 
-- 样本 `tests/fixtures/test-enc.pdf` 使用的是空用户密码的标准权限加密。PDF.js 可以直接打开，因此旧逻辑没有把它标记为加密文档；进入编辑链路后，pdf-lib 拒绝加载，最终把底层英文异常直接显示给用户。
+- 样本 `tests/fixtures/259aa43494a8a673ec4075bf6d13a191.pdf` 使用的是空用户密码的标准权限加密。PDF.js 可以直接打开，因此旧逻辑没有把它标记为加密文档；进入编辑链路后，pdf-lib 拒绝加载，最终把底层英文异常直接显示给用户。
 - 打开文件时现在统一读取加密标记、打印/复制/修改/批注权限和签名字段。权限加密文档保持可阅读，并显示明确的安全提示，不再进入会失败的编辑加载路径。
 - 新增 PDF detached CMS 签名完整性验证入口，显示签名状态、签名人、颁发者、证书有效期和是否覆盖整份文件。这里验证的是文件完整性，不冒充 Windows/系统信任链验证。
 - 受加密权限限制的文件可生成 144 DPI 可编辑副本：逐页渲染到新的未加密 PDF，移除原权限和旧签名结构，并强制另存为，绝不覆盖原文件。界面会预先说明表单、链接、矢量和可选文字将被扁平化。
@@ -22,7 +22,7 @@
 | 检查 | 结果 |
 | --- | --- |
 | `npm run typecheck` | 通过 |
-| `npm run test:release-2.0.42-ui` | 通过，源码态；使用真实 `tests/fixtures/test-enc.pdf` |
+| `npm run test:release-2.0.42-ui` | 通过，源码态；使用真实 `tests/fixtures/259aa43494a8a673ec4075bf6d13a191.pdf` |
 | `PDFUCK_SMOKE_EXECUTABLE=release/win-unpacked/PDFuck.exe node tests/scripts/release-2.0.42-ui-smoke.cjs` | 通过，Windows 成品态 |
 | 权限加密 | 正确识别；无底层英文错误；只读打开正常 |
 | PDF 签名 | detached CMS 完整性有效；签名人 National Immigration Administration；颁发者 BJCA DocSign CA3；覆盖整份文件 |

@@ -106,7 +106,7 @@ async function main() {
     report.growthNewlinesFormatting = true; report.nativeSavedReopened = true; report.undoRedoPixels = true
 
     console.log('repair: real embedded Chinese font')
-    const chineseFile = await isolate('tests/fixtures/7.申报书原件.pdf', 2, 'chinese.pdf')
+    const chineseFile = await isolate('tests/fixtures/c6bcff07d57312a4c5fe42a891c01e52.pdf', 2, 'chinese.pdf')
     ;({ app, page } = await launch(chineseFile))
     const region = page.locator('.page-text-region').filter({ hasText: '' })
     const selected = await region.evaluateAll(elements => elements.findIndex(element => element.getAttribute('aria-label').includes('2024')))
@@ -155,7 +155,7 @@ async function main() {
     await stop(app); app = undefined
 
     console.log('repair: real page 9 boundary')
-    const paper = await isolate('tests/fixtures/testOct.pdf', 8, 'paper.pdf'); ;({ app, page } = await launch(paper))
+    const paper = await isolate('tests/fixtures/15b0dac9d0578d2802c4235a5ab881ed.pdf', 8, 'paper.pdf'); ;({ app, page } = await launch(paper))
     console.log('repair: real English paragraph growth')
     await page.locator('.page-text-region[aria-label*="We now use the relaxation"]').click()
     await apply(page, 'We now use a tighter relaxation for this bound')

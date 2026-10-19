@@ -5,7 +5,7 @@ const { _electron: electron } = require('playwright')
 const { traceSelectionMove } = require('./selection-temporal-ui.cjs')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0826m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '9b59c7fc46f519ed150735e0ab5e6ec4.pdf')
 const userData = path.join(root, 'tests/tmp', 'scheduling-0826-selection-ui-user')
 const version = require(path.join(root, 'package.json')).version
 const artifactDir = path.join(root, 'tests/output', 'playwright')

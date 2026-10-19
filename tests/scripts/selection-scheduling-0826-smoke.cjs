@@ -5,7 +5,7 @@ const Module = require('node:module')
 const esbuild = require('esbuild')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0826m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '9b59c7fc46f519ed150735e0ab5e6ec4.pdf')
 
 function loadTextLayout() {
   const result = esbuild.buildSync({

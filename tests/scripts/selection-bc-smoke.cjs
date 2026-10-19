@@ -5,7 +5,7 @@ const Module = require('node:module')
 const esbuild = require('esbuild')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'bc.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '6430eebbbfb922be4d313dd85cccbd08.pdf')
 
 function loadTextLayout() {
   const result = esbuild.buildSync({ entryPoints: [path.join(root, 'src/renderer/src/lib/text-layout.ts')], bundle: true, platform: 'node', format: 'cjs', write: false })

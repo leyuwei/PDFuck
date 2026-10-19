@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const esbuild = require('esbuild')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'm91474-li paper.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '3657778f5908b894acc031634ea41488.pdf')
 
 function loadTextLayout() {
   const result = esbuild.buildSync({

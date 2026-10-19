@@ -4,7 +4,7 @@ const assert = require('assert/strict')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const samples = ['02_Scheduling0815m.pdf', 'Scheduling0813.pdf']
+const samples = ['9a85799401ef8ca4091cd38f64949fb9.pdf', '0a02ff02029c95044bf3f72ffdf6c3af.pdf']
 
 async function runSample(name, direction) {
   const pdfPath = path.join(root, 'tests/fixtures', name)

@@ -3,8 +3,8 @@ const { createHash } = require('node:crypto'), { _electron: electron } = require
 const root = path.resolve(__dirname, '../..'), executable = process.env.PDFUCK_SMOKE_EXECUTABLE
 const output = path.join(root, 'tests/output/release-2.1.7', executable ? 'markdown-packaged' : 'markdown')
 fs.mkdirSync(output, { recursive: true })
-const original = path.join(root, 'tests/fixtures/section_vii_changes.md')
-const source = fs.readFileSync(original), fixture = path.join(output, 'section_vii_changes.md')
+const original = path.join(root, 'tests/fixtures/3b95731def6670092b365d8fc1cf3b0b.md')
+const source = fs.readFileSync(original), fixture = path.join(output, '3b95731def6670092b365d8fc1cf3b0b.md')
 const profile = path.join(root, 'tests/tmp', `markdown-217-${process.pid}`)
 fs.writeFileSync(fixture, source)
 const clean = text => text.normalize('NFKC').replace(/\s/gu, '')

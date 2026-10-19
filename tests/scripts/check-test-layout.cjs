@@ -15,6 +15,16 @@ for (const name of fs.readdirSync(__dirname).filter(n => n.endsWith('.cjs'))) {
   }
 }
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)])
+const fixtures = path.join(root, 'tests/fixtures')
+const inputNames = fs.readdirSync(fixtures).filter(name => name !== 'README.md')
+assert.ok(inputNames.length > 0)
+for (const name of inputNames) assert.match(name, /^[a-f0-9]{32}\.pdf$/, 'fixture filenames must be opaque')
+assert.ok(!Object.values(mapping).some(name => name.startsWith('tests/fixtures/')), 'migration records must not disclose original fixture names')
+const documentedMissing = new Set([...fs.readFileSync(path.join(fixtures, 'README.md'), 'utf8').matchAll(/`([a-f0-9]{32}\.(?:pdf|md))`/g)].map(match => match[1]).filter(name => !inputNames.includes(name)))
+const references = [path.join(root, 'README.md'), path.join(root, 'PACKAGING_GUIDE.md'), path.join(root, 'tests/README.md'), ...walk(path.join(root, 'tests/scripts')), ...walk(path.join(root, 'tests/unit')), ...walk(path.join(root, 'tests/docs'))]
+for (const file of references) for (const match of fs.readFileSync(file, 'utf8').matchAll(/\b([a-f0-9]{32}\.(?:pdf|md))\b/g)) {
+  assert.ok(inputNames.includes(match[1]) || documentedMissing.has(match[1]), `${file}: unknown fixture ${match[1]}`)
+}
 for (const file of walk(path.join(root, 'tests/unit'))) {
   const ast = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
   function visit(node) {
@@ -30,4 +40,4 @@ for (const file of walk(path.join(root, 'tests/unit'))) {
 }
 assert.ok(!fs.existsSync(path.join(root, 'tmp')) && !fs.existsSync(path.join(root, 'output')))
 assert.equal(require('../../package.json').version, '2.1.10')
-console.log(JSON.stringify({ moved: Object.keys(mapping).length, scriptsParsed: scripts, localReferencesResolved: imports, historicalTestsExecuted: 0 }))
+console.log(JSON.stringify({ moved: Object.keys(mapping).length, anonymousFixtures: inputNames.length, documentedMissingInputs: documentedMissing.size, scriptsParsed: scripts, localReferencesResolved: imports, historicalTestsExecuted: 0 }))

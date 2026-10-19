@@ -10,7 +10,7 @@ import { nativeTextFont } from '../../../../../src/renderer/src/lib/native-page-
 import { textItemsToWordBoxes, textSelectionBetween, type PdfFontDetails } from '../../../../../src/renderer/src/lib/text-layout'
 import type { Matrix } from '../../../../../src/renderer/src/lib/page-coordinates'
 
-const task = getDocument({ data: new Uint8Array(readFileSync('tests/fixtures/test_multi_col.pdf')), fontExtraProperties: true })
+const task = getDocument({ data: new Uint8Array(readFileSync('tests/fixtures/785904351dabdab98176b914912cc8dd.pdf')), fontExtraProperties: true })
 let pdf: Awaited<typeof task.promise>
 beforeAll(async () => { pdf = await task.promise })
 afterAll(async () => { await task.destroy() })
@@ -97,7 +97,7 @@ it('keeps all relocated cases and reusable inputs under tests without changing g
   expect(walk('src').filter(p => /\.test\.[tj]sx?$/.test(p))).toEqual([])
   expect(readdirSync('scripts').filter(p => /smoke|audit|check|test/.test(p))).toEqual([])
   expect(readFileSync('.gitignore', 'utf8').replace(/\r\n/g, '\n')).toBe(execFileSync('git', ['show', 'HEAD:.gitignore'], { encoding: 'utf8' }).replace(/\r\n/g, '\n'))
-  expect(createHash('sha256').update(readFileSync('tests/fixtures/test_multi_col.pdf')).digest('hex')).toBe('50b3dec6d28328c7986a8985fdefb0836ee2b6cb08850dcfa168ad784c268a81')
+  expect(createHash('sha256').update(readFileSync('tests/fixtures/785904351dabdab98176b914912cc8dd.pdf')).digest('hex')).toBe('50b3dec6d28328c7986a8985fdefb0836ee2b6cb08850dcfa168ad784c268a81')
   for (const name of ['package.json', 'package-lock.json']) expect(JSON.parse(readFileSync(name, 'utf8')).version).toBe('2.1.10')
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   for (const command of Object.values(pkg.scripts) as string[]) for (const match of command.matchAll(/(?:node |electron |\-File )([^ &]+\.(?:cjs|ps1))/g)) expect(existsSync(resolve(match[1])), match[1]).toBe(true)

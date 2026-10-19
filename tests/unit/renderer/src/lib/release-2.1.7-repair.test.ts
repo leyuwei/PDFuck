@@ -26,7 +26,7 @@ async function fixture() {
 }
 describe('2.1.7 ordinary edits and displayed gutter repair', () => {
   it('exposes the actual detector boundary for both the UI and left/right selection', async () => {
-    const { words } = await extract(new Uint8Array(readFileSync('tests/fixtures/testOct.pdf')), 9), boundaries = words[0].columnBoundaries!
+    const { words } = await extract(new Uint8Array(readFileSync('tests/fixtures/15b0dac9d0578d2802c4235a5ab881ed.pdf')), 9), boundaries = words[0].columnBoundaries!
     expect(boundaries).toHaveLength(1); expect(boundaries[0]).toBeGreaterThan(300.02); expect(boundaries[0]).toBeLessThan(311.98)
     expect(words.every(word => word.columnBoundaries === boundaries)).toBe(true)
     const first = words.findIndex(word => word.text === 'establishes'), last = words.findIndex(word => word.text === 'theorem.' && word.rect.y > words[first].rect.y)
@@ -58,7 +58,7 @@ describe('2.1.7 ordinary edits and displayed gutter repair', () => {
     expect(after.items.map(item => item.str).join('')).toContain('Independent')
   })
   it('keeps indented Chinese paragraphs separate from the following page content', async () => {
-    const { regions } = await extract(new Uint8Array(readFileSync('tests/fixtures/7.申报书原件.pdf')), 3)
+    const { regions } = await extract(new Uint8Array(readFileSync('tests/fixtures/c6bcff07d57312a4c5fe42a891c01e52.pdf')), 3)
     const paragraph = regions.find(region => region.text.includes('2024年1月'))!
     expect(paragraph.text).toContain('未来'); expect(paragraph.text).not.toContain('项目紧密结合')
     expect(paragraph.text).not.toContain('项目简介'); expect(paragraph.lines[0].sources![0].x).toBeGreaterThan(paragraph.rect.x + paragraph.style.size)

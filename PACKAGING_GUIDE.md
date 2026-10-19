@@ -18,21 +18,21 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
-**2.1.10 当前交付（2026-10-19）**：本轮按用户要求只运行新增 `npm run test:release-2.1.10`（12 项定向单元测试及迁移静态检查）、`node tests/scripts/release-2.1.10-ui.cjs`，另执行 typecheck、直接生产构建、diff 和包内资源校验。新 UI 在源码与最终解包成品检查 `tests/fixtures/test_multi_col.pdf` 两页的实际栏线、双向跨行选择/复制，以及十语言 × 双主题 × 四字号 80 组工具条布局；新增便携检查使用同一脚本的 `--portable`。修复错行/密集公式漏检和公式编号空隙误报，同时修复长翻译文本的大字号工具条溢出。
+**2.1.10 当前交付（2026-10-19）**：本轮按用户要求只运行新增 `npm run test:release-2.1.10`（12 项定向单元测试及迁移静态检查）、`node tests/scripts/release-2.1.10-ui.cjs`，另执行 typecheck、直接生产构建、diff 和包内资源校验。新 UI 在源码与最终解包成品检查 `tests/fixtures/785904351dabdab98176b914912cc8dd.pdf` 两页的实际栏线、双向跨行选择/复制，以及十语言 × 双主题 × 四字号 80 组工具条布局；新增便携检查使用同一脚本的 `--portable`。修复错行/密集公式漏检和公式编号空隙误报，同时修复长翻译文本的大字号工具条溢出。
 
 测试目录已统一为 `tests/unit/`、`tests/scripts/`、`tests/fixtures/`、`tests/docs/`、`tests/tmp/`、`tests/output/`。已有 `test:*` 命令名保留，内部路径已更新；所有版本文档的命令路径已同步。原始样本可被 Git 跟踪，未新增或修改 `.gitignore`。部分历史输入原本缺失，见 `tests/fixtures/README.md`；不得将未运行的历史用例记为通过。目录、当前完整定向命令和分阶段重测方式见 [测试说明](tests/README.md)，根因和结果见 [2.1.10 验收](tests/docs/VALIDATION-2.1.10.md)。
 
 新增项通过后，直接 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows x64 安装包、便携版及解包程序。以 `PDFUCK_SMOKE_EXECUTABLE` 指向 `release/win-unpacked/PDFuck.exe` 运行本轮新增 UI，再运行 `node tests/scripts/release-2.1.10-ui.cjs --portable` 和 `node tests/scripts/release-2.1.10-package-check.cjs`；逐字节校验生产资源、版本、OCR/打印资源、EXE 属性、签名和 SHA-256。当前这次定向交付不调用下文用于全量发布的 `npm test`、`npm run build`、`dist:win` 或一键全量发布脚本；不宣称 macOS 构建或真实系统安装/卸载已验收。
 
-**2.1.9 后续修复重新交付（2026-10-14）**：版本保持 2.1.9，以下现行验收覆盖初次交付与用户补充。`npm run test:release-2.1.9` 现为 4 个新增测试文件、16 项；保留 `tests/scripts/release-2.1.9-ui.cjs` 的中文压缩标点与原文卡片检查，新增 `tests/scripts/release-2.1.9-survey-ui.cjs` 使用 `tests/fixtures/inter_agent_trust_comst_survey.pdf` 第 17/20 页检查纯空格与词尾空格双向选择/复制、特殊符号与跨栏图注、指定页码与上下文/报告隔离、暂停/继续/导出失败恢复、固定操作区与书签底栏。两套新 UI 分别覆盖十语言 × 双主题 × 四字号各 80 组，并在源码和最终解包成品运行；AI 集成通过本地 IPC 测试夹具，不调用外部模型。源码和最终包均用本轮修改重新生成，更新原有同名 Windows 2.1.9 安装包/便携包与 SHA-256；实际运行便携版的新增检查。仅执行本轮新增项、typecheck、直接生产构建、diff 与包内资源检查，不执行历史全量回归。当前记录以 `tests/docs/VALIDATION-2.1.9.md` 与本轮发布 JSON 为准。
+**2.1.9 后续修复重新交付（2026-10-14）**：版本保持 2.1.9，以下现行验收覆盖初次交付与用户补充。`npm run test:release-2.1.9` 现为 4 个新增测试文件、16 项；保留 `tests/scripts/release-2.1.9-ui.cjs` 的中文压缩标点与原文卡片检查，新增 `tests/scripts/release-2.1.9-survey-ui.cjs` 使用 `tests/fixtures/0e86a90471d190285a1db37076d60656.pdf` 第 17/20 页检查纯空格与词尾空格双向选择/复制、特殊符号与跨栏图注、指定页码与上下文/报告隔离、暂停/继续/导出失败恢复、固定操作区与书签底栏。两套新 UI 分别覆盖十语言 × 双主题 × 四字号各 80 组，并在源码和最终解包成品运行；AI 集成通过本地 IPC 测试夹具，不调用外部模型。源码和最终包均用本轮修改重新生成，更新原有同名 Windows 2.1.9 安装包/便携包与 SHA-256；实际运行便携版的新增检查。仅执行本轮新增项、typecheck、直接生产构建、diff 与包内资源检查，不执行历史全量回归。当前记录以 `tests/docs/VALIDATION-2.1.9.md` 与本轮发布 JSON 为准。
 
-**2.1.9 选区、批注原文与简洁文案（2026-10-14）**：本轮按用户要求只运行新增 `npm run test:release-2.1.9`（10 项）与 `node tests/scripts/release-2.1.9-ui.cjs`，另执行 typecheck、直接 `electron-vite build`、diff 检查。新 UI 验证使用 `tests/fixtures/selection-fix.pdf` 实际双向拖选、正常/高缩放、剪贴板、批注原文卡片、保存重开，以及十语言 × 双主题 × 四字号的 80 组布局；新增检查也覆盖滚动条出现时缩放不回退。计划与结果见 `tests/docs/PLAN-2.1.9.md` 和 `tests/docs/VALIDATION-2.1.9.md`。不调用旧测试全集、`npm run build`、`dist:win` 或一键全量打包脚本。通过后直接 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows x64 安装包/便携版/解包程序，以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品运行本轮新增 UI 检查；运行新增 `node tests/scripts/release-2.1.9-package-check.cjs` 核对所有生产资源、版本、文件属性、签名和 SHA-256。Windows 没有可信签名证书时明确标记未签名；本轮不宣称完成 macOS 构建或全量历史回归。
+**2.1.9 选区、批注原文与简洁文案（2026-10-14）**：本轮按用户要求只运行新增 `npm run test:release-2.1.9`（10 项）与 `node tests/scripts/release-2.1.9-ui.cjs`，另执行 typecheck、直接 `electron-vite build`、diff 检查。新 UI 验证使用 `tests/fixtures/8e25ce03fc94eb2eb33e99ab01bb89a1.pdf` 实际双向拖选、正常/高缩放、剪贴板、批注原文卡片、保存重开，以及十语言 × 双主题 × 四字号的 80 组布局；新增检查也覆盖滚动条出现时缩放不回退。计划与结果见 `tests/docs/PLAN-2.1.9.md` 和 `tests/docs/VALIDATION-2.1.9.md`。不调用旧测试全集、`npm run build`、`dist:win` 或一键全量打包脚本。通过后直接 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows x64 安装包/便携版/解包程序，以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品运行本轮新增 UI 检查；运行新增 `node tests/scripts/release-2.1.9-package-check.cjs` 核对所有生产资源、版本、文件属性、签名和 SHA-256。Windows 没有可信签名证书时明确标记未签名；本轮不宣称完成 macOS 构建或全量历史回归。
 
 **2.1.7 可用性修复与重新交付（2026-10-12）**：版本与锁文件保持 2.1.7，无新增依赖。普通增字、换行、缺字和格式调整自动进入既有 Chromium PDF 矢量排版流程；小改动继续复用原指令。编辑前加载与预览相同的保存快照，避免后续编辑解析内存指令流失败。自动复用嵌入字体程序、基线与间距，字体子集缺字时自动补齐并标明。修复段落合并公式编号、平台字体影响几何，以及短行和公式使同一栏沟的候选中心漂移的问题。选择、段落宽度与可视栏线共用实际栏沟。
 
 用户 Markdown 后续可用性修复：完整读取绘制指令中使用的字体，按完整 ToUnicode 字符表区分同名字体子集（包括新子集是原子集的一部分的情况），合并同一字族的段落与字宽，兼容 ExtGState 字体，并将同一字体的自动补字合回原行；打印输出同样读取 Type3 FontDescriptor 字体名，并处理 Chromium 对嵌套子集名中加号的改写，还原私有字形的原文与标点。自动排版的系统补字保留原字体类别。页面编辑失败反馈留在格式栏，保留草稿并可重试，不弹通用错误窗口。
 
-本轮仅执行关键 `tests/unit/renderer/src/lib/release-2.1.7-repair.test.ts`、`tests/unit/renderer/src/lib/release-2.1.7-markdown.test.ts` 共 13 项，以及 `tests/scripts/release-2.1.7-repair-ui.cjs`、`tests/scripts/release-2.1.7-markdown-ui.cjs`、typecheck、生产构建和 diff 检查。新 UI 验收使用用户提供的实际 section_vii_changes.md，验证无衬线/衬线 14pt、连续修改、格式、保存重开再次修改、段落外像素保持，以及模拟输出失败时无弹窗且草稿保留并可重试。命令为 `npm run typecheck`、`npm run test:release-2.1.7`；旧 UI 入口转发至当前验收。计划与记录见 `tests/docs/PLAN-2.1.7-repair.md`、`tests/docs/VALIDATION-2.1.7.md`。生成 macOS arm64 APP / DMG / ZIP；以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品执行上述两项关键 UI 验收，使用独立 `--user-data-dir`。随后运行 `node tests/scripts/release-2.1.7-package-check.cjs` 核对生产字节、版本、签名、DMG 和 ZIP，并更新 SHA-256 清单。本机没有 Developer ID，采用 ad-hoc 签名且未公证；不调用旧测试全集或一键打包脚本。
+本轮仅执行关键 `tests/unit/renderer/src/lib/release-2.1.7-repair.test.ts`、`tests/unit/renderer/src/lib/release-2.1.7-markdown.test.ts` 共 13 项，以及 `tests/scripts/release-2.1.7-repair-ui.cjs`、`tests/scripts/release-2.1.7-markdown-ui.cjs`、typecheck、生产构建和 diff 检查。新 UI 验收使用用户提供的实际 3b95731def6670092b365d8fc1cf3b0b.md，验证无衬线/衬线 14pt、连续修改、格式、保存重开再次修改、段落外像素保持，以及模拟输出失败时无弹窗且草稿保留并可重试。命令为 `npm run typecheck`、`npm run test:release-2.1.7`；旧 UI 入口转发至当前验收。计划与记录见 `tests/docs/PLAN-2.1.7-repair.md`、`tests/docs/VALIDATION-2.1.7.md`。生成 macOS arm64 APP / DMG / ZIP；以 `PDFUCK_SMOKE_EXECUTABLE` 指向成品执行上述两项关键 UI 验收，使用独立 `--user-data-dir`。随后运行 `node tests/scripts/release-2.1.7-package-check.cjs` 核对生产字节、版本、签名、DMG 和 ZIP，并更新 SHA-256 清单。本机没有 Developer ID，采用 ad-hoc 签名且未公证；不调用旧测试全集或一键打包脚本。
 
 **2.1.6 新建文档与 Tab 缩进（2026-10-07）**：版本及锁文件同步为 2.1.6，无新增依赖。保存左侧增加同高 36px 的新建图标，无标题浮窗仅提供 Markdown/TXT 类型选择；按用户最终要求，选择前不显示警示框。创建后在源码工作区显示临时目录警告风格的保存提醒，空白文件也视为未保存，首次保存强制选择路径，取消保留文档；关闭复用原保存/放弃/取消确认，标签存档不会收录无磁盘路径的新文件。新文档保留字号与换行偏好，原先仅 PDF 视图时自动露出源码。源码 Tab 插入真实制表符或逐行缩进，Shift+Tab 删除一档前导 Tab/最多四空格；保留选区，进入既有撤销历史，兼容输入法，Esc 可离开编辑区。制表符显示宽度为四字符，与 TXT PDF 一致。新浮窗和提醒支持十语言、双主题及四档界面字号，编辑器 S/M/L 沿用原设置。
 
@@ -126,7 +126,7 @@ Markdown 紧凑标题与模板修正版仍为 2.1.0：PDF 排版/刷新/保存�
 
 2.0.43 增加已添加文字框的四角拖拽缩放，栅格文字在拖动中按当前尺寸实时重新排版；临时目录判定在目录名任意位置匹配 `wechat/tmp/temp/qq/msg/chat/tencent/slack/feishu/dingding/linshi/deprecate/archi` 等提示词，Ctrl/⌘+S 自动改为“另存为”。同时修复页面管理弹窗滚轮、标签按空间自适应宽度及水印预览过小。打印改为小批次顺序排版和派发，默认 300 DPI，并把单页 PDFium BGRA 位图预算限制在 64 MiB，降低大文件在低内存 Windows 电脑上打印时闪退的风险。`test:release-2.0.43` 仅覆盖本次新增的模型与真实窗口检查，并在源码与 Windows 成品上各运行一次；验收记录见 `tests/docs/VALIDATION-2.0.43.md`。
 
-2.0.42 支持空密码权限加密 PDF，并统一识别密码加密、打印/复制/修改/批注权限和数字签名。文档区明显提示受保护或已签名状态；签名入口验证 ByteRange、CMS 密码学完整性、整文件覆盖及证书信息，同时明确不代替操作系统信任链。编辑引擎无法安全写回时，可经二次确认生成不覆盖原件的高分辨率扁平化可编辑副本。`test:release-2.0.42-ui` 直接使用 `tests/fixtures/test-enc.pdf` 覆盖无底层错误打开、权限矩阵、实际签名验真、十语言提示、强制编辑副本与另存后移除加密/签名；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `tests/docs/VALIDATION-2.0.42.md`。
+2.0.42 支持空密码权限加密 PDF，并统一识别密码加密、打印/复制/修改/批注权限和数字签名。文档区明显提示受保护或已签名状态；签名入口验证 ByteRange、CMS 密码学完整性、整文件覆盖及证书信息，同时明确不代替操作系统信任链。编辑引擎无法安全写回时，可经二次确认生成不覆盖原件的高分辨率扁平化可编辑副本。`test:release-2.0.42-ui` 直接使用 `tests/fixtures/259aa43494a8a673ec4075bf6d13a191.pdf` 覆盖无底层错误打开、权限矩阵、实际签名验真、十语言提示、强制编辑副本与另存后移除加密/签名；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `tests/docs/VALIDATION-2.0.42.md`。
 
 2.0.41 修复混合页面尺寸文档的横向居中：连续阅读容器仍以最宽页面决定滚动宽度，但首次打开、普通缩放、跳页和工作区宽度变化时会按当前页中心校正横向滚动；Ctrl/⌘+滚轮继续保留鼠标锚点。`test:release-2.0.41-ui` 使用窄页、超宽页、窄页组合稳定复现旧问题，并覆盖打开、工具栏缩放、窗口缩放和跳页；按用户要求仅执行该新增测试，并在源码与 Windows 成品上各运行一次。验收记录见 `tests/docs/VALIDATION-2.0.41.md`。
 
@@ -177,7 +177,7 @@ test3 与 Scheduling0826m 的长时间 CDP 拖拽回归使用关闭后台节流�
 2.0.22 新增 `test:annotation-editor-ui`，与 `test:ai-smoke` 一起接入 Windows/macOS 的源码和最终包流程。验证双击统一编辑、移除旧列表入口、4550 字多行完整展开、标题下方滚动、四种局部样式与回复样式保存重开；AI 单元回归覆盖超过三次临时失败后成功、取消退避、预算扩充、结构修复、分批保全输入和重复引文位置。AI 恢复时限为配置超时的两倍，最低 30 秒、最高 5 分钟，不重放批注写回。未运行真实外部模型付费请求。
 
 
-2.0.17 的矢量 EPS 导出使用 Poppler/Cairo 的 `pdftocairo`，发布机器和目标电脑均需安装 Poppler，或在应用资源 `poppler/bin` 中提供对应平台运行时。macOS 可用 `brew install poppler`。`test:eps-vector` 还需要 Ghostscript (`gs`) 和 `pdftoppm`，用于对 `tests/fixtures/try-eps.pdf` 的 EPS 结果回读、逐字和矢量路径检查。该可选样例缺失时，测试会自动生成含文字、矢量、透明度、旋转与编辑内容的 PDF；报告必须注明实际样例和字符数。不得回退到整页位图 EPS。透明度受 PostScript 格式限制，由 Cairo 在必要的局部区域处理。
+2.0.17 的矢量 EPS 导出使用 Poppler/Cairo 的 `pdftocairo`，发布机器和目标电脑均需安装 Poppler，或在应用资源 `poppler/bin` 中提供对应平台运行时。macOS 可用 `brew install poppler`。`test:eps-vector` 还需要 Ghostscript (`gs`) 和 `pdftoppm`，用于对 `tests/fixtures/01903a45ccc15b4efebb98107c40f42a.pdf` 的 EPS 结果回读、逐字和矢量路径检查。该可选样例缺失时，测试会自动生成含文字、矢量、透明度、旋转与编辑内容的 PDF；报告必须注明实际样例和字符数。不得回退到整页位图 EPS。透明度受 PostScript 格式限制，由 Cairo 在必要的局部区域处理。
 
 新增 `npm run test:popups-ui` 与 `npm run test:eps-vector`，已接入两个平台的源码与最终包发布流程。前者覆盖 16 种菜单边缘情形、top layer、12 位批注人颜色、小屏幕拖动与缩小恢复、多文档画布隔离、自定义检查要求重启持久化；后者验证源范例全部非空白文字字符保留为文字、路径保留、修改后页面、旋转、分页命名与取消导出。功能回归只使用模拟 AI，不发送真实文档到外部服务。
 
@@ -270,7 +270,7 @@ npm run test:selection-bc
 npm run test:selection-bc-ui
 ```
 
-前两项使用 `tests/fixtures/Scheduling0821m.pdf`，验证内部对象顺序异常时当前行选区不会带入下一行项目符号。随后两项使用 `tests/fixtures/Scheduling0826m.pdf`，在第 5、10、11 页同时验证公式碎片保留、图表文字隔离、单双栏流域裁剪、正反向拖拽一致性，并在真实 Electron 窗口核对选区矩形与剪贴板文本。`test:selection-test2` 与 UI 版本固定复现 `tests/fixtures/test2.pdf` 第 6 页右栏跨行公式框选。`test:selection-bc` 与 UI 版本固定覆盖 `tests/fixtures/bc.pdf` 第 1 页末位作者到跨栏标题的反向拖选，以及第 7、12、13 页；验证结构块跨栏时不会按栏序吸入正文、持续空白栏沟判定不会把公式/矩阵缩进误当栏目，跨栏图注和大公式仍是独立视觉块，同行和长距离同栏拖拽不会溢出；同时验证默认隐藏的页面校正入口、可拖动/增删的竖向栏界、跨栏公式或图片的上下横界、按 PDF 指纹与页码持久化，以及恢复自动识别。`test:citations-scheduling-0826` 要求跨页参考文献覆盖 `[1]`–`[38]`；`test:reading-navigation-ui` 在 900×700 小窗口和高缩放下验证页内滚动优先、页边界继续滚动才翻页、搜索命中矩形进入可视区，以及真实引文面板显示 40 个正文引用位置。最后两项使用 `tests/fixtures/7.申报书原件.pdf` 第 3 页验证异常子集字体的纵向度量归一化。目标平台产物生成后，打包脚本还会用最终 `PDFuck` 可执行文件再次运行关键 UI 回归。缺少任一测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和全部十种语言的可外显错误词条；`test:i18n-ui` 必须逐一切换十种界面语言，在 900×700 窗口审计长文本始终位于自适应按钮/提示边框内，并验证重启后的语言持久化、平台自适应快捷键、搜索 PDF 的单行同款按钮布局、八项编辑图标、批注人浮窗拖动与唯一外显开关、姓名和外显偏好持久化、新批注作者写入、作者标签位于正文上方且列表无新增列，以及主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件，并核对非打印提示在十种语言中均不超过两行。
+前两项使用 `tests/fixtures/83de88429dff8585d63f1e444786c262.pdf`，验证内部对象顺序异常时当前行选区不会带入下一行项目符号。随后两项使用 `tests/fixtures/9b59c7fc46f519ed150735e0ab5e6ec4.pdf`，在第 5、10、11 页同时验证公式碎片保留、图表文字隔离、单双栏流域裁剪、正反向拖拽一致性，并在真实 Electron 窗口核对选区矩形与剪贴板文本。`test:selection-test2` 与 UI 版本固定复现 `tests/fixtures/b5502e6f57b5e83812b7f9ee0dfd2375.pdf` 第 6 页右栏跨行公式框选。`test:selection-bc` 与 UI 版本固定覆盖 `tests/fixtures/6430eebbbfb922be4d313dd85cccbd08.pdf` 第 1 页末位作者到跨栏标题的反向拖选，以及第 7、12、13 页；验证结构块跨栏时不会按栏序吸入正文、持续空白栏沟判定不会把公式/矩阵缩进误当栏目，跨栏图注和大公式仍是独立视觉块，同行和长距离同栏拖拽不会溢出；同时验证默认隐藏的页面校正入口、可拖动/增删的竖向栏界、跨栏公式或图片的上下横界、按 PDF 指纹与页码持久化，以及恢复自动识别。`test:citations-scheduling-0826` 要求跨页参考文献覆盖 `[1]`–`[38]`；`test:reading-navigation-ui` 在 900×700 小窗口和高缩放下验证页内滚动优先、页边界继续滚动才翻页、搜索命中矩形进入可视区，以及真实引文面板显示 40 个正文引用位置。最后两项使用 `tests/fixtures/c6bcff07d57312a4c5fe42a891c01e52.pdf` 第 3 页验证异常子集字体的纵向度量归一化。目标平台产物生成后，打包脚本还会用最终 `PDFuck` 可执行文件再次运行关键 UI 回归。缺少任一测试 PDF 时应先补齐样本，不要跳过回归。`test:i18n-catalogue` 必须覆盖 JSX 文案、`ui()` 文案和全部十种语言的可外显错误词条；`test:i18n-ui` 必须逐一切换十种界面语言，在 900×700 窗口审计长文本始终位于自适应按钮/提示边框内，并验证重启后的语言持久化、平台自适应快捷键、搜索 PDF 的单行同款按钮布局、八项编辑图标、批注人浮窗拖动与唯一外显开关、姓名和外显偏好持久化、新批注作者写入、作者标签位于正文上方且列表无新增列，以及主要工作区标签、打印设置、PDF 右键菜单与页面删除弹窗，且不允许在非中文界面残留中文控件，并核对非打印提示在十种语言中均不超过两行。
 
 Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 PDFium、绑定系统默认设备，核对驱动接受的 150/300/600 DPI 质量枚举与有效最大份数，并让双面打印机驱动验证单面/短边/长边三个逐任务 DEVMODE 值，但不会发送纸张；非 Windows 平台安全跳过。`test:print-ui` 会自行生成七页横纵混排 PDF，在 900×760 的真实 Electron 窗口中注入测试打印机并拦截 IPC 作业，逐一验证十种语言、1–99 份、三档质量、所选设备首选项、25%–200% 缩放、清晰度，以及手动双面奇偶页、反向输出和每张一页/一次一份约束。两项测试都不会真正派发纸张或打开系统设置，以免自动化误触实体设备。
 
@@ -290,13 +290,13 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 
 打包脚本会以 `test:release-ui` 对最终可执行文件验证 2.0.21 桌面外壳：关闭临时文档后黄色提示必须消失，两处最近文件列表必须保存并滚动显示 50 项，Logo 对比色必须随主题切换，标题栏工具组在窗口缩放前后都保持几何居中；文档标题只有溢出时才往返滚动，宽窗口下必须完整静止显示，最窄支持窗口下不得贴近工具栏或与 Logo 重叠；Windows 最小化、最大化/还原和关闭按钮必须使用可辨识的矢量图标。
 
-涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:pdf-links-ui` 生成同时含本地/外部 Outlines 与本地/外部 Link 注释的 PDF，验证内部目标精确跳页、外链统一经过主进程安全入口且不在应用内导航；`test:bookmark-recognition-papers` 会直接读取 `tests/fixtures/m91474-li paper.pdf` 与 `tests/fixtures/Scheduling0826m.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
+涉及文档标签页时，`test:window-tabs` 使用真实 Electron 窗口验证：打开两个标签、从操作系统关闭窗口时出现统一的深红确认/闪烁取消警告并可安全取消；存在未保存修改时必须同时出现“全部保存后关闭”，之后继续验证适合宽度继承、排序、拖出/拖回和独立窗口清理。`test:bookmarks-ui` 会生成含标准 Outlines 的测试 PDF，并验证边栏自动显示、随当前页/页内位置唯一高亮所属书签范围、自动展开父级、拖宽、搜索、字号、分级结构、双击改名、单项删除/撤销、窄窗口下与批注栏协调、五组识别规则、1–6 级深度、预览剔除/恢复、精确页内目标写入/读取、写入/清空/撤销以及“保存后关闭”后的实际落盘；`test:pdf-links-ui` 生成同时含本地/外部 Outlines 与本地/外部 Link 注释的 PDF，验证内部目标精确跳页、外链统一经过主进程安全入口且不在应用内导航；`test:bookmark-recognition-papers` 会直接读取 `tests/fixtures/3657778f5908b894acc031634ea41488.pdf` 与 `tests/fixtures/9b59c7fc46f519ed150735e0ab5e6ec4.pdf`，精确核对双栏阅读顺序、小型大写规范化、跨行标题、6/9 个罗马数字章节、Abstract/References 和图表/公式/正文误报排除。源码和最终包都必须执行。不要只以单元测试代替这些跨窗口回归。
 
 涉及页面文字编辑时，`test:page-text-edit-ui` 会生成独立测试 PDF，并在真实 Electron 窗口验证：点击后输入层与原字形区域保持同一坐标和尺寸、光标落在点击字符附近、双重提交只生成一个替换对象、保存并重开后仍只有一个对象，以及删除替换对象后原文编辑区域立即恢复。发布脚本必须执行此项，不能只依赖模型层单元测试。
 
 涉及页面方向、栅格 DPI 或文字输入时，`test:page-manager-input-ui` 会生成三页非对称 PDF，并在真实 Electron 窗口验证：对同一批注连续派发两次删除只能产生一次幂等删除，不能出现原生或应用错误弹窗，且随后新建批注仍可接收普通键盘输入和中文 IME composition；逐页左转、180° 翻转和右转的预览与写回角度一致；DPI 空值、任意正数和小数在编辑中不被预设值改写；窗口失焦/回焦后仍保持真实输入框。发布脚本必须在源码构建和最终打包程序上各执行一次。
 
-2.0.7 的框选专项矩阵会在 `bc.pdf`、`Scheduling0826m.pdf` 和 `test2.pdf` 上合计穷举 1,253 个自动/手工栏界位置，并以真实 Electron 鼠标验证正反向、行尾越界、普通缩放与适合宽度；每次都同时检查剪贴板文本和选区几何，防止“文本看似正确但高亮仍溢出”的假通过。三个 UI 回归会在五条拖动轨迹上连续采样数百个真实显示帧，逐帧检查选区不会消失、倒退、越过栏沟或逃出跨栏图题带，其中包括反向跨页并穿过页间空隙的拖动；同时验证低于 4 px 阈值的指针抖动不会生成选区。
+2.0.7 的框选专项矩阵会在 `6430eebbbfb922be4d313dd85cccbd08.pdf`、`9b59c7fc46f519ed150735e0ab5e6ec4.pdf` 和 `b5502e6f57b5e83812b7f9ee0dfd2375.pdf` 上合计穷举 1,253 个自动/手工栏界位置，并以真实 Electron 鼠标验证正反向、行尾越界、普通缩放与适合宽度；每次都同时检查剪贴板文本和选区几何，防止“文本看似正确但高亮仍溢出”的假通过。三个 UI 回归会在五条拖动轨迹上连续采样数百个真实显示帧，逐帧检查选区不会消失、倒退、越过栏沟或逃出跨栏图题带，其中包括反向跨页并穿过页间空隙的拖动；同时验证低于 4 px 阈值的指针抖动不会生成选区。
 
 其中 `npm run build` 会重新生成 `out/main`、`out/preload` 和 `out/renderer`。不要直接用旧的 `out` 目录打包，否则源码修复可能没有进入 `app.asar`。
 
@@ -307,7 +307,7 @@ Windows 上的 `test:print-native` 会通过 CJS 实际枚举打印机、加载 
 - 滚动到后页时搜索浮窗仍固定在应用窗口内。
 - 保存、打印、关闭未保存文档等本次修改涉及的主流程可用。
 
-2.0.17 公式框选：`test:selection-test3` 必须使用 `tests/fixtures/test3.pdf` 第 6、8 页，对 9,513 个范围逐一核对完整文本、每个字框覆盖和相邻栏隔离；包含正反向、75%/100%/216% 缩放及自动/手工栏界。UI 版本须检查正常/高缩放下真实鼠标双向拖选、逐字高亮覆盖、剪贴板和连续显示帧，保存截图至 `tests/output/playwright/`。无外部 PDF 的单元测试另覆盖公式碎片、长中间行、短末行、乱序文字对象、不同字体度量和半词选择。Windows/macOS 脚本均须在源码态和最终包运行 UI 回归；缺少 test3.pdf 时明确失败，不可跳过。
+2.0.17 公式框选：`test:selection-test3` 必须使用 `tests/fixtures/73f367c6872b8c9795b90321d30dd7be.pdf` 第 6、8 页，对 9,513 个范围逐一核对完整文本、每个字框覆盖和相邻栏隔离；包含正反向、75%/100%/216% 缩放及自动/手工栏界。UI 版本须检查正常/高缩放下真实鼠标双向拖选、逐字高亮覆盖、剪贴板和连续显示帧，保存截图至 `tests/output/playwright/`。无外部 PDF 的单元测试另覆盖公式碎片、长中间行、短末行、乱序文字对象、不同字体度量和半词选择。Windows/macOS 脚本均须在源码态和最终包运行 UI 回归；缺少 73f367c6872b8c9795b90321d30dd7be.pdf 时明确失败，不可跳过。
 
 ## 6. macOS 打包
 

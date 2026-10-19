@@ -6,7 +6,7 @@ const { _electron: electron } = require('playwright')
 const root = path.resolve(__dirname, '../..')
 const version = require(path.join(root, 'package.json')).version
 const entry = path.join(root, 'out/main/index.js')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0821m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '83de88429dff8585d63f1e444786c262.pdf')
 const secondaryPdfPath = path.join(root, 'tests/tmp', 'Scheduling0821m-revised.pdf')
 const userData = path.join(root, 'tests/tmp', 'window-tabs-smoke-user')
 
@@ -70,7 +70,7 @@ async function main() {
     }))
     assert.ok(distinctiveLayout.every((layout) => layout.prefixText === 'Scheduling0821m' && layout.prefixWidth >= 20 && layout.markRight <= layout.nameRight + 1), `similar tabs must show as much filename beginning as fits without hiding the highlighted difference: ${JSON.stringify(distinctiveLayout)}`)
     const accessibleTabTitles = await page.locator('.window-tab').evaluateAll((tabs) => tabs.map((tab) => ({ title: tab.getAttribute('title'), label: tab.getAttribute('aria-label') })))
-    assert.ok(accessibleTabTitles[0].title.startsWith('Scheduling0821m.pdf') && accessibleTabTitles[0].label.includes('Scheduling0821m.pdf'), 'the complete filename must remain available to pointer and assistive-technology users')
+    assert.ok(accessibleTabTitles[0].title.startsWith('83de88429dff8585d63f1e444786c262.pdf') && accessibleTabTitles[0].label.includes('83de88429dff8585d63f1e444786c262.pdf'), 'the complete filename must remain available to pointer and assistive-technology users')
     await page.waitForTimeout(300)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
     const closeManyDialog = page.getByRole('alertdialog')
@@ -137,7 +137,7 @@ async function main() {
     await detached.locator('.pdf-page[data-page="1"]').waitFor({ timeout: 60000 })
     assert.equal(await detached.locator('.window-tab').count(), 1, 'dragging outside the tab bar should create a standalone window')
     assert.equal(await page.locator('.window-tab').count(), 1, 'the source window should remove the detached tab')
-    assert.equal(await detached.locator('.window-tab').first().getAttribute('title').then((value) => value?.includes('Scheduling0821m.pdf')), true, 'the standalone window should retain the transferred document')
+    assert.equal(await detached.locator('.window-tab').first().getAttribute('title').then((value) => value?.includes('83de88429dff8585d63f1e444786c262.pdf')), true, 'the standalone window should retain the transferred document')
 
     const externalFileTransfer = await page.evaluateHandle(() => {
       const transfer = new DataTransfer()
@@ -175,7 +175,7 @@ async function main() {
     assert.equal(await page.locator('.document-transfer-overlay').count(), 0, 'the return-to-tabs overlay should clear after a successful transfer')
 
     const redetachTransfer = await page.evaluateHandle(() => new DataTransfer())
-    const returnedTab = page.locator('.window-tab[title^="Scheduling0821m.pdf"]')
+    const returnedTab = page.locator('.window-tab[title^="83de88429dff8585d63f1e444786c262.pdf"]')
     const replacementDetachedWindow = app.waitForEvent('window')
     await returnedTab.dispatchEvent('dragstart', { dataTransfer: redetachTransfer })
     await returnedTab.dispatchEvent('dragend', { dataTransfer: redetachTransfer, clientX: -20, clientY: -20, screenX: 700, screenY: 460 })
@@ -183,7 +183,7 @@ async function main() {
     await replacementDetached.locator('.pdf-page[data-page="1"]').waitFor({ timeout: 60000 })
 
     const lifecycleErrors = await app.evaluate(({ BrowserWindow }) => new Promise((resolve, reject) => {
-      const detachedWindow = BrowserWindow.getAllWindows().find((window) => window.getTitle().includes('Scheduling0821m.pdf'))
+      const detachedWindow = BrowserWindow.getAllWindows().find((window) => window.getTitle().includes('83de88429dff8585d63f1e444786c262.pdf'))
       if (!detachedWindow) { reject(new Error('detached window was not found by its document title')); return }
       const errors = []
       const onUncaughtException = (error) => errors.push(error.message)

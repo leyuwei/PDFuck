@@ -5,7 +5,7 @@ const executable = portable ? path.join(root, 'release/PDFuck-2.1.10-Windows.exe
 const label = portable ? 'portable' : executable ? 'packaged' : 'source'
 const output = path.join(root, 'tests/output/release-2.1.10', label), temp = path.join(root, 'tests/tmp')
 fs.mkdirSync(output, { recursive: true }); fs.mkdirSync(temp, { recursive: true })
-const profile = fs.mkdtempSync(path.join(temp, 'columns-2110-')), file = path.join(root, 'tests/fixtures/test_multi_col.pdf')
+const profile = fs.mkdtempSync(path.join(temp, 'columns-2110-')), file = path.join(root, 'tests/fixtures/785904351dabdab98176b914912cc8dd.pdf')
 const checks = new Set((process.argv.find(x => x.startsWith('--checks='))?.split('=')[1] || (portable ? 'behavior' : 'behavior,layout')).split(','))
 async function main() {
   let app, child, browser, page

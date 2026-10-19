@@ -10,7 +10,7 @@ import { parsePageSelection } from '../../../../../src/renderer/src/lib/page-sel
 import type { Matrix } from '../../../../../src/renderer/src/lib/page-coordinates'
 
 async function surveyPage(pageNumber: number, scale: number) {
-  const task = getDocument({ data: new Uint8Array(readFileSync(resolve('tests/fixtures/inter_agent_trust_comst_survey.pdf'))), fontExtraProperties: true })
+  const task = getDocument({ data: new Uint8Array(readFileSync(resolve('tests/fixtures/0e86a90471d190285a1db37076d60656.pdf'))), fontExtraProperties: true })
   try {
     const pdf = await task.promise, page = await pdf.getPage(pageNumber), content = await page.getTextContent()
     await page.getOperatorList()

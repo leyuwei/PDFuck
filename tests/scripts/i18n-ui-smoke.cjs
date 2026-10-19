@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '../..')
 const packageVersion = require('../../package.json').version
 const userData = path.join(root, 'tests/tmp', 'i18n-ui-smoke-user')
 const entry = path.join(root, 'out/main/index.js')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0821m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '83de88429dff8585d63f1e444786c262.pdf')
 const screenshotDirectory = path.join(root, 'tests/output', 'playwright')
 
 async function launch(args = []) {

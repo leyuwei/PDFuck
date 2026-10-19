@@ -10,7 +10,7 @@ const output = path.join(root, 'tests/output', 'playwright')
 const papers = [
   {
     key: 'm91474',
-    file: path.join(root, 'tests/fixtures', 'm91474-li paper.pdf'),
+    file: path.join(root, 'tests/fixtures', '3657778f5908b894acc031634ea41488.pdf'),
     expected: [
       'Abstract', 'I. INTRODUCTION', 'II. BLOCKCHAIN-ENHANCED RANDOM ACCESS', "III. ROGUE’S DILEMMA",
       'IV. PERFORMANCE ANALYSIS OF RANDOM ACCESS WITH ROGUE NODES', 'V. NUMERICAL RESULTS', 'VI. CONCLUSION', 'REFERENCES'
@@ -18,7 +18,7 @@ const papers = [
   },
   {
     key: 'scheduling0826m',
-    file: path.join(root, 'tests/fixtures', 'Scheduling0826m.pdf'),
+    file: path.join(root, 'tests/fixtures', '9b59c7fc46f519ed150735e0ab5e6ec4.pdf'),
     expected: [
       'Abstract', 'I. INTRODUCTION', 'II. O-RAN MODEL', 'III. BLOCKCHAIN-BASED PROPORTIONAL FAIR SCHEDULING',
       'IV. DELAYED SCHEDULING MODEL', 'V. CONSENSUS FAILURE', 'VI. SCHEDULING DELAY VERSUS CONSENSUS FAILURE',

@@ -4,7 +4,7 @@ const path = require('node:path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', '7.申报书原件.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', 'c6bcff07d57312a4c5fe42a891c01e52.pdf')
 const userData = path.join(root, 'tests/tmp', 'selection-chinese-alignment-ui-user')
 const artifactDir = path.join(root, 'tests/output', 'playwright')
 const version = require(path.join(root, 'package.json')).version

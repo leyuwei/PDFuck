@@ -26,7 +26,7 @@ async function main() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfuck-eps-vector-'))
   const output = path.join(root, 'tests/output', `eps-${version}`)
   await fs.mkdir(output, { recursive: true })
-  const requestedFixture = process.env.PDFUCK_EPS_FIXTURE || path.join(root, 'tests/fixtures', 'try-eps.pdf')
+  const requestedFixture = process.env.PDFUCK_EPS_FIXTURE || path.join(root, 'tests/fixtures', '01903a45ccc15b4efebb98107c40f42a.pdf')
   const fixture = await fs.access(requestedFixture).then(() => requestedFixture).catch(async () => {
     const generated = path.join(directory, 'eps-vector-fixture.pdf')
     await createFixture(generated, version)

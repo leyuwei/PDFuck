@@ -7,7 +7,7 @@ const { PDFDocument } = require('pdf-lib')
 const root = path.resolve(__dirname, '../..')
 const entry = path.join(root, 'out', 'main', 'index.js')
 const version = require('../../package.json').version
-const fixture = path.join(root, 'tests/fixtures', 'test-enc.pdf')
+const fixture = path.join(root, 'tests/fixtures', '259aa43494a8a673ec4075bf6d13a191.pdf')
 const directory = path.join(root, 'tests/tmp', `release-2.0.42-ui-${process.pid}`)
 const savedCopy = path.join(directory, 'test-enc-editable-copy.pdf')
 const userData = path.join(directory, 'profile')
@@ -24,7 +24,7 @@ async function launch() {
 
 async function main() {
   assert.equal(version, '2.0.42')
-  assert.ok(fs.existsSync(fixture), 'tests/fixtures/test-enc.pdf is required')
+  assert.ok(fs.existsSync(fixture), 'tests/fixtures/259aa43494a8a673ec4075bf6d13a191.pdf is required')
   fs.mkdirSync(directory, { recursive: true })
   let app
   try {

@@ -268,19 +268,5 @@
   "src/renderer/src/lib/text-layout.test.ts": "tests/unit/renderer/src/lib/text-layout.test.ts",
   "src/renderer/src/lib/watermarks.test.ts": "tests/unit/renderer/src/lib/watermarks.test.ts",
   "src/shared/version.test.ts": "tests/unit/shared/version.test.ts",
-  "src/shared/window-session.test.ts": "tests/unit/shared/window-session.test.ts",
-  "tmp/7.申报书原件.pdf": "tests/fixtures/7.申报书原件.pdf",
-  "tmp/bc.pdf": "tests/fixtures/bc.pdf",
-  "tmp/dawenjian.pdf": "tests/fixtures/dawenjian.pdf",
-  "tmp/document.pdf": "tests/fixtures/document.pdf",
-  "tmp/inter_agent_trust_comst_survey.pdf": "tests/fixtures/inter_agent_trust_comst_survey.pdf",
-  "tmp/m91474-li paper.pdf": "tests/fixtures/m91474-li paper.pdf",
-  "tmp/Scheduling0821m.pdf": "tests/fixtures/Scheduling0821m.pdf",
-  "tmp/Scheduling08241630m.pdf": "tests/fixtures/Scheduling08241630m.pdf",
-  "tmp/Scheduling0826m.pdf": "tests/fixtures/Scheduling0826m.pdf",
-  "tmp/selection-fix.pdf": "tests/fixtures/selection-fix.pdf",
-  "tmp/test-enc.pdf": "tests/fixtures/test-enc.pdf",
-  "tmp/test2.pdf": "tests/fixtures/test2.pdf",
-  "tmp/test3.pdf": "tests/fixtures/test3.pdf",
-  "tmp/test_multi_col.pdf": "tests/fixtures/test_multi_col.pdf"
+  "src/shared/window-session.test.ts": "tests/unit/shared/window-session.test.ts"
 }

@@ -10,7 +10,7 @@ const version = require('../../package.json').version
 async function main() {
   const userData = fs.mkdtempSync(path.join(root, 'tests/tmp', 'test3-selection-ui-'))
   const executable = process.env.PDFUCK_SMOKE_EXECUTABLE
-  const pdfPath = path.join(root, 'tests/fixtures', 'test3.pdf')
+  const pdfPath = path.join(root, 'tests/fixtures', '73f367c6872b8c9795b90321d30dd7be.pdf')
   const app = await electron.launch({ executablePath: executable || require('electron'), args: executable ? [`--user-data-dir=${userData}`, pdfPath] : [path.join(root, 'out/main/index.js'), pdfPath], env: { ...process.env, PDFUCK_TEST_USER_DATA: userData } })
   const reports = []
   try {
@@ -80,7 +80,7 @@ async function main() {
       }
     }
     fs.writeFileSync(path.join(root, 'tests/output', 'playwright', `selection-test3-${version}-ui.json`), JSON.stringify(reports, null, 2))
-    console.log(JSON.stringify({ version, fixture: 'test3.pdf', drags: reports.length, frames: reports.reduce((sum, r) => sum + r.frames, 0), checked: ['every rendered word', 'clipboard', 'reverse', 'live frames', 'normal/high zoom'] }))
+    console.log(JSON.stringify({ version, fixture: '73f367c6872b8c9795b90321d30dd7be.pdf', drags: reports.length, frames: reports.reduce((sum, r) => sum + r.frames, 0), checked: ['every rendered word', 'clipboard', 'reverse', 'live frames', 'normal/high zoom'] }))
   } finally { await app.close() }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

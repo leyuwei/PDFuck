@@ -4,7 +4,7 @@ const path = require('node:path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling0826m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '9b59c7fc46f519ed150735e0ab5e6ec4.pdf')
 const userData = path.join(root, 'tests/tmp', 'reading-navigation-ui-user')
 const version = require(path.join(root, 'package.json')).version
 const artifactDir = path.join(root, 'tests/output', 'playwright')

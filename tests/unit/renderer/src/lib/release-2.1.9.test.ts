@@ -12,7 +12,7 @@ import type { Matrix } from '../../../../../src/renderer/src/lib/page-coordinate
 
 describe('2.1.9 compressed selection boundaries', () => {
   it('keeps both reported commas inside the following glyph origin at three scales and both selection directions', async () => {
-    const task = getDocument({ data: new Uint8Array(readFileSync(resolve('tests/fixtures/selection-fix.pdf'))), fontExtraProperties: true })
+    const task = getDocument({ data: new Uint8Array(readFileSync(resolve('tests/fixtures/8e25ce03fc94eb2eb33e99ab01bb89a1.pdf'))), fontExtraProperties: true })
     try {
       const pdf = await task.promise, page = await pdf.getPage(1)
       await page.getOperatorList()

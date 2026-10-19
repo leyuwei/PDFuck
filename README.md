@@ -37,7 +37,7 @@
 
 打开或拖入文档即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
 
-2.1.10 改进公式密集、左右栏错行文档的自动分栏，修复 `test_multi_col.pdf` 两页漏检，并排除公式编号空隙误报。栏界工具条支持长翻译文本、大字号换行及双主题。所有测试、样本、验收记录和运行输出统一到根目录 [tests](tests/README.md)，未添加或修改 gitignore。见 [2.1.10 验收记录](tests/docs/VALIDATION-2.1.10.md)。
+2.1.10 改进公式密集、左右栏错行文档的自动分栏，修复 `785904351dabdab98176b914912cc8dd.pdf` 两页漏检，并排除公式编号空隙误报。栏界工具条支持长翻译文本、大字号换行及双主题。所有测试、样本、验收记录和运行输出统一到根目录 [tests](tests/README.md)，未添加或修改 gitignore。见 [2.1.10 验收记录](tests/docs/VALIDATION-2.1.10.md)。
 
 2.1.9 修复压缩标点与后续文字块重叠导致的选区溢出，保留前面字符的光标位置，支持双向选择与缩放。批注编辑顶部显示被批注原文、前后文和页码；跨页批注分页面展示，便笺展示附近文字，无文字位置明确提示。通用打开和拖入提示统一为“文档”，支持十种语言、双主题及四档界面字号。验收与 Windows 交付见 [2.1.9 验证记录](tests/docs/VALIDATION-2.1.9.md)。
 
@@ -117,7 +117,7 @@ Choose a build for your platform from the [download page](https://github.com/ley
 
 Open or drop a document to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
 
-2.1.10 improves automatic column detection for formula-heavy pages and staggered text, fixing both pages of `test_multi_col.pdf` while rejecting equation-number gaps. The column toolbar wraps long translations at larger interface sizes in both themes. Tests, fixtures, validation records and generated output now share the root [tests directory](tests/README.md), with no gitignore additions or changes. See the [2.1.10 validation record](tests/docs/VALIDATION-2.1.10.md).
+2.1.10 improves automatic column detection for formula-heavy pages and staggered text, fixing both pages of `785904351dabdab98176b914912cc8dd.pdf` while rejecting equation-number gaps. The column toolbar wraps long translations at larger interface sizes in both themes. Tests, fixtures, validation records and generated output now share the root [tests directory](tests/README.md), with no gitignore additions or changes. See the [2.1.10 validation record](tests/docs/VALIDATION-2.1.10.md).
 
 2.1.9 corrects selection overflow where compressed punctuation overlaps the next text run, preserving earlier caret positions across drag directions and zoom levels. The annotation editor shows highlighted source text, surrounding context and page numbers, including separate passages for cross-page annotations and nearby text for notes. Generic open/drop labels use “document” in all ten languages, with both themes and four interface sizes. See the [2.1.9 validation record](tests/docs/VALIDATION-2.1.9.md).
 

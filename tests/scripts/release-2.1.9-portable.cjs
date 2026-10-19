@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), os = require('node:os'), net = require('node:net')
 const { spawn } = require('node:child_process'), { chromium } = require('playwright')
 const root = path.resolve(__dirname, '../..'), executable = path.join(root, 'release/PDFuck-2.1.9-Windows.exe')
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-portable-')), file = path.join(root, 'tests/fixtures/selection-fix.pdf')
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-portable-')), file = path.join(root, 'tests/fixtures/8e25ce03fc94eb2eb33e99ab01bb89a1.pdf')
 const output = path.join(root, 'tests/output/release-2.1.9/portable'); fs.mkdirSync(output, { recursive: true })
 async function main() {
   const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

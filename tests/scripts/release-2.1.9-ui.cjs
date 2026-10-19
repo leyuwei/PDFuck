@@ -2,8 +2,8 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { _electron: electron } = require('playwright')
 const root = path.resolve(__dirname, '../..'), executable = process.env.PDFUCK_SMOKE_EXECUTABLE
 const label = executable ? 'packaged' : 'source', output = path.join(root, 'tests/output/release-2.1.9', label)
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-')), file = path.join(profile, 'selection-fix.pdf')
-fs.copyFileSync(path.join(root, 'tests/fixtures/selection-fix.pdf'), file); fs.mkdirSync(output, { recursive: true })
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-')), file = path.join(profile, '8e25ce03fc94eb2eb33e99ab01bb89a1.pdf')
+fs.copyFileSync(path.join(root, 'tests/fixtures/8e25ce03fc94eb2eb33e99ab01bb89a1.pdf'), file); fs.mkdirSync(output, { recursive: true })
 async function launch() {
   const app = await electron.launch({ executablePath: executable || require('electron'), args: executable ? [`--user-data-dir=${profile}`, file] : [path.join(root, 'out/main/index.js'), file], env: { ...process.env, PDFUCK_TEST_USER_DATA: profile } })
   const page = await app.firstWindow(); page.setDefaultTimeout(20000)

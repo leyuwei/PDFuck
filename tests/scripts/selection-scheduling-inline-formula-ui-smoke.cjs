@@ -4,7 +4,7 @@ const path = require('path')
 const { _electron: electron } = require('playwright')
 
 const root = path.resolve(__dirname, '../..')
-const pdfPath = path.join(root, 'tests/fixtures', 'Scheduling08241630m.pdf')
+const pdfPath = path.join(root, 'tests/fixtures', '9ba01f82b8e0f2207a7b3ed74eb5a5cb.pdf')
 const userData = path.join(root, 'tests/tmp', 'scheduling-inline-selection-ui-user')
 
 function covers(rect, word) {

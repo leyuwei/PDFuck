@@ -21,7 +21,7 @@ function loadLayout() {
 async function main() {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const { textItemsToWordBoxes, textSelectionBetween } = loadLayout()
-  const loading = getDocument({ data: new Uint8Array(fs.readFileSync(path.join(root, 'tests/fixtures', 'test3.pdf'))) })
+  const loading = getDocument({ data: new Uint8Array(fs.readFileSync(path.join(root, 'tests/fixtures', '73f367c6872b8c9795b90321d30dd7be.pdf'))) })
   const pdf = await loading.promise
   let ranges = 0
   for (const test of cases) {
@@ -58,7 +58,7 @@ async function main() {
     }
   }
   await loading.destroy()
-  console.log(JSON.stringify({ fixture: 'test3.pdf', pages: [6, 8], ranges, directions: 2, scales: [0.75, 1, 2.16], checked: ['exact text', 'every glyph rectangle', 'column isolation'] }))
+  console.log(JSON.stringify({ fixture: '73f367c6872b8c9795b90321d30dd7be.pdf', pages: [6, 8], ranges, directions: 2, scales: [0.75, 1, 2.16], checked: ['exact text', 'every glyph rectangle', 'column isolation'] }))
 }
 
 module.exports = { cases }

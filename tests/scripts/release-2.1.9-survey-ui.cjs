@@ -2,10 +2,10 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { _electron: electron } = require('playwright'), { PDFDocument, PDFName, PDFHexString } = require('pdf-lib')
 const root = path.resolve(__dirname, '../..'), executable = process.env.PDFUCK_SMOKE_EXECUTABLE
 const output = path.join(root, 'tests/output/release-2.1.9', executable ? 'survey-packaged' : 'survey-source')
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-survey-')), file = path.join(profile, 'inter_agent_trust_comst_survey.pdf')
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfuck-219-survey-')), file = path.join(profile, '0e86a90471d190285a1db37076d60656.pdf')
 fs.mkdirSync(output, { recursive: true })
 async function fixture() {
-  const doc = await PDFDocument.load(fs.readFileSync(path.join(root, 'tests/fixtures/inter_agent_trust_comst_survey.pdf')))
+  const doc = await PDFDocument.load(fs.readFileSync(path.join(root, 'tests/fixtures/0e86a90471d190285a1db37076d60656.pdf')))
   // Add one bookmark to the isolated copy so the actual sidebar can be audited.
   const outlines = doc.context.obj({ Type: 'Outlines', Count: 1 }), ref = doc.context.register(outlines)
   const item = doc.context.register(doc.context.obj({ Title: PDFHexString.fromText('Survey · 论文书签'), Parent: ref, Dest: [doc.getPage(16).ref, PDFName.of('Fit')] }))
@@ -44,7 +44,7 @@ async function main() {
   const app = await electron.launch({ executablePath: executable || require('electron'), args: executable ? [`--user-data-dir=${profile}`, file] : [path.join(root, 'out/main/index.js'), file], env: {...process.env, PDFUCK_TEST_USER_DATA:profile} })
   const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors = []
   page.on('pageerror', error => errors.push(error.message))
-  const report = { version:'2.1.9', fixture:'inter_agent_trust_comst_survey.pdf', spaces:[], legends:[], layouts:0 }
+  const report = { version:'2.1.9', fixture:'0e86a90471d190285a1db37076d60656.pdf', spaces:[], legends:[], layouts:0 }
   try {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100,760))
     await page.locator('.titlebar').waitFor(); assert.equal(await page.locator('.about-trigger small').innerText(),'v2.1.9')
