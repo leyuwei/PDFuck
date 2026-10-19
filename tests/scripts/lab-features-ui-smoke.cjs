@@ -1,0 +1,604 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs/promises')
+const http = require('node:http')
+const os = require('node:os')
+const path = require('node:path')
+const { _electron: electron } = require('playwright')
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib')
+
+const root = path.resolve(__dirname, '../..')
+const screenshotDirectory = path.join(root, 'tests/output', 'playwright')
+const releaseVersion = process.env.PDFUCK_RELEASE_VERSION || require(path.join(root, 'package.json')).version
+const reviewMarkdown = '# FULL REVIEW RESULT\n\n- **Structure:** improve the introduction.\n- Check `terminology` consistency.\n\n| Area | Status |\n| --- | --- |\n| Logic | Review |'
+const suggestionMarkdown = '## ANNOTATION SUGGESTION RESULT\n\n1. Clarify the method.\n2. Align the conclusion.'
+const translationResult = 'Premier'
+
+async function fixture(directory) {
+  const document = await PDFDocument.create()
+  const font = await document.embedFont(StandardFonts.Helvetica)
+  for (const text of ['First context passage for the method.', 'Second context passage for the conclusion.']) {
+    const page = document.addPage([612, 792])
+    page.drawText(text, { x: 72, y: 680, size: 18, font, color: rgb(0.08, 0.12, 0.2) })
+  }
+  const file = path.join(directory, 'lab-features.pdf')
+  await fs.writeFile(file, await document.save())
+  const switchDocument = await PDFDocument.create()
+  const switchPage = switchDocument.addPage([612, 792])
+  const switchFont = await switchDocument.embedFont(StandardFonts.Helvetica)
+  switchPage.drawText('A separate PDF opened while AI is reviewing.', { x: 72, y: 680, size: 18, font: switchFont, color: rgb(0.08, 0.12, 0.2) })
+  const switchFile = path.join(directory, 'lab-switch-target.pdf')
+  await fs.writeFile(switchFile, await switchDocument.save())
+  return { primary: file, switchTarget: switchFile }
+}
+
+async function launch(userData, pdf) {
+  const executable = process.env.PDFUCK_SMOKE_EXECUTABLE || require('electron')
+  const args = process.env.PDFUCK_SMOKE_EXECUTABLE
+    ? [`--user-data-dir=${userData}`, ...(pdf ? [pdf] : [])]
+    : [path.join(root, 'out/main/index.js'), ...(pdf ? [pdf] : [])]
+  return electron.launch({ executablePath: executable, args, env: { ...process.env, PDFUCK_TEST_USER_DATA: userData, PDFUCK_TEST_UPDATE_VERSION: releaseVersion } })
+}
+
+async function configure(userData, baseUrl) {
+  const app = await launch(userData)
+  try {
+    const page = await app.firstWindow()
+    await page.waitForSelector('.titlebar', { timeout: 60000 })
+    await page.evaluate(({ baseUrl }) => {
+      localStorage.clear()
+      localStorage.setItem('pdfuck.ai-settings.v1', JSON.stringify({ provider: 'custom', baseUrl, apiKey: 'lab-smoke-key', model: 'lab-smoke-model', timeoutSeconds: 600 }))
+    }, { baseUrl })
+    console.log('[lab-smoke] model settings prepared')
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
+    await app.close()
+  }
+}
+
+async function selectPageText(page, pageIndex) {
+  const temporaryNotice = page.locator('.temporary-document-warning button')
+  if (await temporaryNotice.isVisible()) await temporaryNotice.click()
+  const pageRoot = page.locator(`.pdf-page[data-page="${pageIndex}"]`)
+  await pageRoot.scrollIntoViewIfNeeded()
+  const pageBox = await pageRoot.boundingBox()
+  assert.ok(pageBox, `Expected PDF page ${pageIndex + 1}`)
+  await page.mouse.click(pageBox.x + pageBox.width - 20, pageBox.y + 40)
+  const word = page.locator(`.pdf-page[data-page="${pageIndex}"] .text-map span`).first()
+  await word.waitFor({ state: 'attached', timeout: 60000 })
+  await word.scrollIntoViewIfNeeded()
+  const box = await word.boundingBox()
+  assert.ok(box && box.width > 2 && box.height > 2, `Expected selectable text on page ${pageIndex + 1}`)
+  await page.mouse.dblclick(box.x + Math.min(box.width - 1, Math.max(2, box.width * 0.25)), box.y + box.height / 2)
+  const expected = pageIndex === 0 ? 'First' : 'Second'
+  try {
+    await page.waitForFunction((value) => document.querySelector('footer')?.textContent?.includes(`已选择：${value}`), expected, { timeout: 5000 })
+  } catch (error) {
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-selection-failure-${releaseVersion}.png`) })
+    console.error('selection geometry', await page.evaluate(({ x, y }) => ({ x, y, hit: document.elementFromPoint(x, y)?.outerHTML.slice(0, 500), footer: document.querySelector('footer')?.textContent }), { x: box.x + Math.min(box.width - 1, Math.max(2, box.width * 0.25)), y: box.y + box.height / 2 }))
+    throw error
+  }
+}
+
+async function verifyStickyDraggableHeader(page, windowLocator, name) {
+  const corner = await windowLocator.evaluate(element => { const box = element.getBoundingClientRect(); return { right: innerWidth - box.right, bottom: innerHeight - box.bottom } })
+  assert.ok(Math.abs(corner.right - 16) < 2 && Math.abs(corner.bottom - 36) < 2, `${name} must open at bottom right: ${JSON.stringify(corner)}`)
+  const rtlCorner = await windowLocator.evaluate(element => { const direction = document.documentElement.dir; document.documentElement.dir = 'rtl'; const box = element.getBoundingClientRect(); document.documentElement.dir = direction; return { right: innerWidth - box.right, bottom: innerHeight - box.bottom } })
+  assert.ok(Math.abs(rtlCorner.right - 16) < 2 && Math.abs(rtlCorner.bottom - 36) < 2, `${name} must keep bottom-right placement in RTL: ${JSON.stringify(rtlCorner)}`)
+  await windowLocator.evaluate((element) => {
+    element.style.maxHeight = '220px'
+    const body = element.querySelector(':scope > .window-scroll-body')
+    body.scrollTop = body.scrollHeight
+  })
+  await page.waitForTimeout(50)
+  const layout = await windowLocator.evaluate((element) => {
+    const body = element.querySelector(':scope > .window-scroll-body')
+    const dialog = element.getBoundingClientRect()
+    const header = element.querySelector(':scope > header').getBoundingClientRect()
+    return {
+      dialog: { top: dialog.top, bottom: dialog.bottom },
+      header: { top: header.top, bottom: header.bottom },
+      scrollTop: body.scrollTop,
+      scrollHeight: body.scrollHeight,
+      clientHeight: body.clientHeight,
+      bodyTop: body.getBoundingClientRect().top, headingBottom: header.bottom
+    }
+  })
+  assert.ok(layout.scrollHeight > layout.clientHeight && layout.scrollTop > 0, `${name} must have a scrollable test state: ${JSON.stringify(layout)}`)
+  assert.ok(layout.bodyTop >= layout.headingBottom - 1, `${name} scrollbar must begin below its title: ${JSON.stringify(layout)}`)
+  assert.ok(layout.header.top >= layout.dialog.top - 1 && layout.header.bottom <= layout.dialog.bottom + 1, `${name} title left the visible window after scrolling: ${JSON.stringify(layout)}`)
+
+  const before = await windowLocator.boundingBox()
+  const header = await windowLocator.locator(':scope > header').boundingBox()
+  assert.ok(before && header, `${name} window/header must be visible`)
+  await page.mouse.move(header.x + Math.min(80, header.width / 3), header.y + header.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(header.x + Math.min(80, header.width / 3) - 28, header.y + header.height / 2 - 16, { steps: 5 })
+  await page.mouse.up()
+  const after = await windowLocator.boundingBox()
+  assert.ok(after && (Math.abs(after.x - before.x) > 8 || Math.abs(after.y - before.y) > 8), `${name} title must remain draggable after scrolling`)
+  const movedHeader = await windowLocator.locator(':scope > header').boundingBox()
+  assert.ok(movedHeader, `${name} title must remain visible after dragging`)
+  await page.mouse.move(movedHeader.x + Math.min(80, movedHeader.width / 3), movedHeader.y + movedHeader.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(movedHeader.x + Math.min(80, movedHeader.width / 3) + 28, movedHeader.y + movedHeader.height / 2 + 16, { steps: 5 })
+  await page.mouse.up()
+  await windowLocator.evaluate((element) => {
+    element.querySelector(':scope > .window-scroll-body').scrollTop = 0
+    element.style.removeProperty('max-height')
+  })
+}
+
+async function verifyActivityLayout(activity) {
+  const failures = await activity.evaluate(card => {
+    const originalStyle = card.getAttribute('style'), parent = card.parentElement, originalClass = parent.className
+    const body = card.querySelector('.ai-stream-activity-body'), actions = card.querySelector('.ai-stream-actions')
+    const failures = []
+    try {
+      for (const dark of [false, true]) for (const direction of ['ltr', 'rtl']) for (const fonts of [[10, 12, 16], [11, 13, 17], [14, 16, 20], [16, 18, 22]]) for (const width of [280, 440]) {
+        parent.classList.toggle('theme-dark', dark)
+        card.style.width = `${width}px`; card.style.direction = direction
+        ;['small', 'body', 'title'].forEach((role, index) => card.style.setProperty(`--ui-font-${role}`, `${fonts[index]}px`))
+        const cardBox = card.getBoundingClientRect(), bodyBox = body.getBoundingClientRect()
+        const sections = [...body.querySelectorAll('section')]
+        if (parseFloat(getComputedStyle(body).borderTopWidth) || sections.some(section => parseFloat(getComputedStyle(section).borderBottomWidth))) failures.push('redundant inner divider')
+        if (sections.some(section => parseFloat(getComputedStyle(section).paddingTop) < 12 || getComputedStyle(section).backgroundColor === getComputedStyle(card).backgroundColor)) failures.push('request/reasoning blocks need distinct backgrounds and padding')
+        if (body.scrollWidth > body.clientWidth + 1) failures.push(`horizontal overflow ${direction}/${fonts}/${width}`)
+        const summary = card.querySelector('summary'), status = summary.querySelector('span').getBoundingClientRect(), title = summary.querySelector('b').getBoundingClientRect()
+        if ((status.top < title.bottom - .5 && status.bottom > title.top + .5 && status.left < title.right - .5 && status.right > title.left + .5) || status.left < cardBox.left || status.right > cardBox.right) failures.push('status overlaps heading or card')
+        if (parseFloat(getComputedStyle(summary.querySelector('b')).fontSize) !== fonts[0]) failures.push('activity heading must use the same small type as progress')
+        if (actions) {
+          const button = actions.querySelector('button').getBoundingClientRect()
+          if (button.top < bodyBox.bottom - .5 || cardBox.bottom - button.bottom < 13.5 || button.left - cardBox.left < 13.5 || cardBox.right - button.right < 13.5) failures.push('cancel touches content or card edge')
+          if (width === 440 && button.width >= bodyBox.width * .75) failures.push('cancel stretches across the card')
+        }
+      }
+    } finally {
+      if (originalStyle === null) card.removeAttribute('style'); else card.setAttribute('style', originalStyle)
+      parent.className = originalClass
+    }
+    return failures
+  })
+  assert.deepEqual(failures, [], 'AI activity spacing must survive both themes, RTL, four font sizes and narrow cards')
+}
+
+async function verifyLabFeatures(userData, pdf, switchTarget, requests) {
+  const app = await launch(userData, pdf)
+  try {
+    const page = await app.firstWindow()
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1200, 820))
+    await page.waitForSelector('.pdf-page[data-page="0"]', { timeout: 60000 })
+    await page.locator('.nav-rail button').filter({ hasText: '批注' }).click()
+    console.log('[lab-smoke] document and Lab opened')
+
+    const headingLayout = await page.locator('.annotation-lab-heading').evaluate((heading) => {
+      const title = heading.querySelector('h3').getBoundingClientRect()
+      const gear = heading.querySelector('.annotation-lab-settings-trigger').getBoundingClientRect()
+      return { titleRight: title.right, titleCenter: title.top + title.height / 2, gearLeft: gear.left, gearCenter: gear.top + gear.height / 2 }
+    })
+    assert.ok(headingLayout.gearLeft >= headingLayout.titleRight, 'Shared model settings must be to the right of the Lab title')
+    assert.ok(Math.abs(headingLayout.gearCenter - headingLayout.titleCenter) < 8, 'Shared model settings must align with the Lab title')
+    assert.equal(await page.locator('.annotation-lab-tools > button').count(), 6)
+    assert.equal(await page.locator('.annotation-lab-tools kbd').count(), 1, 'Only AI Polish should display a shortcut')
+    const typography = await page.evaluate(() => {
+      const standard = document.querySelector('.tool-panel .tool-panel-section .window-scroll-body > .tool-button')
+      const lab = document.querySelector('.annotation-lab-tools > .tool-button')
+      const standardHeading = document.querySelector('.tool-panel .tool-panel-section .window-scroll-body > h3')
+      const labHeading = document.querySelector('.annotation-lab-heading h3')
+      const style = (element) => {
+        const computed = getComputedStyle(element)
+        return { fontSize: computed.fontSize, paddingLeft: computed.paddingLeft, paddingRight: computed.paddingRight }
+      }
+      const labGroup = getComputedStyle(document.querySelector('.annotation-lab'))
+      const labHeadingStyle = getComputedStyle(document.querySelector('.annotation-lab-heading'))
+      return {
+        standardButton: style(standard), labButton: style(lab),
+        standardStrong: style(standard.querySelector('strong')), labStrong: style(lab.querySelector('strong')),
+        standardSmall: style(standard.querySelector('small')), labSmall: style(lab.querySelector('small')),
+        standardHeading: style(standardHeading), labHeading: style(labHeading),
+        groupBorderTop: labGroup.borderTopWidth, headingBorderBottom: labHeadingStyle.borderBottomWidth
+      }
+    })
+    assert.deepEqual(typography.labStrong, typography.standardStrong, 'Lab action titles must match annotation tools')
+    assert.deepEqual(typography.labSmall, typography.standardSmall, 'Lab action hints must match annotation tools')
+    assert.deepEqual(typography.labButton, typography.standardButton, 'Lab action spacing must match annotation tools')
+    assert.equal(typography.labHeading.fontSize, typography.standardHeading.fontSize, 'Lab heading must match other tool-group headings')
+    assert.equal(typography.groupBorderTop, '0px', 'Lab heading must not have a top divider')
+    assert.equal(typography.headingBorderBottom, '0px', 'Lab heading must not have a bottom divider')
+    await fs.mkdir(screenshotDirectory, { recursive: true })
+    await page.locator('.annotation-lab').evaluate((element) => element.scrollIntoView({ block: 'end' }))
+    await page.waitForTimeout(100)
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-toolbar-${releaseVersion}.png`) })
+    console.log('[lab-smoke] shared header layout verified')
+
+    await page.locator('.annotation-lab-tools > button').first().click()
+    const polishWindow = page.locator('.ai-polish-window:not(.lab-workflow-window)')
+    await polishWindow.waitFor()
+    await verifyStickyDraggableHeader(page, polishWindow, 'AI polish')
+    await polishWindow.locator(':scope > header button[aria-label="关闭"]').click()
+
+    await page.locator('.full-review-launch').click()
+    await page.locator('.lab-disclaimer').waitFor()
+    const consentLayout = await page.evaluate(() => {
+      const modal = document.querySelector('.lab-disclaimer').getBoundingClientRect()
+      const panel = document.querySelector('.lab-consent-check').getBoundingClientRect()
+      const checkbox = document.querySelector('.lab-consent-check input').getBoundingClientRect()
+      const copy = document.querySelector('.lab-consent-check > span').getBoundingClientRect()
+      return { modal: { left: modal.left, right: modal.right }, panel: { left: panel.left, right: panel.right }, checkbox: { top: checkbox.top, right: checkbox.right }, copy: { top: copy.top, left: copy.left } }
+    })
+    assert.ok(consentLayout.copy.left >= consentLayout.checkbox.right + 6, 'Consent copy must be to the right of the checkbox')
+    assert.ok(Math.abs(consentLayout.copy.top - consentLayout.checkbox.top) < 8, 'Consent checkbox and copy must share one row')
+    assert.ok(consentLayout.panel.left - consentLayout.modal.left >= 20, 'Consent panel needs left breathing room')
+    assert.ok(consentLayout.modal.right - consentLayout.panel.right >= 20, 'Consent panel needs right breathing room')
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-disclaimer-${releaseVersion}.png`) })
+    const continueButton = page.locator('.lab-disclaimer footer button.primary')
+    assert.equal(await continueButton.isDisabled(), true)
+    await page.locator('.lab-consent-check input').check()
+    assert.equal(await continueButton.isDisabled(), false)
+    await continueButton.click()
+    assert.equal(await page.evaluate(() => localStorage.getItem('pdfuck.lab.full-review-consent.v1')), 'accepted')
+    await page.locator('.full-review-window').waitFor()
+    await verifyStickyDraggableHeader(page, page.locator('.full-review-window'), 'Full review')
+    console.log('[lab-smoke] disclaimer accepted')
+    assert.equal(await page.locator('.lab-send-mode button').count(), 2)
+    assert.ok((await page.locator('.full-review-window textarea').inputValue()).includes('恰好三句话'))
+    await page.locator('.full-review-window button.primary.wide').click()
+    const progress = page.locator('.lab-review-progress')
+    await progress.waitFor()
+    const liveActivity = page.locator('.full-review-window .ai-stream-activity')
+    await liveActivity.getByText('请求已提交，等待模型首次输出…', { exact: true }).waitFor()
+    const waitingActivity = await liveActivity.innerText()
+    assert.ok(waitingActivity.includes('本次送入模型的内容'), 'The first-byte wait must describe the submitted request')
+    assert.ok(waitingActivity.includes('lab-smoke-model'), 'The first-byte wait must identify the selected model')
+    assert.ok(waitingActivity.includes('已转换的文档文字'), 'The first-byte wait must identify the sent document representation')
+    assert.equal(waitingActivity.includes('正在连接模型'), false, 'A submitted request must not be labelled as still connecting')
+    await verifyActivityLayout(liveActivity)
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-first-output-wait-${releaseVersion}.png`) })
+    await liveActivity.getByText('服务商返回的思考过程', { exact: true }).waitFor()
+    assert.ok((await liveActivity.innerText()).includes('Checking the document structure'), 'The Lab must expose provider reasoning while the request is still running')
+    assert.equal(await progress.getAttribute('role'), 'progressbar')
+    const countdown = await progress.locator('header span').textContent()
+    const remaining = Number(countdown.match(/\d+/)?.[0])
+    assert.ok(remaining >= 1198 && remaining <= 1200, `Expected countdown to include the 1200-second recovery budget, got ${countdown}`)
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-review-progress-${releaseVersion}.png`) })
+    await page.locator('.full-review-window').getByRole('button', { name: '缩小到工具栏', exact: true }).click()
+    assert.equal(await page.locator('.full-review-window').count(), 0)
+    assert.equal(await page.locator('.full-review-launch').getAttribute('data-window-state'), 'minimized')
+    await page.locator('.full-review-launch').click()
+    await progress.waitFor()
+
+
+    await app.evaluate(({ BrowserWindow }, source) => BrowserWindow.getAllWindows()[0].webContents.send('pdf:open-external', source), switchTarget)
+    const originalTab = page.locator('.window-tab[title^="lab-features.pdf"]')
+    const switchTab = page.locator('.window-tab[title^="lab-switch-target.pdf"]')
+    await switchTab.waitFor({ timeout: 60000 })
+    assert.equal(await page.locator('.full-review-window').count(), 0, 'The original document AI window must stay isolated while another PDF is active')
+    await page.waitForTimeout(1200)
+    await originalTab.click()
+    await page.locator('.lab-review-progress').waitFor({ timeout: 10000 })
+    const resumedCountdown = Number((await page.locator('.lab-review-progress header span').textContent()).match(/\d+/)?.[0])
+    assert.ok(resumedCountdown < remaining && resumedCountdown > 0, `The restored countdown must keep advancing: ${resumedCountdown}`)
+    await switchTab.click()
+    assert.equal(await page.locator('.full-review-window').count(), 0, 'Manual document switching must hide, not transfer, another PDF AI session')
+    await originalTab.click()
+    await page.locator('.full-review-window').waitFor({ timeout: 10000 })
+    console.log('[lab-smoke] running review survived PDF opening and manual tab switches')
+
+    await page.getByText('FULL REVIEW RESULT', { exact: true }).waitFor({ timeout: 15000 })
+    assert.equal(await page.locator('.full-review-window .ai-markdown h1').textContent(), 'FULL REVIEW RESULT')
+    assert.equal(await page.locator('.full-review-window .ai-markdown li').count(), 2)
+    assert.equal(await page.locator('.full-review-window .ai-markdown table').count(), 1)
+    console.log('[lab-smoke] full review response received')
+    await page.locator('.full-review-window .ai-polish-actions button').first().click()
+    assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), reviewMarkdown)
+    await page.locator('.full-review-window .ai-polish-actions button.primary').click()
+    await page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).waitFor()
+    console.log('[lab-smoke] full review copied and added')
+
+    await page.locator('.full-review-launch').click()
+    assert.equal(await page.locator('.lab-disclaimer').count(), 0, 'Accepted disclaimer must not reappear')
+    await page.locator('.full-review-window > header button[aria-label="关闭"]').click()
+
+    await selectPageText(page, 0)
+    await page.locator('.automatic-annotation-launch').click()
+    const automaticWindow = page.locator('.automatic-annotation-window')
+    await automaticWindow.waitFor()
+    await verifyStickyDraggableHeader(page, automaticWindow, 'Automatic annotation')
+    const scopeOptions = automaticWindow.locator('input[name="automatic-annotation-scope"]')
+    assert.equal(await scopeOptions.count(), 2)
+    assert.deepEqual(await scopeOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['document', 'selection'])
+    assert.ok((await automaticWindow.innerText()).includes('全文'))
+    assert.ok((await automaticWindow.innerText()).includes('当前选区'))
+    const selectionScope = scopeOptions.nth(1)
+    assert.equal(await selectionScope.isDisabled(), false, 'Current-selection scope must be available when PDF text is selected')
+    await selectionScope.check()
+    await automaticWindow.getByText('仅在选区内落批注；文档开头与邻近段落只作为上下文发送。', { exact: true }).waitFor()
+    await scopeOptions.first().check()
+
+    const issueOptions = automaticWindow.locator('.automatic-issue-grid input')
+    assert.equal(await issueOptions.count(), 13, 'Automatic annotation must expose the complete issue checklist')
+    const issueFrame = await automaticWindow.locator('.automatic-issue-options').evaluate((element) => {
+      const style = getComputedStyle(element)
+      const frame = element.getBoundingClientRect()
+      const heading = element.querySelector('.automatic-issue-heading').getBoundingClientRect()
+      const actions = element.querySelector('.automatic-issue-actions').getBoundingClientRect()
+      const disclosure = element.querySelector('.automatic-context-disclosure').getBoundingClientRect()
+      const grid = element.querySelector('.automatic-issue-grid').getBoundingClientRect()
+      const cards = [...element.querySelectorAll('.automatic-issue-grid > label')].map((card) => {
+        const box = card.getBoundingClientRect()
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+      })
+      return {
+        borderWidth: parseFloat(style.borderTopWidth),
+        paddingLeft: parseFloat(style.paddingLeft), paddingRight: parseFloat(style.paddingRight),
+        frame: { left: frame.left, right: frame.right, top: frame.top, bottom: frame.bottom },
+        heading: { left: heading.left, right: heading.right, top: heading.top, bottom: heading.bottom },
+        actions: { left: actions.left, right: actions.right, top: actions.top, bottom: actions.bottom },
+        disclosure: { top: disclosure.top, bottom: disclosure.bottom },
+        grid: { left: grid.left, right: grid.right, top: grid.top, bottom: grid.bottom, scrollHeight: element.querySelector('.automatic-issue-grid').scrollHeight, clientHeight: element.querySelector('.automatic-issue-grid').clientHeight },
+        cards
+      }
+    })
+    assert.ok(issueFrame.borderWidth > 0, `Issue choices need a clear outer frame: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.paddingLeft >= 12 && issueFrame.paddingRight >= 12, `Issue frame needs comfortable padding: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.heading.left > issueFrame.frame.left && issueFrame.heading.right < issueFrame.frame.right, `Issue heading escaped its frame: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.actions.top >= issueFrame.heading.top && issueFrame.actions.bottom <= issueFrame.heading.bottom, `Issue actions are not aligned with the title: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.disclosure.top >= issueFrame.heading.bottom + 5, `Issue explanation overlaps the title row: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.grid.top >= issueFrame.disclosure.bottom + 5, `Issue cards overlap the explanation: ${JSON.stringify(issueFrame)}`)
+    assert.ok(issueFrame.grid.left > issueFrame.frame.left && issueFrame.grid.right < issueFrame.frame.right, `Issue grid escaped its frame: ${JSON.stringify(issueFrame)}`)
+    assert.equal(issueFrame.grid.scrollHeight, issueFrame.grid.clientHeight, `All 12 issue cards should fit without a clipped partial row: ${JSON.stringify(issueFrame)}`)
+    for (const card of issueFrame.cards) assert.ok(card.left >= issueFrame.grid.left && card.right <= issueFrame.grid.right + 1 && card.top >= issueFrame.grid.top && card.bottom <= issueFrame.grid.bottom + 1, `Issue card escaped or was clipped: ${JSON.stringify(issueFrame)}`)
+    assert.equal(await issueOptions.evaluateAll((inputs) => inputs.filter((input) => input.checked).length), 12, 'All issue categories should be enabled on first use')
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-auto-annotation-options-${releaseVersion}.png`) })
+    await automaticWindow.getByRole('button', { name: '清空选择', exact: true }).click()
+    assert.equal(await automaticWindow.locator('.automatic-start').isDisabled(), true, 'No issue selection must disable the run')
+    await issueOptions.nth(0).check()
+    await issueOptions.nth(9).check()
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.lab.auto-annotation-issues.v1'))), ['typos_formatting', 'section_structure'])
+
+    const intensityOptions = automaticWindow.locator('input[name="automatic-annotation-intensity"]')
+    assert.equal(await intensityOptions.count(), 3)
+    assert.deepEqual(await intensityOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['lenient', 'balanced', 'strict'])
+    for (const label of ['宽松', '均衡', '严格']) assert.ok((await automaticWindow.innerText()).includes(label))
+    assert.equal(await intensityOptions.nth(1).isChecked(), true, 'Balanced annotation intensity must be the default')
+    await intensityOptions.nth(2).check()
+    assert.equal(await page.evaluate(() => localStorage.getItem('pdfuck.lab.auto-annotation-intensity.v1')), 'strict')
+
+    const detailOptions = automaticWindow.locator('input[name="automatic-annotation-detail"]')
+    assert.equal(await detailOptions.count(), 3)
+    assert.deepEqual(await detailOptions.evaluateAll((inputs) => inputs.map((input) => input.value)), ['revision', 'brief', 'detailed'])
+    for (const label of ['仅修订文本', '简短说明', '详细说明']) assert.ok((await automaticWindow.innerText()).includes(label))
+    assert.ok((await automaticWindow.innerText()).includes('批注内容'))
+    await detailOptions.nth(0).check()
+    await detailOptions.nth(2).check()
+    await detailOptions.nth(1).check()
+
+    await automaticWindow.locator('.automatic-start').click()
+    const automaticProgress = automaticWindow.locator('.automatic-annotation-progress')
+    await automaticProgress.waitFor()
+    assert.equal(await automaticProgress.getAttribute('role'), 'progressbar')
+    await automaticWindow.locator('.automatic-annotation-progress.running').waitFor({ timeout: 10000 })
+    assert.ok((await automaticProgress.innerText()).includes('第 1/2 轮'), 'Progress must identify the active issue pass')
+    const automaticPercent = Number(await automaticProgress.getAttribute('aria-valuenow'))
+    assert.ok(Number.isFinite(automaticPercent) && automaticPercent >= 0 && automaticPercent <= 100)
+    const automaticControls = automaticWindow.locator('.automatic-annotation-controls')
+    await automaticControls.getByText('暂停', { exact: true }).waitFor()
+    await automaticControls.getByText('结束', { exact: true }).waitFor()
+    await verifyActivityLayout(automaticWindow.locator('.ai-stream-activity'))
+    await automaticControls.getByText('暂停', { exact: true }).click()
+    await automaticControls.getByText('继续', { exact: true }).waitFor()
+    await automaticControls.getByText('继续', { exact: true }).click()
+    await automaticControls.getByText('暂停', { exact: true }).waitFor()
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-auto-annotation-progress-${releaseVersion}.png`) })
+    await automaticControls.getByText('结束', { exact: true }).click()
+    await automaticWindow.locator('.automatic-annotation-progress.stopped').waitFor()
+    assert.ok((await automaticProgress.innerText()).includes('自动批注已结束'))
+    await automaticWindow.locator(':scope > header button[aria-label="关闭"]').click()
+    console.log('[lab-smoke] automatic annotation scopes, issue passes, intensity, explanation levels, and live controls verified')
+
+    const translationToggle = page.locator('.translation-toggle')
+    await translationToggle.click()
+    const translationSettings = page.locator('.translation-settings-dialog')
+    await translationSettings.waitFor()
+    const translationSettingsSpacing = await translationSettings.evaluate(dialog => {
+      const footer = dialog.querySelector('footer'), button = footer?.querySelector('button')
+      if (!footer || !button) return null
+      const footerBox = footer.getBoundingClientRect(), buttonBox = button.getBoundingClientRect(), style = getComputedStyle(footer)
+      return { buttonInset: buttonBox.top - footerBox.top, borderTop: style.borderTopStyle, paddingTop: parseFloat(style.paddingTop) }
+    })
+    assert.ok(translationSettingsSpacing && translationSettingsSpacing.borderTop !== 'none' && translationSettingsSpacing.paddingTop >= 14 && translationSettingsSpacing.buttonInset >= 14, `Translation settings actions need breathing room: ${JSON.stringify(translationSettingsSpacing)}`)
+    await translationSettings.locator('select').selectOption('fr')
+    await translationSettings.locator('button.primary').click()
+    assert.equal(await translationToggle.getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.lab-preferences.v1')).translationTarget), 'fr')
+
+    const toggle = page.locator('.annotation-suggestion-toggle')
+    await toggle.click()
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('pdfuck.lab-preferences.v1')).annotationSuggestionsEnabled), true)
+
+    const annotation = page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).first()
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
+    await page.locator('.annotation-suggestion-window').waitFor()
+    assert.equal(await page.locator('.annotation-dialog .annotation-suggestion-inline').count(), 1, 'AI must stay inside the existing editor')
+    assert.equal(await page.locator('.annotation-suggestion-window.scroll-window').count(), 0)
+    console.log('[lab-smoke] annotation suggestion collector opened')
+
+    const automaticContextSwitch = page.locator('.suggestion-auto-context [role="switch"]')
+    const automaticContextSlider = page.locator('.automatic-context-level input')
+    assert.equal(await automaticContextSwitch.getAttribute('aria-checked'), 'true', 'automatic annotation context must be enabled by default')
+    assert.equal(await automaticContextSlider.getAttribute('min'), '1')
+    assert.equal(await automaticContextSlider.getAttribute('max'), '5')
+    assert.equal(await automaticContextSlider.inputValue(), '3')
+    assert.ok((await page.locator('.automatic-context-note').innerText()).includes('自由位置批注'), 'free-position notes must explain the conservative context rule')
+    await page.locator('.automatic-context-state.warning').waitFor({ timeout: 10000 })
+    assert.ok((await page.locator('.automatic-context-state.warning').innerText()).includes('未贴近可识别正文'), 'a detached free-position note must not capture unrelated text')
+    await automaticContextSlider.fill('5')
+    await automaticContextSlider.dispatchEvent('change')
+    await page.waitForFunction(() => document.querySelector('.automatic-context-level output')?.textContent?.includes('5 / 5'))
+
+    await page.locator('.annotation-dialog').evaluate(element => { element.style.width = '550px' })
+    const collectorHeader = await page.locator('.annotation-dialog > .annotation-dialog-heading').boundingBox()
+    assert.ok(collectorHeader, 'Expected a draggable suggestion window header')
+    await page.mouse.move(collectorHeader.x + collectorHeader.width / 2, collectorHeader.y + collectorHeader.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(1180 - collectorHeader.width / 2, collectorHeader.y + collectorHeader.height / 2, { steps: 6 })
+    await page.mouse.up()
+
+    await selectPageText(page, 0)
+    await page.locator('.annotation-suggestion-window .capture-context-button').click()
+    assert.equal(await page.locator('.suggestion-contexts header span').textContent(), '1')
+    await selectPageText(page, 1)
+    await page.locator('.annotation-suggestion-window .capture-context-button').click()
+    assert.equal(await page.locator('.suggestion-contexts header span').textContent(), '2')
+    const contexts = await page.locator('.suggestion-contexts article').allInnerTexts()
+    assert.ok(contexts.some((value) => value.includes('First')))
+    assert.ok(contexts.some((value) => value.includes('Second')))
+    const persist = page.locator('.suggestion-persist input')
+    assert.equal(await persist.isDisabled(), false)
+    await persist.check()
+    assert.equal(await persist.isChecked(), true)
+    await page.locator('.annotation-dialog .annotation-dialog-close').click()
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-dialog .annotation-ai-suggestion').click()
+    await page.locator('.annotation-suggestion-window').waitFor()
+    assert.equal(await page.locator('.suggestion-contexts article').count(), 2, 'Persisted contexts must load for another suggestion in the same document')
+    assert.equal(await page.locator('.suggestion-persist input').isChecked(), true)
+    await page.locator('.automatic-context-state.warning').waitFor({ timeout: 10000 })
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-suggestion-contexts-${releaseVersion}.png`) })
+    console.log('[lab-smoke] conservative automatic context and two manual context passages verified')
+
+    await page.locator('.annotation-suggestion-window button.primary.wide').click()
+    await page.getByText('ANNOTATION SUGGESTION RESULT', { exact: true }).waitFor({ timeout: 15000 })
+    assert.equal(await page.locator('.annotation-suggestion-window .ai-markdown h2').textContent(), 'ANNOTATION SUGGESTION RESULT')
+    assert.equal(await page.locator('.annotation-suggestion-window .ai-markdown ol li').count(), 2)
+    await page.locator('.annotation-suggestion-window .ai-stream-activity summary').click()
+    await verifyActivityLayout(page.locator('.annotation-suggestion-window .ai-stream-activity'))
+    console.log('[lab-smoke] annotation suggestion response received')
+    await page.locator('.annotation-suggestion-window .ai-polish-actions button').first().click()
+    assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), suggestionMarkdown)
+    const addToReply = page.locator('.annotation-suggestion-window .ai-polish-actions button.primary')
+    assert.equal(await addToReply.textContent(), '填入回复草稿')
+    await addToReply.click()
+    assert.equal(await page.locator('.annotation-dialog').count(), 1)
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
+    assert.equal(await annotation.locator('.annotation-reply-preview').count(), 0, 'Using AI advice must only update the draft until confirmed')
+    await page.locator('.annotation-dialog .modal-actions button.primary').click()
+    await switchTab.click()
+    assert.equal(await page.locator('.annotation-reply-preview').count(), 0, 'A reply writeback must never leak into the document switched to during the save')
+    await originalTab.click()
+    await annotation.locator('.annotation-reply-preview').waitFor()
+    assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-reply-section > summary').click()
+    assert.ok((await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText()).includes('Align the conclusion.'))
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-suggestion-reply-${releaseVersion}.png`) })
+    await page.locator('.annotation-dialog .modal-actions button.primary').click()
+    await page.locator('.nav-rail button').filter({ hasText: '查看' }).click()
+    await selectPageText(page, 0)
+    const selectedWord = page.locator('.pdf-page[data-page="0"] .text-map span').first()
+    const selectedWordBox = await selectedWord.boundingBox()
+    assert.ok(selectedWordBox)
+    await page.mouse.click(selectedWordBox.x + selectedWordBox.width / 2, selectedWordBox.y + selectedWordBox.height / 2, { button: 'right' })
+    const translateMenuItem = page.locator('.context-menu .translate-item')
+    await translateMenuItem.waitFor()
+    await translateMenuItem.click()
+    const translationDialog = page.locator('.translation-dialog')
+    await translationDialog.waitFor()
+    await translationDialog.getByText(translationResult, { exact: true }).waitFor({ timeout: 15000 })
+    const translationLayout = await translationDialog.evaluate(dialog => {
+      const source = dialog.querySelector('.translation-source'), result = dialog.querySelector('.translation-result'), actions = dialog.querySelector('.modal-actions')
+      if (!source || !result || !actions) return null
+      const sourceBox = source.getBoundingClientRect(), resultBox = result.getBoundingClientRect(), actionsBox = actions.getBoundingClientRect()
+      const sourceStyle = getComputedStyle(source), resultStyle = getComputedStyle(result)
+      return { sectionGap: resultBox.top - sourceBox.bottom, actionGap: actionsBox.top - resultBox.bottom, sourceBackground: sourceStyle.backgroundColor, resultBackground: resultStyle.backgroundColor, resultAccent: parseFloat(resultStyle.borderInlineStartWidth) }
+    })
+    assert.ok(translationLayout && translationLayout.sectionGap >= 12 && translationLayout.actionGap >= 16, `Translation regions need visible spacing: ${JSON.stringify(translationLayout)}`)
+    assert.notEqual(translationLayout.sourceBackground, translationLayout.resultBackground, 'Source and translated text need distinct backgrounds')
+    assert.ok(translationLayout.resultAccent >= 4, 'Translated text needs a visible accent edge')
+    await page.screenshot({ path: path.join(screenshotDirectory, `lab-translation-${releaseVersion}.png`) })
+    await translationDialog.locator('button.primary').click()
+    await translationDialog.waitFor({ state: 'detached' })
+    await page.locator('.nav-rail button').filter({ hasText: '批注' }).click()
+    await page.locator('.annotation-row').filter({ hasText: translationResult }).waitFor()
+    await page.locator('.quick-save').click()
+    await page.waitForFunction(() => document.querySelector('.quick-save')?.hasAttribute('disabled'))
+
+    assert.equal(requests.length, 5)
+    assert.ok(requests[0].includes('--- Page 1 ---') && requests[0].includes('First context passage'))
+    assert.ok(requests[0].includes('--- Page 2 ---') && requests[0].includes('Second context passage'))
+    assert.ok(requests[1].includes('targetBlocks') && requests[1].includes('First context passage'))
+    assert.ok(requests[2].includes('FULL REVIEW RESULT'))
+    assert.ok(requests[2].includes('First'))
+    assert.ok(requests[2].includes('Second'))
+    assert.ok(requests[3].includes('Translate only the selected text into Français'))
+    assert.ok(requests[4].includes('Translate only the selected text into Français'))
+    assert.ok(requests[3].includes('Selected text:\\nFirst'))
+    assert.ok(requests[3].includes('Surrounding context (reference only; never include it in the answer)'))
+    assert.ok(requests[3].includes('First context passage for the method.'))
+    console.log('[lab-smoke] copy, visible reply writeback, save, and payloads verified')
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
+    await app.close()
+  }
+}
+
+async function verifyPersistedSuggestionReply(userData, pdf) {
+  const app = await launch(userData, pdf)
+  try {
+    const page = await app.firstWindow()
+    await page.waitForSelector('.pdf-page[data-page="0"]', { timeout: 60000 })
+    await page.locator('.nav-rail button').filter({ hasText: '批注' }).click()
+    const annotation = page.locator('.annotation-row').filter({ hasText: 'FULL REVIEW RESULT' }).first()
+    await annotation.locator('.annotation-reply-preview').waitFor({ timeout: 10000 })
+    assert.ok((await annotation.locator('.annotation-reply-preview').innerText()).includes('ANNOTATION SUGGESTION RESULT'))
+    await annotation.locator('.annotation-content-value').dblclick()
+    await page.locator('.annotation-reply-section > summary').click()
+    assert.equal(await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText(), suggestionMarkdown)
+    assert.ok((await page.locator('.annotation-dialog .annotation-reply-picker .rich-editor-content').innerText()).includes('Align the conclusion.'))
+    console.log('[lab-smoke] saved AI reply restored after reopening the PDF')
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((window) => window.destroy())).catch(() => undefined)
+    await app.close()
+  }
+}
+
+async function main() {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfuck-lab-features-'))
+  const requests = []
+  let translationAttempts = 0
+  const server = http.createServer(async (request, response) => {
+    let body = ''
+    for await (const chunk of request) body += chunk
+    assert.equal(request.url, '/v1/chat/completions')
+    assert.equal(request.headers.authorization, 'Bearer lab-smoke-key')
+    const payload = JSON.parse(body)
+    assert.equal(payload.model, 'lab-smoke-model')
+    requests.push(body)
+    const translation = body.includes('Translate only the selected text into Français')
+    if (translation && translationAttempts++ === 0) { response.writeHead(503, { 'content-type': 'application/json', 'retry-after': '0' }); response.end(JSON.stringify({ error: { message: 'temporary translation failure' } })); return }
+    const content = translation ? translationResult : body.includes('FULL REVIEW RESULT') ? suggestionMarkdown : reviewMarkdown
+    response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
+    if (!translation && !body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 1200))
+    response.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'Checking the document structure and requested constraints.' } }] })}\n\n`)
+    if (!translation && !body.includes('FULL REVIEW RESULT')) await new Promise((resolve) => setTimeout(resolve, 4800))
+    response.end(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)
+  })
+  try {
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    const userData = path.join(temporary, 'user-data')
+    const pdf = await fixture(temporary)
+    await configure(userData, `http://127.0.0.1:${address.port}/v1`)
+    await verifyLabFeatures(userData, pdf.primary, pdf.switchTarget, requests)
+    await verifyPersistedSuggestionReply(userData, pdf.primary)
+    console.log(JSON.stringify({ sharedSettings: 'passed', consistentLayout: 'passed', fullReview: 'passed', automaticAnnotation: '12-categories-and-controls-passed', documentSwitchPersistence: 'passed', countdown: 'passed', markdown: 'passed', disclaimer: 'persisted', automaticContext: 'conservative-free-note-pass', contexts: 2, contextPersistence: 'passed', annotationSuggestion: 'passed', translation: 'context-menu-auto-retry-highlight-passed', copyAndWriteback: 'passed', replyVisibility: 'passed', replyPersistence: 'passed' }))
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+    await fs.rm(temporary, { recursive: true, force: true })
+  }
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1 })

@@ -777,7 +777,12 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     else visualRows.push([word])
   }
   visualRows.forEach((row, lineIndex) => {
-    const intervals = row
+    // Columns need not share a baseline. Look at neighboring lines together:
+    // this pairs staggered columns and fills ordinary word/equation gaps with
+    // coverage from nearby lines. Counting only same-baseline gaps penalized
+    // formula-heavy pages, whose scripts create many extra visual rows.
+    const neighbors = visualRows.filter(candidate => Math.abs(rowY(candidate[0]) - rowY(row[0])) <= medianHeight * 1.25)
+    const intervals = neighbors.flat()
       .map((word) => ({ left: word.rect.x, right: word.rect.x + word.rect.width }))
       .sort((left, right) => left.left - right.left)
     const merged: Array<{ left: number; right: number }> = []
@@ -822,9 +827,10 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       const typical = [...cluster.gaps].sort((left, right) => left.right - left.left - (right.right - right.left)).slice(0, Math.ceil(cluster.gaps.length / 2))
       return { ...cluster, center: (median(typical.map((value) => value.left)) + median(typical.map((value) => value.right))) / 2 }
     })
-    // A real column gutter stays empty down the page. Indented equations and
-    // matrices repeat large internal gaps, but ordinary prose crosses them.
-    .filter((cluster) => visualRows.filter((row) => row.some((word) => word.rect.x < cluster.center + gutterCorridor && word.rect.x + word.rect.width > cluster.center - gutterCorridor)).length <= visualRows.length * 0.25)
+    // A real gutter has substantially more support than conflicting text.
+    // Page-wide whitespace alone can otherwise promote equation-number gaps
+    // when staggered lines contribute extra supporting neighborhoods.
+    .filter((cluster) => visualRows.filter((row) => row.some((word) => word.rect.x < cluster.center + gutterCorridor && word.rect.x + word.rect.width > cluster.center - gutterCorridor)).length <= Math.min(visualRows.length * 0.25, cluster.rows.size * 0.5))
     .sort((left, right) => left.center - right.center)
     .map((cluster) => cluster.center)
   const columnBoundaries = override?.columnBoundaries === undefined

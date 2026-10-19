@@ -19,5 +19,5 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src/renderer/src", "src/shared"]
+  "include": ["src/renderer/src", "src/shared", "tests/unit/renderer/src", "tests/unit/shared"]
 }

@@ -40,20 +40,20 @@ npm ci
 [[ -d node_modules/electron/dist ]] || node node_modules/electron/install.js
 npm run build
 npm run render:dmg-background
-node scripts/markdown-ui-smoke.cjs
-node scripts/markdown-layout-template-check.cjs
+node tests/scripts/markdown-ui-smoke.cjs
+node tests/scripts/markdown-layout-template-check.cjs
 npm run test:i18n-ui
-node scripts/ai-smoke.cjs
-node scripts/annotation-editor-ui-smoke.cjs
-node scripts/annotation-dialog-interaction-ui-smoke.cjs
-node scripts/typography-ui-smoke.cjs
-node scripts/workflow-state-ui-smoke.cjs
-node scripts/lab-features-ui-smoke.cjs
-node scripts/ai-settings-ui-smoke.cjs
-node scripts/document-archives-ui-smoke.cjs
-node scripts/popups-ui-smoke.cjs
-node scripts/eps-vector-smoke.cjs
-node scripts/creative-tools-ui-smoke.cjs
+node tests/scripts/ai-smoke.cjs
+node tests/scripts/annotation-editor-ui-smoke.cjs
+node tests/scripts/annotation-dialog-interaction-ui-smoke.cjs
+node tests/scripts/typography-ui-smoke.cjs
+node tests/scripts/workflow-state-ui-smoke.cjs
+node tests/scripts/lab-features-ui-smoke.cjs
+node tests/scripts/ai-settings-ui-smoke.cjs
+node tests/scripts/document-archives-ui-smoke.cjs
+node tests/scripts/popups-ui-smoke.cjs
+node tests/scripts/eps-vector-smoke.cjs
+node tests/scripts/creative-tools-ui-smoke.cjs
 npm run test:print-native
 npm run test:print-ui
 npm run test:window-tabs
@@ -62,7 +62,7 @@ npm run test:pdf-links-ui
 npm run test:bookmark-recognition-papers
 npm run test:page-text-edit-ui
 npm run test:page-manager-input-ui
-node scripts/ocr-ui-smoke.cjs
+node tests/scripts/ocr-ui-smoke.cjs
 npm run test:selection-scheduling
 npm run test:selection-scheduling-ui
 npm run test:selection-scheduling-0826
@@ -72,14 +72,14 @@ npm run test:selection-test2-ui
 npm run test:selection-test3
 npm run test:selection-m91474
 npm run test:selection-scheduling-inline
-node scripts/selection-test3-ui-smoke.cjs
+node tests/scripts/selection-test3-ui-smoke.cjs
 npm run test:citations-scheduling-0826
 npm run test:reading-navigation-ui
 npm run test:selection-chinese
 npm run test:selection-chinese-ui
 npm run test:selection-bc
-node scripts/selection-bc-ui-smoke.cjs
-node scripts/heavy-image-page-ui-smoke.cjs
+node tests/scripts/selection-bc-ui-smoke.cjs
+node tests/scripts/heavy-image-page-ui-smoke.cjs
 git diff --check
 
 # Build the application bundle first so the exact bundle placed into the DMG is
@@ -142,35 +142,35 @@ rmdir "$mount_dir"
 trap - EXIT
 
 release_executable="$repo_root/$app_bundle/Contents/MacOS/PDFuck"
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-layout-template-check.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/markdown-macos-launch-smoke.cjs
-PDFUCK_RELEASE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/release-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/ai-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/annotation-editor-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/annotation-dialog-interaction-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/typography-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/workflow-state-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/lab-features-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/ai-settings-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/document-archives-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/popups-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/eps-vector-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node scripts/creative-tools-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/print-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/window-tabs-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/bookmark-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/pdf-links-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/bookmark-recognition-papers-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/page-manager-input-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/ocr-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/selection-scheduling-0826-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/selection-test2-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/selection-test3-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/reading-navigation-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/selection-chinese-alignment-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/selection-bc-ui-smoke.cjs
-PDFUCK_SMOKE_EXECUTABLE="$release_executable" node scripts/heavy-image-page-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/markdown-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/markdown-layout-template-check.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/markdown-macos-launch-smoke.cjs
+PDFUCK_RELEASE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/release-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/ai-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/annotation-editor-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/annotation-dialog-interaction-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/typography-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/workflow-state-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/lab-features-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/ai-settings-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/document-archives-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/popups-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/eps-vector-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" PDFUCK_RELEASE_VERSION="$version" node tests/scripts/creative-tools-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/print-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/window-tabs-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/bookmark-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/pdf-links-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/bookmark-recognition-papers-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/page-manager-input-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/ocr-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/selection-scheduling-0826-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/selection-test2-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/selection-test3-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/reading-navigation-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/selection-chinese-alignment-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/selection-bc-ui-smoke.cjs
+PDFUCK_SMOKE_EXECUTABLE="$release_executable" node tests/scripts/heavy-image-page-ui-smoke.cjs
 
 dmg_hash="$(shasum -a 256 "$dmg" | awk '{print $1}')"
 zip_hash="$(shasum -a 256 "$zip" | awk '{print $1}')"

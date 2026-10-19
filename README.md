@@ -37,13 +37,15 @@
 
 打开或拖入文档即可开始。“查看”中可调整语言、主题、纸张背景与界面字号；“文档标签”可保存和恢复一组文件。
 
-2.1.9 修复压缩标点与后续文字块重叠导致的选区溢出，保留前面字符的光标位置，支持双向选择与缩放。批注编辑顶部显示被批注原文、前后文和页码；跨页批注分页面展示，便笺展示附近文字，无文字位置明确提示。通用打开和拖入提示统一为“文档”，支持十种语言、双主题及四档界面字号。验收与 Windows 交付见 [2.1.9 验证记录](docs/VALIDATION-2.1.9.md)。
+2.1.10 改进公式密集、左右栏错行文档的自动分栏，修复 `test_multi_col.pdf` 两页漏检，并排除公式编号空隙误报。栏界工具条支持长翻译文本、大字号换行及双主题。所有测试、样本、验收记录和运行输出统一到根目录 [tests](tests/README.md)，未添加或修改 gitignore。见 [2.1.10 验收记录](tests/docs/VALIDATION-2.1.10.md)。
+
+2.1.9 修复压缩标点与后续文字块重叠导致的选区溢出，保留前面字符的光标位置，支持双向选择与缩放。批注编辑顶部显示被批注原文、前后文和页码；跨页批注分页面展示，便笺展示附近文字，无文字位置明确提示。通用打开和拖入提示统一为“文档”，支持十种语言、双主题及四档界面字号。验收与 Windows 交付见 [2.1.9 验证记录](tests/docs/VALIDATION-2.1.9.md)。
 
 2.1.9 后续修复补齐英文空格与词尾空格的选择/复制，校正特殊符号及跨栏图注的选区。自动批注可选择“指定页码”，填写如 `1-3, 5` 的范围；只处理并发送所选页面，进度显示实际页码，报告保留相同范围。导出与运行控制统一放在浮窗固定底栏。书签底部提示按完整宽度自然换行。
 
 顶部“保存”左侧的新建图标可创建空白 Markdown 或 TXT。选择类型后进入编辑器，并提醒尽快保存；首次保存选择本地位置。Tab 插入制表符或缩进多行，Shift+Tab 反缩进，Esc 将焦点移出编辑区；缩进支持撤销和重做。
 
-2.1.7 的“编辑页面文字”支持直接修改、增字、换行及格式调整。小改动复用原文字指令；需要重排时自动按原字体程序、字号、基线、字距和栏内宽度生成可复制的矢量文字，缺字自动补齐并在字体栏标明。预览与写回共用流程，支持连续编辑、撤销重做及保存重开。多栏选择与可视栏线复用 PDF 字体度量及多行共同栏沟。同时兼容 Chromium 输出的 Type3 字体子集：按字形编码定位同名字体、合并分散字宽，连续编辑与保存重开沿用相同解析。页面文字编辑的失败反馈留在编辑器内，保留草稿供继续修改或重试，不弹通用错误窗口。修复根因、关键复测与交付包见 [2.1.7 验证记录](docs/VALIDATION-2.1.7.md)。
+2.1.7 的“编辑页面文字”支持直接修改、增字、换行及格式调整。小改动复用原文字指令；需要重排时自动按原字体程序、字号、基线、字距和栏内宽度生成可复制的矢量文字，缺字自动补齐并在字体栏标明。预览与写回共用流程，支持连续编辑、撤销重做及保存重开。多栏选择与可视栏线复用 PDF 字体度量及多行共同栏沟。同时兼容 Chromium 输出的 Type3 字体子集：按字形编码定位同名字体、合并分散字宽，连续编辑与保存重开沿用相同解析。页面文字编辑的失败反馈留在编辑器内，保留草稿供继续修改或重试，不弹通用错误窗口。修复根因、关键复测与交付包见 [2.1.7 验证记录](tests/docs/VALIDATION-2.1.7.md)。
 
 Markdown / TXT 原文使用 Ctrl/⌘+S 保存，“保存 PDF”单独导出预览。在仅编辑器视图中，页面编辑、批注、OCR 和打印等 PDF 操作禁用；切回双栏或 PDF 视图可使用。
 
@@ -71,6 +73,8 @@ npm run dev
 ```
 
 `npm run build` 执行类型检查、单元测试、多语言与字号审计，再生成生产构建。平台打包、签名和发布流程见 [打包指南](PACKAGING_GUIDE.md)。
+
+测试入口、原始 PDF 样本和版本验收记录见 [tests/README.md](tests/README.md)。`npm run test:release-2.1.10` 只运行本版新增用例和迁移静态检查；本次交付不执行历史全量回归。
 
 Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 请求与 OCR；`src/preload` 和 `src/shared` 提供安全桥接与共享契约；React 界面位于 `src/renderer/src`。
 
@@ -113,13 +117,15 @@ Choose a build for your platform from the [download page](https://github.com/ley
 
 Open or drop a document to begin. Change language, theme, paper background, and interface size under **View**; use **Document tabs** to save and restore a group of files.
 
-2.1.9 corrects selection overflow where compressed punctuation overlaps the next text run, preserving earlier caret positions across drag directions and zoom levels. The annotation editor shows highlighted source text, surrounding context and page numbers, including separate passages for cross-page annotations and nearby text for notes. Generic open/drop labels use “document” in all ten languages, with both themes and four interface sizes. See the [2.1.9 validation record](docs/VALIDATION-2.1.9.md).
+2.1.10 improves automatic column detection for formula-heavy pages and staggered text, fixing both pages of `test_multi_col.pdf` while rejecting equation-number gaps. The column toolbar wraps long translations at larger interface sizes in both themes. Tests, fixtures, validation records and generated output now share the root [tests directory](tests/README.md), with no gitignore additions or changes. See the [2.1.10 validation record](tests/docs/VALIDATION-2.1.10.md).
+
+2.1.9 corrects selection overflow where compressed punctuation overlaps the next text run, preserving earlier caret positions across drag directions and zoom levels. The annotation editor shows highlighted source text, surrounding context and page numbers, including separate passages for cross-page annotations and nearby text for notes. Generic open/drop labels use “document” in all ten languages, with both themes and four interface sizes. See the [2.1.9 validation record](tests/docs/VALIDATION-2.1.9.md).
 
 The 2.1.9 follow-up fixes selection and copying of spaces, trailing whitespace, special symbols and spanning legends. Automatic annotation supports **Specific pages**, such as `1-3, 5`; only chosen pages are processed and sent, and progress and reports retain that scope. Export and run controls share a fixed footer. Bookmark hints wrap across the full sidebar width.
 
 Use the new-document icon immediately before **Save** to create a blank Markdown or TXT document. The editor then reminds you to save; the first save asks for a local path. Tab inserts a tab or indents selected lines, Shift+Tab outdents, and Esc moves focus out of the editor. Indentation supports undo and redo.
 
-In 2.1.7, page text supports ordinary additions, newlines, and formatting. Small edits reuse native instructions; paragraph reflow uses the embedded font program, size, baseline, spacing, and column width to produce selectable vector text. Missing glyphs use an indicated fallback font. Preview and saving share the same pipeline, including repeated edits, undo/redo, and reopening. Column selection and visible guides share PDF font metrics and repeated empty gutter corridors. Chromium Type3 subsets are identified by their glyph mappings, with complete font collection and shared width metrics for repeated edits. Save failures keep the draft and show feedback inside the editor without a blocking error dialog. See the [2.1.7 validation record](docs/VALIDATION-2.1.7.md) for causes, focused checks, and packages.
+In 2.1.7, page text supports ordinary additions, newlines, and formatting. Small edits reuse native instructions; paragraph reflow uses the embedded font program, size, baseline, spacing, and column width to produce selectable vector text. Missing glyphs use an indicated fallback font. Preview and saving share the same pipeline, including repeated edits, undo/redo, and reopening. Column selection and visible guides share PDF font metrics and repeated empty gutter corridors. Chromium Type3 subsets are identified by their glyph mappings, with complete font collection and shared width metrics for repeated edits. Save failures keep the draft and show feedback inside the editor without a blocking error dialog. See the [2.1.7 validation record](tests/docs/VALIDATION-2.1.7.md) for causes, focused checks, and packages.
 
 In Markdown and TXT, Ctrl/Cmd+S saves the source; **Save PDF** exports the preview separately. PDF page tools, annotations, OCR, and printing are disabled in editor-only view and available with the PDF preview.
 
@@ -147,6 +153,8 @@ npm run dev
 ```
 
 `npm run build` runs type checking, unit tests, translation and typography audits, then creates a production build. See the [packaging guide](PACKAGING_GUIDE.md) for platform builds, signing, and release instructions.
+
+See [tests/README.md](tests/README.md) for test commands, PDF fixtures and validation records. `npm run test:release-2.1.10` runs only this release’s new cases and static migration checks; this delivery does not run the historical full suite.
 
 The Electron main process in `src/main` handles files, windows, printing, AI requests, and OCR. `src/preload` and `src/shared` provide the secure bridge and shared contracts; `src/renderer/src` contains the React interface.
 
