@@ -1,4 +1,5 @@
 import type { PdfRect } from '../types'
+import type { PageVisual } from './page-visuals'
 
 export interface InsightHit {
   pageIndex: number
@@ -25,6 +26,7 @@ export interface PageTextSnapshot {
   pageIndex: number
   text: string
   visualRects?: PdfRect[]
+  visuals?: PageVisual[]
 }
 
 function normalizeInsightText(text: string): string {
@@ -60,38 +62,10 @@ export function stablePathColor(filePath?: string): string {
 }
 
 export function visualHits(pages: Array<PageTextSnapshot & { imageCount?: number }>): InsightHit[] {
-  return pages.flatMap((page) => {
-    const hits: InsightHit[] = []
-    const text = page.text.replace(/\s+/g, ' ').trim()
-    const figureMatches = [...text.matchAll(/\b(?:figure|fig\.?|image|plate)\s*\d+[a-z]?\b[^.!?。！？]{0,180}/gi), ...text.matchAll(/图\s*\d+[A-Za-z]?[^.!?。！？]{0,180}/gi)]
-    const tableMatches = [...text.matchAll(/\b(?:table|tab\.?)\s*\d+[a-z]?\b[^.!?。！？]{0,180}/gi), ...text.matchAll(/表\s*\d+[A-Za-z]?[^.!?。！？]{0,180}/gi)]
-    const seenCaptions = new Set<string>()
-    for (const match of figureMatches) {
-      const caption = match[0].trim()
-      const key = caption.toLocaleLowerCase()
-      if (seenCaptions.has(`figure:${key}`)) continue
-      seenCaptions.add(`figure:${key}`)
-      const marker = caption.match(/^(?:figure|fig\.?|image|plate|图)\s*\d+[a-z]?/i)?.[0] || 'ui.image'
-      hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption, rects: page.visualRects })
-    }
-    if ((page.imageCount || 0) > 0 && !figureMatches.length) {
-      hits.push({ pageIndex: page.pageIndex, label: `图片 ${page.imageCount} 个`, context: '检测到页面图像对象', rects: page.visualRects })
-    }
-    for (const match of tableMatches) {
-      const caption = match[0].trim()
-      const key = caption.toLocaleLowerCase()
-      if (seenCaptions.has(`table:${key}`)) continue
-      seenCaptions.add(`table:${key}`)
-      const marker = caption.match(/^(?:table|tab\.?|表)\s*\d+[a-z]?/i)?.[0] || 'ui.table'
-      hits.push({ pageIndex: page.pageIndex, label: marker, context: caption, anchor: caption })
-    }
-    const tableSignal = text.match(/\|[^|]{1,}\|/) || text.match(/(?:^|\s)((?:n|mean|std\.?|median)\s*[:=]\s*[^.!?。！？]{0,80})/i)
-    if (!tableMatches.length && tableSignal) {
-      const anchor = (tableSignal[1] || tableSignal[0]).trim()
-      hits.push({ pageIndex: page.pageIndex, label: "ui.possibleTable", context: `检测到表格列式文本或统计字段：${anchor}`, anchor })
-    }
-    return hits
-  })
+  return pages.flatMap(page => (page.visuals || []).map(visual => ({
+    pageIndex: page.pageIndex, label: visual.label, context: visual.caption || visual.label,
+    rects: [{...visual.rect}]
+  })))
 }
 
 const CITATION_PATTERNS = [

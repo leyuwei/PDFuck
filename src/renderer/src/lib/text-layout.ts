@@ -4,7 +4,7 @@ import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
-export interface WordBox { text: string; rect: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
+export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
@@ -207,6 +207,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     if (Math.abs(yDifference) <= height * 0.55 && horizontalOverlap > Math.min(left.rect.width, right.rect.width) * 0.5) return left.rect.y - right.rect.y || left.rect.x - right.rect.x || left.order - right.order
     return Math.abs(yDifference) <= height * 0.55 ? readingDirection * (left.rect.x - right.rect.x) || left.order - right.order : yDifference || readingDirection * (left.rect.x - right.rect.x) || left.order - right.order
   }
+  const regionId = startWord.visualRegion !== undefined && startWord.visualRegion === endWord.visualRegion ? startWord.visualRegion : undefined
   const blockId = startWord.visualBlock !== undefined && startWord.visualBlock === endWord.visualBlock ? startWord.visualBlock : undefined
   // Older callers and synthetic documents may not carry visualBlock metadata.
   // A range whose endpoints and every occupied row are gutter-crossing is still
@@ -221,7 +222,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     else fallbackRows.get(row)!.push(word)
   })
   const fallbackVisualBlock = blockId === undefined && startWord.columnAmbiguous && endWord.columnAmbiguous && [...fallbackRows.values()].every((row) => row.some((word) => word.columnAmbiguous))
-  const useVisualBlock = blockId !== undefined || fallbackVisualBlock
+  const useVisualBlock = regionId !== undefined || blockId !== undefined || fallbackVisualBlock
   const sameVisualRow = endpointHeight > 0 && endpointYGap <= endpointHeight * 0.55
   const sourceOrderLow = Math.min(startWord.order, endWord.order), sourceOrderHigh = Math.max(startWord.order, endWord.order)
   const sourceRangeStaysInBand = sameVisualRow && words.every((word) => word.order < sourceOrderLow || word.order > sourceOrderHigh || (word.rect.y >= minY && word.rect.y <= maxY))
@@ -237,7 +238,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const bandLeft = bandWords.length ? Math.min(...bandWords.map((word) => word.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
   const bandRight = bandWords.length ? Math.max(...bandWords.map((word) => word.rect.x + word.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
   const visualBandIndices = useStructuralBand
-    ? words.map((word, index) => ({ word, index })).filter(({ word }) => blockId !== undefined
+    ? words.map((word, index) => ({ word, index })).filter(({ word }) => regionId !== undefined ? word.visualRegion === regionId : blockId !== undefined
       ? word.visualBlock === blockId
       : useCrossColumnStructuralBand
         ? word.rect.y >= minY && word.rect.y <= maxY
@@ -281,6 +282,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const wordIndex = entry.wordIndex
     const word = words[wordIndex]
     const useVisualBand = Boolean(visualBandIndices?.length)
+    if (word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
     if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
     const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
@@ -290,7 +292,8 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     if (pieces.length && !/\s$/u.test(pieces.at(-1)!) && !/^\s/u.test(piece)) pieces.push(' ')
     pieces.push(piece)
     const left = boundaryAt(word, from), right = boundaryAt(word, to)
-    rects.push({ x: word.rect.x + Math.min(left, right), y: word.rect.y, width: Math.abs(right - left), height: word.rect.height })
+    const display = word.selectionRect || word.rect
+    rects.push({ x: word.rect.x + Math.min(left, right), y: display.y, width: Math.abs(right - left), height: display.height })
     rectColumns.push(word.columnAmbiguous && word.visualBlock !== undefined ? `block:${word.visualBlock}` : word.column)
     rectBaselines.push(word.baselineY)
   }
@@ -380,7 +383,7 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
   // annotations may opt out of pointer-drag flow cropping so a wider line or
   // formula inside that exact range cannot silently lose matched words.
   const selectionWords = includeAllMatchedWords
-    ? words.map((word) => ({ ...word, column: undefined, columnAmbiguous: false, visualBlock: undefined, textRun: undefined, textRunRect: undefined }))
+    ? words.map((word) => ({ ...word, column: undefined, columnAmbiguous: false, visualBlock: undefined, visualRegion: undefined, textRun: undefined, textRunRect: undefined }))
     : words
   return textSelectionBetween(selectionWords, first.start, last.end)
 }
@@ -674,8 +677,15 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       ]
       const xs = corners.map((point) => point.x), ys = corners.map((point) => point.y)
       const rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+      const pdfStyle = styles[item.fontName]
+      const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(match[0])
+      const ascent = ascentRatio(pdfStyle), rawDescent = Math.abs(pdfStyle?.descent || 0)
+      const descent = Number.isFinite(rawDescent) && rawDescent <= .5 ? rawDescent : Math.max(0, 1-ascent)
+      // Keep layout/caret metrics stable; highlight the full CJK em and valid PDF descenders.
+      const upper = Math.max(ascent, cjk ? .9 : ascent), lower = Math.max(descent, cjk ? .22 : 1-ascent)
+      const selectionRect = Math.abs(angle) < .01 ? { ...rect, y: transform[5] - upper * fontHeight, height: (upper + lower) * fontHeight } : rect
       const boundaries = [0, ...wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || logicalOffset) - logicalOffset)]
-      words.push({ text: match[0], order: order++, rect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
+      words.push({ text: match[0], order: order++, rect, selectionRect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
       if (Math.abs(angle) < .01 && !native?.vertical) horizontalWords.add(words.at(-1)!)
     }
   }

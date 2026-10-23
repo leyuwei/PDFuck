@@ -111,6 +111,8 @@ export interface AddAnnotationRequest {
   groupId?: string
   author?: string
   aiGenerated?: boolean
+  /** One complete rewrite/translation, never concatenate competing versions. */
+  aiRevision?: boolean
   reason?: string
 }
 

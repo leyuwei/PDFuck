@@ -1304,7 +1304,7 @@ export default function App() {
     const segments = value.segments?.length ? value.segments : [{ pageIndex: fallbackPageIndex, text: value.text, rects: value.rects }]
     await mutate(async (model) => {
       const groupId = segments.length > 1 ? `pdfuck-group-${Date.now()}-${crypto.randomUUID()}` : undefined
-      for (const segment of segments) await model.addAnnotation(segment.pageIndex, kind, segment.rects, content, undefined, color, groupId, preferences.annotationAuthor, undefined, marks, aiGenerated)
+      await model.addAnnotations(segments.map(segment=>({pageIndex:segment.pageIndex,kind,rects:segment.rects,content,color,groupId,author:preferences.annotationAuthor,marks,aiGenerated,aiRevision:aiGenerated})))
     }, segments.length > 1 ? `已在 ${segments.length} 页添加${translateMessage('zh', KIND_LABEL[kind])}` : `${translateMessage('zh', KIND_LABEL[kind])}已添加`, false)
   }, [currentPage, mutate, preferences.annotationAuthor])
 
@@ -1404,15 +1404,16 @@ export default function App() {
   const handleSelectionChange = useCallback((pageIndex: number, value?: TextSelection) => {
     setSelection(value ? bindTextSelectionToPage(pageIndex, value) : undefined)
   }, [])
-  const addAiAnnotation = useCallback((content: string) => {
-    const source = selection
-    if (!source) return
+  const addAiAnnotation = useCallback(async (content: string) => {
+    const source = selection, model = modelRef.current, documentId = activeDocumentIdRef.current
+    if (!source || !model) return
     const segments = source.segments?.length ? source.segments : [{ pageIndex: source.pageIndex, rects: source.rects }]
-    void mutate(async (model) => {
+    await runDocumentOperation(documentId,async()=>{
       const groupId = segments.length > 1 ? `pdfuck-group-${Date.now()}-${crypto.randomUUID()}` : undefined
-      for (const segment of segments) await model.addAnnotation(segment.pageIndex, 'highlight', segment.rects, content, undefined, undefined, groupId, preferences.annotationAuthor, undefined, undefined, true)
-    }, '智能润色已添加到批注列表', false)
-  }, [mutate, preferences.annotationAuthor, selection])
+      await model.addAnnotations(segments.map(segment=>({pageIndex:segment.pageIndex,kind:'highlight',rects:segment.rects,content,groupId,author:preferences.annotationAuthor,aiGenerated:true,aiRevision:true})))
+      syncModel('智能润色已添加到批注列表',false,model,documentId)
+    })
+  }, [runDocumentOperation, syncModel, preferences.annotationAuthor, selection])
   const getLabDocument = useCallback(async (mode: FullReviewSendMode) => {
     const model = modelRef.current
     if (!model) throw new Error('请先打开 PDF 文档。')
@@ -1441,13 +1442,15 @@ export default function App() {
     const session = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
     const model = session?.model
     if (!session || !model) throw new Error('目标文档已关闭，无法显示写入结果。')
-    await runDocumentOperation(documentId, async () => {
+    return runDocumentOperation(documentId, async () => {
       const current = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
       if (!current || current.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
+      const before = model.annotations().length
       await model.addAnnotations(annotations.map((annotation) => ({ ...annotation, author: preferences.annotationAuthor, aiGenerated: true })))
       const latest = documentId === activeDocumentIdRef.current ? liveSessionRef.current : sessionsRef.current.get(documentId)
       if (!latest || latest.model !== model) throw new Error('目标文档已关闭，无法显示写入结果。')
       syncModel('ui.automaticAnnotationsAddedSaveThePdfToKeepTheChanges', false, model, documentId)
+      return Math.max(0,model.annotations().length-before)
     })
   }, [preferences.annotationAuthor, runDocumentOperation, syncModel])
   const addAnnotationSuggestion = useCallback(async (documentIdOrAnnotationId: number | string, annotationIdOrContent: string, suggestionContent?: string) => {
@@ -1786,7 +1789,7 @@ export default function App() {
       const model = id === activeDocumentIdRef.current ? modelRef.current : sessionsRef.current.get(id)?.model
       if (!model || figure.documentId !== id) throw new Error('ui.translationDocumentChanged')
       await runDocumentOperation(id, async () => {
-        await model.addAnnotation(figure.pageIndex, 'note', [], content, { x: figure.rect.x + figure.rect.width, y: figure.rect.y }, undefined, undefined, preferences.annotationAuthor, undefined, undefined, true)
+        await model.addAnnotation(figure.pageIndex, 'note', [figure.rect], content, { x: figure.rect.x + figure.rect.width, y: figure.rect.y }, undefined, undefined, preferences.annotationAuthor, undefined, undefined, true)
         syncModel(t('status.annotationAdded', { annotation: ui('ui.explainImage') }), true, model, id)
       })
     }} onAddDrawing={(png) => addGeneratedImage(id, png, `${ui("ui.freeDrawingBoard")}.png`, 'ui.drawingReadyToPlace', true)} onExportDrawing={exportDrawing} onCopy={(content) => void copyAiResponse(content)} />
@@ -1818,7 +1821,7 @@ export default function App() {
       {pdfAvailable && bookmarks.length > 0 && <BookmarkPanel bookmarks={bookmarks} collapsed={bookmarkPanelCollapsed} activeId={activeBookmarkId} readOnly={encrypted} onToggle={toggleBookmarkPanel} onNavigate={navigateBookmark} onEdit={renameBookmark} onDelete={deleteBookmark} />}
       {markdown ? <MarkdownWorkspace ref={markdownWorkspaceRef} key={activeDocumentId} onSearchPdf={() => viewerRef.current?.openSearch()} onClosePdfSearch={() => viewerRef.current?.closeSearch()} document={markdown} background={documentBackground} foreground={contrastText(documentBackground, true)} onViewChange={setMarkdownView} onSelection={selectSourceRange} onEncoding={changeSourceEncoding} rendering={markdownRendering} error={markdownError ? ui('md.error') : undefined} onChange={changeMarkdown} onHistory={sourceHistory} onHistoryTarget={setMarkdownHistoryTarget} historyTarget={markdownHistoryTarget} selectionRequest={markdownSelection} pdfMode={viewMode} pdfPageCount={pageCount} pdfPage={currentPage} onPdfNavigate={(page, offset) => viewerRef.current?.goToPage(page, offset)} onCompositionChange={setMarkdownComposing} onSaveSource={as => void saveSession(liveSessionRef.current, as, true, false, 'source')} onSavePdf={() => void saveSession(liveSessionRef.current, true, true, false, 'pdf')} onRefresh={() => void refreshMarkdown(activeDocumentId, true)}>{documentWorkspace}</MarkdownWorkspace> : documentWorkspace}
       {module === 'annotate' && pdfAvailable && <AnnotationPanel collapsed={annotationPanelCollapsed} annotationAuthor={preferences.annotationAuthor} showAnnotationAuthors={preferences.showAnnotationAuthors} theme={preferences.theme} accent={appAccent} onAuthorSettings={(annotationAuthor, showAnnotationAuthors) => setPreferences((value) => { const next = { ...value, annotationAuthor, showAnnotationAuthors }; savePreferences(next); return next })} onToggle={() => setAnnotationPanelCollapsed((value) => !value)} annotations={annotations} selectedId={selectedAnnotation} selectedIds={selectedAnnotationIds} onSelect={selectAnnotation} onEdit={editAnnotation} onReply={replyAnnotation} onDelete={deleteAnnotations} />}
-    </main><footer><span>{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span className={markdown ? 'text-document-statistics' : undefined} title={markdown ? ui('text.countHint') : undefined}>{markdown ? <><b>{t('text.words', { count: sourceWords.toLocaleString() })}</b><b>{t('text.selectedWords', { count: selectedSourceWords.toLocaleString() })}</b><b>{(markdown.encoding || 'utf-8').toUpperCase()}</b></> : selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
+    </main><footer><span dir="auto">{visibleStatus}</span><span className="copyright">© 2026 github@leyuwei</span><span className={markdown ? 'text-document-statistics' : undefined} title={markdown ? ui('text.countHint') : undefined}>{markdown ? <><b>{t('text.words', { count: sourceWords.toLocaleString() })}</b><b>{t('text.selectedWords', { count: selectedSourceWords.toLocaleString() })}</b><b>{(markdown.encoding || 'utf-8').toUpperCase()}</b></> : selection?.text ? `${ui("ui.selected3")}${selection.text.slice(0, 45)}${selection.text.length > 45 ? '…' : ''}` : hasDocument ? t('footer.page', { pages: pageCount, page: currentPage + 1 }) : ui("ui.noDocumentOpen")}</span></footer>
     {draggingFile && <div className="drop-overlay"><div><b>{ui('md.drop')}</b><span>{hasDocument ? ui("ui.aNewDocumentTabWillOpenInThisWindow") : ui("ui.theDocumentWillOpenInThisTab")}</span></div></div>}
     {draggingDocumentTransfer && <div className="document-transfer-overlay"><div><b>{ui("ui.dropToMoveIntoDocumentTabs")}</b><span>{ui("ui.theCurrentPdfWillReturnHereFromItsSeparateWindow")}</span></div></div>}
     {dialog?.type === 'annotation' && <AnnotationDialog key={dialog.value.annotationId || 'new'} aiSuggestionsEnabled={annotationSuggestionsEnabled} state={dialog.value} onSuggestionEnd={endAnnotationSuggestion} onSuggest={(value, editor) => { const annotation = modelRef.current?.annotations().find(item => item.id === dialog.value.annotationId); if (annotation) requestAnnotationSuggestion({ ...annotation, content: value.content }, editor) }} onCancel={() => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(null) }} onSubmit={(value) => { const resolve = annotationResolve.current; annotationResolve.current = undefined; setDialog(null); resolve?.(value) }} />}
@@ -1845,6 +1848,6 @@ export default function App() {
     {errorMessage && <ErrorDialog message={errorMessage} onClose={() => setErrorMessage(undefined)} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />
-    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound")}</small></div><button type="button" onClick={() => setInsight(undefined)} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setMarkdownHistoryTarget('pdf'); setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span>{'reference' in hit ? hit.reference : translateUiText(hit.context)}</span></button>)}</div></div>}
+    {insight && <div className="insight-panel"><header><div><b>{insightTitle}</b><small>{insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound")}</small></div><button type="button" onClick={() => { setInsight(undefined); viewerRef.current?.hideVisuals() }} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setMarkdownHistoryTarget('pdf'); setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span>{'reference' in hit ? hit.reference : translateUiText(hit.context)}</span></button>)}</div></div>}
   </div>
 }

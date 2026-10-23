@@ -48,7 +48,7 @@
 .ai-stream-activity-body { display: grid; gap: 12px; max-height: 240px; padding: 14px; overflow: auto; }
 .ai-stream-activity-body section { min-width: 0; margin: 0; padding: 12px; border: 0; border-radius: 8px; background: #fff; }
 .ai-stream-activity-body section > b { display: block; margin-bottom: 8px; color: #53617a; font-size: var(--ui-font-small); }
-.ai-stream-actions { display: flex; justify-content: flex-end; padding: 0 14px 14px; }
+.ai-stream-actions { display: flex; justify-content: flex-end; padding: 14px; border-top: 1px solid #e2e8f3; }
 .ai-stream-actions > button { min-width: 88px; max-width: 100%; min-height: 36px; height: auto; overflow-wrap: anywhere; }
 .ai-stream-activity-body > p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
 .ai-stream-request > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; color: #53617a; font-size: var(--ui-font-small); }
@@ -122,3 +122,5 @@
 }
 
 .figure-explanation-preview { display: block; max-width: 100%; max-height: 200px; object-fit: contain; margin: 14px auto; background: #fff; border-radius: 8px; }
+
+.theme-dark .ai-stream-actions { border-color: #40516a; }

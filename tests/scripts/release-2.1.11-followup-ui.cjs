@@ -1,0 +1,45 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{_electron:electron}=require('playwright'),{PDFDocument,StandardFonts,rgb,degrees}=require('pdf-lib')
+const root=path.resolve(__dirname,'../..'),executable=process.env.PDFUCK_SMOKE_EXECUTABLE,phase=executable?'packaged':'source',work=path.join(root,'tests/tmp/release-2.1.11-followup'),output=path.join(root,'tests/output/release-2.1.11/followup-'+phase)
+fs.mkdirSync(work,{recursive:true});fs.mkdirSync(output,{recursive:true});const profile=fs.mkdtempSync(path.join(work,phase+'-')),file=path.join(profile,'review.pdf')
+async function fixture(){
+ const d=await PDFDocument.create(),font=await d.embedFont(StandardFonts.Helvetica),p=d.addPage([600,800]);const text=(s,x,y)=>p.drawText(s,{x,y,size:12,font})
+ text('The system checks the results and explains the evidence clearly.',40,750)
+ text('The second sentence remains available for independent checks.',40,728)
+ for(const [x,y,label]of [[40,470,'Figure 1. Visible'],[-260,470,'Figure 9. Outside left'],[650,470,'Figure 8. Outside right'],[40,850,'Figure 7. Above crop'],[40,-150,'Figure 6. Below crop']]){p.drawRectangle({x,y,width:210,height:120,color:rgb(.85,.92,.98)});text(label,x,y-18)}
+ p.drawRectangle({x:520,y:240,width:160,height:100,color:rgb(.8,.93,.86)});text('Figure 2. Partly visible',500,220)
+ const q=d.addPage([700,900]);q.setCropBox(100,150,400,600);q.setRotation(degrees(90));q.drawText('Rotated cropped page.',{x:150,y:700,size:12,font});q.drawRectangle({x:540,y:300,width:130,height:80,color:rgb(.8,.9,.95)})
+ fs.writeFileSync(file,await d.save())
+}
+async function launch(){const app=await electron.launch({executablePath:executable||require('electron'),args:executable?[`--user-data-dir=${profile}`,file]:[path.join(root,'out/main/index.js'),file],env:{...process.env,PDFUCK_TEST_USER_DATA:profile}});const page=await app.firstWindow();page.setDefaultTimeout(20000);await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1200,900));await page.locator('.text-map span').first().waitFor({state:'attached'});return{app,page}}
+async function close(app){await app.evaluate(({app})=>app.exit(0)).catch(()=>{});await app.close().catch(()=>{})}
+async function config(page){await page.evaluate(()=>{localStorage.setItem('pdfuck.lab.full-review-consent.v1','accepted');localStorage.setItem('pdfuck.ai-settings.v1',JSON.stringify({provider:'custom',baseUrl:'http://127.0.0.1:1/v1',apiKey:'fixture',model:'local',timeoutSeconds:30}));localStorage.removeItem('pdfuck.ai-profiles.v2');window.dispatchEvent(new Event('pdfuck:ai-settings-changed'))})}
+async function stub(app){await app.evaluate(({ipcMain})=>{globalThis.__checks=0;globalThis.__rewrites=0;ipcMain.removeHandler('ai:request');ipcMain.handle('ai:request',async(_,request)=>{const body=JSON.parse(request.body),instruction=body.messages.map(m=>m.content).join('\n');let content
+ if(instruction.includes('INPUT_JSON\n')){const input=JSON.parse(instruction.split('INPUT_JSON\n').at(-1)),block=input.targetBlocks.find(b=>b.text.includes('The system'));globalThis.__checks++;content=JSON.stringify({version:1,contextSummary:'local',findings:[{action:'highlight',blockId:block.blockId,quote:'The system checks the results and explains the evidence clearly.',occurrence:0,insertSide:null,replacementText:null,reason:globalThis.__checks%2?'Use consistent terminology.':'Clarify the evidence.'}]})}
+ else content=`Complete rewrite ${++globalThis.__rewrites}: The system explains the evidence.`
+ return{status:200,statusText:'OK',body:JSON.stringify({choices:[{message:{role:'assistant',content},finish_reason:'stop'}]})}})})}
+async function startAuto(page){await page.locator('.automatic-start').click();await page.locator('.automatic-annotation-progress.complete').waitFor();assert.equal(await page.locator('.annotation-row').count(),1)}
+async function selectSource(page){const first=page.locator('.pdf-page[data-page="0"] .text-map span').filter({hasText:/^The$/}).first(),last=page.locator('.pdf-page[data-page="0"] .text-map span').filter({hasText:/^clearly\.$/}).first();await first.evaluate(e=>e.scrollIntoView({block:'center',inline:'center'}));const a=await first.boundingBox(),b=await last.boundingBox();await page.mouse.move(a.x-4,a.y+a.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width-.2,b.y+b.height/2,{steps:12});await page.mouse.up();await page.locator('.text-selection').first().waitFor()}
+async function polish(page){await selectSource(page);await page.evaluate(()=>window.dispatchEvent(new Event('pdfuck:open-ai-polish')));const dialog=page.locator('.ai-polish-window:not(.automatic-annotation-window)');await dialog.locator('.primary.wide').click();await dialog.locator('.ai-polish-actions .primary').waitFor();await dialog.locator('.ai-polish-actions .primary').click();await dialog.waitFor({state:'detached'});assert.equal(await page.locator('.annotation-row').count(),1)}
+async function main(){await fixture();let{app,page}=await launch();const errors=[],report={version:'2.1.11',phase};page.on('pageerror',e=>errors.push(e.message))
+ try{
+  assert.equal(await page.locator('.about-trigger small').innerText(),'v2.1.11');if(executable)assert.equal(await app.evaluate(({app})=>app.isPackaged&&app.getVersion()==='2.1.11'),true)
+  await page.getByRole('button',{name:'单页查看',exact:true}).click();await page.getByRole('button',{name:'一键图表',exact:true}).click();await page.locator('.insight-list button').first().waitFor()
+  const labels=await page.locator('.insight-list button b').allTextContents();assert.ok(labels.some(t=>t.includes('Figure 1'))&&labels.some(t=>t.includes('Figure 2')));assert.ok(labels.every(t=>!/[6-9]/.test(t)),JSON.stringify(labels))
+  for(const button of await page.locator('.insight-list button').all()){await button.click();await page.locator('.page-visual-region').first().waitFor();const outside=await page.locator('.page-visual-region').evaluateAll(elements=>elements.filter(e=>{const r=e.getBoundingClientRect(),p=e.closest('.pdf-page').getBoundingClientRect();return r.left<p.left-1||r.top<p.top-1||r.right>p.right+1||r.bottom>p.bottom+1}).length);assert.equal(outside,0)}
+  report.cropRegions=true;report.visualEntries=labels;await page.screenshot({path:path.join(output,'crop-regions.png')});await page.locator('.insight-panel header button').click()
+  await page.locator('.page-controls input').fill('1');await page.locator('.page-controls input').press('Enter');await config(page);await stub(app)
+  await page.locator('.nav-rail > button').nth(2).click();await page.locator('.automatic-annotation-launch').click();await page.locator('input[name="automatic-annotation-scope"][value="pages"]').check();await page.locator('#automatic-page-range').fill('1')
+  await page.locator('.automatic-issue-actions button').last().click();for(const i of[0,1])await page.locator('.automatic-issue-grid input').nth(i).check()
+  await startAuto(page);let value=await page.locator('.annotation-content-value').first().innerText();assert.match(value,/Use consistent terminology/);assert.match(value,/Clarify the evidence/);report.multiPass=true
+  await startAuto(page);assert.equal(await page.locator('.annotation-content-value').first().innerText(),value);report.repeatedRun=true
+  assert.equal(await app.evaluate(()=>globalThis.__checks),4)
+  await page.locator('.automatic-annotation-window header .lab-window-actions button').first().click()
+  await polish(page);value=await page.locator('.annotation-content-value').first().innerText();assert.match(value,/Complete rewrite 1/)
+  await polish(page);value=await page.locator('.annotation-content-value').first().innerText();assert.match(value,/Complete rewrite 2/);assert.doesNotMatch(value,/Complete rewrite 1/);report.singleRewrite=true
+  await page.keyboard.press('Meta+z');assert.match(await page.locator('.annotation-content-value').first().innerText(),/Complete rewrite 1/);await page.keyboard.press('Meta+Shift+z');assert.match(await page.locator('.annotation-content-value').first().innerText(),/Complete rewrite 2/);report.undoRedo=true
+  await page.locator('.pdf-page[data-page="0"] .pdf-page-loading').waitFor({state:'detached'});await page.screenshot({path:path.join(output,'merged-advice.png')});await page.locator('.quick-save').click();await page.waitForFunction(()=>document.querySelector('.quick-save').disabled);await close(app)
+  ;({app,page}=await launch());await page.locator('.nav-rail > button').nth(2).click();await page.locator('.annotation-row').first().waitFor();assert.equal(await page.locator('.annotation-row').count(),1);assert.match(await page.locator('.annotation-content-value').first().innerText(),/Complete rewrite 2/);report.savedReopened=true
+  assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2))
+ }catch(error){await page.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error}finally{await close(app)}
+}
+main().catch(error=>{console.error(error);process.exitCode=1})

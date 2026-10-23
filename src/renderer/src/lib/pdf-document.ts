@@ -1,3 +1,4 @@
+import { planAiAnnotationWrites, type ExistingAiAnnotation } from './ai-annotation-merge'
 import type { OcrLayer } from '../../../shared/ocr'
 import { multiplyMatrix } from './page-coordinates'
 import { normalizeMarks, readMarks, richTextHtml, type TextMark } from './annotation-rich-text'
@@ -1070,6 +1071,7 @@ export class PdfDocumentModel {
 
   private prepareAnnotation(request: AddAnnotationRequest): PreparedAnnotation {
     if (!request || typeof request !== 'object' || !Number.isInteger(request.pageIndex) || request.pageIndex < 0 || request.pageIndex >= this.pageCount || !ANNOTATION_KINDS.has(request.kind) || !Array.isArray(request.rects)) throw new Error('ui.annotationRequestInvalid')
+    if (request.aiRevision !== undefined && typeof request.aiRevision !== 'boolean' || request.aiGenerated !== undefined && typeof request.aiGenerated !== 'boolean') throw new Error('ui.annotationRequestInvalid')
     if ([request.content, request.color, request.groupId, request.author, request.reason].some((value) => value !== undefined && typeof value !== 'string')) throw new Error('ui.annotationRequestInvalid')
     if (request.point && (!Number.isFinite(request.point.x) || !Number.isFinite(request.point.y))) throw new Error('ui.annotationPositionInvalid')
     if (request.rects.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('ui.annotationAreaInvalid')
@@ -1086,8 +1088,8 @@ export class PdfDocumentModel {
     return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
   }
 
-  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason, marks, aiGenerated }: PreparedAnnotation): string {
-    const id = `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  private appendAnnotation({ page, geometry, normalized, kind, content = '', color: colorValue, groupId, author, reason, marks, aiGenerated, aiRevision, rects }: PreparedAnnotation, retainedId?: string): string {
+    const id = retainedId || `pdfuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const bounds = rectUnion(normalized)
     const colorHex = normalizeHexColor(colorValue, DEFAULT_ANNOTATION_COLOR[kind])
     const color = hexColor(colorHex)
@@ -1102,7 +1104,11 @@ export class PdfDocumentModel {
     }
     dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
-    if (aiGenerated) dictionary.set(PDFName.of('PDFuckAI'), PDFName.of('true'))
+    if (aiGenerated) {
+      dictionary.set(PDFName.of('PDFuckAI'), PDFName.of('true'))
+      if (aiRevision) dictionary.set(PDFName.of('PDFuckAIRevision'), PDFName.of('true'))
+      if (rects.length) dictionary.set(PDFName.of('PDFuckAISourceRects'), pdfString(encodePageTextRects(rects)))
+    }
     if (groupId) dictionary.set(PDFName.of('PDFuckGroup'), pdfString(groupId))
     if (reason) dictionary.set(PDFName.of('PDFuckReason'), pdfString(reason))
     dictionary.set(PDFName.of('M'), PDFString.fromDate(new Date()))
@@ -1125,8 +1131,30 @@ export class PdfDocumentModel {
     const previous = Uint8Array.from(this.currentBytes)
     const undoStack = [...this.undoStack], redoStack = [...this.redoStack]
     try {
-      const ids = prepared.map((request) => this.appendAnnotation(request))
-      await this.commit()
+      const existing: ExistingAiAnnotation[] = []
+      const records = prepared.some(request=>request.aiGenerated) ? this.annotations() : []
+      const entriesById = new Map(this.annotationEntries().map(entry=>[decodeObject(this.document,entry.dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`,entry]))
+      const protectedGroups = new Set(records.filter(record => record.groupId && (record.reply || record.marks?.length || decodeObject(this.document,entriesById.get(record.id)!.dict.get(PDFName.of('PDFuckAIUserEdited'))) === 'true')).map(record=>record.groupId))
+      for (const record of records) {
+        const entry = entriesById.get(record.id)!
+        if (decodeObject(this.document,entry.dict.get(PDFName.of('PDFuckAI'))) !== 'true' && record.kind !== 'ai_polish' || record.reply || record.marks?.length || record.groupId && protectedGroups.has(record.groupId) || decodeObject(this.document,entry.dict.get(PDFName.of('PDFuckAIUserEdited'))) === 'true') continue
+        const source = decodePageTextRects(this.document,entry.dict.get(PDFName.of('PDFuckAISourceRects')))
+        const isPoint = ['note','insert'].includes(record.kind)
+        existing.push({id:record.id,request:{pageIndex:record.pageIndex,kind:record.kind,rects:source.length?source:isPoint?[]:record.rects,point:isPoint?{x:record.rects[0].x,y:record.rects[0].y}:undefined,content:record.content,reason:record.reason,groupId:record.groupId,author:record.author,color:record.color,aiGenerated:true,aiRevision:decodeObject(this.document,entry.dict.get(PDFName.of('PDFuckAIRevision'))) === 'true'}})
+      }
+      const writes = planAiAnnotationWrites(existing,prepared)
+      const changed = writes.filter(write=>!write.unchanged)
+      const removeIds = new Set(changed.flatMap(write=>write.removeIds))
+      // Keep unchanged page segments when another segment of the same group changes.
+      writes.filter(write=>write.unchanged&&write.id).forEach(write=>removeIds.delete(write.id!))
+      const byPage = new Map<PDFPage,number[]>()
+      for (const id of removeIds) {
+        const entry = this.findAnnotation(id), indices = byPage.get(entry.page)||[]
+        indices.push(entry.index);byPage.set(entry.page,indices)
+      }
+      byPage.forEach((indices,page)=>indices.sort((a,b)=>b-a).forEach(index=>page.node.Annots()?.remove(index)))
+      const ids = writes.map(write=>write.unchanged?write.id!:this.appendAnnotation(this.prepareAnnotation(write.request),write.id))
+      if (changed.length) await this.commit()
       return ids
     } catch (error) {
       this.undoStack = undoStack; this.redoStack = redoStack
@@ -1143,6 +1171,7 @@ export class PdfDocumentModel {
   async updateAnnotation(id: string, content: string): Promise<void> {
     const dict = this.findAnnotation(id).dict
     dict.set(PDFName.of('Contents'), pdfString(content))
+    dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true'))
     dict.delete(PDFName.of('PDFuckMarks')); dict.delete(PDFName.of('RC'))
     dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     await this.commit()
@@ -1178,7 +1207,7 @@ export class PdfDocumentModel {
 
   async updateAnnotationColor(id: string, color: string): Promise<void> {
     const dict = this.findAnnotation(id).dict
-    this.setAnnotationColor(dict, color); dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
+    this.setAnnotationColor(dict, color); dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true')); dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     await this.commit()
   }
 
@@ -1201,6 +1230,7 @@ export class PdfDocumentModel {
     const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
     const entries = groupId ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId) : [entry]
     for (const { dict } of entries) {
+      dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true'))
       dict.set(PDFName.of('Contents'), pdfString(content))
       dict.set(PDFName.of('PDFuckMarks'), pdfString(JSON.stringify(normalizeMarks(content, marks))))
       dict.set(PDFName.of('RC'), pdfString(`<body xmlns="http://www.w3.org/1999/xhtml"><p>${richTextHtml(content, marks)}</p></body>`))
@@ -1225,6 +1255,7 @@ export class PdfDocumentModel {
       const shifted = sourceRects.map((value) => ({ ...value, x: value.x + delta.x, y: value.y + delta.y }))
       dict.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(shifted, geometry)))
     }
+    dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true'))
     await this.commit()
   }
 

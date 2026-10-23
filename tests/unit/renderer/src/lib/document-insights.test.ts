@@ -9,16 +9,17 @@ describe('document insights', () => {
     expect(stablePathColor('/a/report.pdf')).not.toBe(stablePathColor('/b/report.pdf'))
   })
 
-  it('finds caption keywords, image objects, and common spelling issues', () => {
-    const visuals = visualHits([{ pageIndex: 0, text: 'Figure 1: system overview. Table 1: Results.', imageCount: 2 }])
+  it('indexes each verified visual with its own bounds and keeps common spelling checks', () => {
+    const figure = { rect: { x: 20, y: 30, width: 100, height: 80 }, caption: 'Figure 1: system overview.', label: 'Figure 1', kind: 'figure' as const }
+    const table = { rect: { x: 20, y: 150, width: 100, height: 80 }, caption: 'Table 1: Results.', label: 'Table 1', kind: 'table' as const }
+    const visuals = visualHits([{ pageIndex: 0, text: '', visuals: [figure, table] }])
     expect(visuals.map((hit) => hit.label)).toEqual(['Figure 1', 'Table 1'])
-    expect(visualHits([{ pageIndex: 1, text: 'Fig. 2: architecture. Tab. 3: ablation.' }]).map((hit) => hit.label)).toEqual(['Fig. 2', 'Tab. 3'])
+    expect(visuals.map((hit) => hit.rects)).toEqual([[figure.rect], [table.rect]])
     expect(grammarIssues([{ pageIndex: 1, text: 'teh results recieve data' }])[0]).toEqual(expect.objectContaining({ term: 'teh', replacement: 'the' }))
   })
 
-  it('gives suspected tables a precise text anchor', () => {
-    const [hit] = visualHits([{ pageIndex: 3, text: 'Results Mean: 15.2 median: 12.8' }])
-    expect(hit).toEqual(expect.objectContaining({ pageIndex: 3, label: "ui.possibleTable", anchor: 'Mean: 15' }))
+  it('does not report prose citations or statistical fields as verified tables', () => {
+    expect(visualHits([{ pageIndex: 3, text: 'Results Mean: 15.2 median: 12.8. See Figure 1 and Table 2.' }])).toEqual([])
   })
 
   it('links numbered citations to the references section', () => {

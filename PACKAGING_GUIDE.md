@@ -18,6 +18,14 @@ Windows（建议在 Windows 上构建）：
 
 ## 2. 环境准备
 
+**2.1.11 图框范围修复当前交付（2026-10-23，macOS arm64）**：定向执行 `npm run test:release-2.1.11-visual-bounds`（12 项）、typecheck、直接生产构建，以及新增 `node tests/scripts/release-2.1.11-visual-bounds-ui.cjs`。新样本归档在 `tests/fixtures/c51a56aedd2c14bdb9350163dc6d7217.pdf`；逐页检查十页及两页现有表格，验证六个图索引、裁剪后的边界、分图归组、完整图注和正文双向复制。修复共用绘图解析中的 Form BBox、矩阵、路径裁剪及恢复，不用武断的面积上限隐藏错误。源码及最终 APP 分别运行本轮新增窗口验收，输出 `visual-bounds-source/` 与 `visual-bounds-packaged/`；完成 APP 签名后再生成 DMG/ZIP，运行更新后的包检查并更新 SHA-256。版本保持 2.1.11。现行结果见 [验收记录](tests/docs/VALIDATION-2.1.11.md)；下方两轮均为历史记录，未记为本轮重测。
+
+**2.1.11 页外图表/批注修复交付（历史，2026-10-23，macOS arm64）**：保持 2.1.11，定向执行 `npm run test:release-2.1.11-followup`（18 项）和 `node tests/scripts/release-2.1.11-followup-ui.cjs`。源码和最终 APP 均检查页外图表过滤、部分可见/旋转裁切边界、多轮重复自动批注、两轮润色择一、撤销/重做和保存重开。仅运行这些新增项及必要 typecheck、直接生产构建、diff、更新后的 `release-2.1.11-package-check.cjs`；不将上轮结果记为本轮重测。APP、ad-hoc 签名、DMG/ZIP 流程不变；成品 UI 改用 `release-2.1.11-followup-ui.cjs`，更新相同文件名的产物和 SHA-256。人工批注、人工编辑和带回复批注不自动覆盖。现行结果见 [验收记录](tests/docs/VALIDATION-2.1.11.md)。下方原有 2.1.11 测试范围为首轮记录。
+
+**2.1.11 首轮交付（历史，2026-10-23，macOS arm64）**：先按 [计划](tests/docs/PLAN-2.1.11.md) 修改，定向执行 `npm run test:release-2.1.11`、`node tests/scripts/release-2.1.11-ui.cjs` 和 `node tests/scripts/release-2.1.11-papers.cjs`，另做 typecheck、直接生产构建和 diff 检查。仅运行本版新增项，不调用历史全量测试、`npm run build` 或一键发布脚本。共用 AI 操作区留白、CJK 选区完整高度、左侧 12px 状态栏及图表区域隔离/半透明索引见 [验收记录](tests/docs/VALIDATION-2.1.11.md)。
+
+直接 `npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist` 生成 APP，核验/补齐 ad-hoc 签名；再 `npx --no-install electron-builder --prepackaged release/mac-arm64/PDFuck.app --mac dmg` 和 `ditto -c -k --keepParent release/mac-arm64/PDFuck.app release/PDFuck-2.1.11-macOS.zip`。以 `PDFUCK_SMOKE_EXECUTABLE` 指向最终 APP 的 `Contents/MacOS/PDFuck` 运行本版新增 UI；新增 `node tests/scripts/release-2.1.11-package-check.cjs` 核对全部生产字节、版本、OCR、签名、DMG/ZIP 及 SHA-256。无 Developer ID，明确 ad-hoc、未公证；不宣称 Windows 实机验收。现有 `.gitignore` 已覆盖新装环境和输出，无需修改。
+
 **2.1.10 当前交付（2026-10-19）**：本轮按用户要求只运行新增 `npm run test:release-2.1.10`（12 项定向单元测试及迁移静态检查）、`node tests/scripts/release-2.1.10-ui.cjs`，另执行 typecheck、直接生产构建、diff 和包内资源校验。新 UI 在源码与最终解包成品检查 `tests/fixtures/785904351dabdab98176b914912cc8dd.pdf` 两页的实际栏线、双向跨行选择/复制，以及十语言 × 双主题 × 四字号 80 组工具条布局；新增便携检查使用同一脚本的 `--portable`。修复错行/密集公式漏检和公式编号空隙误报，同时修复长翻译文本的大字号工具条溢出。
 
 测试目录已统一为 `tests/unit/`、`tests/scripts/`、`tests/fixtures/`、`tests/docs/`、`tests/tmp/`、`tests/output/`。已有 `test:*` 命令名保留，内部路径已更新；所有版本文档的命令路径已同步。原始样本可被 Git 跟踪，未新增或修改 `.gitignore`。部分历史输入原本缺失，见 `tests/fixtures/README.md`；不得将未运行的历史用例记为通过。目录、当前完整定向命令和分阶段重测方式见 [测试说明](tests/README.md)，根因和结果见 [2.1.10 验收](tests/docs/VALIDATION-2.1.10.md)。

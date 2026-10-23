@@ -100,7 +100,7 @@ interface Props {
   onAdd(content: string): void | Promise<void>
   onAddFullReview?(content: string): void | Promise<void>
   onAddSuggestion?(annotationId: string, content: string): void | Promise<void>
-  onAddAutomaticAnnotations?(annotations: AutomaticAnnotationDraft[]): void | Promise<void>
+  onAddAutomaticAnnotations?(annotations: AutomaticAnnotationDraft[]): void | number | Promise<void | number>
   onAddDrawing?(data: Uint8Array): void | Promise<void>
   onExportDrawing?(data: Uint8Array): void | Promise<void>
   onCopy(content: string): void
@@ -605,13 +605,13 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
 
           setAutomaticReport(current => current + '\n\n## ' + t(AUTOMATIC_ISSUE_LABELS[issueType]) + ' · ' + message('search.page', { page: page.pageIndex + 1 }) + '\n\n' + response!.findings.map(finding => `> ${finding.quote}\n\n${finding.replacementText || ''}\n\n${finding.reason}`).join('\n\n---\n\n') + '\n\n```json\n' + JSON.stringify(response, null, 2) + '\n```')
           const resolved = sourceScope ? { drafts: [], rejected: [] } : draftAutomaticAnnotations(response, page.blocks, scopedSelection)
-          const writeCount = sourceScope ? response.findings.length : resolved.drafts.length
+          let writeCount = sourceScope ? response.findings.length : resolved.drafts.length
           let writeSkipped = false
           if (writeCount) {
             for (;;) {
               try {
                 if (sourceScope) { const delta = await onApplySourceFindings!(response.findings, page.blocks); sourceScope.end += delta; sourceBodyEnd += delta }
-                else await onAddAutomaticAnnotations!(resolved.drafts)
+                else { const added = await onAddAutomaticAnnotations!(resolved.drafts); if (typeof added === 'number') writeCount = added }
                 break
               }
               catch (cause) {

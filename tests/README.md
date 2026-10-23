@@ -16,6 +16,54 @@
 
 所有样本使用随机的 32 位十六进制文件名，扩展名保留；代码、历史用例引用和说明同步使用匿名名称，不提供原名对照表。此修改保留文件内容，既有 Git 历史不作改写。
 
+## 2.1.11 图框可见范围验收（当前）
+
+```bash
+npm run typecheck
+npm run test:release-2.1.11-visual-bounds
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.11-visual-bounds-ui.cjs
+git diff --check
+# 生成 APP 并签名，再验收最终可执行文件。
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.11-visual-bounds-ui.cjs
+# 生成 DMG / ZIP 后检查包内资源和 SHA-256。
+node tests/scripts/release-2.1.11-package-check.cjs
+```
+
+本轮新增 12 项单元覆盖 Form/路径/透明组裁剪、嵌套变换与恢复、重复图像实例、空裁剪、分图归组、正文隔离和两栏误报。新窗口脚本使用匿名归档的十页实际输入 `fixtures/c51a56aedd2c14bdb9350163dc6d7217.pdf`，逐页验证 Figure 1–6 的范围、完整图注、分图与正文隔离；另检查两页现有表格，实际点击全部六个索引、对照窗口框坐标并双向拖选/复制正文。逐页 PNG 与 JSON 分别位于 `output/release-2.1.11/visual-bounds-source/` 和 `visual-bounds-packaged/`。只运行本轮新增项，下方为历史执行范围；不执行旧脚本全集。
+
+## 2.1.11 页外图表/批注修复验收（历史）
+
+```bash
+npm run typecheck
+npm run test:release-2.1.11-followup
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.11-followup-ui.cjs
+git diff --check
+# APP / 签名 / DMG / ZIP 沿用打包指南。
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.11-followup-ui.cjs
+node tests/scripts/release-2.1.11-package-check.cjs
+```
+
+该轮只运行上述 18 项新增单元和新增真实窗口测试。窗口输入包括四向页外图表、部分越界区域、旋转 CropBox；通过本地 AI IPC 执行两类检查和两次自动批注、两次润色，验证重叠合并、最新单一改写、撤销/重做和保存重开。单元覆盖人工内容保护、跨页分组、原文锚点、旧版重复记录、幂等及回滚。输出分别在 `tests/output/release-2.1.11/followup-source/` 和 `followup-packaged/`；临时输入在 `tests/tmp/release-2.1.11-followup/`，沿用已有忽略规则。下方为首轮记录，不记作该轮重测。详见 [现行验收](docs/VALIDATION-2.1.11.md)。
+
+## 2.1.11 首次交付验收（历史）
+
+```bash
+npm run typecheck
+npm run test:release-2.1.11
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.11-ui.cjs
+node tests/scripts/release-2.1.11-papers.cjs
+git diff --check
+npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist
+# 核验/补齐 APP 签名后，以 prepackaged 生成 DMG，ditto 生成 ZIP。
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.11-ui.cjs
+node tests/scripts/release-2.1.11-package-check.cjs
+```
+
+本版新增 13 项单元测试；实际窗口覆盖中文双向拖选/复制及两档缩放、四个图表的独立索引/淡色区域/正文隔离、十语言 × 双主题 × 四字号 80 组共用 AI 操作区与左对齐状态栏，并验证本地 AI 取消。UI 支持 `--checks=selection,visuals,layout` 定向阶段。论文脚本检查三个现有 PDF 的六页，包括跨栏表格及表注、整页表格、公式与正文误报。输出在 `tests/output/release-2.1.11/`；生成 PDF、环境和隔离配置在 `tests/tmp/release-2.1.11/`，均沿用已有忽略规则。只执行新增测试和必要构建检查。详见 [计划](docs/PLAN-2.1.11.md) 和 [验收](docs/VALIDATION-2.1.11.md)。
+
 ## 2.1.10 定向验收
 
 用户要求仅运行本轮新增项，使用以下流程；不运行历史全集：
