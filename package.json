@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.1.11",
+  "version": "2.1.12",
   "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -101,7 +101,8 @@
     "test:release-2.1.10": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.10.test.ts && node tests/scripts/check-test-layout.cjs",
     "test:release-2.1.11": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11.test.ts",
     "test:release-2.1.11-followup": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-followup.test.ts",
-    "test:release-2.1.11-visual-bounds": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-visual-bounds.test.ts"
+    "test:release-2.1.11-visual-bounds": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-visual-bounds.test.ts",
+    "test:release-2.1.12": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.12.test.ts"
   },
   "dependencies": {
     "chardet": "2.2.0",

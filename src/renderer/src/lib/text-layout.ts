@@ -4,7 +4,7 @@ import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 
-export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
+export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; tableCell?: number; tableCellRect?: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
@@ -31,7 +31,32 @@ export function caretForTextPosition(words: WordBox[], position: TextPosition): 
   return { wordIndex: position.wordIndex, offset, x: word.rect.x + boundaryAt(word, offset), y: word.rect.y, height: word.rect.height }
 }
 
-export function textCaretAtPoint(words: WordBox[], point: PdfPoint): TextCaret | undefined {
+function orderedCellWords(words: WordBox[], cell: number) {
+  return words.map((word,index)=>({word,index})).filter(({word})=>word.tableCell===cell).sort((a,b)=>Math.abs(a.word.rect.y-b.word.rect.y)>Math.min(a.word.rect.height,b.word.rect.height)*.5 ? a.word.rect.y-b.word.rect.y : (a.word.rtl?-1:1)*(a.word.rect.x-b.word.rect.x))
+}
+
+function cellCaretAtPoint(words: WordBox[], point: PdfPoint, bounds: PdfRect): TextCaret | undefined {
+  point={x:Math.max(bounds.x,Math.min(bounds.x+bounds.width,point.x)),y:Math.max(bounds.y,Math.min(bounds.y+bounds.height,point.y))}
+  const distance=(w:WordBox)=>Math.max(w.rect.y-point.y,point.y-w.rect.y-w.rect.height,0)
+  const nearest=Math.min(...words.map(distance))
+  const row=words.filter(w=>distance(w)<=nearest+Math.min(1,w.rect.height*.1))
+  const caret=textCaretAtPoint(row.map(w=>({...w,tableCell:undefined,tableCellRect:undefined,column:undefined})),point)
+  return caret?{...caret,wordIndex:words.indexOf(row[caret.wordIndex])}:undefined
+}
+
+export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: TextPosition, cells: PdfRect[] = []): TextCaret | undefined {
+  if (!anchor) {
+    const cell=cells.find(c=>point.x>=c.x&&point.x<=c.x+c.width&&point.y>=c.y&&point.y<=c.y+c.height)
+    if(cell && !words.some(w=>w.tableCellRect===cell))return undefined
+  }
+  const cell=anchor && words[anchor.wordIndex]?.tableCell
+  const insideCell=cell === undefined ? words.find(w=>w.tableCellRect && point.x>=w.tableCellRect.x && point.x<=w.tableCellRect.x+w.tableCellRect.width && point.y>=w.tableCellRect.y && point.y<=w.tableCellRect.y+w.tableCellRect.height)?.tableCell : cell
+  const candidates=insideCell === undefined ? words : words.filter(w=>w.tableCell===insideCell)
+  if(candidates!==words) {
+    const bounds=candidates[0]?.tableCellRect
+    const caret=bounds?cellCaretAtPoint(candidates,point,bounds):undefined
+    return caret ? {...caret,wordIndex:words.indexOf(candidates[caret.wordIndex])} : undefined
+  }
   let nearestIndex = -1
   let nearestDistance = Number.POSITIVE_INFINITY
   let nearestColumn: number | undefined
@@ -70,12 +95,17 @@ export function moveTextPosition(words: WordBox[], position: TextPosition, direc
   if (!words.length) return position
   const wordIndex = Math.max(0, Math.min(words.length - 1, position.wordIndex))
   const offset = Math.max(0, Math.min(characterCount(words[wordIndex]), position.offset))
+  if (words[wordIndex].tableCell!==undefined && (direction<0?offset===0:offset===characterCount(words[wordIndex]))) {
+    const members=orderedCellWords(words,words[wordIndex].tableCell!),next=members[members.findIndex(m=>m.index===wordIndex)+direction]
+    return next?{wordIndex:next.index,offset:direction<0?characterCount(next.word):0}:{wordIndex,offset}
+  }
   if (direction < 0) {
     if (offset > 0) return { wordIndex, offset: offset - 1 }
-    if (wordIndex > 0) return { wordIndex: wordIndex - 1, offset: characterCount(words[wordIndex - 1]) }
+    for(let previous=wordIndex-1;previous>=0;previous--) if(words[wordIndex].tableCell===undefined || words[previous].tableCell===words[wordIndex].tableCell) return {wordIndex:previous,offset:characterCount(words[previous])}
   } else {
     if (offset < characterCount(words[wordIndex])) return { wordIndex, offset: offset + 1 }
-    if (wordIndex < words.length - 1) return { wordIndex: wordIndex + 1, offset: 0 }
+    const next=words.findIndex((w,i)=>i>wordIndex && (words[wordIndex].tableCell===undefined || w.tableCell===words[wordIndex].tableCell))
+    if (next >= 0) return { wordIndex:next, offset:0 }
   }
   return { wordIndex, offset }
 }
@@ -169,6 +199,20 @@ function wordBelongsToFlow(word: WordBox, flow: TextFlowBounds): boolean {
 }
 
 export function textSelectionBetween(words: WordBox[], anchor: TextPosition, focus: TextPosition): { text: string; rects: PdfRect[] } | undefined {
+  const cell=words[anchor.wordIndex]?.tableCell, bounds=words[anchor.wordIndex]?.tableCellRect
+  if(cell!==undefined && bounds) {
+    const members=orderedCellWords(words,cell)
+    const local=members.map(({word},order)=>({...word,order,tableCell:undefined,tableCellRect:undefined,column:0,columnAmbiguous:false,visualBlock:0,visualRegion:0}))
+    const a={wordIndex:members.findIndex(m=>m.index===anchor.wordIndex),offset:anchor.offset}
+    const b=members.findIndex(m=>m.index===focus.wordIndex)
+    const focusPoint=caretForTextPosition(words,focus)||{x:bounds.x,y:bounds.y}
+    const target=b<0 ? cellCaretAtPoint(local,focusPoint,bounds) : {...focus,wordIndex:b}
+    if(!target)return undefined
+    const selected=textSelectionBetween(local,a,target)
+    if(!selected)return undefined
+    selected.rects=selected.rects.flatMap(r=>{const x=Math.max(r.x,bounds.x),y=Math.max(r.y,bounds.y),right=Math.min(r.x+r.width,bounds.x+bounds.width),bottom=Math.min(r.y+r.height,bounds.y+bounds.height);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]})
+    return selected
+  }
   if (!words.length || comparePosition(anchor, focus) === 0) return undefined
   const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
   const anchorColumn = words[anchor.wordIndex]?.column
@@ -383,8 +427,8 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
   // annotations may opt out of pointer-drag flow cropping so a wider line or
   // formula inside that exact range cannot silently lose matched words.
   const selectionWords = includeAllMatchedWords
-    ? words.map((word) => ({ ...word, column: undefined, columnAmbiguous: false, visualBlock: undefined, visualRegion: undefined, textRun: undefined, textRunRect: undefined }))
-    : words
+    ? words.map((word) => ({ ...word, column: undefined, columnAmbiguous: false, visualBlock: undefined, visualRegion: undefined, tableCell: undefined, tableCellRect: undefined, textRun: undefined, textRunRect: undefined }))
+    : words.map(word => word.tableCell === undefined ? word : {...word,tableCell:undefined,tableCellRect:undefined})
   return textSelectionBetween(selectionWords, first.start, last.end)
 }
 

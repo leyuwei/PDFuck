@@ -1,4 +1,5 @@
-import { degrees, drawObject, PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFObject, PDFRawStream, PDFRef, popGraphicsState, pushGraphicsState, rgb, scale, translate } from 'pdf-lib'
+import { StandardFonts, degrees, drawObject, PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFObject, PDFStream, PDFRef, popGraphicsState, pushGraphicsState, rgb, scale, translate } from 'pdf-lib'
+import { applyMatrix, type Matrix } from './page-coordinates'
 import type { PrintPdfOptions } from '../../../shared/contracts'
 
 const PAPER_SIZES: Record<PrintPdfOptions['pageSize'], [number, number]> = {
@@ -94,7 +95,7 @@ function numberArray(document: PDFDocument, object?: PDFObject): number[] {
   })
 }
 
-/** embedPage omits annotations, so paint PDFuck's editable appearances into this temporary print copy first. */
+/** embedPage omits annotations; paint printable native forms and editable appearances into this temporary copy. */
 export function flattenPdfuckAnnotationsForPrint(document: PDFDocument): number {
   let flattened = 0
   for (const page of document.getPages()) {
@@ -102,14 +103,24 @@ export function flattenPdfuckAnnotationsForPrint(document: PDFDocument): number 
     if (!(annotations instanceof PDFArray)) continue
     for (const item of annotations.asArray()) {
       const annotation = resolved(document, item)
-      if (!(annotation instanceof PDFDict) || !PDFUCK_PRINT_KEYS.some((key) => annotation.has(key))) continue
+      if (!(annotation instanceof PDFDict)) continue
+      const flagObject=resolved(document,annotation.get(PDFName.of('F'))),flags=flagObject instanceof PDFNumber?flagObject.asNumber():0
+      if ((flags & 3) || !(flags & 4) && !PDFUCK_PRINT_KEYS.some(key=>annotation.has(key))) continue
       const appearanceDictionary = resolved(document, annotation.get(PDFName.of('AP')))
       if (!(appearanceDictionary instanceof PDFDict)) continue
-      const normalObject = appearanceDictionary.get(PDFName.of('N'))
-      const appearance = resolved(document, normalObject)
-      if (!(appearance instanceof PDFRawStream)) continue
+      let normalObject = appearanceDictionary.get(PDFName.of('N'))
+      let appearance = resolved(document, normalObject)
+      if (appearance instanceof PDFDict) {
+        const state=annotation.get(PDFName.of('AS'))
+        normalObject=appearance.get(state instanceof PDFName?state:PDFName.of('Off'))
+        appearance=resolved(document,normalObject)
+      }
+      if (!(appearance instanceof PDFStream)) continue
       const [left, bottom, right, top] = numberArray(document, annotation.get(PDFName.of('Rect')))
-      const [boxLeft, boxBottom, boxRight, boxTop] = numberArray(document, appearance.dict.get(PDFName.of('BBox')))
+      const box = numberArray(document, appearance.dict.get(PDFName.of('BBox'))), transform=numberArray(document,appearance.dict.get(PDFName.of('Matrix')))
+      const matrix:Matrix=transform.length===6&&transform.every(Number.isFinite)?transform as Matrix:[1,0,0,1,0,0]
+      const corners=[[box[0],box[1]],[box[0],box[3]],[box[2],box[1]],[box[2],box[3]]].map(([x,y])=>applyMatrix(matrix,{x,y}))
+      const boxLeft=Math.min(...corners.map(p=>p.x)),boxBottom=Math.min(...corners.map(p=>p.y)),boxRight=Math.max(...corners.map(p=>p.x)),boxTop=Math.max(...corners.map(p=>p.y))
       const boxWidth = boxRight - boxLeft, boxHeight = boxTop - boxBottom
       if (![left, bottom, right, top, boxLeft, boxBottom, boxRight, boxTop].every(Number.isFinite) || boxWidth <= 0 || boxHeight <= 0) continue
       const reference = normalObject instanceof PDFRef ? normalObject : document.context.register(appearance)
@@ -119,6 +130,15 @@ export function flattenPdfuckAnnotationsForPrint(document: PDFDocument): number 
     }
   }
   return flattened
+}
+
+async function preparePrintAnnotations(source: PDFDocument): Promise<void> {
+  const fields=source.getForm().getFields().filter(field=>field.acroField.getWidgets().some(widget=>!widget.dict.has(PDFName.of('AP'))))
+  if(fields.length) {
+    const font=await source.embedFont(StandardFonts.Helvetica)
+    for(const field of fields)field.defaultUpdateAppearances(font)
+  }
+  flattenPdfuckAnnotationsForPrint(source)
 }
 
 async function createImposedPrintJobFromSource(source: PDFDocument, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
@@ -154,7 +174,7 @@ async function createImposedPrintJobFromSource(source: PDFDocument, pageIndices:
 
 export async function createImposedPrintJob(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): Promise<ImposedPrintJob> {
   const source = await PDFDocument.load(data)
-  flattenPdfuckAnnotationsForPrint(source)
+  await preparePrintAnnotations(source)
   return createImposedPrintJobFromSource(source, pageIndices, options)
 }
 
@@ -177,7 +197,7 @@ export function planPrintDispatchBatches(pageIndices: number[], options: PrintPd
 export async function* imposePdfForPrintBatches(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): AsyncGenerator<{ data: Uint8Array; batch: PrintDispatchBatch; index: number; total: number }> {
   const batches = planPrintDispatchBatches(pageIndices, options)
   const source = await PDFDocument.load(data)
-  flattenPdfuckAnnotationsForPrint(source)
+  await preparePrintAnnotations(source)
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index]
     const job = await createImposedPrintJobFromSource(source, batch.pages, batch.options)

@@ -129,6 +129,9 @@ function kindFor(dict: PDFDict, document: PDFDocument): AnnotationKind | null {
 }
 
 interface AnnotationEntry { dict: PDFDict; ref?: PDFRef; index: number; page: PDFPage; pageIndex: number }
+function pdfAnnotationId(entry: AnnotationEntry): string | undefined {
+  return entry.ref ? `${entry.ref.objectNumber}R${entry.ref.generationNumber || ''}` : undefined
+}
 interface PreparedAnnotation extends AddAnnotationRequest { page: PDFPage; geometry: PageGeometry; normalized: PdfRect[] }
 
 /** Remove only this application's OCR stream, leaving all original page content intact. */
@@ -411,7 +414,7 @@ export class PdfDocumentModel {
     const id = decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`
     const aspectRatio = numberValue(this.document, dict.get(PDFName.of('PDFuckImageAspectRatio')), rect.width / Math.max(1, rect.height))
     return {
-      id,
+      id, pdfAnnotationId: pdfAnnotationId(entry),
       pageIndex: entry.pageIndex,
       name: decodeObject(this.document, dict.get(PDFName.of('PDFuckImageName'))) || 'image',
       data: this.imageData(dict),
@@ -689,6 +692,7 @@ export class PdfDocumentModel {
       }
       return {
         id: decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.index}`,
+        pdfAnnotationId: pdfAnnotationId(entry),
         pageIndex: entry.pageIndex,
         text: decodeObject(this.document, dict.get(PDFName.of('Contents'))),
         rect: pdfBoundsToDisplayRect(numberArray(this.document, dict.get(PDFName.of('Rect'))), pageGeometry(entry.page)),
@@ -779,6 +783,7 @@ export class PdfDocumentModel {
       const dict = entry.dict
       return {
         id: decodeObject(this.document, dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.index}`,
+        pdfAnnotationId: pdfAnnotationId(entry),
         pageIndex: entry.pageIndex,
         settings: {
           pages,
@@ -944,7 +949,7 @@ export class PdfDocumentModel {
       const replyMarks = readMarks(replyContent, decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyMarks'))))
       const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent, ...(decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' ? { aiGenerated: true } : {}), ...(replyMarks.length ? { marks: replyMarks } : {}) } : undefined
       return [{
-        id, groupId, pageIndex: entry.pageIndex, kind,
+        id, pdfAnnotationId: pdfAnnotationId(entry), groupId, pageIndex: entry.pageIndex, kind,
         ...((decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckAI'))) === 'true' || decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' || kind === 'ai_polish') ? { aiGenerated: true } : {}),
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
@@ -967,7 +972,7 @@ export class PdfDocumentModel {
       const align = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckAlign')))
       const sourceRects = decodePageTextRects(this.document, entry.dict.get(PDFName.of('PDFuckPageTextRects')))
       return [{
-        id,
+        id, pdfAnnotationId: pdfAnnotationId(entry),
         pageIndex: entry.pageIndex,
         rect: pdfBoundsToDisplayRect(numberArray(this.document, entry.dict.get(PDFName.of('Rect'))), pageGeometry(entry.page)),
         text: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),

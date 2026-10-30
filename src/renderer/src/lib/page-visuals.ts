@@ -1,9 +1,10 @@
 import type { PdfRect } from '../types'
 import { applyMatrix, multiplyMatrix, type Matrix } from './page-coordinates'
 import type { WordBox } from './text-layout'
+import { detectTableGrids } from './table-cells'
 
-export interface PageGraphic { rect: PdfRect; image: boolean; parts: number }
-export interface PageVisual { rect: PdfRect; caption: string; label: string; kind: 'figure' | 'table' }
+export interface PageGraphic { rect: PdfRect; image: boolean; parts: number; rules?: PdfRect[] }
+export interface PageVisual { rect: PdfRect; caption: string; label: string; kind: 'figure' | 'table'; cells?: PdfRect[] }
 const right = (r: PdfRect) => r.x + r.width
 const bottom = (r: PdfRect) => r.y + r.height
 const overlapX = (a: PdfRect, b: PdfRect) => Math.max(0, Math.min(right(a), right(b)) - Math.max(a.x, b.x))
@@ -37,18 +38,29 @@ export function pageGraphics(operators: { fnArray: number[]; argsArray: any[] },
     const state = stack.pop()
     matrix = state?.matrix || [1,0,0,1,0,0]; clip = state?.clip; pendingClip = false
   }
-  const add = (bounds: number[], image: boolean, local = matrix) => {
+  const visibleRect = (bounds: number[], local = matrix) => {
     let rect = boundsRect(bounds,local)
     if (!rect || clip && (clip.width <= 0 || clip.height <= 0)) return
     if (clip) {
       if (right(rect) < clip.x || rect.x > right(clip) || bottom(rect) < clip.y || rect.y > bottom(clip)) return
       rect = intersect(rect,clip)
     }
-    result.push({rect,image,parts:1})
+    return rect
+  }
+  const add = (bounds: number[], image: boolean, local = matrix) => {
+    const rect = visibleRect(bounds,local)
+    if (!rect) return
+    const graphic: PageGraphic = {rect,image,parts:1}
+    result.push(graphic)
+    return graphic
   }
   const images = new Set([ops.paintImageXObject, ops.paintInlineImageXObject, ops.paintImageMaskXObject, ops.paintSolidColorImageMask])
+  let annotation = false
   operators.fnArray.forEach((op, index) => {
     const args = operators.argsArray[index]
+    if (op === ops.beginAnnotation) { annotation = true; return }
+    if (op === ops.endAnnotation) { annotation = false; return }
+    if (annotation) return
     if (op === ops.save) save()
     else if (op === ops.restore || op === ops.paintFormXObjectEnd || op === ops.endGroup) restore()
     else if (op === ops.transform) matrix = multiplyMatrix(matrix, args as Matrix)
@@ -62,7 +74,30 @@ export function pageGraphics(operators: { fnArray: number[]; argsArray: any[] },
     } else if (op === ops.clip || op === ops.eoClip) pendingClip = true
     else if (op === ops.constructPath) {
       const bounds = args[2] ? Array.from(args[2]) as number[] : [0,0,0,0]
-      if (args[0] !== ops.endPath && args[2]) add(bounds,false)
+      if (args[0] !== ops.endPath && args[2]) {
+        const graphic = add(bounds,false), data = args[1]?.[0]
+        if (graphic && [ops.stroke,ops.closeStroke,ops.fillStroke,ops.eoFillStroke,ops.closeFillStroke,ops.closeEOFillStroke].includes(args[0]) && (Array.isArray(data) || ArrayBuffer.isView(data))) {
+          const values = Array.from(data as ArrayLike<number>), rules: PdfRect[] = []
+          let current: number[] | undefined, start: number[] | undefined
+          const edge = (next: number[]) => {
+            if (current) {
+              const rect = visibleRect([current[0],current[1],next[0],next[1]])
+              if (rect && Math.min(rect.width,rect.height) < .01) rules.push(rect)
+            }
+            current = next
+          }
+          for (let i=0;i<values.length;) {
+            const command=values[i++]
+            if (command===0) {current=values.slice(i,i+2);start=current;i+=2}
+            else if (command===1) {edge(values.slice(i,i+2));i+=2}
+            else if (command===2) {current=values.slice(i+4,i+6);i+=6}
+            else if (command===3) {current=values.slice(i+2,i+4);i+=4}
+            else if (command===4 && start) edge(start)
+            else break
+          }
+          if (rules.length) graphic.rules=rules
+        }
+      }
       // PDF.js emits the clip mode before the path that consumes it.
       if (pendingClip) { constrain(bounds); pendingClip = false }
     } else if (images.has(op)) add([0,0,1,1], true)
@@ -103,6 +138,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
     const marker = row.text.match(captionPattern)
     return marker && !/^(?:shows?|illustrates?|is|are|was|were|can|provides?|compares?|summarizes?|presents?|所示|显示|展示|说明|给出)\b/i.test(row.text.slice(marker[0].length).trim())
   })
+  const tables = detectTableGrids(words,graphics,size)
   const clusters: PageGraphic[] = []
   for (const graphic of graphics) {
     const r = clip(graphic.rect)
@@ -135,14 +171,15 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
   for (const graphic of clusters.sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x)) {
     const r = graphic.rect
     if (r.width < em * 2 || r.height < em * 1.6) continue
-    const caption = captions.filter(row => !used.has(row) && overlapX(row.rect,r) >= Math.min(row.rect.width,r.width) * .45 && gapY(row.rect,r) <= Math.max(em,row.rect.height) * 3.5)
+    const table = tables.find(table => Math.abs(table.rect.x-r.x)<=em && Math.abs(table.rect.y-r.y)<=em && Math.abs(right(table.rect)-right(r))<=em && Math.abs(bottom(table.rect)-bottom(r))<=em)
+    const caption = captions.filter(row => (!table || /^(?:table|tab\.?|表)/i.test(row.text)) && !used.has(row) && overlapX(row.rect,r) >= Math.min(row.rect.width,r.width) * .45 && gapY(row.rect,r) <= Math.max(em,row.rect.height) * 3.5)
       .sort((a,b) => gapY(a.rect,r)-gapY(b.rect,r))[0]
     const enclosedRows = rows.filter(row => inside(row.rect,r))
     const prose = enclosedRows.filter(row => row.text.length > 85 && row.rect.width > Math.min(r.width * .7,size.width * .35))
     // A page-sized scan, highlighted paragraph or decorated heading is not a figure.
-    if (prose.length >= 3 && (!caption || inside(caption.rect,r)) || !caption && (r.width < em * 4 || r.height < em * 3 || !graphic.image && (graphic.parts < 6 || r.height < em * 5))) continue
-    const kind = caption && /^(?:table|tab\.?|表)/i.test(caption.text) ? 'table' : 'figure'
-    let bounds = {...r}, text = caption?.text || ''
+    if (!table && (prose.length >= 3 && (!caption || inside(caption.rect,r)) || !caption && (r.width < em * 4 || r.height < em * 3 || !graphic.image && (graphic.parts < 6 || r.height < em * 5)))) continue
+    const kind = table || caption && /^(?:table|tab\.?|表)/i.test(caption.text) ? 'table' : 'figure'
+    let bounds = {...(table?.rect || r)}, text = caption?.text || ''
     if (caption) {
       used.add(caption); bounds = union(bounds, caption.rect)
       // Follow only tightly spaced caption continuation rows; stop at body spacing/indent.
@@ -164,7 +201,12 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
         if (legend) bounds = union(bounds,note)
       }
     }
-    visuals.push({rect: bounds, caption: text, label: caption?.text.match(captionPattern)?.[0] || 'ui.image', kind})
+    visuals.push({rect: bounds, caption: text, label: caption?.text.match(captionPattern)?.[0] || (table ? 'ui.table' : 'ui.image'), kind, ...(table ? {cells:table.cells} : {})})
+  }
+  for (const table of tables) {
+    const visual = visuals.find(v => inside(table.rect,v.rect))
+    if (visual?.kind==='table') visual.cells = [...(visual.cells || []),...table.cells.filter(cell => !visual.cells?.includes(cell))]
+    else if (!visual) visuals.push({rect:table.rect,cells:table.cells,caption:'',label:'ui.table',kind:'table'})
   }
   // Borderless tables require a caption and at least three aligned multi-cell rows.
   for (const caption of captions.filter(c => !used.has(c) && /^(?:table|tab\.?|表)/i.test(c.text))) {
@@ -191,8 +233,9 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
 }
 
 export function isolateVisualWords(words: WordBox[], visuals: PageVisual[]): WordBox[] {
+  const cells=visuals.flatMap(v=>v.cells||[])
   return words.map(word => {
-    const region = visuals.findIndex(visual => inside(word.rect,visual.rect))
-    return region < 0 ? word : {...word, visualRegion: region}
+    const region = visuals.findIndex(visual => inside(word.rect,visual.rect)), cell=cells.findIndex(cell=>inside(word.rect,cell))
+    return {...word,...(region<0?{}:{visualRegion:region}),...(cell<0?{}:{tableCell:cell,tableCellRect:cells[cell]})}
   })
 }

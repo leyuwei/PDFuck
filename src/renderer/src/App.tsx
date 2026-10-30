@@ -33,7 +33,8 @@ import { isInterfaceLanguage, translateMessage, type InterfaceLanguage } from '.
 import { normalizeCopiedText } from './lib/clipboard-text'
 import type { UpdateCheckResult } from '../../shared/contracts'
 import { imposePdfForPrintBatches } from './lib/print-layout'
-import { fontCssFamily, usesStandardPdfFont } from './lib/text-fonts'
+import { fontCssFamily } from './lib/text-fonts'
+import { styledTextRaster } from './lib/styled-text'
 import { watermarkTiles } from './lib/watermarks'
 import { PdfPasswordError, probePdfPassword } from './lib/pdf-password'
 import { isTemporaryDocumentPath, type CitationLink, type GrammarIssue, type InsightHit } from './lib/document-insights'
@@ -108,35 +109,6 @@ function sessionSummary(session: DocumentSession): ManagedPdfDocument {
   return { id: session.id, fileName: session.documentName, title: cleanDocumentName(session.documentName, hasDocument), filePath: session.markdown?.unsaved ? undefined : session.filePath, dirty: session.dirty, hasDocument, encrypted: session.encrypted }
 }
 
-function styledTextRaster(text: string, rect: PdfRect, value: TextDialogValue, forceRaster = false): Promise<Uint8Array | undefined> {
-  if (!forceRaster && !value.style.sourceFont && !/[^\x00-\xff]/.test(text) && usesStandardPdfFont(value.style.font)) return Promise.resolve(undefined)
-  const scale = 3
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(8, Math.ceil(rect.width * scale)); canvas.height = Math.max(8, Math.ceil(rect.height * scale))
-  const context = canvas.getContext('2d')!
-  context.scale(scale, scale); context.fillStyle = value.style.color
-  const sourceFont = value.style.sourceFont?.replace(/["']/g, '')
-  const family = sourceFont ? `"${sourceFont}", ${fontCssFamily(value.style.font)}` : fontCssFamily(value.style.font)
-  context.font = `${value.style.italic ? 'italic ' : ''}${value.style.bold ? '700 ' : ''}${value.style.size}px ${family}`
-  context.textBaseline = 'top'; context.textAlign = value.style.align; context.letterSpacing = `${value.style.letterSpacing || 0}px`
-  const anchor = value.style.align === 'left' ? 0 : value.style.align === 'center' ? rect.width / 2 : rect.width
-  const horizontalScale = (value.style.horizontalScale || 100) / 100
-  const measure = (textValue: string) => context.measureText(textValue).width * horizontalScale
-  const lines: Array<{ text: string; top: number }> = []
-  let top = 0
-  for (const paragraph of text.split('\n')) {
-    top += Math.max(0, value.style.paragraphBefore || 0)
-    let line = ''
-    for (const char of paragraph) {
-      if (line && measure(line + char) > rect.width) { lines.push({ text: line, top }); top += value.style.size * (value.style.lineHeight || 1.25); line = char } else line += char
-    }
-    lines.push({ text: line, top }); top += value.style.size * (value.style.lineHeight || 1.25) + Math.max(0, value.style.paragraphAfter || 0)
-  }
-  lines.filter((line) => line.top + value.style.size <= rect.height).forEach((line) => {
-    context.save(); context.translate(anchor, line.top); context.scale(horizontalScale, 1); context.fillText(line.text, 0, 0); context.restore()
-  })
-  return new Promise((resolve, reject) => canvas.toBlob(async (blob) => blob ? resolve(new Uint8Array(await blob.arrayBuffer())) : reject(new Error(ui("ui.textImageEncodingFailed"))), 'image/png'))
-}
 
 function labSelectionKey(documentId: number, selection?: PageTextSelection): string | undefined {
   if (!selection) return undefined
@@ -270,12 +242,12 @@ function DocumentTitle({ text, encrypted }: { text: string; encrypted: boolean }
 
 function viewerTextObjects(model?: PdfDocumentModel): TextObjectRecord[] {
   if (!model) return []
-  const watermarks = model.watermarks().flatMap(({ id, pageIndex, settings }) => watermarkTiles(model.getPageSize(pageIndex), settings).map((rect, index): TextObjectRecord => ({
-    id: `${id}-${index}`, pageIndex, text: settings.text, rect, locked: true, rotation: settings.rotation, opacity: settings.opacity, watermark: true,
+  const watermarks = model.watermarks().flatMap(({ id, pdfAnnotationId, pageIndex, settings }) => watermarkTiles(model.getPageSize(pageIndex), settings).map((rect, index): TextObjectRecord => ({
+    id: `${id}-${index}`, pdfAnnotationId, pageIndex, text: settings.text, rect, locked: true, rotation: settings.rotation, opacity: settings.opacity, watermark: true,
     style: { font: settings.font, size: settings.size, color: settings.color, bold: false, italic: false, align: 'center', lineHeight: 1 }
   })))
-  return [...model.textObjects(), ...model.pageNumbers().map(({ id, pageIndex, text, rect, settings }) => ({
-    id, pageIndex, text, rect, locked: true,
+  return [...model.textObjects(), ...model.pageNumbers().map(({ id, pdfAnnotationId, pageIndex, text, rect, settings }) => ({
+    id, pdfAnnotationId, pageIndex, text, rect, locked: true,
     style: { font: settings.font, size: settings.size, color: settings.color, bold: settings.bold, italic: settings.italic, align: settings.horizontal, lineHeight: 1.25 as const }
   })), ...watermarks]
 }
@@ -1607,7 +1579,7 @@ export default function App() {
   const resizeTextObject = useCallback(async (textObject: TextObjectRecord, rect: PdfRect) => {
     const model = modelRef.current, documentId = activeDocumentIdRef.current
     if (!model || textObject.fixedToSource) return
-    const image = await styledTextRaster(textObject.text, rect, { text: textObject.text, style: textObject.style })
+    const image = await styledTextRaster(textObject.text, rect, { style: textObject.style })
     if (modelRef.current !== model || activeDocumentIdRef.current !== documentId) return
     await mutate((modelValue) => modelValue.resizeTextObject(textObject.id, rect, image), 'ui.textBoxSizeUpdated', false)
   }, [mutate])
@@ -1830,7 +1802,7 @@ export default function App() {
     {aboutOpen && <AboutDialog version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
     {security && (security.encrypted || security.signatures.length > 0) && <PdfSecurityNotice security={security} busy={securityConversionBusy} onForceEditableCopy={() => void forceEditableCopy()} />}
     {documentTabs.documents.filter(({ id }) => ocrDocuments.includes(id)).map(({ id }) => <OcrDialog key={id} hidden={id !== activeDocumentId || dialog?.type !== 'ocr'} pageCount={id === activeDocumentId ? pageCount : sessionsRef.current.get(id)?.pageCount || 0} currentPage={id === activeDocumentId ? currentPage : sessionsRef.current.get(id)?.currentPage || 0} onMinimize={() => setDialog(null)} onClose={() => { setOcrDocuments(ids => ids.filter(value => value !== id)); if (id === activeDocumentId) setDialog(null) }} onRecognize={recognizeDocument} />)}
-    {dialog?.type === 'page_numbers' && <PageNumberDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void mutate((model) => model.addPageNumbers(value, (text, rect, style) => styledTextRaster(text, rect, { text, style })), '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销') }} onDelete={() => { setDialog(null); void mutate((model) => model.deletePageNumbers(), '已删除添加的页码，可按 Ctrl/⌘Z 撤销') }} />}
+    {dialog?.type === 'page_numbers' && <PageNumberDialog initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void mutate((model) => model.addPageNumbers(value, (text, rect, style) => styledTextRaster(text, rect, { style })), '页码已添加到全部页面，可按 Ctrl/⌘Z 撤销') }} onDelete={() => { setDialog(null); void mutate((model) => model.deletePageNumbers(), '已删除添加的页码，可按 Ctrl/⌘Z 撤销') }} />}
     {dialog?.type === 'watermark' && data && <WatermarkDialog data={data} currentPage={currentPage} initial={dialog.initial} existingCount={dialog.existingCount} pageCount={pageCount} onCancel={() => setDialog(null)} onSubmit={(value) => { setDialog(null); void watermarkRaster(value).then((raster) => mutate((model) => model.addWatermarks(value, raster), ui('ui.watermarksApplied'))).catch(showError) }} onDelete={() => { setDialog(null); void mutate((model) => model.deleteWatermarks(), ui('ui.watermarksRemoved')) }} />}
     {dialog?.type === 'password' && <PdfPasswordDialog state={dialog.value} onCancel={() => { setDialog(null); passwordResolve.current?.(null) }} onSubmit={(value) => { setDialog(null); passwordResolve.current?.(value) }} />}
     {dialog?.type === 'secure_storage_notice' && <SecureStorageNoticeDialog onCancel={() => { setDialog(null); secureStorageResolve.current?.(false) }} onContinue={() => { setDialog(null); secureStorageResolve.current?.(true) }} />}

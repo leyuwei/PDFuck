@@ -34,6 +34,7 @@ export interface TextSelection {
 
 export interface AnnotationRecord {
   id: string
+  pdfAnnotationId?: string
   /** Shared identifier for visual segments of one cross-page annotation. */
   groupId?: string
   pageIndex: number
@@ -127,6 +128,7 @@ export interface PageTextEdit {
 
 export interface TextObjectRecord {
   id: string
+  pdfAnnotationId?: string
   pageIndex: number
   rect: PdfRect
   text: string
@@ -168,6 +170,7 @@ export interface PageNumberSettings {
 
 export interface PageNumberRecord {
   id: string
+  pdfAnnotationId?: string
   pageIndex: number
   text: string
   rect: PdfRect
@@ -188,6 +191,7 @@ export interface WatermarkSettings {
 
 export interface WatermarkRecord {
   id: string
+  pdfAnnotationId?: string
   pageIndex: number
   settings: WatermarkSettings
 }
@@ -213,6 +217,7 @@ export interface ImageDraft {
 /** A PDFuck image annotation that remains editable after saving and reopening. */
 export interface ImageObjectRecord {
   id: string
+  pdfAnnotationId?: string
   pageIndex: number
   name: string
   data: Uint8Array

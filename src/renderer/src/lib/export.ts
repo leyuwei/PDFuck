@@ -1,4 +1,4 @@
-import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from './pdfjs'
+import { AnnotationMode, getDocument, PDFJS_WASM_URL, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, type PDFDocumentProxy } from './pdfjs'
 import type { ExportPage, RasterExportFormat } from '../../../shared/contracts'
 import { rasterExportDimensions } from './export-dpi'
 import { t } from './i18n'
@@ -12,7 +12,7 @@ function canvasBytes(canvas: HTMLCanvasElement, type: string, quality?: number):
 
 export async function exportPdfPages(data: Uint8Array, format: RasterExportFormat, dpi: number, onProgress?: (completed: number, total: number, pageNumber: number) => void, pageIndices?: number[], password?: string): Promise<ExportPage[]> {
   if (!Number.isFinite(dpi) || dpi <= 0) throw new Error(t('export.dpiInvalid'))
-  const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
+  const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, useWasm: false, ...(password === undefined ? {} : { password }) })
   const document: PDFDocumentProxy = await task.promise
   const outputs: ExportPage[] = []
   try {

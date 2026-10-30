@@ -16,7 +16,24 @@
 
 所有样本使用随机的 32 位十六进制文件名，扩展名保留；代码、历史用例引用和说明同步使用匿名名称，不提供原名对照表。此修改保留文件内容，既有 Git 历史不作改写。
 
-## 2.1.11 图框可见范围验收（当前）
+## 2.1.12 定向验收（当前）
+
+```bash
+npm run typecheck
+npm run test:release-2.1.12
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.12-ui.cjs
+# 新增窗口项可用 --checks=form,tables,text 分阶段，只重试受影响项。
+git diff --check
+# APP 构建并签名后验收成品。
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.12-ui.cjs
+# DMG / ZIP 生成后检查资源、版本、签名和哈希。
+node tests/scripts/release-2.1.12-package-check.cjs
+```
+
+新增 21 项单元覆盖原生表单值/AP 保留、精确过滤覆盖层、打印正常和重建外观、有框/分段/合并单元格、伪表格/图片/坐标轴排除、空单元格、纵向文字行优先、双向/键盘/RTL/精确引用边界。新窗口项验证五页原生表单，十四页中文输入的四张表/56 个单元格、16 次双向缩放拖选及跨页约束，并检查三页旧图形不会误变成表格；另有多行/勾选/单选/下拉/缺外观/旋转裁切的合成表单、导出/打印内容及 24 组实际字形边界、真实添加/重编/缩放/删除撤销/保存重开。临时和输出沿用现有 gitignore；输入文件可跟踪，见 [样本说明](fixtures/README.md)。只运行本轮新增项，详细结果见 [现行验收](docs/VALIDATION-2.1.12.md)。
+
+## 2.1.11 图框可见范围验收（历史）
 
 ```bash
 npm run typecheck

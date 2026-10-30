@@ -12,6 +12,7 @@ import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
 import { detectPageVisuals, isolateVisualWords, pageGraphics, type PageVisual } from '../lib/page-visuals'
+import { annotationOperationsFilter } from '../lib/pdf-annotation-render'
 import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
 import { adjustCropRect, protectCropBounds, type CropHandle } from '../lib/crop-geometry'
 import { saveCropMargin, useCropMargin } from '../lib/crop-preferences'
@@ -156,17 +157,6 @@ interface PageProps {
   textFocus?: { text: string; occurrence: number; caseSensitive: boolean; ignoreWhitespace: boolean; token: number }
   showVisualRegions: boolean
   visualFocus?: { rects?: PdfRect[]; token: number }
-}
-
-function nearestWord(words: WordBox[], point: PdfPoint): number {
-  let best = -1, distance = Number.POSITIVE_INFINITY
-  words.forEach((word, index) => {
-    const dx = Math.max(word.rect.x - point.x, 0, point.x - word.rect.x - word.rect.width)
-    const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
-    const value = dx * dx + dy * dy
-    if (value < distance) { distance = value; best = index }
-  })
-  return best
 }
 
 function insertionPoint(words: WordBox[], point: PdfPoint): PdfPoint {
@@ -753,6 +743,8 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     if (activePage) setTextRequested(true)
   }, [activePage])
 
+  const overlaidAnnotationIds = [...annotations,...textObjects,...imageObjects].map(object => object.pdfAnnotationId).filter(Boolean).join(',')
+
   useEffect(() => {
     if (!page || !canvasRef.current || !renderEligible) return
     let cancelled = false
@@ -764,11 +756,12 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     target.height = Math.max(1, Math.floor(viewport.height * outputScale))
     const context = target.getContext('2d', { alpha: false })
     if (!context) return
-    // PDFuck renders its own annotation overlays from PdfDocumentModel. Letting
-    // PDF.js paint the same PDF annotations into the canvas creates a second,
-    // non-interactive copy that remains visible after the overlay is deleted.
-    const task = page.render({ canvas: target, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.DISABLE })
-    task.promise.then(() => {
+    let task: ReturnType<PDFPageProxy['render']> | undefined
+    const paint = async () => {
+      const operationsFilter = overlaidAnnotationIds ? annotationOperationsFilter(await page.getOperatorList({annotationMode:AnnotationMode.ENABLE}),overlaidAnnotationIds.split(','),OPS) : undefined
+      if (cancelled) return
+      task = page.render({ canvas: target, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.ENABLE, operationsFilter })
+      await task.promise
       if (cancelled || !canvasRef.current) return
       if (target !== canvas) {
         canvas.width = target.width; canvas.height = target.height
@@ -776,9 +769,10 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       }
       canvas.dataset.rendered = 'true'
       setRendered(true)
-    }).catch((error) => { if (!cancelled && error?.name !== 'RenderingCancelledException') { setRendered(true); onError(error) } })
-    return () => { cancelled = true; task.cancel() }
-  }, [page, renderEligible, renderZoom, onError])
+    }
+    paint().catch((error) => { if (!cancelled && error?.name !== 'RenderingCancelledException') { setRendered(true); onError(error) } })
+    return () => { cancelled = true; task?.cancel() }
+  }, [page, renderEligible, renderZoom, overlaidAnnotationIds, onError])
 
   useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); changeCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }, [tool])
   useEffect(() => { if (!activePage) setPageTextEditor(undefined) }, [activePage])
@@ -796,7 +790,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     setCitationPopup(undefined)
     const point = pointFor(event)
     if (canSelectText) {
-      const caret = textCaretAtPoint(words, point)
+      const caret = textCaretAtPoint(words, point, undefined, pageVisuals.flatMap(v=>v.cells||[]))
       const position = caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined
       if (!position) {
         onCrossSelectionStart(pageIndex, undefined, event.shiftKey)
@@ -826,7 +820,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     if (!activeDrag) return
     if (canSelectText) {
       const distance = Math.hypot(point.x - activeDrag.start.x, point.y - activeDrag.start.y) * zoom
-      const focus = !activeDrag.moved && distance >= 1 && distance < 4 ? textCaretAtPoint(words, point) : undefined
+      const focus = !activeDrag.moved && distance >= 1 && distance < 4 ? textCaretAtPoint(words, point, undefined, pageVisuals.flatMap(v=>v.cells||[])) : undefined
       const moved = activeDrag.moved || distance >= 4 || Boolean(focus && activeDrag.anchor && (focus.wordIndex !== activeDrag.anchor.wordIndex || focus.offset !== activeDrag.anchor.offset))
       const next = { ...activeDrag, current: point, moved }
       dragRef.current = next
@@ -845,7 +839,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     if (canSelectText) {
       if (!completed.moved) {
         setSelection(undefined); onSelectionChange(undefined)
-        const caret = textCaretAtPoint(words, completed.current)
+        const caret = textCaretAtPoint(words, completed.current, undefined, pageVisuals.flatMap(v=>v.cells||[]))
         setTextCaret(caret); setSelectionAnchor(caret ? { wordIndex: caret.wordIndex, offset: caret.offset } : undefined)
         onCrossSelectionEnd(pageIndex, event.clientX, event.clientY, true)
         return
@@ -878,7 +872,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   const handleDoubleClick = (event: React.MouseEvent) => {
     if (!canSelectText) return
     event.preventDefault(); event.stopPropagation()
-    const index = nearestWord(words, pointFor(event))
+    const index = textCaretAtPoint(words,pointFor(event),undefined,pageVisuals.flatMap(v=>v.cells||[]))?.wordIndex ?? -1
     const selected = selectionFromRange(words, index, index)
     setTextCaret(undefined); setSelectionAnchor(undefined); setSelection(selected); onSelectionChange(selected)
   }
@@ -1096,7 +1090,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     {tool === 'edit_text' && activePage && pageTextEditor && <PageTextEditor region={pageTextEditor.region} sourceDocument={document} pageIndex={pageIndex} zoom={zoom} pageSize={size} initialColor={pageTextEditor.foreground} backgroundColor={pageTextEditor.background} initialCaret={pageTextEditor.caretOffset} onCancel={() => setPageTextEditor(undefined)} onSave={async (text, style, onFailure) => { const saved = await onAction({ pageIndex, tool: 'edit_text', pageTextEdit: { region: pageTextEditor.region, text, style, backgroundColor: pageTextEditor.background, preserveSourceAppearance: pageTextPreservesStyle(pageTextEditor.region, style, pageTextEditor.foreground), onFailure } }); if (saved !== false) setPageTextEditor(undefined) }} />}
     {activeSelection?.rects.map((rect, index) => <div key={index} className="text-selection" style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {textFocus?.text && textFocus.token > 0 && textFocus.text && preciseFocus?.rects.map((rect, index) => <div ref={index === 0 ? preciseFocusRef : undefined} key={`precise-focus-${textFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
-    {showVisualRegions && pageVisuals.map((visual, index) => <div key={`visual-${index}`} className={`page-visual-region ${visual.kind}`} data-visual-label={visual.label} style={{ left: visual.rect.x * zoom, top: visual.rect.y * zoom, width: visual.rect.width * zoom, height: visual.rect.height * zoom }}><span style={visual.rect.y * zoom < 28 ? {top:2,transform:'none'} : undefined}>{visual.label === 'ui.image' ? ui('ui.image') : visual.label}</span></div>)}
+    {showVisualRegions && pageVisuals.map((visual, index) => <div key={`visual-${index}`} className={`page-visual-region ${visual.kind}`} data-visual-label={visual.label} style={{ left: visual.rect.x * zoom, top: visual.rect.y * zoom, width: visual.rect.width * zoom, height: visual.rect.height * zoom }}><span style={visual.rect.y * zoom < 28 ? {top:2,transform:'none'} : undefined}>{translateUiText(visual.label)}</span></div>)}
     {visualFocus?.rects?.map((rect, index) => <div ref={index === 0 ? visualFocusRef : undefined} key={`visual-focus-${visualFocus.token}-${index}`} className="annotation-focus-ring insight-focus-ring" style={{ left: rect.x * zoom - 2, top: rect.y * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
     {visualFocus && !visualFocus.rects?.length && <div ref={visualFocusRef} key={`visual-page-focus-${visualFocus.token}`} className="annotation-focus-ring insight-focus-ring insight-page-focus-ring" style={{ left: 10, top: 10, width: Math.max(6, size.width * zoom - 20), height: Math.max(6, size.height * zoom - 20) }} />}
     {citationPopup && <aside className="citation-popover" style={{ left: Math.max(8, Math.min(size.width * zoom - 306, (citationPopup.rect.x + citationPopup.rect.width) * zoom + 9)), top: Math.max(8, Math.min(size.height * zoom - 170, citationPopup.rect.y * zoom - 8)) }} onPointerDown={(event) => event.stopPropagation()}>
@@ -1226,9 +1220,16 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const targetWords = wordMapsRef.current.get(targetPageIndex)
     if (!anchor || !targetWords || !Number.isInteger(targetPageIndex)) return undefined
     const bounds = target.getBoundingClientRect()
-    const focus = textCaretAtPoint(targetWords, { x: (clientX - bounds.left) / zoom, y: (clientY - bounds.top) / zoom })
-    if (!focus) return undefined
     const anchorWords = wordMapsRef.current.get(anchor.pageIndex)
+    const cell=anchorWords?.[anchor.position.wordIndex]?.tableCell
+    if(anchor.pageIndex!==targetPageIndex && cell!==undefined && anchorWords) {
+      const bounds=anchorWords[anchor.position.wordIndex].tableCellRect!,forward=anchor.pageIndex<targetPageIndex,rtl=anchorWords[anchor.position.wordIndex].rtl
+      const edge=textCaretAtPoint(anchorWords,{x:forward!==Boolean(rtl)?bounds.x+bounds.width:bounds.x,y:forward?bounds.y+bounds.height:bounds.y},anchor.position)
+      const selected=edge?textSelectionBetween(anchorWords,anchor.position,edge):undefined
+      return selected?[bindTextSelectionToPage(anchor.pageIndex,selected)]:[]
+    }
+    const focus = textCaretAtPoint(targetWords, { x: (clientX - bounds.left) / zoom, y: (clientY - bounds.top) / zoom },anchor.pageIndex===targetPageIndex?anchor.position:undefined)
+    if (!focus) return undefined
     const region = anchorWords?.[anchor.position.wordIndex]?.visualRegion
     if (anchor.pageIndex !== targetPageIndex && region !== undefined && anchorWords) {
       const regionIndices = anchorWords.map((word,index) => ({word,index})).filter(({word}) => word.visualRegion === region).map(({index}) => index)
