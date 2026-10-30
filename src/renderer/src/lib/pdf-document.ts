@@ -22,6 +22,7 @@ import { normalizeAnnotationAuthor } from './annotation-author'
 import { appendPdfBookmarks, deletePdfBookmark, readPdfBookmarks, remapPdfBookmarks, renamePdfBookmark, replacePdfBookmarks } from './pdf-bookmarks'
 import { translateMessage, type TranslationKey } from '../../../shared/i18n-catalogue'
 import { writePageText } from './page-text-write'
+import type { FormFieldEdit } from './pdf-form-fields'
 import type { PageTextRenderRequest, PageTextRenderResult } from '../../../shared/contracts'
 
 const KIND_LABEL: Record<AnnotationKind, TranslationKey> = {
@@ -193,6 +194,16 @@ export class PdfDocumentModel {
   }
 
   get bytes(): Uint8Array { return Uint8Array.from(this.currentBytes) }
+  async editFormField(edit: FormFieldEdit, write: (bytes: Uint8Array, edit: FormFieldEdit) => Promise<Uint8Array>): Promise<void> {
+    const previous = this.bytes
+    const next = await write(previous, edit)
+    if (sameBytes(next, this.currentBytes)) return
+    const candidate = await PDFDocument.load(next, { updateMetadata: false })
+    if (candidate.getPageCount() !== this.pageCount) throw new Error('form.invalidField')
+    this.undoStack.push(this.bytes); this.trimHistory(this.undoStack); this.redoStack = []
+    this.document = candidate; this.currentBytes = Uint8Array.from(next)
+    this.dirty = this.externallyDirty || !sameBytes(next, this.savedBytes)
+  }
   get pageCount(): number { return this.document.getPageCount() }
   get canUndo(): boolean { return this.undoStack.length > 0 }
   get canRedo(): boolean { return this.redoStack.length > 0 }

@@ -13,6 +13,7 @@ import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegio
 import { normalizeRect, rectUnion } from '../lib/geometry'
 import { detectPageVisuals, isolateVisualWords, pageGraphics, type PageVisual } from '../lib/page-visuals'
 import { annotationOperationsFilter } from '../lib/pdf-annotation-render'
+import { PdfFormFields } from './PdfFormFields'
 import { figureContentBounds, renderFigureRegion } from '../lib/figure-region'
 import { adjustCropRect, protectCropBounds, type CropHandle } from '../lib/crop-geometry'
 import { saveCropMargin, useCropMargin } from '../lib/crop-preferences'
@@ -596,6 +597,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   const visualFocusRef = useRef<HTMLDivElement>(null)
   const [page, setPage] = useState<PDFPageProxy>()
   const [pageLinks, setPageLinks] = useState<PdfPageLink[]>([])
+  const [formFieldIds, setFormFieldIds] = useState<string[]>([])
   const [rendered, setRendered] = useState(false)
   const [size, setSize] = useState(initialSize || { width: 612, height: 792 })
   const [words, setWords] = useState<WordBox[]>([])
@@ -743,7 +745,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     if (activePage) setTextRequested(true)
   }, [activePage])
 
-  const overlaidAnnotationIds = [...annotations,...textObjects,...imageObjects].map(object => object.pdfAnnotationId).filter(Boolean).join(',')
+  const overlaidAnnotationIds = [...formFieldIds, ...[...annotations,...textObjects,...imageObjects].map(object => object.pdfAnnotationId).filter(Boolean)].join(',')
 
   useEffect(() => {
     if (!page || !canvasRef.current || !renderEligible) return
@@ -1064,6 +1066,9 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
+    {page && renderEligible && <PdfFormFields document={document} page={page} zoom={zoom} enabled={canSelectText} editable={editableTextObjects} onReady={setFormFieldIds} onError={onError}
+      onDraft={(id, value) => { void onAction({ pageIndex, tool: 'edit_text', formFieldDraft: { id, value } }) }}
+      onEdit={edit => Promise.resolve(onAction({ pageIndex, tool: 'edit_text', formFieldEdit: edit }))} />}
     {!rendered && <div className="pdf-page-loading" role="status" aria-live="polite"><i aria-hidden="true" /><span>{ui('ui.loadingPage')}</span></div>}
     {pageLinks.map((link) => <button type="button" key={link.id} className="pdf-embedded-link" style={{ left: link.rect.x * zoom, top: link.rect.y * zoom, width: Math.max(6, link.rect.width * zoom), height: Math.max(6, link.rect.height * zoom) }} aria-label={link.url ? ui('pdfLink.openExternal') : t('pdfLink.goToPage', { page: (link.pageIndex || 0) + 1 })} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onLink(link) }} />)}
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>

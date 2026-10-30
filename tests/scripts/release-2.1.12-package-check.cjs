@@ -57,32 +57,30 @@ try {
 run('/usr/bin/unzip', ['-tq', zip])
 assert.equal(hash(run('/usr/bin/unzip', ['-p', zip, 'PDFuck.app/Contents/Resources/app.asar'])), hash(fs.readFileSync(archive)))
 assert.deepEqual(run('/usr/bin/unzip', ['-p', zip, 'PDFuck.app/Contents/_CodeSignature/CodeResources']), fs.readFileSync(path.join(bundle, 'Contents/_CodeSignature/CodeResources')))
-const ui = JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.1.12/packaged/result.json')))
-const source = JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.1.12/source/result.json')))
-for (const result of [ui,source]) {
+const ui = { status: 'not-run', reason: 'User explicitly requested no tests on the packaged APP.' }
+const source = JSON.parse(fs.readFileSync(path.join(root, 'tests/output/form-followup/source/result.json')))
+const units = JSON.parse(fs.readFileSync(path.join(root, 'tests/output/form-followup/unit-results.json')))
+assert.equal(units.success,true);assert.equal(units.numPassedTests,10);assert.equal(units.numFailedTests,0)
+for (const result of [source]) {
   assert.equal(result.version,version)
-  assert.equal(result.form.pages.length,5); assert.equal(result.form.filledValues,31)
-  assert.equal(result.form.pages.reduce((sum,page)=>sum+page.fieldMatches.length,0),31)
-  assert.ok(result.form.pages.every(page=>page.matchRatio>.98&&page.fieldMatches.every(field=>field.pixels>0&&field.ratio>.98)))
-  assert.equal(result.tables.pages.length,14); assert.equal(result.tables.cells,56)
-  assert.equal(result.tables.drags,16); assert.equal(result.tables.crossPageCell,true)
-  assert.equal(result.tables.indexEntries.length,4);assert.equal(result.tables.figureGuards.length,3)
-  assert.equal(result.text.rasterCases,24)
-  for(const check of ['editUndoRedo','resize','deleteUndo','savedReopened','selectiveRendering'])assert.equal(result.text[check],true,check)
-  assert.equal(result.text.conversions.missingAppearancePrinted,true)
-  assert.ok(result.text.conversions.printBytes>1000 && result.text.conversions.exportBytes>1000)
-  assert.ok(result.text.rotatedForm.matchRatio>.98)
-  for(const sample of Object.values(result.fixtures))assert.equal(sample.sha256,hash(fs.readFileSync(path.join(root,'tests/fixtures',sample.file))))
+  assert.equal(result.fixtureSha256,hash(fs.readFileSync(path.join(root,'tests/fixtures/39fb2a5696459c9b2d0e09f8334797c3.pdf'))))
+  assert.equal(result.real.fields,142);assert.deepEqual(result.real.pageFields,[8,12,12,55,55]);assert.equal(result.real.untouched,140)
+  for(const key of ['copy','adjacentDraft','undoRedo','saveFocused','reopen'])assert.equal(result.real[key],true,key)
+  for(const key of ['multilineChinese','sharedWidgets','readonlyCopy','combMaxLength','hidden','missingAppearance','explicitStandardFont','escape','rotation','reopen'])assert.equal(result.synthetic[key],true,key)
+  assert.equal(result.synthetic.backend.validation,4);assert.ok(result.synthetic.backend.chineseAppearancePixels>20)
+  for(const key of ['icon','dismissedBanner','dirty','narrow','dark','saveAsClears'])assert.equal(result.temporary[key],true,key)
+  for(const section of ['lifecycle','singleClose','failure'])assert.ok(Object.values(result[section]).every(value=>value===true),section)
+  for(const [file,sha]of Object.entries(result.rendererAssets))assert.equal(sha,hash(extract('out/renderer/assets/'+file)))
 }
-assert.equal(ui.phase,'packaged'); assert.equal(source.phase,'source')
+assert.equal(source.phase,'source')
 const artifacts = [dmg, zip].map(file => ({ file: path.basename(file), absolutePath: file, bytes: fs.statSync(file).size, sha256: hash(fs.readFileSync(file)) }))
 const report = {
   product: 'PDFuck', version, platform: 'macOS', architecture: 'arm64', generatedAt: new Date().toISOString(), timeZone: 'Asia/Shanghai',
   environment: { node: process.version, electron: require('electron/package.json').version, electronBuilder: require('electron-builder/package.json').version },
   appBundle: bundle, packagedAsarVersion: version, plistVersion: version, signing: 'ad-hoc', notarization: 'not notarized; no Developer ID identity',
-  productionBuild: 'completed', productionFilesMatched: production.length, ocrModels: 11, background, packagedUI: ui, sourceUI: source, newUnitTests: 21, artifacts,
-  testScope: 'Only new 2.1.12 unit/UI checks and updated package resource checks; typecheck, direct production build and git diff --check. No historical full suite; no Windows native validation.',
-  packagingChecks: ['versions and complete production bytes agree', '11 OCR models and app icons', 'app and mounted app signatures', 'DMG integrity, Finder icon, retina background, Applications shortcut and flat app layout', 'ZIP integrity and identical app.asar/signature', 'packaged executable: five-page native forms, 56 cell selections and 16 bidirectional zoom drags, cross-page clipping, three figure guards, native/missing/rotated form appearances, export/print, 24 text raster cases, edit/resize/delete/undo and actual save/reopen'],
+  productionBuild: 'completed', productionFilesMatched: production.length, ocrModels: 11, background, packagedUI: ui, sourceUI: source, newUnitTests: 10, artifacts,
+  testScope: 'Only 10 newly added form follow-up unit cases and six new UI groups in source; packaged APP tests explicitly skipped at user request; updated package checks, typecheck, direct production build and git diff --check. Historical 2.1.12 and earlier suites were not rerun. No Windows native validation.',
+  packagingChecks: ['versions and complete production bytes agree', '11 OCR models and app icons', 'app and mounted app signatures', 'DMG integrity, Finder icon, retina background, Applications shortcut and flat app layout', 'ZIP integrity and identical app.asar/signature', 'no packaged APP execution or tests, per user request; source checks cover native form text editing, lifecycle and temporary tab indicators'],
 }
 fs.writeFileSync(path.join(root, `release/PDFuck-${version}-macOS-release.json`), JSON.stringify(report, null, 2) + '\n')
 fs.writeFileSync(path.join(root, `release/PDFuck-${version}-macOS-SHA256.txt`), artifacts.map(file => `${file.sha256}  ${file.file}`).join('\n') + '\n')

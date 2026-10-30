@@ -26,6 +26,7 @@ import { exportPdfPages } from './lib/export'
 import { isImeCompositionKey, isTextEntryEvent } from './lib/keyboard-input'
 import { KIND_LABEL, PdfDocumentModel } from './lib/pdf-document'
 import type { AnnotationKind, AnnotationRecord, AnnotationReply, CanvasAction, ImageDraft, ImageObjectRecord, ModuleKey, PageNumberSettings, PdfBookmark, PdfRect, TextObjectRecord, TextSelection, Tool, ViewMode, WatermarkSettings } from './types'
+import { commitFocusedFormField, writeFormField } from './lib/pdf-form-fields'
 import type { DetachedPdfDocument, DocumentTabsSnapshot, ImageImportFile, ManagedPdfDocument, PdfImportFile, PdfSecurityInfo, PrinterDescriptor, PrintPdfOptions, ReadingPosition, RecentPdf } from '../../shared/contracts'
 import type { ExportFormat } from '../../shared/contracts'
 import { cleanDocumentName } from '../../shared/window-session'
@@ -259,6 +260,7 @@ export default function App() {
   const viewerRef = useRef<ViewerHandle>(null)
   const modelRef = useRef<PdfDocumentModel | undefined>(undefined)
   const dirtyRef = useRef(false)
+  const formDraftsRef = useRef(new Map<number, Map<string, string>>())
   const printingRef = useRef(false)
   const annotationFocusTimer = useRef<number | undefined>(undefined)
   const sessionsRef = useRef<Map<number, DocumentSession>>(new Map())
@@ -413,7 +415,7 @@ export default function App() {
       textObjects: viewerTextObjects(model),
       imageObjects: model.images(),
       bookmarks: model.bookmarks(),
-      dirty: model.dirty || Boolean(session.markdown && sourceDirty(session.markdown)),
+      dirty: model.dirty || Boolean(formDraftsRef.current.get(documentId)?.size) || Boolean(session.markdown && sourceDirty(session.markdown)),
       markdown: session.markdown ? { ...session.markdown, pdfModified: session.markdown.pdfModified || model.canUndo || model.dirty } : undefined,
       canUndo: model.canUndo,
       canRedo: model.canRedo,
@@ -449,6 +451,10 @@ export default function App() {
       await Promise.allSettled(pending)
     }
   }, [])
+  useEffect(() => {
+    window.addEventListener('blur', commitFocusedFormField)
+    return () => window.removeEventListener('blur', commitFocusedFormField)
+  }, [])
   const showError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(`操作失败：${message}`)
@@ -468,11 +474,13 @@ export default function App() {
   }, [askConfirmation, showError])
   const askUnsavedClose = useCallback((message: string, options?: { title?: string; discardLabel?: string; saveLabel?: string }): Promise<UnsavedCloseDecision> => new Promise((resolve) => { closeDecisionResolve.current = resolve; setDialog({ type: 'unsaved_close', message, title: options?.title, discardLabel: options?.discardLabel, saveLabel: options?.saveLabel }) }), [])
   const saveSession = useCallback(async (session: DocumentSession, saveAs = false, automaticSaveAs = false, allowLifecycleLock = false, target: 'all' | 'source' | 'pdf' = 'all'): Promise<boolean> => {
+    if (!await commitFocusedFormField()) return false
     if (!session.model) return false
     try { return await runDocumentOperation(session.id, async () => {
       session = sessionsRef.current.get(session.id) || session
       const model = session.model
       if (!model) return false
+      if (formDraftsRef.current.get(session.id)?.size) return false
       if (session.markdown && target !== 'pdf') {
         const latest = sessionsRef.current.get(session.id)
         const md = latest?.markdown
@@ -511,6 +519,7 @@ export default function App() {
     return true
   }, [saveSession])
   const closeCurrentWindow = useCallback(async () => {
+    if (!await commitFocusedFormField()) return
     if (windowClosingRef.current || documentLifecycleLocksRef.current.size) { showError(new Error('ui.waitForTheDocumentToFinishClosingOrMoving')); return }
     windowClosingRef.current = true
     let closing = false
@@ -536,6 +545,8 @@ export default function App() {
     } finally { if (!closing) windowClosingRef.current = false }
   }, [askConfirmation, askUnsavedClose, saveDirtySessions, showError, waitForDocumentOperations])
   const activateSession = useCallback((session: DocumentSession) => {
+    commitFocusedFormField()
+    if (session.model) session = { ...session, data: session.model.bytes }
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
     const pendingAnnotation = annotationResolve.current, pendingText = textResolve.current, pendingPassword = passwordResolve.current, pendingSecureStorage = secureStorageResolve.current, pendingConfirmation = confirmResolve.current, pendingCloseDecision = closeDecisionResolve.current
     annotationResolve.current = undefined; textResolve.current = undefined; passwordResolve.current = undefined; secureStorageResolve.current = undefined; confirmResolve.current = undefined; closeDecisionResolve.current = undefined
@@ -554,6 +565,7 @@ export default function App() {
   const askPdfPassword = useCallback((value: PdfPasswordDialogState): Promise<PdfPasswordDialogResult | null> => new Promise((resolve) => { passwordResolve.current = resolve; setDialog({ type: 'password', value }) }), [])
   const askSecureStorageNotice = useCallback((): Promise<boolean> => new Promise((resolve) => { secureStorageResolve.current = resolve; setDialog({ type: 'secure_storage_notice' }) }), [])
   const addOpened = useCallback(async (opened: Awaited<ReturnType<typeof window.desktop.readPdf>>, unsaved = false) => {
+    if (!await commitFocusedFormField()) return
     if (opened.markdown !== undefined) {
       const options = loadMarkdownPreferences().options
       const bytes = await window.desktop.renderMarkdown({ html: markdownHtml(opened.markdown, opened.path), sourcePath: opened.path, options, unsaved })
@@ -876,15 +888,18 @@ export default function App() {
   const chooseOpen = useCallback(async () => {
     try { const opened = await window.desktop.openPdf(); if (opened) await addOpened(opened) } catch (error) { showError(error) }
   }, [addOpened, showError])
-  const switchDocument = useCallback((id: number) => {
+  const switchDocument = useCallback(async (id: number) => {
     if (id === activeDocumentIdRef.current) return
+    if (!await commitFocusedFormField()) return
+    await waitForDocumentOperations()
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const session = sessionsRef.current.get(id)
     if (!session) return
     setDocumentTabs((current) => { const snapshot = { ...current, currentId: id }; tabsSnapshotRef.current = snapshot; return snapshot })
     activateSession(session)
-  }, [activateSession])
+  }, [activateSession, waitForDocumentOperations])
   const closeDocument = useCallback(async (id: number) => {
+    if (!await commitFocusedFormField()) return
     if (windowClosingRef.current || documentLifecycleLocksRef.current.has(id)) return
     documentLifecycleLocksRef.current.add(id)
     try {
@@ -907,7 +922,7 @@ export default function App() {
       const current = tabsSnapshotRef.current
       const closedIndex = current.documents.findIndex((item) => item.id === id)
       const remaining = current.documents.filter((item) => item.id !== id)
-      sessionsRef.current.delete(id); markdownHistories.current.delete(id)
+      sessionsRef.current.delete(id); markdownHistories.current.delete(id); formDraftsRef.current.delete(id)
       if (id !== activeDocumentIdRef.current) {
         const snapshot = { ...current, documents: remaining }; tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); return
       }
@@ -930,6 +945,7 @@ export default function App() {
     })
   }, [])
   const detachDocument = useCallback(async (id: number, position: { x: number; y: number }) => {
+    if (!await commitFocusedFormField()) return
     if (windowClosingRef.current || documentLifecycleLocksRef.current.has(id)) return
     documentLifecycleLocksRef.current.add(id)
     try {
@@ -941,7 +957,7 @@ export default function App() {
       const current = tabsSnapshotRef.current
       const closedIndex = current.documents.findIndex((item) => item.id === id)
       const remaining = current.documents.filter((item) => item.id !== id)
-      sessionsRef.current.delete(id); markdownHistories.current.delete(id)
+      sessionsRef.current.delete(id); markdownHistories.current.delete(id); formDraftsRef.current.delete(id)
       if (id !== activeDocumentIdRef.current) {
         const snapshot = { ...current, documents: remaining }
         tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot)
@@ -1331,6 +1347,22 @@ export default function App() {
       const image = await styledTextRaster(value.text, action.rect, value)
       if (!originIsActive()) return
       await mutate((modelValue) => modelValue.addText(action.pageIndex, action.rect!, value.text, value.style, image), '文字已添加；可拖动位置，双击重新编辑', false)
+    } else if (action.tool === 'edit_text' && action.formFieldDraft) {
+      const draft = action.formFieldDraft
+      const drafts = formDraftsRef.current.get(documentId) || new Map<string, string>()
+      if (draft.value === undefined) drafts.delete(draft.id); else drafts.set(draft.id, draft.value)
+      formDraftsRef.current.set(documentId, drafts)
+      publishSession({ ...liveSessionRef.current, dirty: model.dirty || drafts.size > 0 || Boolean(liveSessionRef.current.markdown && sourceDirty(liveSessionRef.current.markdown)) })
+    } else if (action.tool === 'edit_text' && action.formFieldEdit) {
+      try {
+        return await runDocumentOperation(documentId, async () => {
+          await model.editFormField(action.formFieldEdit!, (bytes, edit) => writeFormField(bytes, edit, window.desktop.renderPageText))
+          const drafts = formDraftsRef.current.get(documentId)
+          if (drafts?.get(action.formFieldEdit!.id) === action.formFieldEdit!.value) drafts.delete(action.formFieldEdit!.id)
+          syncModel(ui('form.updated'), false, model, documentId)
+          return true
+        })
+      } catch (error) { showError(error); return false }
     } else if (action.tool === 'edit_text' && action.pageTextEdit) {
       const edit = action.pageTextEdit
       return mutate((modelValue) => modelValue.editPageText(action.pageIndex, edit.region, edit.text, edit.style, Boolean(edit.preserveSourceAppearance), window.desktop.renderPageText), '页面文字已更新；可继续点击当前页其他文本块', true, edit.onFailure)
@@ -1347,7 +1379,7 @@ export default function App() {
       const annotation = await askAnnotation({ kind }, { kind, anchors: [{ pageIndex: action.pageIndex, rects: [{ ...action.point, width: 1, height: 1 }] }] }); if (annotation === null || !originIsActive()) return
       await mutate((value) => value.addAnnotation(action.pageIndex, kind, [], annotation.content, action.point, annotation.color, undefined, preferences.annotationAuthor, undefined, annotation.marks), kind === 'note' ? '便笺已添加' : '插入文字标记已添加', false)
     }
-  }, [addSelectionAnnotations, mutate, preferences.annotationAuthor, showError])
+  }, [addSelectionAnnotations, mutate, preferences.annotationAuthor, publishSession, runDocumentOperation, showError, syncModel])
 
   const requestAnnotationSuggestion = useCallback((annotation: AnnotationRecord, editor: AnnotationSuggestionEditor) => {
     setAnnotationSuggestionEditor({ ...editor, documentId: activeDocumentIdRef.current })
@@ -1598,14 +1630,14 @@ export default function App() {
   const undoDocument = useCallback(async () => {
     if (liveSessionRef.current.markdown && markdownHistoryTarget === 'source') { sourceHistory('undo'); return }
     const model = modelRef.current, documentId = activeDocumentIdRef.current
-    if (!model?.canUndo) return
-    try { await runDocumentOperation(documentId, async () => { await model.undo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已撤销上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
+    if (!model) return
+    try { await runDocumentOperation(documentId, async () => { if (!model.canUndo) return; await model.undo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已撤销上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
   }, [markdownHistoryTarget, sourceHistory, runDocumentOperation, showError, syncModel])
   const redoDocument = useCallback(async () => {
     if (liveSessionRef.current.markdown && markdownHistoryTarget === 'source') { sourceHistory('redo'); return }
     const model = modelRef.current, documentId = activeDocumentIdRef.current
-    if (!model?.canRedo) return
-    try { await runDocumentOperation(documentId, async () => { await model.redo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已重做上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
+    if (!model) return
+    try { await runDocumentOperation(documentId, async () => { if (!model.canRedo) return; await model.redo(); if (modelRef.current === model && activeDocumentIdRef.current === documentId) setSelection(undefined); syncModel('已重做上一步操作', true, model, documentId) }) } catch (error) { showError(error) }
   }, [markdownHistoryTarget, sourceHistory, runDocumentOperation, showError, syncModel])
 
   const copyText = useCallback(async (value: string, preserveEdgeWhitespace = false) => {

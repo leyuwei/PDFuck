@@ -114,3 +114,5 @@ node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/text-layout.te
 部分历史原始输入在迁移前已缺失，见 [样本说明](fixtures/README.md)。依赖这些原始输入的旧用例需补入真实文件后再运行；原本支持自生成夹具的脚本保留其既有行为。2.1.10 新增验收不依赖这些文件。
 
 参见 [2.1.10 计划](docs/PLAN-2.1.10.md)、[2.1.10 验收](docs/VALIDATION-2.1.10.md) 和 [打包指南](../PACKAGING_GUIDE.md)。
+
+表单交互及临时标签的补充验收见 [计划](docs/PLAN-2.1.12-form-followup.md) 和 [结果](docs/VALIDATION-2.1.12-form-followup.md)。新增单元文件为 `unit/renderer/src/lib/release-2.1.12-form-followup.test.tsx`（10 项），源码交互入口为 `scripts/release-2.1.12-form-followup-ui.cjs`（六组）。本次按用户要求不启动打包后的 APP 测试；交付包只做静态完整性、资源一致性与签名校验。临时输入及报告沿用已忽略的 `tests/tmp/`、`tests/output/`。

@@ -235,4 +235,6 @@ export interface CanvasAction {
   point?: PdfPoint
   selection?: TextSelection
   pageTextEdit?: PageTextEdit
+  formFieldEdit?: import('./lib/pdf-form-fields').FormFieldEdit
+  formFieldDraft?: { id: string; value?: string }
 }

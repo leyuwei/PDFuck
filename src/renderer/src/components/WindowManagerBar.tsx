@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { DocumentTabsSnapshot } from '../../../shared/contracts'
-import { fileDirectory, stablePathColor } from '../lib/document-insights'
+import { fileDirectory, isTemporaryDocumentPath, stablePathColor } from '../lib/document-insights'
 import { writeDocumentTransfer } from '../lib/document-transfer'
 import { translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { DocumentArchives } from './DocumentArchives'
@@ -142,6 +142,7 @@ export function WindowManagerBar({ snapshot, onFocus, onClose, onReorder, onDeta
           onDragStart={(event) => startDrag(event, document.id)} onDragEnter={(event) => { event.preventDefault(); const sourceId = draggingId.current; if (sourceId !== undefined && sourceId !== document.id && lastReorderTarget.current !== document.id) { lastReorderTarget.current = document.id; onReorder(sourceId, document.id) } }} onDrop={(event) => event.preventDefault()} onDragEnd={finishDrag}>
           <span className="window-tab-icon" style={{ '--tab-pdf-color': stablePathColor(document.filePath) } as React.CSSProperties}>{(document.filePath || document.fileName).toLowerCase().endsWith(".md") ? "MD" : (document.filePath || document.fileName).toLowerCase().endsWith(".txt") ? "TXT" : "PDF"}</span>
           <span className="window-tab-name" dir="auto">{compact && distinctive ? <span className="window-tab-distinctive" aria-hidden="true">{distinctive.prefix && <span className="window-tab-prefix"><bdi>{distinctive.prefix}</bdi></span>}<mark className={distinctive.focus ? undefined : 'empty'}><bdi>{distinctive.focus || '∅'}</bdi></mark>{distinctive.trailingHidden && <span className="window-tab-common">…</span>}</span> : title}</span>
+          {isTemporaryDocumentPath(document.filePath) && <span className="window-tab-temporary" role="img" aria-label={ui('ui.thisFileMayBeInATemporaryFolderSaveIt')} title={ui('ui.thisFileMayBeInATemporaryFolderSaveIt')}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 2H5a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 5 18h3M11 2v4h4l-4-4Z" /><circle cx="13.5" cy="13" r="4.5" /><path d="M13.5 10.5V13l1.7 1" /></svg></span>}
           {document.encrypted && <span className="window-encrypted-badge" title={ui("ui.passwordProtectedReadOnlyDocument")}>{ui("ui.encrypted")}</span>}
           {document.dirty && <span className="window-dirty-dot" title={ui("ui.hasUnsavedChanges")} />}
           <button type="button" className="window-tab-close" aria-label={`${ui("ui.close")} ${title}`} title={ui("ui.closeDocumentTab")}

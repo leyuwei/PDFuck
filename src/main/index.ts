@@ -582,7 +582,7 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
   window.on('leave-full-screen', () => window.webContents.send('window:full-screen', false))
   window.on('page-title-updated', (event) => { event.preventDefault(); window.setTitle(nativeWindowTitle(session, session.interfaceLanguage)) })
   window.on('close', (event) => {
-    if (session.closeApproved || !session.dirty && (session.documentCount || 0) <= 1) return
+    if (session.closeApproved || !session.hasDocument && !session.dirty && (session.documentCount || 0) <= 1) return
     event.preventDefault()
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })

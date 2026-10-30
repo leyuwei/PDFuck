@@ -563,3 +563,24 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .page-visual-region.table { border-color: #5b967e90; background: #8ed5ae25; }
 .page-visual-region > span { position: absolute; inset-inline-start: 3px; top: -3px; transform: translateY(-100%); max-width: calc(100% - 6px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 5px; border-radius: 3px; background: #f3fbffe6; color: #285a70; font-size: var(--ui-font-small); }
 .theme-dark .page-visual-region > span { background: #24384de6; color: #d2ecf6; }
+
+.window-tab-temporary { flex: none; display: grid; place-items: center; width: 21px; height: 21px; border-radius: 6px; color: #9a6415; background: #fff1cf; }
+.window-tab-temporary svg { width: 16px; height: 16px; }
+.theme-dark .window-tab-temporary { color: #f2ca7d; background: #574324; }
+/* Native widget geometry and comb spacing follow PDF.js' annotation layer (Apache-2.0). */
+.pdf-form-fields { position: absolute; top: 0; left: 0; z-index: 9; pointer-events: none; transform-origin: 0 0; overflow: hidden; color-scheme: only light; }
+.pdf-form-fields section { position: absolute; box-sizing: border-box; transform-origin: 0 0; pointer-events: auto; text-align: initial; }
+.pdf-form-fields.disabled section { pointer-events: none; }
+.pdf-form-fields[data-main-rotation="90"], .pdf-form-fields section[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.pdf-form-fields[data-main-rotation="180"], .pdf-form-fields section[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.pdf-form-fields[data-main-rotation="270"], .pdf-form-fields section[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+.pdf-form-fields[data-main-rotation="90"] .norotate { transform: rotate(270deg) translateX(-100%); }
+.pdf-form-fields[data-main-rotation="180"] .norotate { transform: rotate(180deg) translate(-100%, -100%); }
+.pdf-form-fields[data-main-rotation="270"] .norotate { transform: rotate(90deg) translateY(-100%); }
+.app-shell .pdf-form-fields :is(input, textarea) { display: block; width: 100%; height: 100%; margin: 0; padding: 0 2px; border: 2px solid transparent; border-radius: 0; box-sizing: border-box; background-color: transparent; font-family: Helvetica, Arial, sans-serif; font-weight: normal; line-height: normal; box-shadow: none; outline: none; cursor: text; user-select: text; }
+.app-shell .pdf-form-fields textarea { resize: none; line-height: 1.35; }
+.app-shell .pdf-form-fields :is(input, textarea):not([readonly]):hover { background-color: #edf5ff66; border-color: #7aa5cf80; border-radius: 2px; }
+.app-shell .pdf-form-fields :is(input, textarea):focus { outline: 1px solid #679bc9; outline-offset: 0; border-color: #679bc980; background-color: #ffffffdd; border-radius: 2px; }
+.app-shell .pdf-form-fields [data-failed="true"] { outline: 2px solid #d45d4e; }
+.app-shell .pdf-form-fields input.comb { font-family: monospace; --comb-letter-spacing: calc(var(--comb-width) - 1ch); letter-spacing: var(--comb-letter-spacing); overflow-x: hidden; padding: 0; text-indent: calc(var(--comb-offset, 0) * var(--comb-width) + var(--comb-letter-spacing) / 2); }
+.pdf-form-fields ::selection { background: #9dbaf3aa; color: #18243b; }
