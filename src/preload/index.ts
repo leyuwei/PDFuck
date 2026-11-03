@@ -5,6 +5,7 @@ const api: DesktopApi = {
   platform: process.platform,
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   choosePdfImports: () => ipcRenderer.invoke('pdf:choose-imports'),
+  importPdfFile: (path) => ipcRenderer.invoke('pdf:import-file', path),
   chooseImage: () => ipcRenderer.invoke('image:choose'),
   recognizeOcrPage: async (request, onProgress) => {
     const listener = (_event: Electron.IpcRendererEvent, jobId: string, value: number) => { if (jobId === request.jobId) onProgress(value) }

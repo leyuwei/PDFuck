@@ -687,6 +687,15 @@ app.whenReady().then(async () => {
     })
     return result.canceled ? null : openPdfImports(result.filePaths)
   })
+  ipcMain.handle('pdf:import-file', (event, path: unknown) => {
+    requireMainWindow(event.sender)
+    if (typeof path !== 'string' || !path.trim()) throw new Error('ui.onlyPdfPngJpgJpegEpsWordOrPowerpointFiles')
+    return openPdfImports([path]).then((files) => {
+      const file = files[0]
+      if (!file) throw new Error('ui.onlyPdfPngJpgJpegEpsWordOrPowerpointFiles')
+      return file
+    })
+  })
   ipcMain.handle('image:choose', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, {

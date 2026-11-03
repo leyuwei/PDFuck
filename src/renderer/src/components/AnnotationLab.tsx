@@ -48,6 +48,17 @@ export const AUTOMATIC_ANNOTATION_INTENSITY_KEY = 'pdfuck.lab.auto-annotation-in
 export const AUTOMATIC_ANNOTATION_CUSTOM_KEY = 'pdfuck.lab.auto-annotation-custom.v1'
 export const AUTOMATIC_ANNOTATION_ISSUES_KEY = 'pdfuck.lab.auto-annotation-issues.v1'
 
+export const LAB_WINDOW_STORAGE_KEYS = {
+  image: 'pdfuck.lab.window.image.v1',
+  polish: 'pdfuck.lab.window.polish.v1',
+  review: 'pdfuck.lab.window.review.v1',
+  automatic: 'pdfuck.lab.window.automatic.v1',
+  suggestion: 'pdfuck.lab.window.suggestion.v1',
+  drawing: 'pdfuck.lab.window.drawing.v1',
+  translationSettings: 'pdfuck.lab.window.translation-settings.v1',
+  fullReviewDisclaimer: 'pdfuck.lab.window.full-review-disclaimer.v1'
+} as const
+
 const AUTOMATIC_ISSUE_LABELS: Record<AutomaticAnnotationIssueType, TranslationKey> = {
   typos_formatting: 'ui.autoIssueTyposFormatting', grammar_syntax: 'ui.autoIssueGrammarSyntax', clarity_style: 'ui.autoIssueClarityStyle',
   terminology_consistency: 'ui.autoIssueTerminologyConsistency', sentence_flow: 'ui.autoIssueSentenceFlow', paragraph_focus: 'ui.autoIssueParagraphFocus',
@@ -232,7 +243,6 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
   useEffect(() => () => { figureToken.current++; cancelAiRequest(figureRequest.current) }, [])
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
   const [openedWindows, setOpenedWindows] = useState<LabWindow[]>([])
-  const floating = useFloatingWindow(visible && !(activeWindow === 'suggestion' && suggestionEditor) ? activeWindow : undefined, true)
   const openWindow = (kind: LabWindow) => {
     setOpenedWindows((current) => current.includes(kind) ? current : [...current, kind])
     setActiveWindow(kind)
@@ -296,6 +306,24 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
   const [reviewAdding, setReviewAdding] = useState(false)
   const [reviewStartedAt, setReviewStartedAt] = useState<number>()
   const [reviewProgressNow, setReviewProgressNow] = useState(() => Date.now())
+  const floating = useFloatingWindow(visible && !(activeWindow === 'suggestion' && suggestionEditor) ? activeWindow : undefined, true, {
+    storageKey: activeWindow ? LAB_WINDOW_STORAGE_KEYS[activeWindow] : undefined,
+    resizable: true,
+    minWidth: 360,
+    minHeight: 300
+  })
+  const translationFloating = useFloatingWindow(translationSettingsOpen ? 'translation-settings' : undefined, false, {
+    storageKey: LAB_WINDOW_STORAGE_KEYS.translationSettings,
+    resizable: true,
+    minWidth: 360,
+    minHeight: 260
+  })
+  const disclaimerFloating = useFloatingWindow(disclaimerOpen ? 'full-review-disclaimer' : undefined, false, {
+    storageKey: LAB_WINDOW_STORAGE_KEYS.fullReviewDisclaimer,
+    resizable: true,
+    minWidth: 420,
+    minHeight: 320
+  })
   const [suggestionPresetId, setSuggestionPresetId] = useState(ANNOTATION_SUGGESTION_PRESETS[0].id)
   const [suggestionInstruction, setSuggestionInstruction] = useState(() => localizedPrompt(ANNOTATION_SUGGESTION_PRESETS[0], interfaceLanguage))
   const [activeSuggestionRequest, setActiveSuggestionRequest] = useState<AnnotationSuggestionRequest>()
@@ -727,9 +755,9 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
     </div>
 
     {settingsOpen && <AiSettingsDialog onClose={() => setSettingsOpen(false)} onSaved={() => setSettings(loadAiSettings())} />}
-    {translationSettingsOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer translation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-settings-title"><header><AnnotationIcon kind="ai_translate" /><div><h2 id="translation-settings-title">{t("ui.textTranslation")}</h2><p>{t("ui.translationSetupHint")}</p></div></header><div className="lab-disclaimer-copy"><label className="translation-target-field"><span>{t("ui.translationTargetLanguage")}</span><select value={translationDraftTarget} onChange={(event) => setTranslationDraftTarget(event.target.value as AiLanguage)}>{Object.entries(AI_LANGUAGE_NAMES).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div><footer><button type="button" onClick={() => setTranslationSettingsOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" onClick={() => { onTranslationSettingsChange?.(true, translationDraftTarget); setTranslationSettingsOpen(false); if (sourceTarget) onTranslateSource?.(translationDraftTarget) }}>{t("ui.activateTranslation")}</button></footer></ScrollWindow></div>}
+    {translationSettingsOpen && <div className="lab-modal-backdrop"><ScrollWindow ref={translationFloating.ref} style={translationFloating.style} className="lab-disclaimer translation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-settings-title"><header {...translationFloating.dragHandlers}><AnnotationIcon kind="ai_translate" /><div><h2 id="translation-settings-title">{t("ui.textTranslation")}</h2><p>{t("ui.translationSetupHint")}</p></div></header><div className="lab-disclaimer-copy"><label className="translation-target-field"><span>{t("ui.translationTargetLanguage")}</span><select value={translationDraftTarget} onChange={(event) => setTranslationDraftTarget(event.target.value as AiLanguage)}>{Object.entries(AI_LANGUAGE_NAMES).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div><footer><button type="button" onClick={() => setTranslationSettingsOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" onClick={() => { onTranslationSettingsChange?.(true, translationDraftTarget); setTranslationSettingsOpen(false); if (sourceTarget) onTranslateSource?.(translationDraftTarget) }}>{t("ui.activateTranslation")}</button></footer></ScrollWindow></div>}
 
-    {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
+    {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow ref={disclaimerFloating.ref} style={disclaimerFloating.style} className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header {...disclaimerFloating.dragHandlers}><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
 
     {activeWindow === 'image' && <ScrollWindow className="ai-polish-window lab-workflow-window image-explanation-window" role="dialog" aria-label={t('ui.explainImage')} ref={floating.ref} style={windowStyle}>
       <header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_image" />{t('ui.explainImage')}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t('ui.minimizeLabWindow')}>−</button><button type="button" onClick={() => { figureToken.current++; cancelAiRequest(figureRequest.current); setFigureBusy(false); onCancelFigureSelection?.(); closeWindow() }} aria-label={t('ui.close')}>×</button></span></header>

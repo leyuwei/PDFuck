@@ -67,7 +67,7 @@ function editableCopyName(name: string): string {
   return `${name.replace(/\.pdf$/i, '')}-editable-copy.pdf`
 }
 
-type DialogState = { type: 'new_document' } | { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
+type DialogState = { type: 'new_document' } | { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'convert_drop'; path: string; name: string } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
 
 interface DocumentSession {
   markdown?: MarkdownDocument
@@ -1181,6 +1181,12 @@ export default function App() {
       })
     } catch (error) { showError(error) }
   }, [runDocumentOperation, showError, syncModel])
+  const convertDroppedFile = useCallback(async (path: string) => {
+    try {
+      const file = await window.desktop.importPdfFile(path)
+      await confirmMergeFiles([file])
+    } catch (error) { showError(error) }
+  }, [confirmMergeFiles, showError])
   const previewRecognizedBookmarks = useCallback(async (options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]> => viewerRef.current?.recognizeBookmarks(options) || [], [])
   const writeRecognizedBookmarks = useCallback(async (items: PdfBookmark[], mode: BookmarkWriteMode) => {
     const written = await mutate((model) => mode === 'append' ? model.appendBookmarks(items) : model.replaceBookmarks(items), mode === 'append' ? '已识别并追加书签；可双击书签修改文字' : '已识别并写入书签；可双击书签修改文字', false)
@@ -1809,10 +1815,11 @@ export default function App() {
     const transferId = documentTransferToken(event.dataTransfer)
     if (transferId && !draggingDocumentTab) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingDocumentTransfer(false); void receiveDocumentTransfer(transferId); return }
     if (!isExternalFileDrag(event.dataTransfer)) return
-    event.preventDefault(); setDraggingFile(false); const file = [...event.dataTransfer.files].find((value) => isDocumentPath(value.name))
-    if (!file) { setStatus('md.drop'); return }
+    event.preventDefault(); setDraggingFile(false); const file = [...event.dataTransfer.files][0]
+    if (!file) return
     const path = window.desktop.filePath(file)
-    void openPath(path)
+    if (isDocumentPath(file.name)) void openPath(path)
+    else setDialog({ type: 'convert_drop', path, name: file.name })
   }}>
     <header className="titlebar"><div className="titlebar-identity"><div className="brand"><img className="app-logo" src={appLogo} alt="" aria-hidden="true" /><span className="brand-wordmark">PDF<span>uck</span></span></div><DocumentTitle text={`${visibleDocumentName}${dirty ? ui("ui.unsaved") : ''}`} encrypted={encrypted} /></div><div className="titlebar-tools"><div className="file-actions"><button className="open-button" onClick={() => setDialog({ type: 'open_pdf' })}>{ui('md.open')}</button><button className="folder-button" disabled={!hasDocument || Boolean(markdown?.unsaved)} title={ui("ui.showTheCurrentPdfInFinderOrFileExplorer")} aria-label={ui("ui.openFolder")} onClick={() => void openCurrentFolder()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h6l2 3h8v2M3 7h6l2 2h10l-2 11H3z" /></svg></button></div><div className="history-controls"><button disabled={!historyCanUndo} title={`${ui("ui.undo")} (${shortcutLabel('undo', window.desktop.platform)})`} aria-label={ui("ui.undo")} onClick={() => void undoDocument()}>↶</button><button disabled={!historyCanRedo} title={`${ui("ui.redo")} (${shortcutLabel('redo', window.desktop.platform)})`} aria-label={ui("ui.redo")} onClick={() => void redoDocument()}>↷</button></div>
       <div className="page-controls" onPointerDownCapture={() => setMarkdownHistoryTarget('pdf')} onFocusCapture={() => setMarkdownHistoryTarget('pdf')}><button disabled={!pdfAvailable || currentPage <= 0} onClick={() => { const page = currentPage - 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>‹</button><div><input disabled={!pdfAvailable} value={hasDocument ? currentPage + 1 : 0} onChange={(event) => { const page = Math.max(0, Math.min(pageCount - 1, Number(event.target.value) - 1)); setCurrentPage(page); viewerRef.current?.goToPage(page) }} /><span>/ {pageCount}</span></div><button disabled={!pdfAvailable || currentPage >= pageCount - 1} onClick={() => { const page = currentPage + 1; setCurrentPage(page); viewerRef.current?.goToPage(page) }}>›</button></div>
@@ -1843,6 +1850,7 @@ export default function App() {
     {dialog?.type === 'open_pdf' && <OpenPdfDialog recent={recentFiles} onCancel={() => setDialog(null)} onOpen={(path) => { setDialog(null); void openPath(path) }} onBrowse={() => { setDialog(null); void chooseOpen() }} onClear={() => void clearRecentFiles(true)} />}
     {dialog?.type === 'manage_pages' && data && <PageManagerDialog data={data} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(order, rotations) => { setDialog(null); void mutate((model) => model.arrangePages(order, rotations), '页面已调整；可保存 PDF 以保留修改') }} />}
     {dialog?.type === 'merge_files' && <MergeFilesDialog files={dialog.files} pageCount={dialog.pageCount} creating={dialog.creating} onCancel={() => setDialog(null)} onSubmit={(result) => { setDialog(null); void confirmMergeFiles(result.files, result.insertion) }} />}
+    {dialog?.type === 'convert_drop' && <ConfirmDialog title={ui('ui.convertDroppedFileTitle')} message={t('ui.convertDroppedFileMessage', { name: dialog.name })} confirmLabel={ui('ui.convertDroppedFileConfirm')} destructive={false} onCancel={() => setDialog(null)} onConfirm={() => { const path = dialog.path; setDialog(null); void convertDroppedFile(path) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void exportPages(pages) }} />}
     {dialog?.type === 'recognize_bookmarks' && <BookmarkRecognitionDialog existingCount={countBookmarks(bookmarks)} onPreview={previewRecognizedBookmarks} onCancel={() => setDialog(null)} onApply={writeRecognizedBookmarks} onDeleteAll={deleteAllBookmarks} />}
     {dialog?.type === 'crop_confirm' && <ConfirmDialog message={ui("ui.cropTheCurrentPageToTheSelectedArea")} onCancel={() => setDialog(null)} onConfirm={() => { const crop = dialog; setDialog(null); void mutate((value) => value.cropPage(crop.pageIndex, crop.rect), '页面已裁切；如需继续裁切，请再次点击“框选裁切页面”'); setTool('none') }} />}

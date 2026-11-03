@@ -236,6 +236,7 @@ export interface DesktopApi {
   readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
   choosePdfImports(): Promise<PdfImportFile[] | null>
+  importPdfFile(path: string): Promise<PdfImportFile>
   chooseImage(): Promise<ImageImportFile | null>
   recognizeOcrPage(request: OcrPageRequest, onProgress: (value: number) => void): Promise<OcrPageResult>
   cancelOcr(jobId: string): void
