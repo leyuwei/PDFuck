@@ -235,7 +235,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
 export function isolateVisualWords(words: WordBox[], visuals: PageVisual[]): WordBox[] {
   const cells=visuals.flatMap(v=>v.cells||[])
   return words.map(word => {
-    const region = visuals.findIndex(visual => inside(word.rect,visual.rect)), cell=cells.findIndex(cell=>inside(word.rect,cell))
+    const region = visuals.findIndex(visual => visual.kind === 'table' && visual.cells?.length ? visual.cells.some(cell => inside(word.rect, cell)) : inside(word.rect,visual.rect)), cell=cells.findIndex(cell=>inside(word.rect,cell))
     return {...word,...(region<0?{}:{visualRegion:region}),...(cell<0?{}:{tableCell:cell,tableCellRect:cells[cell]})}
   })
 }

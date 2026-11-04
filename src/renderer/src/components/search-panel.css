@@ -1,17 +1,17 @@
 /* Portal keeps Markdown/side-panel form rules out of both search modes. */
-.pdf-search-panel { position: fixed; z-index: 100; left: max(8px, calc(100vw - var(--ui-font-body) * 36 - 16px)); top: 108px; width: min(calc(var(--ui-font-body) * 36), calc(100vw - 16px)); max-height: min(720px, var(--floating-max-height, calc(100vh - 124px))); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #cfd9eb; border-radius: 14px; background: #fff; box-shadow: 0 18px 42px #1b294538; font-size: var(--ui-font-body); color: #283a60; }
+.pdf-search-panel { position: fixed; z-index: 100; left: max(8px, calc(100vw - var(--ui-font-body) * 36 - 16px)); top: 108px; width: min(calc(var(--ui-font-body) * 36), calc(100vw - 16px)); min-width: min(320px, calc(100vw - 16px)); min-height: min(240px, calc(100vh - 16px)); max-width: calc(100vw - 16px); max-height: var(--floating-max-height, calc(100vh - 124px)); box-sizing: border-box; resize: both; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #cfd9eb; border-radius: 14px; background: #fff; box-shadow: 0 18px 42px #1b294538; font-size: var(--ui-font-body); color: #283a60; }
 .pdf-search-heading { flex: none; min-height: 56px; padding: 10px 12px 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #f5f8ff; border-bottom: 1px solid #dfe7f5; cursor: grab; touch-action: none; }
 .pdf-search-heading:active { cursor: grabbing; }
 .pdf-search-heading > div { min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
 .pdf-search-heading b { font-size: var(--ui-font-title); }
 .pdf-search-heading small { color: #63728c; font-size: var(--ui-font-small); }
 .pdf-search-heading button { flex: none; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: #63728c; font-size: var(--ui-font-title); }
-.pdf-search-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.pdf-search-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .pdf-search-input-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 16px 12px; }
 .pdf-search-input-row input { flex: 1 1 12em; width: 0; min-width: min(100%, 12em); min-height: 42px; padding: 9px 11px; border: 1px solid #cbd6e9; border-radius: 9px; background: #fff; color: inherit; font-size: var(--ui-font-body); }
 .pdf-search-input-row button { flex: 0 0 auto; min-height: 42px; padding: 9px 16px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: var(--ui-font-body); }
-.pdf-search-options { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 16px; color: #52627d; }
-.pdf-search-options label { display: flex; flex: 0 0 auto; max-width: 100%; align-items: center; gap: 8px; padding: 8px 10px; margin: 0; border: 1px solid #e0e6f0; border-radius: 8px; background: #f8faff; font-size: var(--ui-font-body); font-weight: 400; cursor: pointer; }
+.pdf-search-options { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 12px; color: #52627d; }
+.pdf-search-options label { display: flex; flex: 0 0 auto; max-width: 100%; align-items: center; gap: 5px; min-height: 28px; padding: 3px 5px; box-sizing: border-box; margin: 0; border: 1px solid #e0e6f0; border-radius: 8px; background: #f8faff; font-size: var(--ui-font-small); font-weight: 400; cursor: pointer; }
 .pdf-search-options label:has(:checked) { border-color: var(--theme-accent, #5575de); background: var(--theme-accent-faint, #eef3ff); }
 .pdf-search-options label.disabled { opacity: .55; cursor: default; }
 .pdf-search-options input[type="checkbox"] { flex: none; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--theme-accent, #5575de); }

@@ -531,7 +531,9 @@ describe('PDF text layout', () => {
     expect(selection?.text).toBe('Table 1. wide table caption continues.')
     expect(selection?.text).not.toContain('Body')
     expect(selection?.rects).toEqual([
-      { x: 10, y: 100, width: 83, height: 12 },
+      // Ambiguous and fixed-column fragments keep separate highlight rectangles.
+      { x: 10, y: 100, width: 49, height: 12 },
+      { x: 65, y: 100, width: 28, height: 12 },
       { x: 98, y: 100, width: 30, height: 12 },
       { x: 10, y: 114, width: 42, height: 12 },
       { x: 56, y: 114, width: 54, height: 12 }

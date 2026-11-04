@@ -1,14 +1,16 @@
-export interface SearchOptions { caseSensitive: boolean; fuzzy: boolean; regex: boolean }
+export interface SearchOptions { caseSensitive: boolean; fuzzy: boolean; regex: boolean; wholeWord?: boolean }
 export interface TextSearchMatch { start: number; end: number; match: string; occurrence: number }
 
 /** UTF-16 offsets stay aligned with native textarea selections, including emoji. */
 export function findTextMatches(text: string, query: string, options: SearchOptions, limit = 201): TextSearchMatch[] {
   if (!query.trim()) return []
-  const compact = options.fuzzy && !options.regex
+  const wholeWord = options.wholeWord === true && !options.regex
+  const compact = options.fuzzy && !options.regex && !wholeWord
   const offsets: number[] = []
   const source = compact ? text.split('').filter((char, index) => { if (/\s/u.test(char)) return false; offsets.push(index); return true }).join('') : text
   const needle = compact ? query.trim().replace(/\s+/gu, '') : query.trim()
-  const pattern = new RegExp(options.regex ? query : needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), options.caseSensitive ? 'g' : 'gi')
+  const literal = options.regex ? query : needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(wholeWord ? `(?<![\\p{L}\\p{N}\\p{M}_])(?:${literal})(?![\\p{L}\\p{N}\\p{M}_])` : literal, `${options.caseSensitive ? 'g' : 'gi'}${wholeWord ? 'u' : ''}`)
   const results: TextSearchMatch[] = [], occurrences = new Map<string, number>()
   let match: RegExpExecArray | null
   while (results.length < limit && (match = pattern.exec(source))) {

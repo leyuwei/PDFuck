@@ -67,7 +67,7 @@ function editableCopyName(name: string): string {
   return `${name.replace(/\.pdf$/i, '')}-editable-copy.pdf`
 }
 
-type DialogState = { type: 'new_document' } | { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'convert_drop'; path: string; name: string } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
+type DialogState = { type: 'new_document' } | { type: 'ocr' } | { type: 'annotation'; value: AnnotationDialogState } | { type: 'text'; initial?: TextDialogValue; edit?: boolean } | { type: 'page_numbers'; initial?: PageNumberSettings; existingCount: number } | { type: 'watermark'; initial?: WatermarkSettings; existingCount: number } | { type: 'password'; value: PdfPasswordDialogState } | { type: 'secure_storage_notice' } | { type: 'save_as_required'; target: string } | { type: 'manage_pages' } | { type: 'open_pdf' } | { type: 'merge_destination' } | { type: 'merge_files'; files: PdfImportFile[]; pageCount: number; creating: boolean } | { type: 'convert_drop'; path: string; name: string } | { type: 'page_selection'; purpose: 'export' } | { type: 'print' } | { type: 'recognize_bookmarks' } | { type: 'crop_confirm'; pageIndex: number; rect: PdfRect } | { type: 'confirm'; message: string; title?: string; confirmLabel?: string; destructive: true } | { type: 'unsaved_close'; message: string; title?: string; discardLabel?: string; saveLabel?: string } | null
 
 interface DocumentSession {
   markdown?: MarkdownDocument
@@ -256,7 +256,7 @@ function viewerTextObjects(model?: PdfDocumentModel): TextObjectRecord[] {
 export default function App() {
   const interfaceLanguage = useInterfaceLanguage()
   const markdownWorkspaceRef = useRef<MarkdownWorkspaceHandle>(null)
-  const openDocumentSearch = () => { if (markdownWorkspaceRef.current) markdownWorkspaceRef.current.openSearch(); else viewerRef.current?.openSearch() }
+  const openDocumentSearch = () => { if (markdownWorkspaceRef.current) markdownWorkspaceRef.current.openSearch(); else viewerRef.current?.openSearch(selection?.text?.trim() || '') }
   const viewerRef = useRef<ViewerHandle>(null)
   const modelRef = useRef<PdfDocumentModel | undefined>(undefined)
   const dirtyRef = useRef(false)
@@ -317,6 +317,17 @@ export default function App() {
   const [imageObjects, setImageObjects] = useState<ImageObjectRecord[]>([])
   const [bookmarks, setBookmarks] = useState<PdfBookmark[]>([])
   const [activeBookmarkId, setActiveBookmarkId] = useState<string>()
+  const clickedBookmarkRef = useRef<{ id: string; documentId: number; page: number } | undefined>(undefined)
+  useEffect(() => {
+    const release = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('.bookmark-panel')) return
+      clickedBookmarkRef.current = undefined
+    }
+    window.addEventListener('wheel', release, true)
+    window.addEventListener('pointerdown', release, true)
+    window.addEventListener('keydown', release, true)
+    return () => { window.removeEventListener('wheel', release, true); window.removeEventListener('pointerdown', release, true); window.removeEventListener('keydown', release, true) }
+  }, [])
   const [figureSelection, setFigureSelection] = useState<{ documentId: number; pageIndex: number; rect: PdfRect; png: string }>()
   const [imageDraft, setImageDraft] = useState<ImageDraft>()
   const [imagePlacementBusy, setImagePlacementBusy] = useState(false)
@@ -1070,7 +1081,7 @@ export default function App() {
     const normalized = { page: position.page, zoom: position.zoom, offset: position.offset || 0 }
     readingPositionRef.current = normalized
     setActiveBookmarkId((current) => {
-      const next = activeBookmarkIdForPosition(liveSessionRef.current.bookmarks, normalized.page, normalized.offset)
+      const next = clickedBookmarkRef.current?.documentId === id ? clickedBookmarkRef.current.id : activeBookmarkIdForPosition(liveSessionRef.current.bookmarks, normalized.page, normalized.offset)
       return current === next ? current : next
     })
     const session = sessionsRef.current.get(id)
@@ -1086,7 +1097,9 @@ export default function App() {
     readingPositionTimersRef.current.set(id, timer)
   }, [])
   useEffect(() => {
-    setActiveBookmarkId(activeBookmarkIdForPosition(bookmarks, currentPage, readingPositionRef.current.page === currentPage ? readingPositionRef.current.offset : 0))
+    const target = clickedBookmarkRef.current
+    if (target && (target.documentId !== activeDocumentId || target.page !== currentPage)) clickedBookmarkRef.current = undefined
+    setActiveBookmarkId(clickedBookmarkRef.current?.id ?? activeBookmarkIdForPosition(bookmarks, currentPage, readingPositionRef.current.page === currentPage ? readingPositionRef.current.offset : 0))
   }, [activeDocumentId, bookmarks, currentPage])
   const activatePageFit = useCallback((pageFit: Exclude<PageFitPreference, 'none'>) => {
     if (!hasDocument) return
@@ -1151,36 +1164,44 @@ export default function App() {
     const model = modelRef.current, documentId = activeDocumentIdRef.current; if (!model) return false
     try { return await runDocumentOperation(documentId, async () => { await operation(model); syncModel(message, refreshDocument, model, documentId); return true }) } catch (error) { onFailure(error); return false }
   }, [runDocumentOperation, showError, syncModel])
-  const mergeFiles = useCallback(async () => {
+  const chooseMergeFiles = useCallback(async (creating: boolean) => {
+    const documentId = activeDocumentIdRef.current
     try {
       const files = await window.desktop.choosePdfImports()
-      if (!files?.length) return
-      const model = modelRef.current
-      setDialog({ type: 'merge_files', files, pageCount: model?.pageCount || 0, creating: !model })
+      if (!files?.length || activeDocumentIdRef.current !== documentId) return
+      setDialog({ type: 'merge_files', files, pageCount: creating ? 0 : modelRef.current?.pageCount || 0, creating })
     } catch (error) { showError(error) }
   }, [showError])
-  const confirmMergeFiles = useCallback(async (files: PdfImportFile[], insertion?: MergeInsertion) => {
+  const mergeFiles = useCallback(async () => {
+    if (modelRef.current) setDialog({ type: 'merge_destination' })
+    else await chooseMergeFiles(true)
+  }, [chooseMergeFiles])
+  const confirmMergeFiles = useCallback(async (files: PdfImportFile[], insertion?: MergeInsertion, createNew = !modelRef.current) => {
     try {
+      if (!await commitFocusedFormField()) return
       const documentId = activeDocumentIdRef.current
-      const existing = modelRef.current
-      const creating = !existing
-      const model = existing || await PdfDocumentModel.create(ui("ui.mergedDocumentPdf"))
-      if (activeDocumentIdRef.current !== documentId || modelRef.current !== existing) return
-      if (creating) {
-        modelRef.current = model
-        liveSessionRef.current = { ...liveSessionRef.current, model }
-        setDocumentName(model.fileName)
-        setEncrypted(false)
-        setDocumentPassword(undefined)
-        setModule('edit')
+      if (createNew) {
+        const model = await PdfDocumentModel.create(ui("ui.mergedDocumentPdf"))
+        await model.importFiles(files, 0)
+        if (activeDocumentIdRef.current !== documentId) return
+        sessionsRef.current.set(documentId, liveSessionRef.current)
+        const current = tabsSnapshotRef.current
+        const replaceBlank = !liveSessionRef.current.data?.length && current.documents.length === 1
+        const id = replaceBlank ? documentId : nextDocumentId.current++
+        const session: DocumentSession = { ...emptySession(id), model, data: model.bytes, documentName: model.fileName, pageCount: model.pageCount, dirty: model.dirty, canUndo: model.canUndo, canRedo: model.canRedo, annotations: model.annotations(), textObjects: viewerTextObjects(model), imageObjects: model.images(), bookmarks: model.bookmarks(), module: 'edit', fitWidthRequest: nextFitRequest.current++, status: ui('ui.mergedDocumentPdf') }
+        const snapshot = { currentId: id, documents: replaceBlank ? [sessionSummary(session)] : [...current.documents, sessionSummary(session)] }
+        tabsSnapshotRef.current = snapshot; setDocumentTabs(snapshot); activateSession(session)
+        return
       }
-      const insertionIndex = creating || !insertion ? 0 : insertion.position === 'start' ? 0 : insertion.position === 'end' ? model.pageCount : insertion.position === 'before' ? (insertion.page || 1) - 1 : insertion.page || model.pageCount
+      const model = modelRef.current
+      if (!model) return
+      const insertionIndex = !insertion || insertion.position === 'start' ? 0 : insertion.position === 'end' ? model.pageCount : insertion.position === 'before' ? (insertion.page || 1) - 1 : insertion.page || model.pageCount
       await runDocumentOperation(documentId, async () => {
         await model.importFiles(files, insertionIndex)
-        syncModel(creating ? `已创建合并文档，已导入 ${files.length} 个文件` : `已合并 ${files.length} 个文件`, true, model, documentId)
+        syncModel(`已合并 ${files.length} 个文件`, true, model, documentId)
       })
     } catch (error) { showError(error) }
-  }, [runDocumentOperation, showError, syncModel])
+  }, [activateSession, runDocumentOperation, showError, syncModel])
   const convertDroppedFile = useCallback(async (path: string) => {
     try {
       const file = await window.desktop.importPdfFile(path)
@@ -1207,6 +1228,8 @@ export default function App() {
   const navigateBookmark = useCallback((bookmark: PdfBookmark) => {
     if (bookmark.url) { void window.desktop.openExternalLink(bookmark.url).catch(() => showError(new Error(ui('pdfLink.openFailed')))); return }
     if (bookmark.pageIndex === undefined) return
+    clickedBookmarkRef.current = { id: bookmark.id, documentId: activeDocumentIdRef.current, page: bookmark.pageIndex }
+    setActiveBookmarkId(bookmark.id)
     setMarkdownHistoryTarget('pdf'); setCurrentPage(bookmark.pageIndex); viewerRef.current?.goToPage(bookmark.pageIndex, bookmark.position); setStatus(t('bookmark.navigated', { title: bookmark.title, page: bookmark.pageIndex + 1 }))
   }, [showError])
   const receiveReadOnlyBookmarks = useCallback((items: PdfBookmark[]) => {
@@ -1849,7 +1872,8 @@ export default function App() {
     {dialog?.type === 'new_document' && <NewDocumentDialog busy={creatingDocument} onCancel={() => { setDialog(null); window.document.querySelector<HTMLButtonElement>('.new-document-button')?.focus() }} onCreate={type => void createTextDocument(type)} />}
     {dialog?.type === 'open_pdf' && <OpenPdfDialog recent={recentFiles} onCancel={() => setDialog(null)} onOpen={(path) => { setDialog(null); void openPath(path) }} onBrowse={() => { setDialog(null); void chooseOpen() }} onClear={() => void clearRecentFiles(true)} />}
     {dialog?.type === 'manage_pages' && data && <PageManagerDialog data={data} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(order, rotations) => { setDialog(null); void mutate((model) => model.arrangePages(order, rotations), '页面已调整；可保存 PDF 以保留修改') }} />}
-    {dialog?.type === 'merge_files' && <MergeFilesDialog files={dialog.files} pageCount={dialog.pageCount} creating={dialog.creating} onCancel={() => setDialog(null)} onSubmit={(result) => { setDialog(null); void confirmMergeFiles(result.files, result.insertion) }} />}
+    {dialog?.type === 'merge_destination' && <UnsavedCloseDialog title={ui('ui.mergePdfFromFiles')} message={ui('ui.mergeDestinationQuestion')} saveLabel={ui('ui.insertIntoCurrentDocument')} discardLabel={ui('ui.createNewMergedDocument')} onDecision={(decision) => { setDialog(null); if (decision !== 'cancel') void chooseMergeFiles(decision === 'discard') }} />}
+    {dialog?.type === 'merge_files' && <MergeFilesDialog files={dialog.files} pageCount={dialog.pageCount} creating={dialog.creating} onCancel={() => setDialog(null)} onSubmit={(result) => { setDialog(null); void confirmMergeFiles(result.files, result.insertion, dialog.creating) }} />}
     {dialog?.type === 'convert_drop' && <ConfirmDialog title={ui('ui.convertDroppedFileTitle')} message={t('ui.convertDroppedFileMessage', { name: dialog.name })} confirmLabel={ui('ui.convertDroppedFileConfirm')} destructive={false} onCancel={() => setDialog(null)} onConfirm={() => { const path = dialog.path; setDialog(null); void convertDroppedFile(path) }} />}
     {dialog?.type === 'page_selection' && <PageSelectionDialog purpose={dialog.purpose} pageCount={pageCount} currentPage={currentPage} onCancel={() => setDialog(null)} onSubmit={(pages) => { setDialog(null); void exportPages(pages) }} />}
     {dialog?.type === 'recognize_bookmarks' && <BookmarkRecognitionDialog existingCount={countBookmarks(bookmarks)} onPreview={previewRecognizedBookmarks} onCancel={() => setDialog(null)} onApply={writeRecognizedBookmarks} onDeleteAll={deleteAllBookmarks} />}

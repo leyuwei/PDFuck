@@ -120,7 +120,7 @@ interface TextFlowBounds { left: number; right: number; padding: number }
 function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => number): PdfRect | undefined {
   if (!word.textRunRect) return undefined
   const rect = { ...word.textRunRect }
-  const neighbors = words.filter((candidate) => candidate.column === word.column && !candidate.columnAmbiguous && candidate.visualBlock === word.visualBlock && Math.abs(rowY(candidate) - rowY(word)) <= Math.min(candidate.rect.height, word.rect.height) * 0.18)
+  const neighbors = words.filter((candidate) => candidate.column === word.column && !candidate.columnAmbiguous && candidate.visualBlock === word.visualBlock && (Math.abs(rowY(candidate) - rowY(word)) <= Math.min(candidate.rect.height, word.rect.height) * 0.18 || candidate.baselineY !== undefined && word.baselineY !== undefined && Math.abs(candidate.baselineY - word.baselineY) <= Math.min(candidate.rect.height, word.rect.height) * 0.18))
     .sort((left, right) => left.rect.x - right.rect.x)
   // Traverse in both directions so an endpoint in the middle of a fragmented
   // formula joins the prose on both sides, even when PDF objects are shuffled.
@@ -213,6 +213,14 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     selected.rects=selected.rects.flatMap(r=>{const x=Math.max(r.x,bounds.x),y=Math.max(r.y,bounds.y),right=Math.min(r.x+r.width,bounds.x+bounds.width),bottom=Math.min(r.y+r.height,bounds.y+bounds.height);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]})
     return selected
   }
+  if (words[anchor.wordIndex]?.visualRegion === undefined && words[focus.wordIndex]?.visualRegion === undefined) {
+    const body = words.filter(word => word.visualRegion === undefined && word.tableCell === undefined)
+    const columns = new Set(body.map(word => word.column).filter(column => column !== undefined))
+    if (columns.size <= 1 && body.some(word => word.columnAmbiguous || word.visualBlock !== undefined)) {
+      return textSelectionBetween(words.map(word => word.visualRegion === undefined && word.tableCell === undefined
+        ? { ...word, column: 0, columnAmbiguous: false, visualBlock: undefined } : word), anchor, focus)
+    }
+  }
   if (!words.length || comparePosition(anchor, focus) === 0) return undefined
   const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
   const anchorColumn = words[anchor.wordIndex]?.column
@@ -277,7 +285,11 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // detected column boundary splits one source row into separate runs.
   const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && (hasStructuralEndpoint || sameVisualRow && sourceRangeStaysInBand)
   const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
-  const flowBounds = useStructuralBand || hasStructuralEndpoint ? undefined : textFlowBounds(words, startWord, endWord, rowY)
+  // Explicit single-column layout already defines the reading flow. Endpoint
+  // run widths must not clip longer intervening lines or mixed-font suffixes.
+  const singleColumn = startWord.columnBoundaries?.length === 0 && endWord.columnBoundaries?.length === 0
+    && words.every(word => word.visualRegion !== undefined || word.tableCell !== undefined || word.column === anchorColumn)
+  const flowBounds = useStructuralBand || hasStructuralEndpoint || singleColumn ? undefined : textFlowBounds(words, startWord, endWord, rowY)
   const bandWords = !flowBounds ? words.filter((word) => word.column === anchorColumn && rowY(word) >= minY && rowY(word) <= maxY) : []
   const bandLeft = bandWords.length ? Math.min(...bandWords.map((word) => word.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
   const bandRight = bandWords.length ? Math.max(...bandWords.map((word) => word.rect.x + word.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
@@ -326,7 +338,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const wordIndex = entry.wordIndex
     const word = words[wordIndex]
     const useVisualBand = Boolean(visualBandIndices?.length)
-    if (word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
+    if (word?.tableCell !== undefined || word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
     if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
     const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0

@@ -23,7 +23,7 @@ import { compareVersions } from '../shared/version'
 import { PdfPasswordStore } from './pdf-password-store'
 import { atomicWrite } from './atomic-write'
 import { convertOfficeDocument, OfficeImportError, officeImportSourceFormat } from './office-import'
-import { buildDirectPrintOptions, describePrinters, validPrintOptions, waitForStablePrintPreview, windowsPrinterPreferencesArguments } from './print-settings'
+import { buildDirectPrintOptions, buildMacosCupsPrintArguments, cupsDuplexOptionFromCapabilities, describePrinters, setPrinterDuplexSupport, validPrintOptions, waitForStablePrintPreview, windowsPrinterPreferencesArguments } from './print-settings'
 import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
@@ -431,7 +431,16 @@ async function listPrinters(contents: WebContents): Promise<PrinterDescriptor[]>
     try { return await listWindowsPrinters() }
     catch (error) { console.error('Native Windows printer discovery failed; using Electron discovery.', error) }
   }
-  return describePrinters(await contents.getPrintersAsync())
+  const printers = describePrinters(await contents.getPrintersAsync())
+  if (process.platform !== 'darwin') return printers
+  const capabilities = new Map<string, string | null>()
+  await Promise.all(printers.map(async (printer) => {
+    try {
+      const { stdout } = await execFileAsync('/usr/bin/lpoptions', ['-p', printer.name, '-l'], { windowsHide: true, timeout: 5000, maxBuffer: 256 * 1024 })
+      capabilities.set(printer.name, stdout)
+    } catch { capabilities.set(printer.name, null) }
+  }))
+  return setPrinterDuplexSupport(printers, capabilities)
 }
 
 async function openPrinterSettings(printerName: string, parent: BrowserWindow): Promise<void> {
@@ -470,6 +479,26 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     } catch (error) {
       console.error('Native Windows print dispatch failed.', error)
       throw new Error(nativeText(language, "ui.theNativePrintJobCouldNotBeDispatchedCheckThe"))
+    } finally {
+      nativePrintBusy = false
+      await unlink(temporary).catch(() => undefined)
+      returnFocusToWindow(parent)
+    }
+  }
+  if (process.platform === 'darwin') {
+    nativePrintBusy = true
+    try {
+      await writeFile(temporary, request.data)
+      let duplexOption = null
+      try {
+        const { stdout } = await execFileAsync('/usr/bin/lpoptions', ['-p', printer.name, '-l'], { windowsHide: true, timeout: 5000, maxBuffer: 256 * 1024 })
+        duplexOption = cupsDuplexOptionFromCapabilities(stdout)
+      } catch { /* Keep the IPP-standard fallback when driver capabilities cannot be queried. */ }
+      await execFileAsync('/usr/bin/lp', buildMacosCupsPrintArguments(request.options, printer.name, temporary, duplexOption), { windowsHide: true, timeout: 30000 })
+      return { status: 'printed' }
+    } catch (error) {
+      console.error('CUPS print dispatch failed.', error)
+      throw new Error(nativeText(language, "ui.thePrinterCouldNotReceiveTheJobCheckItsConnection"))
     } finally {
       nativePrintBusy = false
       await unlink(temporary).catch(() => undefined)

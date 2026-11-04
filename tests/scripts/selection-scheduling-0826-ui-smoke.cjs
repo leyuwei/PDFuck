@@ -56,7 +56,8 @@ async function main() {
       if (temporal) {
         await page.mouse.move(from.x, from.y)
         await page.mouse.down()
-        await page.mouse.move(from.x + 2, from.y)
+        // Crossing a caret can intentionally select even below the four-pixel drag threshold.
+        await page.mouse.move(from.x + .25, from.y)
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
         assert.equal(await documentPage.locator('.text-selection').count(), 0, `page ${pageIndex + 1}: sub-threshold pointer jitter created a live selection`)
         await page.mouse.up()

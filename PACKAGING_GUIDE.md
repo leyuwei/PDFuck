@@ -1,5 +1,8 @@
 # PDFuck macOS / Windows 打包指引
 
+
+**2.1.14 实文档追加验收（2026-11-04）**：共享单栏流域与同基线片段修复，搜索选项紧凑换行并记忆可调尺寸。收到用户完整框选回归要求后，追加 203 项相关单元、31 页实文档 3,004 组范围、20 次真实拖选、八份历史界面专项、56 单元格和普通正文跨页检查；缺失历史样本明列于 `tests/docs/VALIDATION-2.1.14.md`。成品实文档检查已完成；用户随后要求停止成品复测，因此未执行成品跨页及最终包核验脚本，具体范围见验收记录。
+
 本文档用于版本更新后的桌面端发布。后续会话应按顺序完成版本同步、检查、生产构建、签名、打包和产物验证，不要只改版本号或只生成其中一个文件。
 
 ## 1. 发布产物
@@ -17,6 +20,8 @@ Windows（建议在 Windows 上构建）：
 - `release/PDFuck-<version>-Windows.exe`：便携版，实际名称以 `package.json` 的 `artifactName` 为准。
 
 ## 2. 环境准备
+
+**2.1.14 当前交付（2026-11-04，macOS arm64）**：修复单栏正文跨行选区、全文评价自定义模板持久化、选区搜索预填与全词匹配、密集书签高亮与页码右侧布局、合并前选择插入/新建，以及 macOS CUPS 双面参数传递。新增文案覆盖十语言。仅运行本轮新增 25 项单元测试、`node tests/scripts/release-2.1.14-ui.cjs`、typecheck、直接生产构建和 diff 检查；不运行旧测试全集。直接生成 APP，ad-hoc 签名后生成 DMG/ZIP；新增 `node tests/scripts/release-2.1.14-package-check.cjs` 核对生产字节、版本、11 个 OCR 模型、签名、DMG/ZIP 完整性及 SHA-256。无 Developer ID，未公证；未向真实打印机发送作业，未做 Windows 实机验证。详见 [验收记录](tests/docs/VALIDATION-2.1.14.md)。
 
 **2.1.13 当前交付（2026-11-03，macOS arm64）**：保留无文档合并入口、十语言外部文件转换确认，以及实验室窗口的尺寸持久化和提示词伸展布局。本轮修正范围越界：恢复“关于”复用的 OCR 组件/样式和普通批注原有行为，仅实验室功能新增调整尺寸与持久化。只运行本轮新增 `node tests/scripts/release-2.1.13-dialog-scope-ui.cjs`，检查十语言“关于”、OCR、普通批注与实验室窗口的真实拖动、间距和尺寸恢复；首轮 6 项单元测试及历史测试不重跑。另执行 typecheck、直接生产构建和 diff 检查。使用 `npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist` 生成 APP，补齐 ad-hoc 签名，再用 `npx --no-install electron-builder --prepackaged release/mac-arm64/PDFuck.app --mac dmg` 和 `ditto -c -k --keepParent release/mac-arm64/PDFuck.app release/PDFuck-2.1.13-macOS.zip` 生成 DMG/ZIP。按用户最新要求，成品不复测、不启动，也不运行静态包验收脚本；仅生成 SHA-256 发布元数据。验收计划见 [PLAN-2.1.13](tests/docs/PLAN-2.1.13.md)，结果见 [VALIDATION-2.1.13](tests/docs/VALIDATION-2.1.13.md)。
 
