@@ -1,7 +1,7 @@
 {
   "name": "pdfuck",
-  "version": "2.1.14",
-  "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
+  "version": "2.1.15",
+  "description": "支持 PDF、Markdown 与 TXT 的跨平台写作、阅读、编辑、批注与 AI 文档工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
   "license": "MIT",
@@ -104,7 +104,8 @@
     "test:release-2.1.11-visual-bounds": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-visual-bounds.test.ts",
     "test:release-2.1.12": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.12.test.ts",
     "test:release-2.1.13": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.13.test.tsx",
-    "test:release-2.1.14": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.14.test.tsx tests/unit/main/release-2.1.14-macos-print.test.ts"
+    "test:release-2.1.14": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.14.test.tsx tests/unit/main/release-2.1.14-macos-print.test.ts",
+    "test:release-2.1.15": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/components/Release2115.test.tsx"
   },
   "dependencies": {
     "chardet": "2.2.0",

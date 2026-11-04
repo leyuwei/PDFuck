@@ -409,7 +409,7 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 }
 .ai-polish-window > .window-scroll-body > * { margin-block: 0; }
 .ai-polish-window > .window-scroll-body > textarea {
-  flex: 1 1 220px;
+  flex: 1 0 110px;
   width: 100%;
   min-width: 0;
   min-height: 110px;
@@ -630,3 +630,13 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .app-shell .pdf-form-fields [data-failed="true"] { outline: 2px solid #d45d4e; }
 .app-shell .pdf-form-fields input.comb { font-family: monospace; --comb-letter-spacing: calc(var(--comb-width) - 1ch); letter-spacing: var(--comb-letter-spacing); overflow-x: hidden; padding: 0; text-indent: calc(var(--comb-offset, 0) * var(--comb-width) + var(--comb-letter-spacing) / 2); }
 .pdf-form-fields ::selection { background: #9dbaf3aa; color: #18243b; }
+
+.release-notes { min-width: 0; margin-block: 16px; border: 1px solid #dce3ef; border-radius: 10px; overflow: hidden; }
+.release-notes > h3 { margin: 0; padding: 10px 14px; background: #f3f6fb; font-size: var(--ui-font-body); line-height: 1.5; overflow-wrap: anywhere; }
+.release-notes-content { max-height: min(300px, 38dvh); padding: 14px; overflow: auto; overflow-wrap: anywhere; font-size: var(--ui-font-body); line-height: 1.65; }
+.release-notes-content table { display: block; overflow: auto; }
+.release-notes-content pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.release-notes-content ul, .release-notes-content ol { padding-inline-start: 1.7em; padding-inline-end: 0; }
+.update-dialog .update-actions { flex-wrap: wrap; }
+.theme-dark .release-notes { border-color: #40516a; }
+.theme-dark .release-notes > h3 { background: #263448; color: #eef4ff; }

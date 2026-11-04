@@ -127,9 +127,10 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
   }
   words = words.filter(word => clip(word.rect))
   const heights = words.map(w => w.rect.height).sort((a,b) => a-b), em = heights[Math.floor(heights.length / 2)] || 10
+  const textLeft = words.reduce((left, word) => /^\d+$/.test(word.text) ? left : Math.min(left, word.rect.x), Infinity)
   const rows: Array<{ words: WordBox[]; rect: PdfRect; text: string }> = []
   for (const word of [...words].sort((a,b) => (a.baselineY ?? bottom(a.rect)) - (b.baselineY ?? bottom(b.rect)) || a.rect.x - b.rect.x)) {
-    const row = rows.find(row => Math.abs((row.words[0].baselineY ?? bottom(row.words[0].rect)) - (word.baselineY ?? bottom(word.rect))) < Math.min(em, word.rect.height) * .3 && (row.words[0].column === word.column || word.textRun !== undefined && row.words.some(w => w.textRun === word.textRun)) && !(word.rect.x-right(row.rect) > em * 4 && (/^(?:fig(?:ure)?\.?|image|plate|table|tab\.?|[图表])(?:\s|\d|$)/i.test(word.text) || /^\([a-z]\)$/i.test(word.text))))
+    const row = rows.find(row => Math.abs((row.words[0].baselineY ?? bottom(row.words[0].rect)) - (word.baselineY ?? bottom(word.rect))) < Math.min(em, word.rect.height) * .3 && (row.words[0].column === word.column || word.textRun !== undefined && row.words.some(w => w.textRun === word.textRun)) && !(row.words.every(w => /^\d+$/.test(w.text)) && right(row.rect) < textLeft - em * .5) && !(word.rect.x-right(row.rect) > em * 4 && (/^(?:fig(?:ure)?\.?|image|plate|table|tab\.?|[图表])(?:\s|\d|$)/i.test(word.text) || /^\([a-z]\)$/i.test(word.text))))
     if (row) { row.words.push(word); row.rect = union(row.rect, word.rect) }
     else rows.push({words: [word], rect: {...word.rect}, text: ''})
   }
@@ -185,7 +186,16 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
       // Follow only tightly spaced caption continuation rows; stop at body spacing/indent.
       let last = caption
       const captionEm = Math.max(em,caption.rect.height)
-      for (const next of rows.filter(row => row.rect.y > caption.rect.y && overlapX(row.rect,caption.rect) > 0).sort((a,b) => a.rect.y-b.rect.y)) {
+      // A spanning caption can be split into column runs and raised formula fragments.
+      const continuationRows: typeof rows = []
+      for (const row of rows.filter(row => row.rect.y > caption.rect.y && overlapX(row.rect,caption.rect) > 0).sort((a,b) => (a.words[0].baselineY ?? bottom(a.rect)) - (b.words[0].baselineY ?? bottom(b.rect)))) {
+        const previous = continuationRows.at(-1)
+        if (previous && Math.abs((previous.words[0].baselineY ?? bottom(previous.rect)) - (row.words[0].baselineY ?? bottom(row.rect))) <= captionEm * .6) {
+          previous.words.push(...row.words); previous.rect = union(previous.rect,row.rect)
+          previous.text = [...previous.words].sort((a,b) => a.rect.x-b.rect.x).map(word => word.text).join(' ')
+        } else continuationRows.push({...row,words:[...row.words],rect:{...row.rect}})
+      }
+      for (const next of continuationRows) {
         if (next === caption || next.rect.y < bottom(last.rect) - em * .2) continue
         const gap = next.rect.y-bottom(last.rect)
         if (gap > captionEm * .65 || captionPattern.test(next.text) || Math.abs(next.rect.x-caption.rect.x) > captionEm || next.rect.width > Math.max(r.width,caption.rect.width) + captionEm) break

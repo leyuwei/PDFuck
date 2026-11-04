@@ -100,18 +100,20 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     const testVersion = !app.isPackaged ? process.env.PDFUCK_TEST_UPDATE_VERSION : undefined
     let latestVersion = testVersion
     let releaseUrl = releasesPage
+    let releaseNotes: string | undefined
     if (!latestVersion) {
       const response = await net.fetch(releasesApi, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PDFuck/${currentVersion}`, 'X-GitHub-Api-Version': '2022-11-28' } })
       if (!response.ok) return { status: 'unavailable', currentVersion }
-      const release = await response.json() as { tag_name?: unknown; html_url?: unknown }
+      const release = await response.json() as { tag_name?: unknown; html_url?: unknown; body?: unknown }
+      releaseNotes = typeof release.body === 'string' ? release.body.trim().slice(0, 100_000) : undefined
       latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/i, '') : undefined
       if (typeof release.html_url === 'string' && validReleasePage(release.html_url)) releaseUrl = release.html_url
     }
     if (!latestVersion || !/^\d+(?:\.\d+){1,3}$/.test(latestVersion)) return { status: 'unavailable', currentVersion }
-    if (compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion }
+    if (compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion, releaseUrl, releaseNotes }
     const preferences = await readUpdatePreferences()
-    if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl }
-    return { status: 'available', currentVersion, latestVersion, releaseUrl }
+    if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl, releaseNotes }
+    return { status: 'available', currentVersion, latestVersion, releaseUrl, releaseNotes }
   } catch { return { status: 'unavailable', currentVersion } }
 }
 

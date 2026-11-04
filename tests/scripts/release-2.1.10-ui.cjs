@@ -24,7 +24,7 @@ async function main() {
       if (executable) assert.equal(await app.evaluate(({ app }) => app.isPackaged && app.getVersion() === '2.1.10' && app.getAppPath().endsWith('app.asar')), true)
     }
     page.setDefaultTimeout(20000); page.on('pageerror', e => errors.push(e.message))
-    await page.locator('.titlebar').waitFor(); assert.equal(await page.locator('.about-trigger small').innerText(), 'v2.1.10')
+    await page.locator('.titlebar').waitFor(); assert.equal(await page.locator('.about-trigger small').innerText(), 'v' + require(path.join(root, 'package.json')).version)
     await page.locator('.text-map span').first().waitFor({ state: 'attached', timeout: 60000 })
     await page.locator('.nav-rail > button').nth(2).click()
     await page.locator('.zoom-controls .fit-control').last().click()

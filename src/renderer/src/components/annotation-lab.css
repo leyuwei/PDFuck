@@ -139,3 +139,7 @@
 .figure-explanation-preview { display: block; max-width: 100%; max-height: 200px; object-fit: contain; margin: 14px auto; background: #fff; border-radius: 8px; }
 
 .theme-dark .ai-stream-actions { border-color: #40516a; }
+
+/* Keep intrinsic content heights; the shared body scrolls when a window is small. */
+.annotation-lab .ai-polish-window > .window-scroll-body > * { flex-shrink: 0; min-width: 0; }
+.annotation-lab .ai-polish-window > .window-scroll-body > .ai-polish-result { max-height: none; overflow: visible; overflow-wrap: anywhere; }

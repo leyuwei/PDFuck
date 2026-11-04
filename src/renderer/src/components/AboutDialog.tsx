@@ -4,6 +4,7 @@ import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
 import './ocr-dialog.css'
+import { ReleaseNotes } from './ReleaseNotes'
 
 export function AboutDialog({ version, onClose }: { version: string; onClose(): void }) {
   useInterfaceLanguage()
@@ -25,6 +26,7 @@ export function AboutDialog({ version, onClose }: { version: string; onClose(): 
       <p>{t('update.current', { version })}</p>
       <p className="ocr-description">{ui('about.credits')}</p>
       <p role="status" aria-live="polite">{!result ? ui('about.checking') : result.status === 'unavailable' ? ui('about.unavailable') : result.status === 'current' ? ui('about.current') : t('update.availableTitle', { version: result.latestVersion || '' })}</p>
+      {result && result.status !== 'unavailable' && <ReleaseNotes content={result.releaseNotes} version={result.latestVersion} />}
       <div className="modal-actions"><button type="button" disabled={!result} onClick={() => { setResult(undefined); setAttempt(value => value + 1) }}>{ui('about.check')}</button><a href="https://github.com/leyuwei/PDFuck/releases" onClick={event => { event.preventDefault(); setLinkError(false); void window.desktop.openReleasePage('https://github.com/leyuwei/PDFuck/releases').catch(() => setLinkError(true)) }}>{ui('about.releases')}</a></div>
       {linkError && <p role="alert">{ui('ui.invalidUpdateLink')}</p>}
     </ScrollWindow>

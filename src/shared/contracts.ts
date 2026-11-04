@@ -213,6 +213,7 @@ export interface UpdateCheckResult {
   currentVersion: string
   latestVersion?: string
   releaseUrl?: string
+  releaseNotes?: string
 }
 
 export interface AiRequest {

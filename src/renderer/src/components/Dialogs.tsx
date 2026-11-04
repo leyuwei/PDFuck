@@ -1,3 +1,4 @@
+import { ReleaseNotes } from './ReleaseNotes'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
 import type { AnnotationSuggestionEditor } from './AnnotationLab'
@@ -692,6 +693,7 @@ export function UpdateDialog({ update, onLater, onSkip, onDownload }: { update: 
     <header className="update-heading"><div className="update-symbol" aria-hidden="true"><span>↑</span></div>
     <div className="update-copy"><small>{ui("ui.pdfuckUpdateCheck")}</small><h2 id="update-title">{t('update.availableTitle', { version: update.latestVersion || '' })}</h2><p>{t('update.description', { current: update.currentVersion })}</p></div></header>
     <div className="update-version"><span>{t('update.current', { version: update.currentVersion })}</span><i>→</i><span>{t('update.latest', { version: update.latestVersion || '' })}</span></div>
+    <ReleaseNotes content={update.releaseNotes} version={update.latestVersion} />
     <div className="update-actions"><button type="button" onClick={onSkip}>{ui("ui.doNotRemindMeAboutThisVersion")}</button><span /><button type="button" onClick={onLater}>{ui("ui.remindMeLater")}</button><button type="button" className="primary" onClick={onDownload}>{ui("ui.download")}</button></div>
   </ScrollWindow></div>
 }

@@ -120,6 +120,7 @@ interface TextFlowBounds { left: number; right: number; padding: number }
 function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => number): PdfRect | undefined {
   if (!word.textRunRect) return undefined
   const rect = { ...word.textRunRect }
+  const textLeft = words.reduce((left, candidate) => /^\d+$/.test(candidate.text) ? left : Math.min(left, candidate.rect.x), Infinity)
   const neighbors = words.filter((candidate) => candidate.column === word.column && !candidate.columnAmbiguous && candidate.visualBlock === word.visualBlock && (Math.abs(rowY(candidate) - rowY(word)) <= Math.min(candidate.rect.height, word.rect.height) * 0.18 || candidate.baselineY !== undefined && word.baselineY !== undefined && Math.abs(candidate.baselineY - word.baselineY) <= Math.min(candidate.rect.height, word.rect.height) * 0.18))
     .sort((left, right) => left.rect.x - right.rect.x)
   // Traverse in both directions so an endpoint in the middle of a fragmented
@@ -129,6 +130,8 @@ function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => 
       const next = candidate.textRunRect || candidate.rect
       const gap = Math.max(next.x - rect.x - rect.width, rect.x - next.x - next.width, 0)
       if (gap > word.rect.height * 1.6) continue
+      // Detached numeric margin runs must not widen a prose selection into line numbers.
+      if (gap > word.rect.height * .6 && next.width < word.rect.height * 2 && /^\d+$/.test(candidate.text) && next.x + next.width < textLeft - word.rect.height * .5 && candidate.textRun !== word.textRun) continue
       const right = Math.max(rect.x + rect.width, next.x + next.width)
       rect.x = Math.min(rect.x, next.x)
       rect.width = right - rect.x
@@ -832,7 +835,6 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   // median glyph height is enough to distinguish it from ordinary word gaps.
   const minimumGutter = Math.max(3, medianHeight * 0.45)
   interface GutterCluster { center: number; left: number; right: number; gaps: Array<{ left: number; right: number }>; rows: Set<number> }
-  const median = (values: number[]) => [...values].sort((left, right) => left - right)[Math.floor(values.length / 2)]
   const gutterClusters: GutterCluster[] = []
   const candidateGaps: Array<{ left: number; right: number; row: number }> = []
   const visualRows: WordBox[][] = []
@@ -842,6 +844,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     if (row && Math.abs(rowY(row[0]) - rowY(word)) <= medianHeight * 0.65) row.push(word)
     else visualRows.push([word])
   }
+  const textLeft = words.reduce((left, word) => /^\d+$/.test(word.text) ? left : Math.min(left, word.rect.x), Infinity)
   visualRows.forEach((row, lineIndex) => {
     // Columns need not share a baseline. Look at neighboring lines together:
     // this pairs staggered columns and fills ordinary word/equation gaps with
@@ -849,6 +852,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     // formula-heavy pages, whose scripts create many extra visual rows.
     const neighbors = visualRows.filter(candidate => Math.abs(rowY(candidate[0]) - rowY(row[0])) <= medianHeight * 1.25)
     const intervals = neighbors.flat()
+      .filter(word => !(/^\d+$/.test(word.text) && word.rect.width < medianHeight * 2 && word.rect.x + word.rect.width < textLeft - medianHeight * .5))
       .map((word) => ({ left: word.rect.x, right: word.rect.x + word.rect.width }))
       .sort((left, right) => left.left - right.left)
     const merged: Array<{ left: number; right: number }> = []
@@ -860,9 +864,10 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const gaps = merged.slice(1).map((interval, index) => interval.left - merged[index].right)
     const sortedGaps = [...gaps].sort((left, right) => left - right)
     const rowMedianGap = sortedGaps.length ? sortedGaps[Math.floor(sortedGaps.length / 2)] : 0
+    const rowGutters: number[] = []
     for (let index = 1; index < merged.length; index += 1) {
       const gap = gaps[index - 1]
-      if (gap < minimumGutter) continue
+      if (gap + medianHeight * .001 < minimumGutter) continue
       // A normal row can contain several word spaces, so repeated gaps alone
       // are not sufficient evidence of a column boundary. Keep a sole gap
       // (the common one-word-per-column case), or require the gap to be
@@ -870,6 +875,13 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       // adaptive for compact layouts where the gutter is below 15pt.
       const evenlySpacedWideRow = gaps.length > 1 && (rowMedianGap >= medianHeight * 2 || merged.every((interval) => interval.right - interval.left >= medianHeight * 4)) && gap >= rowMedianGap * 0.8
       if (gaps.length > 1 && gap < rowMedianGap * 1.7 && !evenlySpacedWideRow) continue
+      rowGutters.push(index)
+    }
+    for (const [position, index] of rowGutters.entries()) {
+      // A margin number, notation symbol or chart tick is not a text column.
+      // Measure ink between neighboring gutters, independently of PDF run splitting.
+      const ink = (start: number, end: number) => merged.slice(start, end).reduce((sum, interval) => sum + interval.right - interval.left, 0)
+      if (ink(rowGutters[position - 1] ?? 0, index) + medianHeight * .001 < medianHeight * 2 || ink(index, rowGutters[position + 1] ?? merged.length) + medianHeight * .001 < medianHeight * 2) continue
       candidateGaps.push({ left: merged[index - 1].right, right: merged[index].left, row: lineIndex })
     }
   })
@@ -877,7 +889,10 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   // widen a gutter asymmetrically; averaging gap centers splits the same
   // gutter into competing clusters and lets formulas pull it into prose.
   for (const gap of candidateGaps.sort((a, b) => a.right - a.left - (b.right - b.left))) {
-    const cluster = gutterClusters.find(candidate => Math.min(candidate.right, gap.right) - Math.max(candidate.left, gap.left) >= minimumGutter * .4)
+    // Wide indented/formula gaps may overlap several seeds. Repeated edges
+    // identify the real gutter; first-match lets an isolated word gap steal them.
+    const cluster = gutterClusters.filter(candidate => Math.min(candidate.right, gap.right) - Math.max(candidate.left, gap.left) >= minimumGutter * .4)
+      .sort((a, b) => Math.min(Math.abs(a.left - gap.left), Math.abs(a.right - gap.right)) - Math.min(Math.abs(b.left - gap.left), Math.abs(b.right - gap.right)))[0]
     if (cluster) {
       cluster.left = Math.max(cluster.left, gap.left); cluster.right = Math.min(cluster.right, gap.right)
       cluster.center = (cluster.left + cluster.right) / 2
@@ -887,16 +902,40 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   const gutterCorridor = Math.max(1.5, minimumGutter * 0.45)
   const automaticColumnBoundaries = gutterClusters
     .filter((cluster) => cluster.rows.size >= Math.max(3, Math.ceil(visualRows.length * 0.2)))
-    // Short lines and equation indentation widen gaps asymmetrically.
-    // Cluster first, then use repeated edges to keep the boundary out of prose.
-    .map((cluster) => {
-      const typical = [...cluster.gaps].sort((left, right) => left.right - left.left - (right.right - right.left)).slice(0, Math.ceil(cluster.gaps.length / 2))
-      return { ...cluster, center: (median(typical.map((value) => value.left)) + median(typical.map((value) => value.right))) / 2 }
+    .map(cluster => {
+      // Use repeated text edges, not a median dominated by indented equations.
+      const edge = (values: number[]) => {
+        const sorted = [...values].sort((a,b) => a-b)
+        let best = sorted.slice(0,1)
+        for (let start = 0; start < sorted.length; start++) {
+          const band = sorted.slice(start).filter(value => value - sorted[start] <= medianHeight * .12)
+          if (band.length > best.length) best = band
+        }
+        return best[Math.floor(best.length / 2)]
+      }
+      const typical = [...cluster.gaps].sort((a,b) => a.right-a.left-(b.right-b.left)).slice(0, Math.ceil(cluster.gaps.length / 2))
+      const center = (edge(typical.map(gap => gap.left)) + edge(typical.map(gap => gap.right))) / 2
+      return {...cluster,center:Math.max(cluster.left,Math.min(cluster.right,center))}
     })
     // A real gutter has substantially more support than conflicting text.
     // Page-wide whitespace alone can otherwise promote equation-number gaps
     // when staggered lines contribute extra supporting neighborhoods.
-    .filter((cluster) => visualRows.filter((row) => row.some((word) => word.rect.x < cluster.center + gutterCorridor && word.rect.x + word.rect.width > cluster.center - gutterCorridor)).length <= Math.min(visualRows.length * 0.25, cluster.rows.size * 0.5))
+    .filter((cluster) => {
+      // Full-width tables above/below a prose band do not contradict its gutter.
+      const corridor = Math.min(gutterCorridor, (cluster.right - cluster.left) * .4)
+      const support = [...cluster.rows].map(index => rowY(visualRows[index][0])).sort((a,b) => a-b)
+      const bands: number[][] = []
+      for (const y of support) {
+        const previous = bands.at(-1)
+        if (previous && y - previous.at(-1)! <= medianHeight * 4) previous.push(y)
+        else bands.push([y])
+      }
+      return bands.some(support => {
+        if (support.length < 3) return false
+        const band = visualRows.filter(row => rowY(row[0]) >= support[0] && rowY(row[0]) <= support.at(-1)!)
+        return band.filter(row => row.some(word => word.rect.x < cluster.center + corridor && word.rect.x + word.rect.width > cluster.center - corridor)).length <= Math.min(band.length * .25, support.length * .5)
+      })
+    })
     .sort((left, right) => left.center - right.center)
     .map((cluster) => cluster.center)
   const columnBoundaries = override?.columnBoundaries === undefined
