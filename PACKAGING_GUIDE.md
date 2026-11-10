@@ -1,5 +1,11 @@
 # PDFuck macOS / Windows 打包指引
 
+**2.1.16（2026-11-10，当前交付，macOS arm64）**：修复报销页漏字/字段误分栏、含双侧行号及图表的双栏漏识别、跨栏表注右半边拖选、上方跨栏公式吸入正文，以及整页表格误分栏。选择输入过滤带标记、半透明及几何叠加水印；十语言共用，无新增生产依赖。公开 23 份、223 页 PDF 全部替换内容，仅保留版式/几何，原图片和私密 PDF 对象不复制；143 个表单控件使用合成名称和值。旧原文锚点用例需迁移，Git 历史未自动改写。
+
+本轮仅运行新增 50 项单元、84 组版式/字体/输入顺序组合、244 组逐字选区、脱敏实际输入 12 次窗口拖选，以及源码与最终 APP 各 6 次跨栏/公式/水印拖选、十语言切换；typecheck、直接生产构建、隐私和 diff 检查通过。不运行旧测试全集、`npm run build` 或一键全量打包脚本。
+
+生成 APP：`npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist`；补齐并严格验证 ad-hoc 签名。成品新增 UI 明确使用独立 `--user-data-dir`，避免单实例锁干扰现有应用。然后以 `--prepackaged release/mac-arm64/PDFuck.app --mac dmg` 生成 DMG，以 `ditto -c -k --keepParent` 生成 ZIP。`node tests/scripts/release-2.1.16-package-check.cjs` 核验版本、全部生产字节、11 个 OCR 模型、签名、DMG/ZIP 和 SHA-256，输出发布 JSON/校验清单。无 Developer ID、未公证；Windows/Intel/真实安装卸载未验证。详见 [计划](tests/docs/PLAN-2.1.16.md)、[验收记录](tests/docs/VALIDATION-2.1.16.md) 和 [夹具隐私说明](tests/fixtures/README.md)。
+
 **2.1.15（2026-11-04，macOS arm64，最新重打包）**：修复公式/缩进混排导致重复栏缝的共享候选归属与边界定位，保留原有图注、表格及手动分栏能力。新增 40 个实文档变体、24 个多栏组合及两档缩放界面检查通过；重跑可执行的历史分栏/选择专项，82 项相关单元通过。4 份早期样本缺失，相关用例明确列为未验证，不能宣称全部通过。类型检查与直接生产构建通过，重建 APP、DMG、ZIP 和 SHA-256。按用户要求不启动成品复测；ad-hoc 签名，未公证、未验证 Windows。详见 [验收记录](tests/docs/VALIDATION-2.1.15.md)。
 
 

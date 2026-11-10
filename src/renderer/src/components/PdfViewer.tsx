@@ -20,6 +20,7 @@ import { saveCropMargin, useCropMargin } from '../lib/crop-preferences'
 import { captureZoomAnchor, ZoomScrollAnchor, type ZoomAnchor } from './ZoomScrollAnchor'
 import { imageRotationForPointer, moveImageRect, resizeImageRect, rotateImageVector, rotatedImageBounds, type ImageResizeHandle } from '../lib/image-geometry'
 import { caretForTextPosition, insertionPointAt, moveTextPosition, textCaretAtPoint, textItemsToEditableRegions, textItemsToWordBoxes, textSelectionBetween, textSelectionForQuery, type PdfFontDetails, type TextCaret, type TextPosition, type WordBox } from '../lib/text-layout'
+import { selectionTextItems } from '../lib/selection-text-items'
 import { canvasOutputScale, singlePageWheelDecision, virtualPageSpacerHeight, wheelZoom } from '../lib/rendering'
 import { AnnotationIcon } from './AnnotationIcon'
 import { sampleCanvasRegionColors } from '../lib/page-text-color'
@@ -698,9 +699,11 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       const items = content.items.filter((item): item is TextItem => 'str' in item)
       const fontDetails = await fontDetailsForPage(page, items)
       if (cancelled) return
-      const graphics = pageGraphics(await page.getOperatorList(), viewport.transform as Matrix, OPS)
+      const operators = await page.getOperatorList()
+      const selectableItems = selectionTextItems(items, operators, OPS)
+      const graphics = pageGraphics(operators, viewport.transform as Matrix, OPS)
       const rebuild = (override?: PageLayoutOverride) => {
-        const layoutWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, scaledLayoutOverride(override, viewport.width, viewport.height))
+        const layoutWords = textItemsToWordBoxes(selectableItems, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, scaledLayoutOverride(override, viewport.width, viewport.height), graphics)
         const visuals = detectPageVisuals(layoutWords, graphics, viewport)
         const nextWords = isolateVisualWords(layoutWords, visuals)
         setPageVisuals(visuals); setWords(nextWords); onTextMap(pageIndex, nextWords)
@@ -709,7 +712,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       rebuildTextMapRef.current = rebuild
       rebuild(layoutOverrideRef.current)
       const regions = textItemsToEditableRegions(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
-      const layout = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails)
+      const layout = textItemsToWordBoxes(selectableItems, content.styles, viewport.transform as [number, number, number, number, number, number], fontDetails, undefined, graphics)
       const boundaries = layout[0]?.columnBoundaries || [], margin = Math.max(12, Math.min(...layout.map(word => word.rect.x)))
       const longEdges = regions.flatMap(region => region.lines.filter(line => line.rect.width > viewport.width * .45).map(line => line.rect.x + line.rect.width)).sort((a, b) => a - b)
       const bodyRight = longEdges.length >= 3 ? longEdges[Math.floor(longEdges.length * .75)] : viewport.width - margin
@@ -1497,8 +1500,9 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const viewport = page.getViewport({ scale: 1 })
     const content = await page.getTextContent()
     const items = content.items.filter((item): item is TextItem => 'str' in item)
-    const layoutWords = textItemsToWordBoxes(items, content.styles, viewport.transform as [number, number, number, number, number, number], await fontDetailsForPage(page, items), scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height))
-    const visuals = detectPageVisuals(layoutWords, pageGraphics(await page.getOperatorList(), viewport.transform as Matrix, OPS), viewport)
+    const operators = await page.getOperatorList(), graphics = pageGraphics(operators, viewport.transform as Matrix, OPS)
+    const layoutWords = textItemsToWordBoxes(selectionTextItems(items, operators, OPS), content.styles, viewport.transform as [number, number, number, number, number, number], await fontDetailsForPage(page, items), scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height), graphics)
+    const visuals = detectPageVisuals(layoutWords, graphics, viewport)
     const words = isolateVisualWords(layoutWords, visuals)
     if (wordMapsDocumentRef.current === document) wordMapsRef.current.set(pageIndex, words)
     return words

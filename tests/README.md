@@ -14,7 +14,27 @@
 
 本次未添加或修改任何 `.gitignore`。测试代码和原始样本可被 Git 跟踪；临时目录和生成输出沿用仓库已有的 `tmp/`、`output/` 忽略规则。旧缓存/输出保留原内容，历史临时脚本不作为正式测试入口；不要从旧缓存恢复生产构建。
 
-所有样本使用随机的 32 位十六进制文件名，扩展名保留；代码、历史用例引用和说明同步使用匿名名称，不提供原名对照表。此修改保留文件内容，既有 Git 历史不作改写。
+所有 PDF 样本使用随机的 32 位十六进制文件名。2.1.16 已将公开样本全部重建为替代内容，原始 Git 历史不作自动改写，详见夹具说明。
+
+## 2.1.16 定向验收（当前）
+
+只运行本轮新增项，不运行历史全集：
+
+```bash
+npm run typecheck
+node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.16.test.ts --reporter=json --outputFile=tests/output/release-2.1.16/unit-results.json
+node tests/scripts/release-2.1.16-layout.cjs
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.16-input-ui.cjs
+node tests/scripts/release-2.1.16-ui.cjs
+python3 tests/scripts/release-2.1.16-privacy.py
+# 签名并生成包后：
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.16-ui.cjs
+node tests/scripts/release-2.1.16-package-check.cjs
+git diff --check
+```
+
+隐私校验依赖 PyMuPDF，可使用已有隔离环境 `tests/tmp/release-2.1.16/venv/bin/python`。公开 PDF 全部替换正文和原图片，详见 [夹具说明](fixtures/README.md)。旧原文锚点用例未运行，不能直接应用于替代副本。输出沿用已忽略的 tests/output、tests/tmp，不修改忽略规则。
 
 ## 2.1.12 定向验收（当前）
 

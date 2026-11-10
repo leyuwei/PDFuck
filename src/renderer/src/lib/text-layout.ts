@@ -3,6 +3,7 @@ import type { EditableTextRegion, NativeTextFont, PdfPoint, PdfRect, TextStyle }
 import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
+import type { PageGraphic } from './page-visuals'
 
 export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; tableCell?: number; tableCellRect?: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
 export interface TextPosition { wordIndex: number; offset: number }
@@ -64,7 +65,9 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
   words.forEach((word) => {
     if (word.column === undefined || word.columnAmbiguous) return
     const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
-    if (dx < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = dx }
+    const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
+    const distance = dx * dx + 16 * dy * dy
+    if (distance < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = distance }
   })
   words.forEach((word, index) => {
     if (nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
@@ -342,6 +345,8 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const word = words[wordIndex]
     const useVisualBand = Boolean(visualBandIndices?.length)
     if (word?.tableCell !== undefined || word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
+    // Column-major traversal must not pull the other half of an earlier spanning equation into body text.
+    if (!useStructuralBand && word?.visualBlock !== undefined && word.visualBlock !== startWord.visualBlock && word.visualBlock !== endWord.visualBlock && rowY(word) < minY) continue
     if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
     const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
@@ -673,7 +678,7 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
   return natural.map((value) => Math.max(0, value) * scale)
 }
 
-export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride): WordBox[] {
+export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride, graphics: PageGraphic[] = []): WordBox[] {
   const words: WordBox[] = []
   const horizontalWords = new Set<WordBox>()
   const fontWidths = new Map<NativeTextFont, Map<string, number>>()
@@ -830,6 +835,9 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   lines.sort((left, right) => (left.baselineY ?? left.top) - (right.baselineY ?? right.top) || Math.min(...left.words.map((word) => word.rect.x)) - Math.min(...right.words.map((word) => word.rect.x)))
   const heights = words.map((word) => word.rect.height).sort((left, right) => left - right)
   const medianHeight = heights[Math.floor(heights.length / 2)] || 10
+  // Repeated horizontal rules bound tables/plots, whose cell gaps are not prose gutters.
+  const allRules = graphics.flatMap(graphic => graphic.image ? [] : graphic.rules || [graphic.rect])
+  const rules = allRules.filter(rect => rect.height <= medianHeight * .2 && rect.width >= medianHeight * 8)
   // The gutter can be narrower than 15pt in compact journal layouts. Since
   // this gap is measured across repeated visual rows, a fraction of the
   // median glyph height is enough to distinguish it from ordinary word gaps.
@@ -844,6 +852,16 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     if (row && Math.abs(rowY(row[0]) - rowY(word)) <= medianHeight * 0.65) row.push(word)
     else visualRows.push([word])
   }
+  const ruledBands = rules.flatMap(rule => {
+    const aligned = rules.filter(other => Math.abs(other.x-rule.x) < medianHeight && Math.abs(other.x+other.width-rule.x-rule.width) < medianHeight)
+    const ys = [...new Set(aligned.map(rect => rect.y))].sort((a,b) => a-b)
+    const closed = ys.length >= 2 && [rule.x,rule.x+rule.width].every(x => allRules.some(rect => rect.width <= medianHeight * .2 && Math.abs(rect.x-x) < medianHeight * .2 && rect.y <= ys[0]+medianHeight*.2 && rect.y+rect.height >= ys.at(-1)!-medianHeight*.2))
+    const bodyRows = closed ? visualRows.filter(row => {
+      const ink = row.filter(word => word.rect.x >= rule.x && word.rect.x+word.rect.width <= rule.x+rule.width && rowY(word) >= ys[0] && rowY(word) <= ys.at(-1)! && /\p{L}/u.test(word.text)).reduce((sum,word) => sum+word.rect.width,0)
+      return ink >= rule.width * .55
+    }).length : 0
+    return ys.length >= 3 || closed && bodyRows < 3 ? [{left:rule.x,right:rule.x+rule.width,top:ys[0],bottom:ys.at(-1)!}] : []
+  })
   const textLeft = words.reduce((left, word) => /^\d+$/.test(word.text) ? left : Math.min(left, word.rect.x), Infinity)
   visualRows.forEach((row, lineIndex) => {
     // Columns need not share a baseline. Look at neighboring lines together:
@@ -851,9 +869,11 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     // coverage from nearby lines. Counting only same-baseline gaps penalized
     // formula-heavy pages, whose scripts create many extra visual rows.
     const neighbors = visualRows.filter(candidate => Math.abs(rowY(candidate[0]) - rowY(row[0])) <= medianHeight * 1.25)
+    const textRight = neighbors.flat().reduce((right, word) => /^\d+$/.test(word.text) ? right : Math.max(right, word.rect.x + word.rect.width), -Infinity)
     const intervals = neighbors.flat()
-      .filter(word => !(/^\d+$/.test(word.text) && word.rect.width < medianHeight * 2 && word.rect.x + word.rect.width < textLeft - medianHeight * .5))
-      .map((word) => ({ left: word.rect.x, right: word.rect.x + word.rect.width }))
+      .filter(word => !(/^\d+$/.test(word.text) && word.rect.width < medianHeight * 2 && (word.rect.x + word.rect.width < textLeft - medianHeight * .5 || word.rect.x > textRight + medianHeight * .5)))
+      // Source-run coverage keeps font fallback and per-glyph metrics from inventing word gutters.
+      .map((word) => { const rect = word.textRunRect || word.rect; return { left: rect.x, right: rect.x + rect.width } })
       .sort((left, right) => left.left - right.left)
     const merged: Array<{ left: number; right: number }> = []
     for (const interval of intervals) {
@@ -878,10 +898,26 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       rowGutters.push(index)
     }
     for (const [position, index] of rowGutters.entries()) {
-      // A margin number, notation symbol or chart tick is not a text column.
-      // Measure ink between neighboring gutters, independently of PDF run splitting.
+      // Reject small islands; the prose check below also excludes numbers and notation.
       const ink = (start: number, end: number) => merged.slice(start, end).reduce((sum, interval) => sum + interval.right - interval.left, 0)
       if (ink(rowGutters[position - 1] ?? 0, index) + medianHeight * .001 < medianHeight * 2 || ink(index, rowGutters[position + 1] ?? merged.length) + medianHeight * .001 < medianHeight * 2) continue
+      const center = (merged[index - 1].right + merged[index].left) / 2
+      if (ruledBands.some(band => center > band.left && center < band.right && rowY(row[0]) >= band.top && rowY(row[0]) <= band.bottom)) continue
+      if (neighbors.flat().some(word => word.textRunRect && word.textRunRect.x < center && word.textRunRect.x + word.textRunRect.width > center)) continue
+      // Both sides must contain text runs, rather than invoice fields, ticks or numeric cells.
+      const prose = (left: number, right: number) => neighbors.some(row => {
+        let start = Infinity, end = -Infinity, letters = 0
+        for (const word of [...row].sort((a,b) => a.rect.x-b.rect.x)) {
+          const rect = word.rect
+          if (rect.x < left - medianHeight * .2 || rect.x + rect.width > right + medianHeight * .2) continue
+          if (rect.x-end > medianHeight * .8) { start = rect.x; letters = 0 }
+          end = rect.x + rect.width
+          letters += word.text.match(/\p{L}/gu)?.length || 0
+          if (end-start >= medianHeight * 6 && letters >= 6 || letters >= 4 && (word.textRunRect?.width || 0) >= medianHeight * 8) return true
+        }
+        return false
+      })
+      if (!prose(-Infinity, merged[index-1].right) || !prose(merged[index].left, Infinity)) continue
       candidateGaps.push({ left: merged[index - 1].right, right: merged[index].left, row: lineIndex })
     }
   })
@@ -901,7 +937,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   }
   const gutterCorridor = Math.max(1.5, minimumGutter * 0.45)
   const automaticColumnBoundaries = gutterClusters
-    .filter((cluster) => cluster.rows.size >= Math.max(3, Math.ceil(visualRows.length * 0.2)))
+    .filter((cluster) => cluster.rows.size >= 3)
     .map(cluster => {
       // Use repeated text edges, not a median dominated by indented equations.
       const edge = (values: number[]) => {
@@ -994,7 +1030,11 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const second = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[1]
     return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/u.test(first.text) && /^(?:\d+[.)]?|\d+\([a-z]\))$/iu.test(second.text))
   }
-  const structuralRuns = runs.filter((run) => run.words.some((word) => word.columnAmbiguous) || captionStart(run)).sort((left, right) => left.baselineY - right.baselineY || left.left - right.left)
+  const equationWords = new Set(visualRows.filter(row => {
+    const text = row.map(word => word.text).join(''), operators = text.match(/[=+−∑∫√×÷<>≤≥/]/gu)?.length || 0
+    return operators >= 2 && operators / text.length >= .1 && columnBoundaries.some(boundary => row.some(word => word.rect.x + word.rect.width < boundary) && row.some(word => word.rect.x > boundary))
+  }).flat())
+  const structuralRuns = runs.filter((run) => run.words.some((word) => word.columnAmbiguous || equationWords.has(word)) || captionStart(run)).sort((left, right) => left.baselineY - right.baselineY || left.left - right.left)
   const blockRuns: VisualRun[][] = []
   for (const run of structuralRuns) {
     const previousBlock = blockRuns.at(-1)
