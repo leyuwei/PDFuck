@@ -640,3 +640,6 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .update-dialog .update-actions { flex-wrap: wrap; }
 .theme-dark .release-notes { border-color: #40516a; }
 .theme-dark .release-notes > h3 { background: #263448; color: #eef4ff; }
+.pdf-link-return { position: sticky; top: 12px; z-index: 150; display: block; margin: 0 auto -36px; padding: 10px 20px; border-radius: 24px; background: var(--panel-bg, #fff); color: var(--text, #263247); border: 1px solid #8998b266; box-shadow: 0 6px 24px #142b4933; cursor: pointer; }
+.annotation-hover-hint { position:absolute; z-index:160; left:0; top:calc(100% + 8px); width:max-content; max-width:min(340px,65vw); max-height:180px; overflow:hidden; padding:10px 13px; border-radius:10px; background:#263247; color:#fff; box-shadow:0 5px 20px #15243a40; font:var(--ui-font-body)/1.5 sans-serif; white-space:pre-wrap; pointer-events:none; }
+.annotation-hit:has(.annotation-hover-hint) { z-index:160; }

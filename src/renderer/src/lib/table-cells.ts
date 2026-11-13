@@ -15,7 +15,7 @@ export function detectTableGrids(words: WordBox[], graphics: PageGraphic[], size
     if(right<x||bottom<y)continue
     const width=right-x,height=bottom-y
     if(height<=tolerance*2&&width>=em*1.5)horizontal.push({at:y+height/2,from:x,to:right})
-    else if(width<=tolerance*2&&height>=em*.8)vertical.push({at:x+width/2,from:y,to:bottom})
+    else if(width<=tolerance*2&&height>=em*.4)vertical.push({at:x+width/2,from:y,to:bottom})
   }
   const merge=(rules:Rule[])=>{
     const merged:Rule[]=[]
@@ -34,11 +34,11 @@ export function detectTableGrids(words: WordBox[], graphics: PageGraphic[], size
   const hs=merge(horizontal),vs=merge(vertical),cells:PdfRect[]=[]
   for(let i=0;i<vs.length;i++)for(let j=i+1;j<vs.length;j++) {
     const left=vs[i],right=vs[j],top=Math.max(left.from,right.from),bottom=Math.min(left.to,right.to)
-    if(right.at-left.at<em*1.5||bottom-top<em*.8)continue
+    if(right.at-left.at<em*1.5||bottom-top<em*.4)continue
     const edges=hs.filter(h=>h.at>=top-tolerance&&h.at<=bottom+tolerance&&h.from<=left.at+tolerance&&h.to>=right.at-tolerance)
     for(let k=1;k<edges.length;k++) {
       const y=edges[k-1].at,b=edges[k].at
-      if(b-y<em*.8||vs.some(v=>v.at>left.at+tolerance&&v.at<right.at-tolerance&&Math.min(v.to,b)-Math.max(v.from,y)>tolerance))continue
+      if(b-y<em*.4||vs.some(v=>v.at>left.at+tolerance&&v.at<right.at-tolerance&&Math.min(v.to,b)-Math.max(v.from,y)>tolerance))continue
       cells.push({x:left.at,y,width:right.at-left.at,height:b-y})
     }
   }

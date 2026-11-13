@@ -1,3 +1,11 @@
+import { FeatureResourceCatalog, validResourceRequest } from './feature-resources'
+import { ResourceManager } from './resource-manager'
+import { ResourceProxyStore } from './resource-proxy'
+import { resourceTransport } from './resource-network'
+import { resourceError } from './resource-download'
+import type { ResourceAction } from '../shared/resources'
+import { LocalGrammarEngine } from './grammar'
+import { prepareMacosPrinterData } from './macos-printing'
 import { createLabReport } from './lab-report'
 import { readTextDocument, renderMarkdownPdf } from './markdown'
 import { renderPageText } from './page-text'
@@ -28,6 +36,20 @@ import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 import { validExternalLink } from './external-links'
+
+let grammarEngine:LocalGrammarEngine|undefined
+let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;ready:Promise<void>}|undefined
+function resources(){
+  if(!resourceService){
+    const root=join(app.getPath('userData'),'feature-resources'),notices=app.isPackaged?join(process.resourcesPath,'resource-notices'):join(__dirname,'../../resources/feature-notices')
+    const catalog=new FeatureResourceCatalog(root,notices),proxy=new ResourceProxyStore(join(root,'proxy.json'),safeStorage)
+    const manager=new ResourceManager(catalog,resourceTransport(proxy),(owner,state)=>{const window=BrowserWindow.getAllWindows().find(w=>w.webContents.id===owner);if(window&&!window.isDestroyed())window.webContents.send('resources:state',state)})
+    resourceService={manager,proxy,ready:catalog.cleanup()}
+  }
+  return resourceService
+}
+app.on('will-quit',()=>{resourceService?.manager.stop();grammarEngine?.stop()})
+process.once('exit',()=>{resourceService?.manager.stop();grammarEngine?.stop()})
 
 interface MainWindowSession extends WindowDocumentState {
   window: BrowserWindow
@@ -484,6 +506,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     } finally {
       nativePrintBusy = false
       await unlink(temporary).catch(() => undefined)
+      await unlink(temporary + '.urf').catch(() => undefined)
       returnFocusToWindow(parent)
     }
   }
@@ -496,7 +519,8 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
         const { stdout } = await execFileAsync('/usr/bin/lpoptions', ['-p', printer.name, '-l'], { windowsHide: true, timeout: 5000, maxBuffer: 256 * 1024 })
         duplexOption = cupsDuplexOptionFromCapabilities(stdout)
       } catch { /* Keep the IPP-standard fallback when driver capabilities cannot be queried. */ }
-      await execFileAsync('/usr/bin/lp', buildMacosCupsPrintArguments(request.options, printer.name, temporary, duplexOption), { windowsHide: true, timeout: 30000 })
+      const printable = await prepareMacosPrinterData(temporary, temporary + '.urf', printer.name, request.options, duplexOption)
+      await execFileAsync('/usr/bin/lp', buildMacosCupsPrintArguments(request.options, printer.name, printable, duplexOption), { windowsHide: true, timeout: 30000 })
       return { status: 'printed' }
     } catch (error) {
       console.error('CUPS print dispatch failed.', error)
@@ -504,6 +528,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     } finally {
       nativePrintBusy = false
       await unlink(temporary).catch(() => undefined)
+      await unlink(temporary + '.urf').catch(() => undefined)
       returnFocusToWindow(parent)
     }
   }
@@ -532,6 +557,7 @@ async function printPdf(request: PrintPdfRequest, parent: BrowserWindow): Promis
     if (!window.isDestroyed()) window.destroy()
     if (printWindow === window) printWindow = null
     await unlink(temporary).catch(() => undefined)
+      await unlink(temporary + '.urf').catch(() => undefined)
     returnFocusToWindow(parent)
   }
 }
@@ -618,7 +644,7 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })
   const ocrOwner = window.webContents.id
-  window.webContents.once('destroyed', () => cancelOcr(ocrOwner))
+  window.webContents.once('destroyed', () => {cancelOcr(ocrOwner);resourceService?.manager.closeOwner(ocrOwner)})
   window.on('closed', () => {
     windowSessions.delete(webContentsId)
     for (const [transferId, transfer] of documentTransfers) if (transfer.source === session) clearDocumentTransfer(transferId)
@@ -672,11 +698,14 @@ app.whenReady().then(async () => {
     return
   }
   void refreshMacPdfAssociation()
-  ipcMain.handle('ocr:page', (event, request: OcrPageRequest) => {
+  ipcMain.handle('ocr:page', async (event, request: OcrPageRequest) => {
     requireMainWindow(event.sender)
-    return recognizeOcrPage(event.sender.id, request, join(__dirname.replace('app.asar', 'app.asar.unpacked'), '../ocr'), value => {
+    const service=resources();await service.ready
+    if(!validResourceRequest({kind:'ocr',language:request?.language})||(await service.manager.catalog.missing({kind:'ocr',language:request.language},new AbortController().signal)).length)throw resourceError('notReady')
+    if(event.sender.isDestroyed())throw resourceError('canceled')
+    return recognizeOcrPage(event.sender.id, request, service.manager.catalog.ocrModels, value => {
       if (!event.sender.isDestroyed()) event.sender.send('ocr:progress', request.jobId, value)
-    })
+    },service.manager.catalog.ocrRuntime)
   })
   ipcMain.on('ocr:cancel', (event, jobId: unknown) => {
     requireMainWindow(event.sender)
@@ -687,6 +716,13 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md', 'txt'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0])
   })
+  ipcMain.handle('resources:ensure',async(event,request:unknown)=>{requireMainWindow(event.sender);if(!validResourceRequest(request))throw resourceError('invalidResource');const service=resources();await service.ready;if(event.sender.isDestroyed())return false;return service.manager.request(event.sender.id,request)})
+  ipcMain.handle('resources:state',event=>{requireMainWindow(event.sender);return resourceService?.manager.state(event.sender.id)})
+  ipcMain.handle('resources:action',(event,id:unknown,action:unknown)=>{requireMainWindow(event.sender);if(typeof id!=='string'||!['start','pause','cancel'].includes(String(action)))throw resourceError('invalidResource');resources().manager.action(event.sender.id,id,action as ResourceAction)})
+  ipcMain.on('resources:cancel',(event,request:unknown)=>{requireMainWindow(event.sender);if(validResourceRequest(request))resources().manager.cancelRequest(event.sender.id,request)})
+  ipcMain.handle('resources:proxy',event=>{requireMainWindow(event.sender);return resources().proxy.publicValue()})
+  ipcMain.handle('resources:proxy-save',(event,proxy:unknown)=>{requireMainWindow(event.sender);const service=resources();if(service.manager.isActive())throw resourceError('busy');return service.proxy.save(proxy)})
+  ipcMain.handle('grammar:check',async(event,request:unknown)=>{requireMainWindow(event.sender);const service=resources();await service.ready;if((await service.manager.catalog.missing({kind:'grammar'},new AbortController().signal)).length)throw resourceError('notReady');if(event.sender.isDestroyed())throw resourceError('canceled');grammarEngine??=new LocalGrammarEngine(service.manager.catalog.grammar);return grammarEngine.check(request as import('../shared/grammar').GrammarRequest)})
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
   ipcMain.handle('pdf:password-get', (event, credentialKey: string) => {
     requireMainWindow(event.sender)

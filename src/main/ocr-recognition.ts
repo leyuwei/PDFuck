@@ -1,5 +1,6 @@
 import { PDFDocument, PDFName, PDFArray, PDFRawStream, decodePDFRawStream, concatTransformationMatrix, pushGraphicsState, popGraphicsState } from 'pdf-lib'
-import { PSM, type Worker, type Page } from 'tesseract.js'
+import type { PSM, Worker, Page } from 'tesseract.js'
+const AUTO='3' as PSM, SPARSE_TEXT='11' as PSM // Stable Tesseract page-segmentation protocol values.
 import type { OcrPageResult } from '../shared/ocr'
 import { normalizeTextSpacing } from '../shared/text-spacing'
 
@@ -77,13 +78,13 @@ export async function recognizeRaster(worker: Worker, image: Uint8Array): Promis
     await worker.setParameters({ tessedit_pageseg_mode: psm, user_defined_dpi: '300', preserve_interword_spaces: '0', thresholding_method: threshold })
     return (await worker.recognize(Buffer.from(image), { pdfTextOnly: true, rotateAuto: true }, { text: true, pdf: true })).data
   }
-  let best = await recognize(PSM.AUTO, '0')
+  let best = await recognize(AUTO, '0')
   const count = (page: Page) => Array.from(page.text.replace(/\s/gu, '')).length
   // ponytail: at most two passes; a dedicated layout model is needed for complex tables/handwriting.
   if (!count(best) || best.confidence < 82) {
     try {
       const sparse = count(best) < 80
-      const candidate = await recognize(sparse ? PSM.SPARSE_TEXT : PSM.AUTO, sparse ? '0' : '2')
+      const candidate = await recognize(sparse ? SPARSE_TEXT : AUTO, sparse ? '0' : '2')
       // A tiny high-confidence fragment must not replace a mostly complete page.
       if (count(candidate) >= Math.max(1, count(best) * .85) && (!count(best) || candidate.confidence > best.confidence + 2)) best = candidate
     } catch { if (!count(best)) throw new Error('ocr.failed') }

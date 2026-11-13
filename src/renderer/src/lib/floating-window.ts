@@ -96,7 +96,7 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
   const style: CSSProperties | undefined = position || size ? { ...position, ...(size ? { width: size.width, height: size.height } : {}) } : undefined
   return { ref, style, dragHandlers: {
     onPointerDown(event: React.PointerEvent) {
-      if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
+      if (event.button !== 0 || (event.target as HTMLElement).closest('button, input, textarea, select, a, [contenteditable="true"]')) return
       event.preventDefault()
       const bounds = ref.current!.getBoundingClientRect()
       drag.current = { x: event.clientX, y: event.clientY, left: bounds.left, top: bounds.top }

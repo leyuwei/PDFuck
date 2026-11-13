@@ -1,0 +1,50 @@
+.modal-backdrop.resource-backdrop { z-index: 1200; background: #15243e66; backdrop-filter: blur(5px); }
+.modal.resource-download-dialog { position: fixed; width: min(540px, calc(100vw - 24px)); max-height: var(--floating-max-height, calc(100dvh - 132px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; border: 1px solid #dce5f2; border-radius: 20px; background: #fff; box-shadow: 0 22px 80px #12223f40; }
+.resource-download-dialog > header { display: flex; align-items: center; gap: 12px; flex: none; padding: 18px 20px; background: linear-gradient(120deg,#f0f4ff,#f9fbff); border-bottom: 1px solid #e1e8f2; cursor: move; touch-action: none; }
+.resource-title-icon { width: 43px; height: 43px; display: grid; place-items: center; flex: none; border-radius: 13px; background: #e1e9ff; color: #3c63d1; }
+.resource-title-icon svg { width: 26px; height: 26px; }
+.resource-download-dialog > header > div:nth-child(2) { flex: 1; min-width: 0; }
+.modal.resource-download-dialog h2 { margin: 0; font-size: var(--ui-font-title); line-height: 1.35; overflow-wrap: anywhere; }
+.resource-download-dialog > header span { display: block; margin-top: 3px; color: #667690; font-size: var(--ui-font-small); }
+.resource-download-dialog > header > button { width: 30px; min-height: 30px; padding: 0; flex: none; border: 0; background: transparent; font-size: var(--ui-font-title); }
+.resource-download-body { min-height: 0; padding: 16px 20px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font-size: var(--ui-font-body); }
+.resource-download-body > p:first-child { margin: 0 0 14px; line-height: 1.6; color: #475a76; }
+.resource-progress-card { padding: 14px; border: 1px solid #dce4f3; border-radius: 13px; background: #f6f8ff; }
+.resource-phase, .resource-transfer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.resource-phase { color: #33549e; margin-bottom: 9px; }
+.resource-phase bdi { font-variant-numeric: tabular-nums; font-weight: 650; }
+.resource-progress-card progress { width: 100%; height: 8px; display: block; appearance: none; border: 0; border-radius: 8px; overflow: hidden; background: #dce5f7; accent-color: var(--theme-accent,#5575de); }
+.resource-progress-card progress::-webkit-progress-bar { background: #dce5f7; border-radius: 8px; }
+.resource-progress-card progress::-webkit-progress-value { background: var(--theme-accent,#5575de); border-radius: 8px; transition: width .15s; }
+.resource-transfer { margin-top: 9px; color: #5e6e87; font-size: var(--ui-font-small); font-variant-numeric: tabular-nums; }
+.resource-progress-card > small { display: block; margin-top: 7px; overflow-wrap: anywhere; color: #64728c; font-size: var(--ui-font-small); }
+.resource-resume-hint { margin: 10px 0; line-height: 1.5; color: #66748b; font-size: var(--ui-font-small); }
+.resource-sources { margin: 12px 0; padding: 10px 12px; border: 1px solid #e1e7ef; border-radius: 10px; color: #4b5d79; font-size: var(--ui-font-small); }
+.resource-sources summary { cursor: pointer; }
+.resource-sources ul { padding: 0; list-style: none; margin: 10px 0 0; max-height: 140px; overflow: auto; }
+.resource-sources li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 6px 0; border-top: 1px solid #e3e9f2; }
+.resource-sources li span { min-width: 0; overflow-wrap: anywhere; }
+.resource-sources li small { grid-column: 1 / -1; color: #77849b; }
+.resource-privacy { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; color: #3b7768; font-size: var(--ui-font-small); }
+.resource-privacy svg { flex: none; width: 19px; height: 19px; }
+.resource-proxy-toggle { width: 100%; display: flex; justify-content: space-between; padding: 10px 0; margin-top: 8px; border: 0; background: transparent; color: #4b6190; text-align: start; font-size: var(--ui-font-small); }
+.resource-proxy-fields { min-width: 0; margin: 0; padding: 12px; border: 1px solid #dce5f2; border-radius: 12px; }
+.resource-proxy-fields legend { font-size: var(--ui-font-small); }
+.resource-proxy-fields label { display: grid; min-width: 0; gap: 5px; margin-bottom: 10px; font-size: var(--ui-font-small); }
+.resource-proxy-fields :is(input,select) { width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; box-sizing: border-box; border: 1px solid #cdd8ea; border-radius: 7px; color: inherit; background: #fff; font-size: var(--ui-font-body); }
+.resource-credentials { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.resource-proxy-fields > p { font-size: var(--ui-font-small); line-height: 1.5; color: #697a93; }
+.resource-proxy-fields > span { padding-inline-start: 10px; font-size: var(--ui-font-small); color: #2e7b68; }
+.resource-download-error { padding: 10px 12px; border-radius: 9px; background: #fff1f1; color: #ac3448; line-height: 1.5; overflow-wrap: anywhere; }
+.resource-download-dialog > footer { margin: 0; flex: none; padding: 12px 20px; border-top: 1px solid #e3e9f2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; background: #fafbfe; }
+.resource-download-dialog > footer button { max-width: 100%; overflow-wrap: anywhere; }
+.resource-download-dialog :is(button,input,select,summary):focus-visible { outline: 2px solid var(--theme-accent,#5575de); outline-offset: 2px; }
+.theme-dark .resource-download-dialog { background: #1e2a3e; border-color: #465974; color: #e7edf7; }
+.theme-dark .resource-download-dialog > header, .theme-dark .resource-download-dialog > footer { background: #25354e; border-color: #405573; }
+.theme-dark .resource-download-dialog :is(.resource-progress-card,.resource-proxy-fields,.resource-sources) { background: #22324c; border-color: #415977; }
+.theme-dark .resource-title-icon { background: #334a76; color: #b9cfff; }
+.theme-dark .resource-download-dialog :is(.resource-phase,.resource-proxy-toggle) { color: #b9ceff; }
+.theme-dark .resource-download-dialog :is(.resource-download-body>p,.resource-resume-hint,.resource-transfer,.resource-sources,header span,.resource-progress-card small,.resource-proxy-fields>p) { color: #bccae0; }
+.theme-dark .resource-proxy-fields :is(input,select) { background: #172438; border-color: #536783; }
+.theme-dark .resource-privacy { color: #9bd1bc; }
+.theme-dark .resource-download-error { background: #4b2934; color: #ffc0cb; }

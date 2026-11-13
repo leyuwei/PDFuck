@@ -24,7 +24,7 @@ def replacement(text):
     return ''.join(result)
 
 
-def sanitize(source, target):
+def sanitize(source, target, *, split_graphics=False):
     original = fitz.open(source)
     print('Rebuilding',target.name,flush=True)
     clean = fitz.open()
@@ -42,6 +42,10 @@ def sanitize(source, target):
                     if abs(a.x-b.x) < .1 or abs(a.y-b.y) < .1:
                         rules.draw_line(a,b)
                 elif part[0] == 're' and part[1].width >= 30 and part[1].height >= 20: rules.draw_rect(part[1])
+            if split_graphics:
+                rules.finish(color=(.45,.45,.45),width=.3)
+                rules.commit()
+                rules=page.new_shape()
         rules.finish(color=(.45,.45,.45),width=.3)
         rules.commit()
         # No source image is embedded, including scans, signatures, logos and QR codes.

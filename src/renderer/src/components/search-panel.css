@@ -42,3 +42,22 @@
 .theme-dark .pdf-search-result { background: #202b3e; border-color: #384c69; }
 .theme-dark .pdf-search-result b { color: color-mix(in srgb, var(--theme-accent, #83a5e8) 35%, #fff); }
 .theme-dark .pdf-search-result:hover, .theme-dark .pdf-search-result[aria-current="true"] { background: var(--theme-accent-faint, #2d4264); }
+
+/* Keep search controls compact and reserve the remaining height for results. */
+.pdf-search-panel { height: min(520px, calc(100dvh - 124px)); min-height: min(300px, calc(100dvh - 124px)); }
+.pdf-search-heading { min-height: 34px; padding: 3px 8px 3px 12px; gap: 8px; }
+.pdf-search-heading button { width: 28px; height: 28px; }
+.pdf-search-body { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+.pdf-search-controls { flex: none; min-height: 0; max-height: 45%; overflow: auto; scrollbar-gutter: stable; }
+.pdf-search-input-row { padding: 8px 10px 6px; gap: 6px; }
+.pdf-search-input-row input { min-height: 34px; padding: 6px 8px; }
+.pdf-search-input-row button { min-height: 34px; padding: 6px 12px; }
+.pdf-search-options { padding: 0 8px 7px; gap: 3px; }
+.pdf-search-options label { min-height: 24px; padding: 2px 4px; }
+.pdf-regex-presets { min-height: 32px; width: calc(100% - 20px); margin: 0 10px 7px; padding: 5px 7px; }
+.pdf-search-error { margin: 0 10px 7px; }
+.pdf-search-state { flex: 1; min-height: 70px; padding: 12px; overflow: auto; }
+.pdf-search-results { flex: 1; min-height: 80px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.pdf-search-results header { min-height: 34px; padding: 3px 10px; }
+.pdf-search-results header button { width: 28px; min-height: 28px; }
+.pdf-search-result { padding: 9px 12px; min-height: 60px; }

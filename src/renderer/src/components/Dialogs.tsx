@@ -1,3 +1,4 @@
+import { addTextStyle, loadAddTextStyle, saveAddTextStyle } from '../lib/text-preferences'
 import { ReleaseNotes } from './ReleaseNotes'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
@@ -95,7 +96,7 @@ export interface TextDialogValue { text: string; style: TextStyle }
 
 export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { initial?: TextDialogValue; edit?: boolean; onCancel(): void; onSubmit(value: TextDialogValue): void }) {
   const [text, setText] = useState(initial?.text || '')
-  const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'Arial', size: 16, color: '#182033', bold: false, italic: false, align: 'left', lineHeight: 1.25 })
+  const [style, setStyle] = useState<TextStyle>(() => initial?.style || loadAddTextStyle())
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   return <div className="modal-backdrop"><ScrollWindow className="modal text-dialog"><h2>{edit ? ui("ui.editText") : ui("ui.addText")}</h2><p>{ui("ui.setTheTextAndItsDisplayFormatDragItOn")}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
     <div className="format-grid"><label>{ui("ui.font")}<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label>
@@ -104,7 +105,7 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
       <label>{ui("ui.alignment")}<select value={style.align} onChange={(event) => setStyle({ ...style, align: event.target.value as TextStyle['align'] })}><option value="left">{ui("ui.left")}</option><option value="center">{ui("ui.center")}</option><option value="right">{ui("ui.right")}</option></select></label>
       <label>{ui("ui.lineSpacing")}<select value={style.lineHeight || 1.25} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> {ui("ui.bold")}</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> {ui("ui.italic")}</button></div>
-    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></ScrollWindow></div>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => { const submitted = edit ? style : addTextStyle(style); if (!edit) saveAddTextStyle(submitted); onSubmit({ text, style: submitted }) }}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></ScrollWindow></div>
 }
 
 export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { initial?: PageNumberSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: PageNumberSettings): void; onDelete(): void }) {

@@ -1,3 +1,4 @@
+import { ReadingIcon } from './ReadingIcon'
 import { useAnnotationView, saveAnnotationView } from '../lib/annotation-preferences'
 import { InterfaceSizeDialog } from './InterfaceSizeDialog'
 import { INTERFACE_SIZES, INTERFACE_SIZE_LABELS, useInterfaceSize } from '../lib/interface-size'
@@ -50,8 +51,11 @@ interface Props {
   onSearch(): void
   searchSource?: boolean
   onVisuals(): void
+  onAbbreviations(): void
   onCitations(): void
   citationsEnabled: boolean
+  visualsEnabled?: boolean
+  abbreviationsEnabled?: boolean
   onGrammar(): void
   onRecognizeBookmarks?(): void
   theme: 'light' | 'dark'
@@ -170,7 +174,14 @@ export function ToolPanel(props: Props) {
       <h3>{ui("ui.theme")}</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>{ui("ui.bright")}</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>{ui("ui.dark")}</button></div><div className="theme-settings"><div className="theme-setting"><div className="theme-setting-copy"><b>{ui("ui.appAccent")}</b><small>{ui("ui.buttonsAndHighlights")}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui("ui.appAccent")} value={props.accent} theme={props.theme} onChange={props.onAccent} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title={ui("ui.restoreDefaultAppAccent")} aria-label={ui("ui.restoreDefaultAppAccent")}>↺</button></div></div><div className="theme-setting"><div className="theme-setting-copy"><b>{ui('text.paper')}</b><small>{ui('text.paperHint')}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui('text.paper')} value={props.documentBackground} theme={props.theme} disabled={!hasDocument} onChange={props.onDocumentBackground} /><button type="button" className="color-reset" disabled={!hasDocument || !props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title={ui('text.restorePaper')} aria-label={ui('text.restorePaper')}>↺</button></div></div></div><p className="hint theme-settings-hint">{ui('text.paperLocal')}</p>
 <button type="button" className="wide tool-action-button interface-size-action" onClick={() => setSizeDialogOpen(true)}><span>{ui("ui.interfaceFontSize")}</span><output>{ui(INTERFACE_SIZE_LABELS[INTERFACE_SIZES.findIndex(size => size === interfaceSize)])}</output></button>
 <h3>{ui("ui.interfaceLanguage")}</h3><label className="language-select"><select value={language} aria-label={ui("ui.interfaceLanguage")} onChange={(event) => setInterfaceLanguage(event.target.value as InterfaceLanguage)}>{INTERFACE_LANGUAGES.map((code) => <option key={code} value={code}>{LANGUAGE_LABELS[code]}</option>)}</select></label>
-      <h3>{ui("ui.readingTools")}</h3><div className="reading-tools"><button type="button" className="wide tool-action-button search-pdf-action" disabled={!hasDocument} onClick={props.onSearch}><span>{ui(props.searchSource ? "ui.searchDocument" : "ui.searchPdf")}</span><kbd>{shortcutLabel('search', platform)}</kbd></button><button className="wide tool-action-button recognize-bookmark-action" disabled={documentDisabled} onClick={() => props.onRecognizeBookmarks?.()}>{ui("ui.recognizeBookmarks")}</button><button className="wide tool-action-button" disabled={!pdfAvailable} onClick={props.onVisuals}>{ui("ui.findFiguresTables")}</button><button className={`wide tool-action-button${props.citationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={props.citationsEnabled} onClick={props.onCitations}>{props.citationsEnabled ? ui("ui.hideCitationLinks") : ui("ui.linkCitations")}</button><button className="wide tool-action-button" disabled={!pdfAvailable} onClick={props.onGrammar}>{ui("ui.grammarCheck")}</button></div>
+      <h3>{ui("ui.readingTools")}</h3><div className="reading-tools">
+        <button type="button" className="wide tool-action-button search-pdf-action" disabled={!hasDocument} onClick={props.onSearch}><ReadingIcon kind="search"/><span>{ui(props.searchSource ? "ui.searchDocument" : "ui.searchPdf")}</span><kbd>{shortcutLabel('search', platform)}</kbd></button>
+        <button type="button" className="wide tool-action-button recognize-bookmark-action" disabled={documentDisabled} onClick={() => props.onRecognizeBookmarks?.()}><ReadingIcon kind="bookmark"/><span>{ui("ui.recognizeBookmarks")}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.visualsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={!!props.visualsEnabled} onClick={props.onVisuals}><ReadingIcon kind="visual"/><span>{ui("ui.findFiguresTables")}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.citationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={props.citationsEnabled} onClick={props.onCitations}><ReadingIcon kind="citation"/><span>{ui("ui.linkCitations")}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.abbreviationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={!!props.abbreviationsEnabled} onClick={props.onAbbreviations}><ReadingIcon kind="abbreviation"/><span>{ui("ui.abbreviationLookup")}</span></button>
+        <button type="button" className="wide tool-action-button" disabled={!pdfAvailable} onClick={props.onGrammar}><ReadingIcon kind="grammar"/><span>{ui("ui.grammarCheck")}</span></button>
+      </div>
       {readOnly && <div className="encrypted-readonly"><b>{ui("ui.encryptedDocumentReadOnly")}</b><span>{ui("ui.theEditorCannotSafelyWriteBackToThisEncryptedPdf")}</span></div>}
       <div className="info-card"><b>{ui("ui.readingTip")}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div></>}
     {module === 'edit' && <><p className="subtitle">{ui("ui.adjustPagesDirectlyOrAddFormattedTextAndImages")}</p><h3>{ui("ui.page2")}</h3>

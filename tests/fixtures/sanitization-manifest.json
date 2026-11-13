@@ -161,6 +161,85 @@
       "widgets": 0,
       "bytes": 23022,
       "sha256": "9dd8d481ee5ce4b78373ca7aabce0fe3337d5ddd3538a8f7675abf02264a1059"
+    },
+    {
+      "file": "506b6e7815e68f5efaaf312fb7864294.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 203030,
+      "sha256": "7e33644d74231a70b9caf9b778d65df6b5503c9652b1f3f0ccc0b50906a41f00",
+      "sourceSlot": 1
+    },
+    {
+      "file": "0ec27adbfa2e1bf8c4bb5a44ef583401.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 57511,
+      "sha256": "e7991b06e8ed5b5922ec4902bfa8d9c5da37265bdd7fe66c480af7598196646a",
+      "sourceSlot": 2
+    },
+    {
+      "file": "23ccf6c22995dd52d6baee1f0c1aeed7.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 358661,
+      "sha256": "0f438e441082410b93bba882a50505094ec8246f2025aa9df4ff5fe0691affae",
+      "sourceSlot": 3
+    },
+    {
+      "file": "a3686c5e940271cdb8c09a23dea33912.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 27322,
+      "sha256": "9d3b62615d74703a18dc6b508a45e9fa673d605c36c3ec94d90d81f53182a69c",
+      "sourceSlot": 4
+    },
+    {
+      "file": "e632ab34f7d9583abb798469556cceef.pdf",
+      "pages": 13,
+      "widgets": 0,
+      "bytes": 1644233,
+      "sha256": "20a5d6d48ad9763c4f92ab69db518bc4d459b3bac0f8a005e4c9ce8a5fae5311",
+      "sourceSlot": 5
+    },
+    {
+      "file": "a956941e08e0414415078057e3e94568.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 118587,
+      "sha256": "ee7e4210aab190e69780dcca4ddf62ec4691b62b28a481478c3432e75a4efb2a",
+      "sourceSlot": 6
+    },
+    {
+      "file": "5d5c6d5b198ff6a22c879dd5c26ae5bf.pdf",
+      "pages": 30,
+      "widgets": 0,
+      "bytes": 3261230,
+      "sha256": "5ffa227ffa5a8decf9cad8176a60d401b84273db9e812ca4bfefb286edd43501",
+      "sourceSlot": "open-tables-30",
+      "tablePages": [
+        5,
+        8,
+        9,
+        16,
+        21
+      ],
+      "screenshotPages": [
+        9,
+        8,
+        5
+      ]
+    },
+    {
+      "file": "c9fe9631796c6ab68f91452345888070.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 111695,
+      "sha256": "135fb4a719034df22367d554aa786594c734ecb9dd2aac3a86d8823dd1c5d741",
+      "sourceSlot": "selection-20261113",
+      "screenshotPages": [
+        1
+      ]
     }
   ]
 }

@@ -69,6 +69,14 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
     const distance = dx * dx + 16 * dy * dy
     if (distance < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = distance }
   })
+  const anchorWord = anchor && words[anchor.wordIndex]
+  if (anchorWord && anchorWord.column !== undefined && !anchorWord.columnAmbiguous && anchorWord.visualRegion === undefined && nearestColumn !== anchorWord.column) {
+    const boundaries = anchorWord.columnBoundaries || []
+    const nearGutter = boundaries.some(x => Math.abs(point.x-x) <= anchorWord.rect.height*2)
+    const hitsOtherColumn = words.some(w => w.column === nearestColumn && point.x >= w.rect.x && point.x <= w.rect.x+w.rect.width && point.y >= w.rect.y && point.y <= w.rect.y+w.rect.height)
+    // A small line-end overshoot in the gutter must not snap to indented reference text.
+    if (nearGutter && !hitsOtherColumn) nearestColumn = anchorWord.column
+  }
   words.forEach((word, index) => {
     if (nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
     const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
@@ -204,9 +212,9 @@ function wordBelongsToFlow(word: WordBox, flow: TextFlowBounds): boolean {
   return overlap / runWidth >= 0.55 || (runWidth <= flowWidth * 1.12 && overlap / flowWidth >= 0.08)
 }
 
-export function textSelectionBetween(words: WordBox[], anchor: TextPosition, focus: TextPosition): { text: string; rects: PdfRect[] } | undefined {
+export function textSelectionBetween(words: WordBox[], anchor: TextPosition, focus: TextPosition, order: 'geometry' | 'reading' = 'geometry'): { text: string; rects: PdfRect[] } | undefined {
   const cell=words[anchor.wordIndex]?.tableCell, bounds=words[anchor.wordIndex]?.tableCellRect
-  if(cell!==undefined && bounds) {
+  if(order === 'geometry' && cell!==undefined && bounds) {
     const members=orderedCellWords(words,cell)
     const local=members.map(({word},order)=>({...word,order,tableCell:undefined,tableCellRect:undefined,column:0,columnAmbiguous:false,visualBlock:0,visualRegion:0}))
     const a={wordIndex:members.findIndex(m=>m.index===anchor.wordIndex),offset:anchor.offset}
@@ -219,7 +227,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     selected.rects=selected.rects.flatMap(r=>{const x=Math.max(r.x,bounds.x),y=Math.max(r.y,bounds.y),right=Math.min(r.x+r.width,bounds.x+bounds.width),bottom=Math.min(r.y+r.height,bounds.y+bounds.height);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]})
     return selected
   }
-  if (words[anchor.wordIndex]?.visualRegion === undefined && words[focus.wordIndex]?.visualRegion === undefined) {
+  if (order === 'geometry' && words[anchor.wordIndex]?.visualRegion === undefined && words[focus.wordIndex]?.visualRegion === undefined) {
     const body = words.filter(word => word.visualRegion === undefined && word.tableCell === undefined)
     const columns = new Set(body.map(word => word.column).filter(column => column !== undefined))
     if (columns.size <= 1 && body.some(word => word.columnAmbiguous || word.visualBlock !== undefined)) {
@@ -243,7 +251,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   const visualY = new Map<WordBox, number>()
   for (const word of words) {
     let nearest: WordBox | undefined, distance = Number.POSITIVE_INFINITY
-    if (word.baselineY !== undefined && word.rect.height < endpointHeight * 0.82) {
+    if (order === 'geometry' && word.baselineY !== undefined && word.rect.height < endpointHeight * 0.82) {
       for (const candidate of words) {
         if (candidate.column !== word.column || candidate.baselineY === undefined || candidate.rect.height < endpointHeight * 0.82) continue
         const gap = Math.max(candidate.rect.x - word.rect.x - word.rect.width, word.rect.x - candidate.rect.x - candidate.rect.width, 0)
@@ -289,17 +297,18 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // its other endpoint. The word list is column-major, so an index range would
   // otherwise absorb the intervening body column. The same applies when a
   // detected column boundary splits one source row into separate runs.
-  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && (hasStructuralEndpoint || sameVisualRow && sourceRangeStaysInBand)
+  const useCrossColumnStructuralBand = blockId === undefined && anchorColumn !== undefined && focusColumn !== undefined && anchorColumn !== focusColumn && endpointHeight > 0 && (startWord.columnAmbiguous || endWord.columnAmbiguous || sameVisualRow && sourceRangeStaysInBand)
   const useStructuralBand = useVisualBlock || useCrossColumnStructuralBand
   // Explicit single-column layout already defines the reading flow. Endpoint
   // run widths must not clip longer intervening lines or mixed-font suffixes.
   const singleColumn = startWord.columnBoundaries?.length === 0 && endWord.columnBoundaries?.length === 0
     && words.every(word => word.visualRegion !== undefined || word.tableCell !== undefined || word.column === anchorColumn)
-  const flowBounds = useStructuralBand || hasStructuralEndpoint || singleColumn ? undefined : textFlowBounds(words, startWord, endWord, rowY)
-  const bandWords = !flowBounds ? words.filter((word) => word.column === anchorColumn && rowY(word) >= minY && rowY(word) <= maxY) : []
+  const flowBounds = order === 'reading' || useStructuralBand || hasStructuralEndpoint || singleColumn ? undefined : textFlowBounds(words, startWord, endWord, rowY)
+  const bandWords = order === 'geometry' && !flowBounds ? words.filter((word) => word.column === anchorColumn && rowY(word) >= minY && rowY(word) <= maxY) : []
   const bandLeft = bandWords.length ? Math.min(...bandWords.map((word) => word.rect.x)) : Math.min(startWord.rect.x, endWord.rect.x)
   const bandRight = bandWords.length ? Math.max(...bandWords.map((word) => word.rect.x + word.rect.width)) : Math.max(startWord.rect.x + startWord.rect.width, endWord.rect.x + endWord.rect.width)
-  const visualBandIndices = useStructuralBand
+  // Cross-page carets already delimit a reading range; geometric expansion can spill into another column.
+  const visualBandIndices = order === 'reading' ? undefined : useStructuralBand
     ? words.map((word, index) => ({ word, index })).filter(({ word }) => regionId !== undefined ? word.visualRegion === regionId : blockId !== undefined
       ? word.visualBlock === blockId
       : useCrossColumnStructuralBand
@@ -347,7 +356,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     if (word?.tableCell !== undefined || word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
     // Column-major traversal must not pull the other half of an earlier spanning equation into body text.
     if (!useStructuralBand && word?.visualBlock !== undefined && word.visualBlock !== startWord.visualBlock && word.visualBlock !== endWord.visualBlock && rowY(word) < minY) continue
-    if (!word || (!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)) continue
+    if (!word || (order === 'geometry' && ((!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)))) continue
     const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
     const to = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.to)) : count
@@ -959,6 +968,12 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     .filter((cluster) => {
       // Full-width tables above/below a prose band do not contradict its gutter.
       const corridor = Math.min(gutterCorridor, (cluster.right - cluster.left) * .4)
+      const crossingProse = visualRows.filter(row => row.some(word => {
+        const rect = word.textRunRect || word.rect
+        return rect.width >= medianHeight * 8 && rect.x < cluster.center - corridor && rect.x + rect.width > cluster.center + corridor
+          && !ruledBands.some(band => cluster.center > band.left && cluster.center < band.right && rowY(word) >= band.top && rowY(word) <= band.bottom)
+      })).length
+      if (crossingProse > cluster.rows.size * 2) return false
       const support = [...cluster.rows].map(index => rowY(visualRows[index][0])).sort((a,b) => a-b)
       const bands: number[][] = []
       for (const y of support) {
@@ -969,7 +984,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       return bands.some(support => {
         if (support.length < 3) return false
         const band = visualRows.filter(row => rowY(row[0]) >= support[0] && rowY(row[0]) <= support.at(-1)!)
-        return band.filter(row => row.some(word => word.rect.x < cluster.center + corridor && word.rect.x + word.rect.width > cluster.center - corridor)).length <= Math.min(band.length * .25, support.length * .5)
+        return band.filter(row => row.some(word => (word.textRunRect || word.rect).x < cluster.center + corridor && (word.textRunRect || word.rect).x + (word.textRunRect || word.rect).width > cluster.center - corridor)).length <= Math.min(band.length * .25, support.length * .5)
       })
     })
     .sort((left, right) => left.center - right.center)
@@ -1028,7 +1043,8 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   const captionStart = (run: VisualRun): boolean => {
     const first = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[0]
     const second = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[1]
-    return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/u.test(first.text) && /^(?:\d+[.)]?|\d+\([a-z]\))$/iu.test(second.text))
+      || (first && /^(?:Fig\.?|Figure|Table|TABLE|图|表)$/u.test(first.text) && words.filter(word=>word!==first&&Math.abs((word.baselineY??word.rect.y)-(first.baselineY??first.rect.y))<first.rect.height*.35&&word.rect.x>=first.rect.x+first.rect.width-first.rect.height*.1&&word.rect.x-first.rect.x-first.rect.width<first.rect.height*1.8).sort((a,b)=>a.rect.x-b.rect.x)[0])
+    return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/iu.test(first.text) && /^(?:\d+[.):]?|[IVXLCDM]+[.):]?|\d+\([a-z]\))$/iu.test(second.text))
   }
   const equationWords = new Set(visualRows.filter(row => {
     const text = row.map(word => word.text).join(''), operators = text.match(/[=+−∑∫√×÷<>≤≥/]/gu)?.length || 0
@@ -1053,7 +1069,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   for (const block of blockRuns) {
     const blockTop = Math.min(...block.map((run) => run.baselineY))
     const blockBottom = Math.max(...block.map((run) => run.baselineY))
-    const expandedBottom = blockBottom + medianHeight * (block.some(captionStart) ? 1.75 : .55)
+    const expandedBottom = blockBottom + medianHeight * .55
     const blockLeft = Math.min(...block.map((run) => run.left))
     const blockRight = Math.max(...block.map((run) => run.right))
     // Include non-ambiguous fragments on the same visual row as a structural
@@ -1066,6 +1082,29 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     if (!blockWords.length) continue
     blockWords.forEach((word) => { word.visualBlock = nextVisualBlock })
     nextVisualBlock += 1
+  }
+  // Caption ownership is final: interleaved structural runs from the other column
+  // must not overwrite its continuation rows.
+  const captionTextRight=words.reduce((right,word)=>/^\d+$/.test(word.text)?right:Math.max(right,word.rect.x+word.rect.width),-Infinity)
+  const captionOwnership=new Map<WordBox,number|undefined>()
+  for (const caption of runs.filter(captionStart)) {
+    const height=Math.max(...caption.words.map(word=>word.rect.height))
+    const spanning=caption.words.some(word=>word.columnAmbiguous) || columnBoundaries.some(boundary=>Math.abs(caption.right-boundary)<=height*2 && runs.some(other=>other!==caption&&!captionStart(other)&&Math.abs(other.baselineY-caption.baselineY)<height*.4&&other.left>=boundary-height*.3&&other.left-boundary<height*2))
+    let bottom=caption.baselineY
+    const members:WordBox[]=[]
+    for(const run of [...runs].sort((a,b)=>a.baselineY-b.baselineY||a.left-b.left)) {
+      if(run.baselineY<caption.baselineY-height*.4 || !spanning&&run.column!==caption.column)continue
+      if(run.baselineY-bottom>height*1.8)break
+      if(run!==caption&&captionStart(run)&&run.baselineY>caption.baselineY+height*.4)break
+      if(run.words.some(word=>word.rect.height>height*1.18))break
+      if(!spanning&&Math.min(caption.right,run.right)-Math.max(caption.left,run.left)<=0)continue
+      members.push(...run.words);bottom=Math.max(bottom,run.baselineY)
+    }
+    if(members.length) { members.forEach(word=>{
+      if(/^\d+$/.test(word.text)&&word.rect.width<height*2&&(word.rect.x+word.rect.width<textLeft-height*.3||word.rect.x>captionTextRight+height*.3))return
+      if(captionOwnership.has(word)&&captionOwnership.get(word)===word.column&&caption.column!==word.column)return
+      word.visualBlock=nextVisualBlock;captionOwnership.set(word,caption.column)
+    });nextVisualBlock++ }
   }
   for (const region of override?.spanningRegions || []) {
     if (!Number.isFinite(region.top) || !Number.isFinite(region.bottom) || region.bottom <= region.top) continue

@@ -130,7 +130,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
   const textLeft = words.reduce((left, word) => /^\d+$/.test(word.text) ? left : Math.min(left, word.rect.x), Infinity)
   const rows: Array<{ words: WordBox[]; rect: PdfRect; text: string }> = []
   for (const word of [...words].sort((a,b) => (a.baselineY ?? bottom(a.rect)) - (b.baselineY ?? bottom(b.rect)) || a.rect.x - b.rect.x)) {
-    const row = rows.find(row => Math.abs((row.words[0].baselineY ?? bottom(row.words[0].rect)) - (word.baselineY ?? bottom(word.rect))) < Math.min(em, word.rect.height) * .3 && (row.words[0].column === word.column || word.textRun !== undefined && row.words.some(w => w.textRun === word.textRun)) && !(row.words.every(w => /^\d+$/.test(w.text)) && right(row.rect) < textLeft - em * .5) && !(word.rect.x-right(row.rect) > em * 4 && (/^(?:fig(?:ure)?\.?|image|plate|table|tab\.?|[图表])(?:\s|\d|$)/i.test(word.text) || /^\([a-z]\)$/i.test(word.text))))
+    const row = rows.find(row => Math.abs((row.words[0].baselineY ?? bottom(row.words[0].rect)) - (word.baselineY ?? bottom(word.rect))) < Math.min(em, word.rect.height) * .3 && (row.words[0].column === word.column || word.textRun !== undefined && row.words.some(w => w.textRun === word.textRun) || row.words.some(w=>/^(?:fig(?:ure)?\.?|table|tab\.?|[图表])$/iu.test(w.text)) && /^(?:\d+[.):]?|[IVXLCDM]+[.):]?)$/iu.test(word.text) && word.rect.x-right(row.rect)<em*2) && !(row.words.every(w => /^\d+$/.test(w.text)) && right(row.rect) < textLeft - em * .5) && !(word.rect.x-right(row.rect) > em * 4 && (/^(?:fig(?:ure)?\.?|image|plate|table|tab\.?|[图表])(?:\s|\d|$)/i.test(word.text) || /^\([a-z]\)$/i.test(word.text))))
     if (row) { row.words.push(word); row.rect = union(row.rect, word.rect) }
     else rows.push({words: [word], rect: {...word.rect}, text: ''})
   }
@@ -140,8 +140,29 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
     return marker && !/^(?:shows?|illustrates?|is|are|was|were|can|provides?|compares?|summarizes?|presents?|所示|显示|展示|说明|给出)\b/i.test(row.text.slice(marker[0].length).trim())
   })
   const tables = detectTableGrids(words,graphics,size)
+  // Open tables have no closed cells: their aligned top/header/footer rules bound wrapped prose.
+  const horizontalRules = graphics.filter(g => !g.image).flatMap(g => g.rules || [g.rect])
+    .filter(r => r.height <= em * .15 && r.width >= em * 8).sort((a,b) => a.y-b.y)
+  for (const caption of captions.filter(c => /^(?:table|tab\.?|表)/i.test(c.text))) {
+    const top = horizontalRules.find(r => r.y >= bottom(caption.rect)-em*.2 && r.y-bottom(caption.rect) <= em*6 && overlapX(r,caption.rect) >= Math.min(r.width,caption.rect.width)*.8 && horizontalRules.filter(q => q.y >= r.y && Math.abs(q.x-r.x) <= em*.3 && Math.abs(right(q)-right(r)) <= em*.3).length >= 3)
+    if (!top) continue
+    const nextCaption = Math.min(size.height,...captions.filter(c => c.rect.y > top.y && overlapX(c.rect,top) > Math.min(c.rect.width,top.width)*.5).map(c => c.rect.y))
+    const rules = horizontalRules.filter(r => r.y >= top.y && r.y < nextCaption && Math.abs(r.x-top.x) <= em*.3 && Math.abs(right(r)-right(top)) <= em*.3)
+      .filter((r,i,all) => !i || r.y-all[i-1].y > em*.2)
+    if (rules.length < 3 || rules[1].y-top.y > em*5) continue
+    const rect = union(top,rules.at(-1)!)
+    const lines: WordBox[][] = []
+    for (const w of words.filter(w => inside(w.rect,rect)).sort((a,b) => (a.baselineY??bottom(a.rect))-(b.baselineY??bottom(b.rect)) || a.rect.x-b.rect.x)) {
+      const last = lines.at(-1)
+      if (last && Math.abs((last[0].baselineY??bottom(last[0].rect))-(w.baselineY??bottom(w.rect))) < em*.3) last.push(w)
+      else lines.push([w])
+    }
+    const starts = lines.flatMap(line => line.sort((a,b) => a.rect.x-b.rect.x).filter((w,i) => i>0 && w.rect.x-right(line[i-1].rect)>em*.8).map(w=>w.rect.x))
+    if (!starts.some(x => starts.filter(other => Math.abs(other-x)<em*.6).length >= 2)) continue
+    if (!tables.some(t => inside(rect,t.rect))) tables.push({rect,cells:[]})
+  }
   const clusters: PageGraphic[] = []
-  for (const graphic of graphics) {
+  for (const graphic of [...graphics,...tables.filter(t => !t.cells.length).map(t => ({rect:t.rect,image:false,parts:3}))]) {
     const r = clip(graphic.rect)
     if (!r || r.width > size.width * .95 && r.height > size.height * .8 || r.width * r.height > size.width * size.height * .7) continue
     if (r.width < 2 && r.height < 2) continue
@@ -173,7 +194,8 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
     const r = graphic.rect
     if (r.width < em * 2 || r.height < em * 1.6) continue
     const table = tables.find(table => Math.abs(table.rect.x-r.x)<=em && Math.abs(table.rect.y-r.y)<=em && Math.abs(right(table.rect)-right(r))<=em && Math.abs(bottom(table.rect)-bottom(r))<=em)
-    const caption = captions.filter(row => (!table || /^(?:table|tab\.?|表)/i.test(row.text)) && !used.has(row) && overlapX(row.rect,r) >= Math.min(row.rect.width,r.width) * .45 && gapY(row.rect,r) <= Math.max(em,row.rect.height) * 3.5)
+    const hasGrid=tables.some(grid=>inside(grid.rect,r))
+    const caption = captions.filter(row => (!hasGrid || /^(?:table|tab\.?|表)/i.test(row.text)) && !used.has(row) && overlapX(row.rect,r) >= Math.min(row.rect.width,r.width) * .45 && gapY(row.rect,r) <= Math.max(em,row.rect.height) * (hasGrid && /^(?:table|tab\.?|表)/i.test(row.text) ? 6 : 3.5))
       .sort((a,b) => gapY(a.rect,r)-gapY(b.rect,r))[0]
     const enclosedRows = rows.filter(row => inside(row.rect,r))
     const prose = enclosedRows.filter(row => row.text.length > 85 && row.rect.width > Math.min(r.width * .7,size.width * .35))
@@ -185,6 +207,8 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
       used.add(caption); bounds = union(bounds, caption.rect)
       // Follow only tightly spaced caption continuation rows; stop at body spacing/indent.
       let last = caption
+      const captionHeights=caption.words.map(word=>word.rect.height).sort((a,b)=>a-b)
+      const captionFont=captionHeights[Math.floor(captionHeights.length/2)] || em
       const captionEm = Math.max(em,caption.rect.height)
       // A spanning caption can be split into column runs and raised formula fragments.
       const continuationRows: typeof rows = []
@@ -198,7 +222,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
       for (const next of continuationRows) {
         if (next === caption || next.rect.y < bottom(last.rect) - em * .2) continue
         const gap = next.rect.y-bottom(last.rect)
-        if (gap > captionEm * .65 || captionPattern.test(next.text) || Math.abs(next.rect.x-caption.rect.x) > captionEm || next.rect.width > Math.max(r.width,caption.rect.width) + captionEm) break
+        if (gap > captionEm * .65 || next.words.some(word=>/\p{L}/u.test(word.text)&&word.rect.height>captionFont*1.18) || captionPattern.test(next.text) || (/^(?:table|tab\.?|表)/i.test(caption.text) ? next.rect.x < Math.min(r.x,caption.rect.x)-captionEm : Math.abs(next.rect.x-caption.rect.x) > captionEm) || next.rect.width > Math.max(r.width,caption.rect.width) + captionEm) break
         bounds = union(bounds,next.rect); text += ' ' + next.text; last = next
       }
     }
@@ -208,21 +232,46 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
         const note = noteWords.reduce((r,w) => union(r,w.rect),noteWords[0].rect)
         const noteText = noteWords.map(w => w.text).join(' ')
         const legend = /^(?:[●○•◦*†‡]|notes?\b|source\b|注|说明)/i.test(noteText) || note.width > bounds.width * .7 && noteWords.filter(w => w.text.length === 1).length >= 3
-        if (legend) bounds = union(bounds,note)
+        const captionSized=caption&&noteWords.every(word=>word.rect.height<=Math.max(...caption.words.map(w=>w.rect.height))*1.18)&&note.width>bounds.width*.5
+        if (legend || captionSized) {
+          bounds = union(bounds,note)
+          const noteHeight = Math.max(...noteWords.map(w => w.rect.height))
+          if (noteHeight < em*.95) {
+            for (const row of rows.filter(row => row.rect.y > note.y && overlapX(row.rect,note) > 0).sort((a,b) => a.rect.y-b.rect.y)) {
+              if (bottom(row.rect) <= bottom(bounds)) continue
+              if (row.rect.y-bottom(bounds) > em*.6 || row.words.some(w => w.rect.height > noteHeight*1.15) || row.rect.x < bounds.x-em*.3 || right(row.rect) > right(bounds)+em*.3 || captionPattern.test(row.text)) break
+              bounds = union(bounds,row.rect)
+            }
+          }
+        }
       }
     }
     visuals.push({rect: bounds, caption: text, label: caption?.text.match(captionPattern)?.[0] || (table ? 'ui.table' : 'ui.image'), kind, ...(table ? {cells:table.cells} : {})})
   }
+  for (const visual of visuals) {
+    const grids=tables.filter(table=>inside(table.rect,visual.rect))
+    if(!grids.length)continue
+    const bounds=grids.reduce((rect,table)=>union(rect,table.rect),grids[0].rect)
+    if(visual.kind==='table'||bounds.width*bounds.height>=visual.rect.width*visual.rect.height*.65) {
+      visual.kind='table'
+      visual.cells=grids.flatMap(table=>table.cells)
+      if(visual.label==='ui.image')visual.label='ui.table'
+    }
+  }
   for (const table of tables) {
-    const visual = visuals.find(v => inside(table.rect,v.rect))
-    if (visual?.kind==='table') visual.cells = [...(visual.cells || []),...table.cells.filter(cell => !visual.cells?.includes(cell))]
-    else if (!visual) visuals.push({rect:table.rect,cells:table.cells,caption:'',label:'ui.table',kind:'table'})
+    if(!visuals.some(visual=>visual.kind==='table'&&inside(table.rect,visual.rect)))
+      visuals.push({rect:table.rect,cells:table.cells,caption:'',label:'ui.table',kind:'table'})
   }
   // Borderless tables require a caption and at least three aligned multi-cell rows.
   for (const caption of captions.filter(c => !used.has(c) && /^(?:table|tab\.?|表)/i.test(c.text))) {
-    const tableRight = Math.min(size.width, ...captions.filter(row => row.rect.x > caption.rect.x + em * 3 && Math.abs(row.rect.y-caption.rect.y) < em * 2).map(row => row.rect.x-em))
+    const boundaries=caption.words[0].columnBoundaries||[]
+    const center=caption.rect.x+caption.rect.width/2
+    const spanning=Math.abs(center-size.width/2)<em*6 || boundaries.some(x=>caption.rect.x<x&&right(caption.rect)>x)
+    const tableLeft=spanning?0:[...boundaries].reverse().find(x=>x<center)??0
+    const columnRight=spanning?size.width:boundaries.find(x=>x>center)??size.width
+    const tableRight = Math.min(columnRight, ...captions.filter(row => row.rect.x > caption.rect.x + em * 3 && Math.abs(row.rect.y-caption.rect.y) < em * 2).map(row => row.rect.x-em))
     const candidates: typeof rows = []
-    for (const word of words.filter(w => w.rect.x >= caption.rect.x-em && right(w.rect) <= tableRight && w.rect.y >= bottom(caption.rect) && w.rect.y-bottom(caption.rect) <= em * 14).sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x)) {
+    for (const word of words.filter(w => w.rect.x >= tableLeft && right(w.rect) <= tableRight && w.rect.y >= bottom(caption.rect) && w.rect.y-bottom(caption.rect) <= em * 14).sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x)) {
       const row = candidates.find(row => Math.abs(row.rect.y-word.rect.y) < em * .3)
       if (row) { row.words.push(word); row.rect = union(row.rect,word.rect); row.text += ' ' + word.text }
       else candidates.push({words:[word],rect:{...word.rect},text:word.text})
@@ -233,7 +282,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
       const previous = grid.at(-1)
       if (row.rect.y - (previous ? bottom(previous.rect) : bottom(caption.rect)) > em * 2.5) break
       const cells = row.words.filter((w,i) => i === 0 || w.rect.x-right(row.words[i-1].rect) > em * 1.5)
-      if (cells.length < 2 || row.text.length > 100) break
+      if (cells.length < 2 || row.text.length > 100) { if(grid.length)break; else continue }
       if (grid.length && cells.filter(cell => grid[0].words.some(w => Math.abs(w.rect.x-cell.rect.x) < em)).length < 2) break
       grid.push(row)
     }
@@ -244,8 +293,14 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
 
 export function isolateVisualWords(words: WordBox[], visuals: PageVisual[]): WordBox[] {
   const cells=visuals.flatMap(v=>v.cells||[])
+  const captionRegions = new Map<number,number>()
+  for(const word of words) {
+    if(word.visualBlock===undefined || !/^(?:fig(?:ure)?\.?|table|tab\.?|[图表])$/iu.test(word.text))continue
+    const region=visuals.findIndex(visual=>inside(word.rect,visual.rect))
+    if(region>=0)captionRegions.set(word.visualBlock,region)
+  }
   return words.map(word => {
-    const region = visuals.findIndex(visual => visual.kind === 'table' && visual.cells?.length ? visual.cells.some(cell => inside(word.rect, cell)) : inside(word.rect,visual.rect)), cell=cells.findIndex(cell=>inside(word.rect,cell))
+    const region = (word.visualBlock===undefined ? undefined : captionRegions.get(word.visualBlock)) ?? visuals.findIndex(visual => inside(word.rect,visual.rect)), cell=cells.findIndex(cell=>inside(word.rect,cell))
     return {...word,...(region<0?{}:{visualRegion:region}),...(cell<0?{}:{tableCell:cell,tableCellRect:cells[cell]})}
   })
 }
