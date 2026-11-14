@@ -17,7 +17,6 @@ button, input, select, textarea { line-height: 1.35; }
 .tool-panel .tool-button, .tool-panel-action { height: auto; min-height: 58px; }
 .tool-panel .window-scroll-body { scrollbar-gutter: stable; }
 .tool-panel .segmented button { white-space: normal; overflow-wrap: anywhere; height: auto; }
-.annotation-header, .annotation-row { grid-template-columns: 20px 28px 82px minmax(0, 1fr) 28px; }
 .annotation-summary-grid button { height: auto; min-height: 52px; }
 .annotation-summary-grid button span { overflow-wrap: anywhere; }
 .rich-editor-toolbar { row-gap: 8px; }

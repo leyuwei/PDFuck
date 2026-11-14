@@ -6,15 +6,84 @@
 | --- | --- |
 | `unit/` | 迁移的 101 个单元/组件测试文件，镜像原 `src/` 结构；新增版本用例也放在这里 |
 | `scripts/` | Vitest 运行器、审计、Electron UI、便携版与包内资源检查 |
-| `fixtures/` | 可复用原始输入，包含 `785904351dabdab98176b914912cc8dd.pdf` 两页回归样本 |
+| `fixtures/` | 可复用脱敏输入，包含 `785904351dabdab98176b914912cc8dd.pdf` 两页回归样本 |
 | `docs/` | 各版本计划、验收和交付记录 |
 | `tmp/` | 运行中的临时 PDF、隔离用户配置，以及原根目录 tmp 的历史缓存 |
 | `output/` | 截图、JSON 结果及原根目录 output 的历史输出 |
 | `migration-map.json` | 270 个代码/说明文件的迁移对应关系；不保留样本的原文件名或整目录缓存/输出的对应关系 |
 
-本次未添加或修改任何 `.gitignore`。测试代码和原始样本可被 Git 跟踪；临时目录和生成输出沿用仓库已有的 `tmp/`、`output/` 忽略规则。旧缓存/输出保留原内容，历史临时脚本不作为正式测试入口；不要从旧缓存恢复生产构建。
+本次未添加或修改任何 `.gitignore`。测试代码和脱敏样本可被 Git 跟踪；临时目录和生成输出沿用仓库已有的 `tmp/`、`output/` 忽略规则。旧缓存/输出保留原内容，历史临时脚本不作为正式测试入口；不要从旧缓存恢复生产构建。
 
-所有样本使用随机的 32 位十六进制文件名，扩展名保留；代码、历史用例引用和说明同步使用匿名名称，不提供原名对照表。此修改保留文件内容，既有 Git 历史不作改写。
+所有 PDF 样本使用随机的 32 位十六进制文件名。2.1.16 已将公开样本全部重建为替代内容，原始 Git 历史不作自动改写，详见夹具说明。
+
+## 2.1.17 按需资源（最新）
+
+只运行本轮新测试。`npm run test:resources` 对应 36 项新增单元；`npm run test:resources-ui` 包含新的原生网络、强制退出恢复、实际资源安装和源码窗口检查，首次可能联网下载固定资源。图像夹具为公开合成的 `fixtures/ocr-resource-synthetic.png`；临时输出均在忽略目录。资源与代理界面支持十语言；结果和命令见 [按需资源验收](docs/ON-DEMAND-2.1.17.md)。新成品检查为 `release-2.1.17-resource-package-check.cjs`，只读核验，不启动成品。
+
+## 2.1.17 离线语法与紧凑窗口（此前阶段）
+
+本轮只运行新增 `release-2.1.17-grammar-layout.test.tsx`、`release-2.1.17-grammar-engine.cjs`、`release-2.1.17-selection-latest.cjs`、`release-2.1.17-selection-privacy.py`、`release-2.1.17-grammar-layout-ui.cjs` 及静态包检查。使用真实离线引擎、最新脱敏 PDF 和源码 Electron 窗口；不启动成品。计划见 [本轮计划](docs/PLAN-2.1.17-GRAMMAR-SELECTION.md)，完整结果和重现命令见 [本轮验收](docs/GRAMMAR-SELECTION-2.1.17.md)。原件可选参数只读且不落原文。
+
+## 2.1.17 阅读与批注交互（此前阶段）
+
+仅运行新增 `release-2.1.17-reading.test.tsx`、`release-2.1.17-reading-ui.cjs`、`release-2.1.17-reading-archive-ui.cjs` 、`release-2.1.17-reading-windows-ui.cjs` 和 `release-2.1.17-reading-previews-ui.cjs`。计划、命令、22 项单元及源码交互结果见 [本轮验收](docs/READING-2.1.17.md)。重建后只运行 `release-2.1.17-reading-package-check.cjs` 静态包检查，不启动成品。
+
+## 2.1.17 长段落三线表专项（此前阶段）
+
+新增 30 页脱敏输入存于 `fixtures/5d5c6d5b198ff6a22c879dd5c26ae5bf.pdf`。仅执行新增专项与必要检查，命令和完整结果见 [三线表验收](docs/OPEN-TABLES-2.1.17.md)：原件/副本 720 组、之前六份 216 组、8 项新单元和源码窗口 40 次真实拖选。成品不启动，仅静态核对。
+
+## 2.1.17 表格回归专项（此前阶段）
+
+```bash
+npm run typecheck
+node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17-tables.test.ts --reporter=json --outputFile=tests/output/release-2.1.17/table-unit-results.json
+node tests/scripts/release-2.1.17-table-pdfs.cjs
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.17-tables-ui.cjs
+# 重建和签名 APP/DMG/ZIP 后，仅静态核验，不启动成品：
+node tests/scripts/release-2.1.17-table-package-check.cjs
+```
+
+范围与证据见 [表格专项验收](docs/TABLES-2.1.17.md)。窗口摘录重建复用已有 PyMuPDF 隔离环境，只读取公开脱敏 PDF。旧版全量命令不在本轮执行范围。
+
+## 2.1.17 六份输入归档与逐页验收（当前）
+
+六份 PDF 存于 `tests/fixtures/`，文件名为随机 32 位十六进制；`fixtures/release-2.1.17-inputs.json` 按用户给定顺序用 sourceSlot 1–6 对应输入，包含页数、大小与 SHA-256；同时纳入总清单。仅保留替代文字与版式几何，原文字、字体、像素、元数据、批注、链接和附件不复制。
+
+脱敏生成器 `scripts/sanitize-fixtures-2117.py` 需要按顺序传入六个原始路径，直接读取并核对原件未变，不备份原件。依赖已有隔离环境中的 PyMuPDF；不运行旧全量重建脚本。
+
+```bash
+tests/tmp/release-2.1.16/venv/bin/python tests/scripts/verify-fixtures-2117.py
+node tests/scripts/release-2.1.17-input-pdfs.cjs
+node tests/scripts/release-2.1.17-selection-review.cjs
+npm run typecheck
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.17-input-ui.cjs
+# 支持 PDFUCK_INPUT_SLOT=1..6 定向重试；合并结果仍须覆盖全部 18 页。
+# 本轮按用户要求不启动成品复测，只做静态包核验。
+```
+
+直接读取六份脱敏 PDF 的全部 18 页，三档缩放 × 两种字体度量 × 正反输入顺序共 216 组；逐词检查正文选区且不允许页面没有正文用例。窗口测试逐页核对栏线、两档缩放、正文及存在的图/表题正反拖选、可见字形覆盖和复制字符完整性、双向复制内容一致性。源码每页两张截图，输出到 `tests/output/release-2.1.17/inputs-source`，JSON 记录每一次操作。几何 JSON 继续用于原始字体/坐标回归，不能代替实际 PDF 测试。
+
+## 2.1.16 定向验收（当前）
+
+只运行本轮新增项，不运行历史全集：
+
+```bash
+npm run typecheck
+node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.16.test.ts --reporter=json --outputFile=tests/output/release-2.1.16/unit-results.json
+node tests/scripts/release-2.1.16-layout.cjs
+npx --no-install electron-vite build
+node tests/scripts/release-2.1.16-input-ui.cjs
+node tests/scripts/release-2.1.16-ui.cjs
+python3 tests/scripts/release-2.1.16-privacy.py
+# 签名并生成包后：
+PDFUCK_SMOKE_EXECUTABLE="$PWD/release/mac-arm64/PDFuck.app/Contents/MacOS/PDFuck" node tests/scripts/release-2.1.16-ui.cjs
+node tests/scripts/release-2.1.16-package-check.cjs
+git diff --check
+```
+
+隐私校验依赖 PyMuPDF，可使用已有隔离环境 `tests/tmp/release-2.1.16/venv/bin/python`。公开 PDF 全部替换正文和原图片，详见 [夹具说明](fixtures/README.md)。旧原文锚点用例未运行，不能直接应用于替代副本。输出沿用已忽略的 tests/output、tests/tmp，不修改忽略规则。
 
 ## 2.1.12 定向验收（当前）
 
@@ -116,3 +185,13 @@ node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/text-layout.te
 参见 [2.1.10 计划](docs/PLAN-2.1.10.md)、[2.1.10 验收](docs/VALIDATION-2.1.10.md) 和 [打包指南](../PACKAGING_GUIDE.md)。
 
 表单交互及临时标签的补充验收见 [计划](docs/PLAN-2.1.12-form-followup.md) 和 [结果](docs/VALIDATION-2.1.12-form-followup.md)。新增单元文件为 `unit/renderer/src/lib/release-2.1.12-form-followup.test.tsx`（10 项），源码交互入口为 `scripts/release-2.1.12-form-followup-ui.cjs`（六组）。本次按用户要求不启动打包后的 APP 测试；交付包只做静态完整性、资源一致性与签名校验。临时输入及报告沿用已忽略的 `tests/tmp/`、`tests/output/`。
+
+
+### 跨页框选、文字偏好与页码提示
+
+本轮新增入口为 `release-2.1.17-crosspage-style.test.tsx`、`release-2.1.17-crosspage-pdfs.cjs`、`release-2.1.17-crosspage-style-ui.cjs` 和 `release-2.1.17-crosspage-extra-layouts.cjs`。使用既有脱敏档案，不读取用户原件；源码界面测试使用独立用户配置。具体命令、范围和限制见 [验收记录](docs/CROSSPAGE-STATUS-2.1.17.md)。成品只运行新的 `release-2.1.17-crosspage-package-check.cjs` 静态核验，不启动成品。
+
+
+### 滚动提示阈值与侧栏跟手
+
+当前专项入口为 `release-2.1.17-scroll-resize.test.tsx` 与 `release-2.1.17-scroll-resize-ui.cjs`；使用固定合成 PDF 和独立源码用户配置。旧背景页码/低阈值专项属于历史规则，当前需求改由删除校验和严格滚动判定覆盖。具体命令与范围见 [验收记录](docs/SCROLL-RESIZE-2.1.17.md)。新成品仅运行 `release-2.1.17-scroll-package-check.cjs` 静态核验。

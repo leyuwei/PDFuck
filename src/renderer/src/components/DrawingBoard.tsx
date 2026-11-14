@@ -1,6 +1,6 @@
 import { ScrollWindow } from './ScrollWindow'
-import { floatingTop, clampFloatingPosition } from '../lib/floating-window'
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { useFloatingWindow } from '../lib/floating-window'
+import { useId, useRef, useState } from 'react'
 import './drawing-board.css'
 
 export interface DrawingBoardLabels {
@@ -80,34 +80,18 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
   const descriptionId = useId()
   const canvasHintId = useId()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const windowRef = useRef<HTMLDivElement>(null)
   const stroke = useRef<{ pointerId: number } | undefined>(undefined)
-  const stopWindowDrag = useRef<() => void>(() => undefined)
   const [brushSize, setBrushSize] = useState(6)
   const [color, setColor] = useState('#263247')
   const [hasInk, setHasInk] = useState(false)
   const [busy, setBusy] = useState<'add' | 'export'>()
   const [error, setError] = useState('')
-  const [position, setPosition] = useState(() => ({ left: Math.max(16, window.innerWidth - 736), top: Math.max(floatingTop(), window.innerHeight - 596) }))
-
-  const moved = useRef(false)
-  useEffect(() => () => stopWindowDrag.current(), [])
-  useEffect(() => {
-    if (hidden || !windowRef.current) return
-    const element = windowRef.current
-    const fit = () => {
-      element.style.maxHeight = `${Math.max(100, window.innerHeight - floatingTop() - 44)}px`
-      setPosition((current) => {
-        const next = clampFloatingPosition(moved.current ? current.left : window.innerWidth - element.offsetWidth - 16, moved.current ? current.top : window.innerHeight - element.offsetHeight - 36, element.offsetWidth, element.offsetHeight, window.innerWidth, window.innerHeight, floatingTop())
-        return current.left === next.left && current.top === next.top ? current : next
-      })
-    }
-    fit()
-    window.addEventListener('resize', fit)
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(fit)
-    observer?.observe(element)
-    return () => { window.removeEventListener('resize', fit); observer?.disconnect() }
-  }, [hidden])
+  const floating = useFloatingWindow(!hidden, true, {
+    storageKey: 'pdfuck.lab.window.drawing.v1',
+    resizable: true,
+    minWidth: 360,
+    minHeight: 440
+  })
 
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!
@@ -176,43 +160,8 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
       setBusy(undefined)
     }
   }
-  const beginDrag = (event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
-    event.preventDefault()
-    moved.current = true
-    stopWindowDrag.current()
-    const dragHandle = event.currentTarget
-    dragHandle.setPointerCapture(event.pointerId)
-    const origin = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...position }
-    const move = (next: PointerEvent) => {
-      if (next.pointerId !== origin.pointerId) return
-      const bounds = windowRef.current?.getBoundingClientRect()
-      const width = bounds?.width || 720
-      const height = bounds?.height || 560
-      setPosition({
-        left: Math.max(8, Math.min(window.innerWidth - width - 8, origin.left + next.clientX - origin.x)),
-        top: Math.max(floatingTop(), Math.min(window.innerHeight - height - 8, origin.top + next.clientY - origin.y))
-      })
-    }
-    const stop = (next?: PointerEvent) => {
-      if (next && next.pointerId !== origin.pointerId) return
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-      window.removeEventListener('blur', blur)
-      if (dragHandle.hasPointerCapture(origin.pointerId)) dragHandle.releasePointerCapture(origin.pointerId)
-      stopWindowDrag.current = () => undefined
-    }
-    const blur = () => stop()
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-    window.addEventListener('blur', blur)
-    stopWindowDrag.current = stop
-  }
-
-  return <ScrollWindow ref={windowRef} hidden={hidden} className="drawing-board-window" style={{ ...position, resize: 'both' } as CSSProperties} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
-    <header onPointerDown={beginDrag}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
+  return <ScrollWindow ref={floating.ref} hidden={hidden} className="drawing-board-window" style={floating.style} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
+    <header {...floating.dragHandlers}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
       <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output dir="ltr" aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
       <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code dir="ltr">{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>

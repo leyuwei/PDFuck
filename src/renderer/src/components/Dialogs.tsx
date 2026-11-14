@@ -1,3 +1,5 @@
+import { addTextStyle, loadAddTextStyle, saveAddTextStyle } from '../lib/text-preferences'
+import { ReleaseNotes } from './ReleaseNotes'
 import { useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
 import type { AnnotationSuggestionEditor } from './AnnotationLab'
@@ -94,7 +96,7 @@ export interface TextDialogValue { text: string; style: TextStyle }
 
 export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { initial?: TextDialogValue; edit?: boolean; onCancel(): void; onSubmit(value: TextDialogValue): void }) {
   const [text, setText] = useState(initial?.text || '')
-  const [style, setStyle] = useState<TextStyle>(initial?.style || { font: 'Arial', size: 16, color: '#182033', bold: false, italic: false, align: 'left', lineHeight: 1.25 })
+  const [style, setStyle] = useState<TextStyle>(() => initial?.style || loadAddTextStyle())
   const textareaRef = useDeferredFocus<HTMLTextAreaElement>()
   return <div className="modal-backdrop"><ScrollWindow className="modal text-dialog"><h2>{edit ? ui("ui.editText") : ui("ui.addText")}</h2><p>{ui("ui.setTheTextAndItsDisplayFormatDragItOn")}</p><textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => event.stopPropagation()} />
     <div className="format-grid"><label>{ui("ui.font")}<select value={normalizeFontFamily(style.font)} onChange={(event) => setStyle({ ...style, font: event.target.value })}>{fontOptionsFor(style.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label>
@@ -103,7 +105,7 @@ export function TextDialog({ initial, edit = false, onCancel, onSubmit }: { init
       <label>{ui("ui.alignment")}<select value={style.align} onChange={(event) => setStyle({ ...style, align: event.target.value as TextStyle['align'] })}><option value="left">{ui("ui.left")}</option><option value="center">{ui("ui.center")}</option><option value="right">{ui("ui.right")}</option></select></label>
       <label>{ui("ui.lineSpacing")}<select value={style.lineHeight || 1.25} onChange={(event) => setStyle({ ...style, lineHeight: Number(event.target.value) as TextStyle['lineHeight'] })}><option value="1">{ui("ui.compact")}</option><option value="1.25">{ui("ui.body")}</option><option value="1.5">{ui("ui.relaxed")}</option><option value="2">{ui("ui.double")}</option></select></label></div>
     <div className="format-toggles"><button type="button" className={style.bold ? 'active' : ''} onClick={() => setStyle({ ...style, bold: !style.bold })}><b>B</b> {ui("ui.bold")}</button><button type="button" className={style.italic ? 'active' : ''} onClick={() => setStyle({ ...style, italic: !style.italic })}><i>I</i> {ui("ui.italic")}</button></div>
-    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => onSubmit({ text, style })}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></ScrollWindow></div>
+    <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!text.trim()} onClick={() => { const submitted = edit ? style : addTextStyle(style); if (!edit) saveAddTextStyle(submitted); onSubmit({ text, style: submitted }) }}>{edit ? ui("ui.saveChanges") : ui("ui.add")}</button></div></ScrollWindow></div>
 }
 
 export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { initial?: PageNumberSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: PageNumberSettings): void; onDelete(): void }) {
@@ -692,6 +694,7 @@ export function UpdateDialog({ update, onLater, onSkip, onDownload }: { update: 
     <header className="update-heading"><div className="update-symbol" aria-hidden="true"><span>↑</span></div>
     <div className="update-copy"><small>{ui("ui.pdfuckUpdateCheck")}</small><h2 id="update-title">{t('update.availableTitle', { version: update.latestVersion || '' })}</h2><p>{t('update.description', { current: update.currentVersion })}</p></div></header>
     <div className="update-version"><span>{t('update.current', { version: update.currentVersion })}</span><i>→</i><span>{t('update.latest', { version: update.latestVersion || '' })}</span></div>
+    <ReleaseNotes content={update.releaseNotes} version={update.latestVersion} />
     <div className="update-actions"><button type="button" onClick={onSkip}>{ui("ui.doNotRemindMeAboutThisVersion")}</button><span /><button type="button" onClick={onLater}>{ui("ui.remindMeLater")}</button><button type="button" className="primary" onClick={onDownload}>{ui("ui.download")}</button></div>
   </ScrollWindow></div>
 }
@@ -744,7 +747,13 @@ export function MergeFilesDialog({ files, pageCount, creating, onCancel, onSubmi
 }
 
 export function TranslationDialog({ source, sourceDocument = false, target, result, busy, adding, error, recovery, onCancel, onRetry, onAdd }: { source: string; sourceDocument?: boolean; target: string; result?: string; busy: boolean; adding?: boolean; error?: string; recovery?: boolean; onCancel(): void; onRetry(): void; onAdd(): void }) {
-  return <div className="modal-backdrop translation-backdrop"><ScrollWindow className="modal translation-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-dialog-title"><header><div><small>{ui("ui.translationTargetLanguage")}: {target}</small><h2 id="translation-dialog-title">{ui("ui.textTranslation")}</h2></div><button type="button" aria-label={ui("ui.close")} onClick={onCancel}>×</button></header><section className="translation-source"><small>{ui("ui.sourceText")}</small><p>{source}</p></section>{busy && <div className="translation-progress" role="status"><i />{recovery ? ui("ui.translationRetryingAutomatically") : ui("ui.translatingSelection")}</div>}{error && <div className="translation-error" role="alert"><b>{ui("ui.translationFailed")}</b><span>{translateUiText(error)}</span></div>}{result && <section className="translation-result"><small>{ui("ui.translationResult")}</small><AiMarkdown content={result} /></section>}<div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.close")}</button>{error && !busy && <button type="button" onClick={onRetry}>{ui("ui.retryTranslation")}</button>}{result && <LabExportButton title={ui('ui.textTranslation')} content={result} source={{ text: `${target}\n\n${source}` }} />}{result && <button type="button" className="primary" disabled={adding} onClick={onAdd}>{adding ? ui("ui.adding") : ui(sourceDocument ? "text.apply" : "ui.addTranslationAsHighlight")}</button>}</div></ScrollWindow></div>
+  const floating = useFloatingWindow(true, false, {
+    storageKey: 'pdfuck.lab.window.translation-result.v1',
+    resizable: true,
+    minWidth: 420,
+    minHeight: 320
+  })
+  return <div className="modal-backdrop translation-backdrop"><ScrollWindow ref={floating.ref} style={floating.style} className="modal translation-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-dialog-title"><header {...floating.dragHandlers}><div><small>{ui("ui.translationTargetLanguage")}: {target}</small><h2 id="translation-dialog-title">{ui("ui.textTranslation")}</h2></div><button type="button" aria-label={ui("ui.close")} onClick={onCancel}>×</button></header><section className="translation-source"><small>{ui("ui.sourceText")}</small><p>{source}</p></section>{busy && <div className="translation-progress" role="status"><i />{recovery ? ui("ui.translationRetryingAutomatically") : ui("ui.translatingSelection")}</div>}{error && <div className="translation-error" role="alert"><b>{ui("ui.translationFailed")}</b><span>{translateUiText(error)}</span></div>}{result && <section className="translation-result"><small>{ui("ui.translationResult")}</small><AiMarkdown content={result} /></section>}<div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.close")}</button>{error && !busy && <button type="button" onClick={onRetry}>{ui("ui.retryTranslation")}</button>}{result && <LabExportButton title={ui('ui.textTranslation')} content={result} source={{ text: `${target}\n\n${source}` }} />}{result && <button type="button" className="primary" disabled={adding} onClick={onAdd}>{adding ? ui("ui.adding") : ui(sourceDocument ? "text.apply" : "ui.addTranslationAsHighlight")}</button>}</div></ScrollWindow></div>
 }
 
 export function WatermarkDialog({ data, currentPage, initial, existingCount, pageCount, onCancel, onSubmit, onDelete }: { data: Uint8Array; currentPage: number; initial?: WatermarkSettings; existingCount: number; pageCount: number; onCancel(): void; onSubmit(value: WatermarkSettings): void; onDelete(): void }) {

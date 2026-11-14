@@ -13,11 +13,14 @@ export interface InsightHit {
 }
 
 export interface CitationLink extends InsightHit {
+  kind?: 'abbreviation'
   citation: string
   reference: string
 }
 
 export interface GrammarIssue extends InsightHit {
+  message?: string
+  ruleId?: string
   term: string
   replacement?: string
 }
@@ -157,60 +160,47 @@ export function citationLinks(pages: PageTextSnapshot[]): CitationLink[] {
   return links
 }
 
-const ENGLISH_TYPO_REPLACEMENTS: Record<string, string> = {
-  teh: 'the', recieve: 'receive', occured: 'occurred', seperate: 'separate', definately: 'definitely', enviroment: 'environment', adress: 'address', acheive: 'achieve'
-}
-
-export function grammarIssues(pages: PageTextSnapshot[]): GrammarIssue[] {
-  const issues: GrammarIssue[] = []
-  pages.forEach((page) => {
-    const text = normalizeInsightText(page.text)
-    if (/^(?:references|bibliography|参考文献)\b/i.test(text)) return
-    const englishLetters = (text.match(/[A-Za-z]/g) || []).length
-    const cjkLetters = (text.match(/[\u3400-\u9fff]/g) || []).length
-    // Do not run English grammar heuristics on invoices, identifiers, or
-    // bilingual forms. Their extracted text often contains isolated Latin
-    // glyphs and serial numbers that look like words to a regex.
-    const digits = (text.match(/\d/g) || []).length
-    const symbols = (text.match(/[+*/=<>|]/g) || []).length
-    if ((cjkLetters > 0 && cjkLetters >= englishLetters * 0.5) || digits > englishLetters * 0.35 || symbols > 3 || (text.length > 80 && englishLetters / Math.max(1, text.length) < 0.18)) return
-    const words = text.match(/[A-Za-z]{3,}/g) || []
-    const occurrences = new Map<string, number>()
-    const lowerText = text.toLocaleLowerCase()
-    const searchOffsets = new Map<string, number>()
-    words.forEach((word) => {
-      const replacement = ENGLISH_TYPO_REPLACEMENTS[word.toLowerCase()]
-      if (replacement) {
-        const key = word.toLocaleLowerCase(), anchorOccurrence = occurrences.get(key) || 0
-        occurrences.set(key, anchorOccurrence + 1)
-        const offset = lowerText.indexOf(key, searchOffsets.get(key) || 0)
-        searchOffsets.set(key, offset < 0 ? (searchOffsets.get(key) || 0) : offset + key.length)
-        issues.push({ pageIndex: page.pageIndex, label: `拼写：${word}`, term: word, replacement, anchor: word, anchorOccurrence, context: text.slice(Math.max(0, offset - 45), offset + word.length + 65) })
+export function abbreviationLinks(pages: PageTextSnapshot[]): CitationLink[] {
+  const definitions: Array<{short:string;full:string;page:number;offset:number}> = []
+  const shortForm = (value:string) => [...value].filter(c=>/\p{L}/u.test(c)).length >= 2 && value.length <= 24
+    && /^[\p{L}\p{N}.+&/-]+$/u.test(value) && (/\p{Lu}/u.test(value) || /[\p{Script=Han}\p{Script=Katakana}\p{Script=Hangul}]/u.test(value))
+  for(const page of pages) {
+    const text=page.text.replace(/\s+/gu,' ')
+    for(const match of text.matchAll(/[（(]([^()（）]{2,180})[)）]/gu)) {
+      const inside=match[1].trim(),prefix=text.slice(Math.max(0,match.index!-250),match.index).trim()
+      const previous=prefix.match(/([\p{L}\p{N}.+&/-]+)$/u)?.[1]
+      if(previous && shortForm(previous) && inside.length>previous.length && /[\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Hangul}]/u.test(inside)) {
+        definitions.push({short:previous,full:inside,page:page.pageIndex,offset:match.index!});continue
       }
-    })
-    const duplicateOccurrences = new Map<string, number>()
-    const duplicatePattern = /\b([A-Za-z]{2,})\s+\1\b/gi
-    let duplicateMatch: RegExpExecArray | null
-    while ((duplicateMatch = duplicatePattern.exec(text))) {
-      const anchor = duplicateMatch[0]
-      const key = anchor.toLocaleLowerCase(), anchorOccurrence = duplicateOccurrences.get(key) || 0
-      duplicateOccurrences.set(key, anchorOccurrence + 1)
-      issues.push({ pageIndex: page.pageIndex, label: "ui.repeatedWord", term: duplicateMatch[1], replacement: duplicateMatch[1], anchor, anchorOccurrence, context: text.slice(Math.max(0, duplicateMatch.index - 45), duplicateMatch.index + anchor.length + 65) })
+      for(const short of inside.split(/[,，;；]/u).map(v=>v.trim())) {
+        if(!shortForm(short))continue
+        const letters=[...short].filter(c=>/\p{L}/u.test(c))
+        const candidate=prefix.split(/\s+/u).slice(-(letters.length+5)).join(' ')
+        let cursor=candidate.length-1,first=-1
+        for(let i=letters.length-1;i>=0;i--) {
+          while(cursor>=0 && (candidate[cursor].toLocaleLowerCase()!==letters[i].toLocaleLowerCase() || i===0 && cursor>0 && /\p{L}/u.test(candidate[cursor-1])))cursor--
+          if(cursor<0){first=-1;break}first=cursor--
+        }
+        let full=first>=0?candidate.slice(first).trim():''
+        if(!full) {
+          const phrase=prefix.split(/[。；;：:，,!?！？]/u).at(-1)!.trim()
+          if(phrase.length<=120 && phrase.split(/\s+/u).length<=12)full=phrase
+        }
+        if(full.length>short.length)definitions.push({short,full,page:page.pageIndex,offset:match.index!})
+      }
     }
-    const agreementRules = [
-      { pattern: /\b(he|she|it|this|that)\s+(are|were)\b/gi, replacement: (verb: string) => verb === 'are' ? 'is' : 'was' },
-      { pattern: /\b(these|those|they|we|you)\s+(is|was)\b/gi, replacement: (verb: string) => verb === 'is' ? 'are' : 'were' }
-    ]
-    agreementRules.forEach(({ pattern, replacement }) => {
-      let match: RegExpExecArray | null
-      while ((match = pattern.exec(text))) {
-        const sentence = text.slice(Math.max(0, text.lastIndexOf('.', match.index) + 1), text.indexOf('.', match.index) < 0 ? text.length : text.indexOf('.', match.index))
-        if ((sentence.match(/[A-Za-z]/g) || []).length < 8) continue
-        const anchor = match[0]
-        const verb = match[2]
-        issues.push({ pageIndex: page.pageIndex, label: "ui.subjectVerbAgreement", term: verb, replacement: replacement(verb.toLocaleLowerCase()), anchor, anchorOccurrence: 0, context: text.slice(Math.max(0, match.index - 45), match.index + anchor.length + 65) })
-      }
-    })
-  })
-  return issues
+  }
+  const hits:CitationLink[]=[]
+  for(const short of new Set(definitions.map(d=>d.short)))for(const page of pages) {
+    const escaped=short.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+    const regex=new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`,'gu')
+    const candidates=definitions.filter(d=>d.short===short)
+    for(const match of page.text.matchAll(regex)) {
+      const preceding=candidates.filter(d=>d.page<page.pageIndex || d.page===page.pageIndex&&d.offset<=match.index!+short.length+3)
+      const definition=preceding.at(-1)||candidates[0]
+      const occurrence=page.text.slice(0,match.index).toLocaleLowerCase().split(short.toLocaleLowerCase()).length-1
+      hits.push({kind:'abbreviation',pageIndex:page.pageIndex,label:short,context:definition.full,citation:short,reference:definition.full,anchor:short,anchorOccurrence:occurrence})
+    }
+  }
+  return hits
 }

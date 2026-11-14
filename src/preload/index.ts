@@ -3,8 +3,17 @@ import type { AiRequest, DesktopApi, DetachedPdfDocument, DetachedWindowPosition
 
 const api: DesktopApi = {
   platform: process.platform,
+  ensureFeatureResources: request => ipcRenderer.invoke('resources:ensure',request),
+  resourceState: () => ipcRenderer.invoke('resources:state'),
+  onResourceState: callback => {const listener=(_event:Electron.IpcRendererEvent,state:import('../shared/resources').ResourceDownloadState|undefined)=>callback(state);ipcRenderer.on('resources:state',listener);return()=>ipcRenderer.removeListener('resources:state',listener)},
+  resourceAction: (id,action) => ipcRenderer.invoke('resources:action',id,action),
+  cancelFeatureResources: request => ipcRenderer.send('resources:cancel',request),
+  resourceProxy: () => ipcRenderer.invoke('resources:proxy'),
+  saveResourceProxy: proxy => ipcRenderer.invoke('resources:proxy-save',proxy),
+  checkGrammar: request => ipcRenderer.invoke('grammar:check',request),
   openPdf: () => ipcRenderer.invoke('pdf:choose-open'),
   choosePdfImports: () => ipcRenderer.invoke('pdf:choose-imports'),
+  importPdfFile: (path) => ipcRenderer.invoke('pdf:import-file', path),
   chooseImage: () => ipcRenderer.invoke('image:choose'),
   recognizeOcrPage: async (request, onProgress) => {
     const listener = (_event: Electron.IpcRendererEvent, jobId: string, value: number) => { if (jobId === request.jobId) onProgress(value) }

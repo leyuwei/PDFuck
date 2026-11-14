@@ -41,12 +41,24 @@ import type { SourceTarget } from '../lib/text-document'
 import type { MarkdownSelection } from '../lib/markdown-history'
 import type { AutomaticAnnotationBlock, AutomaticAnnotationFinding } from '../lib/automatic-annotation'
 import { compactPageSelection, parsePageSelection } from '../lib/page-selection'
+import { loadFullReviewPrompt, saveFullReviewPrompt } from '../lib/full-review-prompt'
 
 export const FULL_REVIEW_CONSENT_KEY = 'pdfuck.lab.full-review-consent.v1'
 export const AUTOMATIC_ANNOTATION_DETAIL_KEY = 'pdfuck.lab.auto-annotation-detail.v1'
 export const AUTOMATIC_ANNOTATION_INTENSITY_KEY = 'pdfuck.lab.auto-annotation-intensity.v1'
 export const AUTOMATIC_ANNOTATION_CUSTOM_KEY = 'pdfuck.lab.auto-annotation-custom.v1'
 export const AUTOMATIC_ANNOTATION_ISSUES_KEY = 'pdfuck.lab.auto-annotation-issues.v1'
+
+export const LAB_WINDOW_STORAGE_KEYS = {
+  image: 'pdfuck.lab.window.image.v1',
+  polish: 'pdfuck.lab.window.polish.v1',
+  review: 'pdfuck.lab.window.review.v1',
+  automatic: 'pdfuck.lab.window.automatic.v1',
+  suggestion: 'pdfuck.lab.window.suggestion.v1',
+  drawing: 'pdfuck.lab.window.drawing.v1',
+  translationSettings: 'pdfuck.lab.window.translation-settings.v1',
+  fullReviewDisclaimer: 'pdfuck.lab.window.full-review-disclaimer.v1'
+} as const
 
 const AUTOMATIC_ISSUE_LABELS: Record<AutomaticAnnotationIssueType, TranslationKey> = {
   typos_formatting: 'ui.autoIssueTyposFormatting', grammar_syntax: 'ui.autoIssueGrammarSyntax', clarity_style: 'ui.autoIssueClarityStyle',
@@ -232,7 +244,6 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
   useEffect(() => () => { figureToken.current++; cancelAiRequest(figureRequest.current) }, [])
   const [activeWindow, setActiveWindow] = useState<LabWindow>()
   const [openedWindows, setOpenedWindows] = useState<LabWindow[]>([])
-  const floating = useFloatingWindow(visible && !(activeWindow === 'suggestion' && suggestionEditor) ? activeWindow : undefined, true)
   const openWindow = (kind: LabWindow) => {
     setOpenedWindows((current) => current.includes(kind) ? current : [...current, kind])
     setActiveWindow(kind)
@@ -287,8 +298,9 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false)
   const [pendingConsentAction, setPendingConsentAction] = useState<'review' | 'automatic'>('review')
   const [reviewMode, setReviewMode] = useState<FullReviewSendMode>('text')
-  const [reviewPresetId, setReviewPresetId] = useState(FULL_REVIEW_PRESETS[0].id)
-  const [reviewInstruction, setReviewInstruction] = useState(() => localizedPrompt(FULL_REVIEW_PRESETS[0], interfaceLanguage))
+  const [savedReviewPrompt] = useState(() => loadFullReviewPrompt())
+  const [reviewPresetId, setReviewPresetId] = useState(() => savedReviewPrompt?.presetId ?? FULL_REVIEW_PRESETS[0].id)
+  const [reviewInstruction, setReviewInstruction] = useState(() => savedReviewPrompt?.instruction ?? localizedPrompt(FULL_REVIEW_PRESETS[0], interfaceLanguage))
   const [reviewResult, setReviewResult] = useState('')
   const [reviewError, setReviewError] = useState('')
   const [reviewBusy, setReviewBusy] = useState(false)
@@ -296,6 +308,24 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
   const [reviewAdding, setReviewAdding] = useState(false)
   const [reviewStartedAt, setReviewStartedAt] = useState<number>()
   const [reviewProgressNow, setReviewProgressNow] = useState(() => Date.now())
+  const floating = useFloatingWindow(visible && !(activeWindow === 'suggestion' && suggestionEditor) ? activeWindow : undefined, true, {
+    storageKey: activeWindow ? LAB_WINDOW_STORAGE_KEYS[activeWindow] : undefined,
+    resizable: true,
+    minWidth: 360,
+    minHeight: 300
+  })
+  const translationFloating = useFloatingWindow(translationSettingsOpen ? 'translation-settings' : undefined, false, {
+    storageKey: LAB_WINDOW_STORAGE_KEYS.translationSettings,
+    resizable: true,
+    minWidth: 360,
+    minHeight: 260
+  })
+  const disclaimerFloating = useFloatingWindow(disclaimerOpen ? 'full-review-disclaimer' : undefined, false, {
+    storageKey: LAB_WINDOW_STORAGE_KEYS.fullReviewDisclaimer,
+    resizable: true,
+    minWidth: 420,
+    minHeight: 320
+  })
   const [suggestionPresetId, setSuggestionPresetId] = useState(ANNOTATION_SUGGESTION_PRESETS[0].id)
   const [suggestionInstruction, setSuggestionInstruction] = useState(() => localizedPrompt(ANNOTATION_SUGGESTION_PRESETS[0], interfaceLanguage))
   const [activeSuggestionRequest, setActiveSuggestionRequest] = useState<AnnotationSuggestionRequest>()
@@ -368,9 +398,13 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
     setInstruction(promptForLanguage(AI_PRESETS[0], selectedLanguage))
   }, [selectedLanguage, selectionKey])
   useEffect(() => {
-    if (reviewPresetId) setReviewInstruction(localizedPrompt(FULL_REVIEW_PRESETS.find((preset) => preset.id === reviewPresetId) || FULL_REVIEW_PRESETS[0], interfaceLanguage))
+    if (reviewPresetId) {
+      const instruction = localizedPrompt(FULL_REVIEW_PRESETS.find((preset) => preset.id === reviewPresetId) || FULL_REVIEW_PRESETS[0], interfaceLanguage)
+      setReviewInstruction(instruction)
+    }
     if (suggestionPresetId) setSuggestionInstruction(localizedPrompt(ANNOTATION_SUGGESTION_PRESETS.find((preset) => preset.id === suggestionPresetId) || ANNOTATION_SUGGESTION_PRESETS[0], interfaceLanguage))
   }, [interfaceLanguage, reviewPresetId, suggestionPresetId])
+  useEffect(() => { saveFullReviewPrompt({ presetId: reviewPresetId, instruction: reviewInstruction }) }, [reviewPresetId, reviewInstruction])
   useEffect(() => {
     if (!suggestionRequest) return
     suggestionRequestId.current += 1
@@ -727,9 +761,9 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
     </div>
 
     {settingsOpen && <AiSettingsDialog onClose={() => setSettingsOpen(false)} onSaved={() => setSettings(loadAiSettings())} />}
-    {translationSettingsOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer translation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-settings-title"><header><AnnotationIcon kind="ai_translate" /><div><h2 id="translation-settings-title">{t("ui.textTranslation")}</h2><p>{t("ui.translationSetupHint")}</p></div></header><div className="lab-disclaimer-copy"><label className="translation-target-field"><span>{t("ui.translationTargetLanguage")}</span><select value={translationDraftTarget} onChange={(event) => setTranslationDraftTarget(event.target.value as AiLanguage)}>{Object.entries(AI_LANGUAGE_NAMES).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div><footer><button type="button" onClick={() => setTranslationSettingsOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" onClick={() => { onTranslationSettingsChange?.(true, translationDraftTarget); setTranslationSettingsOpen(false); if (sourceTarget) onTranslateSource?.(translationDraftTarget) }}>{t("ui.activateTranslation")}</button></footer></ScrollWindow></div>}
+    {translationSettingsOpen && <div className="lab-modal-backdrop"><ScrollWindow ref={translationFloating.ref} style={translationFloating.style} className="lab-disclaimer translation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="translation-settings-title"><header {...translationFloating.dragHandlers}><AnnotationIcon kind="ai_translate" /><div><h2 id="translation-settings-title">{t("ui.textTranslation")}</h2><p>{t("ui.translationSetupHint")}</p></div></header><div className="lab-disclaimer-copy"><label className="translation-target-field"><span>{t("ui.translationTargetLanguage")}</span><select value={translationDraftTarget} onChange={(event) => setTranslationDraftTarget(event.target.value as AiLanguage)}>{Object.entries(AI_LANGUAGE_NAMES).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div><footer><button type="button" onClick={() => setTranslationSettingsOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" onClick={() => { onTranslationSettingsChange?.(true, translationDraftTarget); setTranslationSettingsOpen(false); if (sourceTarget) onTranslateSource?.(translationDraftTarget) }}>{t("ui.activateTranslation")}</button></footer></ScrollWindow></div>}
 
-    {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
+    {disclaimerOpen && <div className="lab-modal-backdrop"><ScrollWindow ref={disclaimerFloating.ref} style={disclaimerFloating.style} className="lab-disclaimer" role="dialog" aria-modal="true" aria-labelledby="full-review-disclaimer-title"><header {...disclaimerFloating.dragHandlers}><span className="lab-warning-icon">!</span><div><h2 id="full-review-disclaimer-title">{t("ui.fullDocumentReviewPrivacyAndDataRiskNotice")}</h2><p>{t("ui.confirmTheDataTransferRisksBeforeFirstUse")}</p></div></header><div className="lab-disclaimer-copy"><p>{t("ui.fullDocumentReviewSendsAllTextInTheCurrentDocument")}</p><p>{t("ui.pdfuckCannotControlHowTheAiProviderStoresUsesOr")}</p><p>{t("ui.onlyProcessDocumentsYouAreAuthorizedToSendAndThat")}</p></div><div className="lab-consent-area"><label className="lab-consent-check"><input type="checkbox" checked={disclaimerAccepted} onChange={(event) => setDisclaimerAccepted(event.target.checked)} /><span>{t("ui.iHaveReadAndAcceptThisNoticeAndVoluntarilyAssume")}</span></label></div><footer><button type="button" onClick={() => setDisclaimerOpen(false)}>{t("ui.cancel")}</button><button type="button" className="primary" disabled={!disclaimerAccepted} onClick={acceptDisclaimer}>{t("ui.agreeAndContinue")}</button></footer></ScrollWindow></div>}
 
     {activeWindow === 'image' && <ScrollWindow className="ai-polish-window lab-workflow-window image-explanation-window" role="dialog" aria-label={t('ui.explainImage')} ref={floating.ref} style={windowStyle}>
       <header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_image" />{t('ui.explainImage')}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t('ui.minimizeLabWindow')}>−</button><button type="button" onClick={() => { figureToken.current++; cancelAiRequest(figureRequest.current); setFigureBusy(false); onCancelFigureSelection?.(); closeWindow() }} aria-label={t('ui.close')}>×</button></span></header>
@@ -746,7 +780,6 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
 
     {activeWindow === 'polish'  && <ScrollWindow className="ai-polish-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_polish" />{t("ui.aiPolish")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="ai-polish-selection">{normalizedSelection || t("ui.selectTextInThePdfFirst")}</p><div className="ai-preset-grid">{AI_PRESETS.map((preset) => <button type="button" key={preset.id} className={presetId === preset.id ? 'active' : ''} onClick={() => { setPresetId(preset.id); setInstruction(promptForLanguage(preset, language)) }}>{t(preset.label)}</button>)}</div><textarea value={instruction} aria-label={t("ui.polishingInstruction")} onChange={(event) => { setPresetId(''); setInstruction(event.target.value) }} placeholder={t("ui.customInstruction")} /><button type="button" className="primary wide" disabled={busy} onClick={() => void submitPolish()}>{busy ? t("ui.gettingResponse") : t("ui.polishText")}</button><AiActivity progress={polishActivity} busy={busy} />{error && <p className="ai-polish-error">{translateUiText(error)}</p>}{result && <><AiMarkdown content={result} /><div className="ai-polish-actions"><LabExportButton title={t('ui.aiPolish')} content={result} source={reportSources.polish || { text: '' } } /><button type="button" onClick={() => onCopy(result)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={adding} onClick={() => void addPolishResult()}>{adding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
 
-    {activeWindow === 'review' && <ScrollWindow className="ai-polish-window lab-workflow-window full-review-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_review" />{t("ui.fullDocumentReview")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="lab-workflow-intro">{t("ui.chooseASendModeAndReviewPromptTheAiWill")}</p><div className="lab-send-mode" role="radiogroup" aria-label={t("ui.documentSendMode")}><button type="button" role="radio" aria-checked={reviewMode === 'text'} className={reviewMode === 'text' ? 'active' : ''} onClick={() => setReviewMode('text')}><b>{t("ui.sendConvertedDocumentText")}</b><small>{t("ui.moreCompatibleWithPageByPageMarkers")}</small></button><button type="button" role="radio" aria-checked={reviewMode === 'file'} className={reviewMode === 'file' ? 'active' : ''} disabled={sourceTarget && !pdfAvailable} onClick={() => setReviewMode('file')}><b>{t("ui.sendThePdfFileDirectly")}</b><small>{t("ui.preservesLayoutButTheModelMustSupportPdfInput")}</small></button></div>{reviewMode === 'file' && <p className="lab-compatibility-note">{t("ui.fileInputCompatibilityDependsOnTheAiProviderOrRelay")}</p>}<label className="lab-field-title">{t("ui.reviewPrompt")}</label><div className="ai-preset-grid lab-preset-grid">{FULL_REVIEW_PRESETS.map((preset) => <button type="button" key={preset.id} className={reviewPresetId === preset.id ? 'active' : ''} onClick={() => { setReviewPresetId(preset.id); setReviewInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={reviewInstruction} aria-label={t("ui.reviewPrompt")} onChange={(event) => { setReviewPresetId(''); setReviewInstruction(event.target.value) }} /><button type="button" className="primary wide" disabled={reviewBusy} onClick={() => void submitReview()}>{reviewBusy ? t("ui.reviewingTheEntireDocument") : t("ui.startFullDocumentReview")}</button>{reviewBusy && reviewProgress && <div className="lab-review-progress" role="progressbar" aria-label={t("ui.fullDocumentReviewProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(reviewProgress.elapsedPercent)}><header><b>{t("ui.aiIsReviewingTheEntireDocument")}</b><span>{message('lab.reviewCountdown', { seconds: reviewProgress.remainingSeconds })}</span></header><div className="lab-review-progress-track"><i style={{ width: `${reviewProgress.elapsedPercent}%` }} /></div><small>{t("ui.theMaximumWaitUsesTheResponseTimeoutInModelSettings")}</small></div>}<AiActivity progress={reviewActivity} busy={reviewBusy} />{reviewError && <p className="ai-polish-error">{translateUiText(reviewError)}</p>}{reviewResult && <><AiMarkdown content={reviewResult} className="lab-long-result" /><div className="ai-polish-actions"><LabExportButton title={t('ui.fullDocumentReview')} content={reviewResult} source={reportSources.review || { text: '' } } /><button type="button" onClick={() => onCopy(reviewResult)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={reviewAdding} onClick={() => void addReviewResult()}>{reviewAdding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
 
     {activeWindow === 'automatic' && <ScrollWindow className="ai-polish-window lab-workflow-window automatic-annotation-window" ref={floating.ref} style={windowStyle} footer={automaticFooter}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_annotate" />{t("ui.automaticAnnotation")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="lab-workflow-intro">{t("ui.automaticAnnotationIntro")}</p>
       <fieldset className="automatic-annotation-options" disabled={automaticActive}>
@@ -768,6 +801,7 @@ export function AnnotationLab({ pageCount = 0, sourceTarget, pdfAvailable = true
       {automaticError && <p className="ai-polish-error" role="alert">{automaticError}</p>}
     </ScrollWindow>}
 
+    {activeWindow === 'review' && <ScrollWindow className="ai-polish-window lab-workflow-window full-review-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_review" />{t("ui.fullDocumentReview")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={closeWindow} aria-label={t("ui.close")}>×</button></span></header><p className="lab-workflow-intro">{t("ui.chooseASendModeAndReviewPromptTheAiWill")}</p><div className="lab-send-mode" role="radiogroup" aria-label={t("ui.documentSendMode")}><button type="button" role="radio" aria-checked={reviewMode === 'text'} className={reviewMode === 'text' ? 'active' : ''} onClick={() => setReviewMode('text')}><b>{t("ui.sendConvertedDocumentText")}</b><small>{t("ui.moreCompatibleWithPageByPageMarkers")}</small></button><button type="button" role="radio" aria-checked={reviewMode === 'file'} className={reviewMode === 'file' ? 'active' : ''} disabled={sourceTarget && !pdfAvailable} onClick={() => setReviewMode('file')}><b>{t("ui.sendThePdfFileDirectly")}</b><small>{t("ui.preservesLayoutButTheModelMustSupportPdfInput")}</small></button></div>{reviewMode === 'file' && <p className="lab-compatibility-note">{t("ui.fileInputCompatibilityDependsOnTheAiProviderOrRelay")}</p>}<label className="lab-field-title">{t("ui.reviewPrompt")}</label><div className="ai-preset-grid lab-preset-grid">{<button type="button" className={!reviewPresetId ? 'active' : ''} onClick={() => { setReviewPresetId(''); setReviewInstruction(localStorage.getItem('pdfuck.full-review-custom.v1') ?? reviewInstruction) }}>{t("ui.customTemplate")}</button>}{FULL_REVIEW_PRESETS.map((preset) => <button type="button" key={preset.id} className={reviewPresetId === preset.id ? 'active' : ''} onClick={() => { setReviewPresetId(preset.id); setReviewInstruction(localizedPrompt(preset, interfaceLanguage)) }}>{t(preset.label)}</button>)}</div><textarea value={reviewInstruction} aria-label={t("ui.reviewPrompt")} onChange={(event) => { setReviewPresetId(''); setReviewInstruction(event.target.value); try { localStorage.setItem('pdfuck.full-review-custom.v1', event.target.value) } catch { /* Storage may be unavailable. */ } }} /><button type="button" className="primary wide" disabled={reviewBusy} onClick={() => void submitReview()}>{reviewBusy ? t("ui.reviewingTheEntireDocument") : t("ui.startFullDocumentReview")}</button>{reviewBusy && reviewProgress && <div className="lab-review-progress" role="progressbar" aria-label={t("ui.fullDocumentReviewProgress")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(reviewProgress.elapsedPercent)}><header><b>{t("ui.aiIsReviewingTheEntireDocument")}</b><span>{message('lab.reviewCountdown', { seconds: reviewProgress.remainingSeconds })}</span></header><div className="lab-review-progress-track"><i style={{ width: `${reviewProgress.elapsedPercent}%` }} /></div><small>{t("ui.theMaximumWaitUsesTheResponseTimeoutInModelSettings")}</small></div>}<AiActivity progress={reviewActivity} busy={reviewBusy} />{reviewError && <p className="ai-polish-error">{translateUiText(reviewError)}</p>}{reviewResult && <><AiMarkdown content={reviewResult} className="lab-long-result" /><div className="ai-polish-actions"><LabExportButton title={t('ui.fullDocumentReview')} content={reviewResult} source={reportSources.review || { text: '' } } /><button type="button" onClick={() => onCopy(reviewResult)}>{t("ui.copyResponse")}</button><button type="button" className="primary" disabled={reviewAdding} onClick={() => void addReviewResult()}>{reviewAdding ? t("ui.adding") : t("ui.addToAnnotations")}</button></div></>}</ScrollWindow>}
     {activeWindow === 'suggestion' && activeSuggestionRequest && !activeSuggestionRequest.embedded && <ScrollWindow className="ai-polish-window lab-workflow-window annotation-suggestion-window" ref={floating.ref} style={windowStyle}><header {...floating.dragHandlers}><span><AnnotationIcon kind="ai_suggest" />{t("ui.annotationSuggestions")}</span><span className="lab-window-actions"><button type="button" onClick={() => setActiveWindow(undefined)} aria-label={t("ui.minimizeLabWindow")} title={t("ui.minimizeLabWindow")}>−</button><button type="button" onClick={() => { closeWindow(); setActiveSuggestionRequest(undefined) }} aria-label={t("ui.close")}>×</button></span></header>{suggestionContent}</ScrollWindow>}
 
     </>}

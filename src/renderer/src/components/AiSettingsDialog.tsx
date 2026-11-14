@@ -14,7 +14,12 @@ export function AiSettingsDialog({ onClose, onSaved }: { onClose(): void; onSave
   const [selectedId, setSelectedId] = useState(library.activeId)
   const [error, setError] = useState('')
   const [showKey, setShowKey] = useState(false)
-  const floating = useFloatingWindow(true, true)
+  const floating = useFloatingWindow(true, true, {
+    storageKey: 'pdfuck.lab.window.ai-settings.v1',
+    resizable: true,
+    minWidth: 620,
+    minHeight: 420
+  })
   const selected = library.profiles.find(profile => profile.id === selectedId)!
   const [active, setActive] = useState(() => library.profiles.find(profile => profile.id === library.activeId)!)
   const settings = selected.settings

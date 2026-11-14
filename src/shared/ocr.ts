@@ -1,4 +1,4 @@
-/** Bundled locally; the selected primary language is combined with English. */
+/** Downloaded on demand; the selected primary language is combined with English. */
 export const OCR_LANGUAGES = {
   chi_sim: '简体中文', chi_tra: '繁體中文', eng: 'English', jpn: '日本語',
   rus: 'Русский', spa: 'Español', fra: 'Français', deu: 'Deutsch',

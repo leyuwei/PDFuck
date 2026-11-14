@@ -1,8 +1,19 @@
-import { Children, isValidElement, useEffect, useRef, type ComponentPropsWithRef, type ReactNode } from 'react'
+import { floatingTop, useFloatingWindow } from '../lib/floating-window'
+import { Children, cloneElement, isValidElement, useEffect, useRef, type ComponentPropsWithRef, type ReactNode } from 'react'
 
 /** The heading is outside the scrollport, so scrollbars cannot cross its title. */
-export function ScrollWindow({ children, footer, className = '', autoHideScrollbar = false, ...props }: ComponentPropsWithRef<'div'> & { autoHideScrollbar?: boolean; footer?: ReactNode }) {
+export function ScrollWindow({ children, footer, className = '', autoHideScrollbar = false, ref: externalRef, ...props }: ComponentPropsWithRef<'div'> & { autoHideScrollbar?: boolean; footer?: ReactNode }) {
   const body = useRef<HTMLDivElement>(null)
+  const automaticDrag = className.split(/\s+/).includes('modal') && !externalRef
+  const floating = useFloatingWindow(automaticDrag)
+  useEffect(() => {
+    const element = automaticDrag ? floating.ref.current : typeof externalRef === 'object' ? externalRef?.current : undefined
+    const backdrop = element?.closest<HTMLElement>('.modal-backdrop')
+    if (!backdrop) return
+    const update = () => backdrop.style.setProperty('--dialog-titlebar-height', `${floatingTop()-8}px`)
+    update(); window.addEventListener('resize',update)
+    return () => window.removeEventListener('resize',update)
+  }, [automaticDrag, externalRef])
   useEffect(() => {
     if (!autoHideScrollbar || !body.current) return
     const element = body.current
@@ -28,5 +39,5 @@ export function ScrollWindow({ children, footer, className = '', autoHideScrollb
   const items = Children.toArray(children)
   const first = items[0]
   const heading = isValidElement(first) ? first : undefined
-  return <div {...props} className={`${className} scroll-window`}>{heading}<div ref={body} className={`window-scroll-body${autoHideScrollbar ? ' auto-hide-scrollbar' : ''}`}>{heading ? items.slice(1) : items}</div>{footer}</div>
+  return <div {...props} ref={automaticDrag ? floating.ref : externalRef} data-floating-window={automaticDrag || undefined} style={automaticDrag ? {...props.style,...floating.style,position:'fixed'} : props.style} className={`${className} scroll-window`}>{heading && automaticDrag ? cloneElement(heading as React.ReactElement<Record<string, unknown>>, {...floating.dragHandlers,'data-floating-heading':true}) : heading}<div ref={body} className={`window-scroll-body${autoHideScrollbar ? ' auto-hide-scrollbar' : ''}`}>{heading ? items.slice(1) : items}</div>{footer}</div>
 }

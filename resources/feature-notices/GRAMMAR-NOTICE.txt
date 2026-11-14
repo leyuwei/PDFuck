@@ -1,0 +1,16 @@
+Optional grammar resources are downloaded on first use and are not bundled in the base installer.
+
+PDFuck offline grammar resources
+
+LanguageTool 6.6 is distributed unmodified under LGPL 2.1 or later.
+Source: https://github.com/languagetool-org/languagetool/tree/v6.6
+Official distribution: https://languagetool.org/download/LanguageTool-6.6.zip
+See engine/COPYING.txt and engine/third-party-licenses for the engine and dependency licenses.
+Language-specific dictionaries and data retain the notices included in the distribution.
+
+Eclipse Temurin OpenJDK JRE 17.0.21+9 is distributed under GPLv2 with the Classpath Exception.
+Source and release: https://github.com/adoptium/temurin17-binaries/releases/tag/jdk-17.0.21%2B9
+See runtime/legal and runtime/NOTICE for all runtime notices.
+
+These replaceable resources run locally. PDF text is sent only to a loopback server owned by PDFuck.
+No LanguageTool cloud API or external document-processing service is used.

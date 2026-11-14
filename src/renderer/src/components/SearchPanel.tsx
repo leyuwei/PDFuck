@@ -21,13 +21,13 @@ const REGEX_PRESETS = [
   { label: 'ui.bracketedContent', value: '[（(][^）)]{1,80}[）)]' }
 ] as const
 
-export function SearchPanel({ document: pdf, source, sourceLabel, sourceHint, focusToken = 0, initialQuery = '', onClose, onFocusTarget }: { document?: PDFDocumentProxy; source?: string; sourceLabel?: string; sourceHint?: string; focusToken?: number; initialQuery?: string; onClose(): void; onFocusTarget(target: SearchMatch): void }) {
+export function SearchPanel({ document: pdf, source, sourceHint, focusToken = 0, initialQuery = '', onClose, onFocusTarget }: { document?: PDFDocumentProxy; source?: string; sourceLabel?: string; sourceHint?: string; focusToken?: number; initialQuery?: string; onClose(): void; onFocusTarget(target: SearchMatch): void }) {
   useInterfaceLanguage()
-  const [query, setQuery] = useState(initialQuery), [caseSensitive, setCaseSensitive] = useState(false), [fuzzy, setFuzzy] = useState(true), [regex, setRegex] = useState(false)
+  const [query, setQuery] = useState(initialQuery), [caseSensitive, setCaseSensitive] = useState(false), [fuzzy, setFuzzy] = useState(true), [wholeWord, setWholeWord] = useState(false), [regex, setRegex] = useState(false)
   const [results, setResults] = useState<SearchMatch[]>([]), [searched, setSearched] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false), [active, setActive] = useState(-1), [more, setMore] = useState(false)
   const runRef = useRef(0), inputRef = useRef<HTMLInputElement>(null)
   const returnFocus = useRef(window.document.activeElement as HTMLElement | null)
-  const floating = useFloatingWindow(true)
+  const floating = useFloatingWindow(true, false, { storageKey: 'pdfuck.search-window-size.v1', resizable: true, minWidth: 320, minHeight: 300 })
   const close = () => { if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true }); onClose() }
   const closeRef = useRef(close); closeRef.current = close
   useEffect(() => {
@@ -39,6 +39,7 @@ export function SearchPanel({ document: pdf, source, sourceLabel, sourceHint, fo
   useEffect(() => { inputRef.current?.focus({ preventScroll: true }); inputRef.current?.select() }, [focusToken])
   const resetResults = () => { runRef.current += 1; setResults([]); setSearched(false); setBusy(false); setError(''); setActive(-1); setMore(false) }
   useEffect(resetResults, [pdf, source])
+  useEffect(() => { if (initialQuery) { setQuery(initialQuery); resetResults() } }, [focusToken, initialQuery])
   const navigate = (index: number, keepInput = false) => {
     const next = (index + results.length) % results.length
     if (!results[next]) return
@@ -57,7 +58,7 @@ export function SearchPanel({ document: pdf, source, sourceLabel, sourceHint, fo
       for (let pageIndex = 0; pageIndex < (pdf?.numPages || 1) && next.length < 201; pageIndex += 1) {
         const text = pdf ? await pdf.getPage(pageIndex + 1).then(page => page.getTextContent()).then(content => content.items.flatMap(item => 'str' in item ? Array.from(item.str.matchAll(/\S+/gu), match => match[0]) : []).join(' ')) : source || ''
         if (run !== runRef.current) return
-        const matches = findTextMatches(text, pdf && !regex ? query.trim().replace(/\s+/g, ' ') : query, { caseSensitive, fuzzy, regex }, 201 - next.length)
+        const matches = findTextMatches(text, pdf && !regex ? query.trim().replace(/\s+/g, ' ') : query, { caseSensitive, fuzzy, wholeWord, regex }, 201 - next.length)
         let line = 1, lineOffset = 0
         for (const match of matches) {
           for (let i = lineOffset; i < match.start; i++) if (text[i] === '\n') line++
@@ -70,17 +71,20 @@ export function SearchPanel({ document: pdf, source, sourceLabel, sourceHint, fo
     } catch (cause) { if (run === runRef.current) setError(cause instanceof SyntaxError ? ui('ui.invalidSearchExpression') : cause instanceof Error ? cause.message : ui('ui.invalidSearchExpression')) }
     finally { if (run === runRef.current) setBusy(false) }
   }
-  return createPortal(<div ref={floating.ref} role="dialog" aria-label={`${ui('ui.searchDocument')} · ${pdf ? ui('md.pdf') : sourceLabel || ui('md.source')}`} className="pdf-search-panel" style={floating.style} onPointerDown={event => event.stopPropagation()} onKeyDown={event => {
+  return createPortal(<div ref={floating.ref} role="dialog" aria-label={ui('ui.searchDocument')} className="pdf-search-panel" style={floating.style} onPointerDown={event => event.stopPropagation()} onKeyDown={event => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !isImeCompositionKey(event.nativeEvent) && event.key.toLowerCase() === 'f') { event.preventDefault(); event.stopPropagation(); inputRef.current?.focus(); inputRef.current?.select() }
   }}>
-    <div className="pdf-search-heading" {...floating.dragHandlers}><div><b>{ui('ui.searchDocument')}</b><small>{pdf ? ui('md.pdf') : sourceLabel || ui('md.source')}</small></div><button type="button" onClick={close} aria-label={ui('ui.closeSearch')} title={ui('ui.closeSearch')}>×</button></div>
-    <div className="pdf-search-body">
+    <div className="pdf-search-heading" {...floating.dragHandlers}><div><b>{ui('ui.searchDocument')}</b></div><button type="button" onClick={close} aria-label={ui('ui.closeSearch')} title={ui('ui.closeSearch')}>×</button></div>
+    <div className="pdf-search-body"><div className="pdf-search-controls">
       <div className="pdf-search-input-row"><input ref={inputRef} dir="auto" value={query} aria-label={ui('ui.searchDocument')} placeholder={ui('ui.enterTextOrARegularExpression')} onChange={event => { resetResults(); setQuery(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter' && !isImeCompositionKey(event.nativeEvent)) { event.preventDefault(); if (results.length) navigate(event.shiftKey && active < 0 ? results.length - 1 : active + (event.shiftKey ? -1 : 1), true); else void search() } }} /><button type="button" className="primary" disabled={busy || !query.trim()} onClick={() => void search()}>{ui('ui.search')}</button></div>
       <div className="pdf-search-options">{([
-        ['ui.matchCase', caseSensitive, setCaseSensitive, false], ['ui.fuzzyMatch', fuzzy, setFuzzy, regex], ['ui.regularExpression', regex, setRegex, false]
+        ['ui.matchCase', caseSensitive, setCaseSensitive, false],
+        ['ui.fuzzyMatch', fuzzy, (value: boolean) => { setFuzzy(value); if (value) setWholeWord(false) }, regex],
+        ['ui.wholeWordMatch', wholeWord, (value: boolean) => { setWholeWord(value); if (value) setFuzzy(false) }, regex],
+        ['ui.regularExpression', regex, (value: boolean) => { setRegex(value); if (value) setWholeWord(false) }, false]
       ] as const).map(([label, checked, change, disabled]) => <label key={label} className={disabled ? 'disabled' : undefined}><input type="checkbox" checked={checked} disabled={disabled} onChange={event => { resetResults(); change(event.target.checked) }} /><span>{ui(label)}</span></label>)}</div>
       {regex && <select className="pdf-regex-presets" aria-label={ui('ui.commonRegularExpressions')} value="" onChange={event => { resetResults(); setQuery(event.target.value); inputRef.current?.focus() }}><option value="">{ui('ui.commonRegularExpressions')}</option>{REGEX_PRESETS.map(preset => <option key={preset.label} value={preset.value}>{ui(preset.label)}</option>)}</select>}
-      {error && <p className="pdf-search-error" role="alert">{error}</p>}
+      {error && <p className="pdf-search-error" role="alert">{error}</p>}</div>
       {busy && <div className="pdf-search-state" role="status">{ui('search.searching')}</div>}
       {!busy && !error && searched && !results.length && <div className="pdf-search-state" role="status"><b>{ui('search.noResults')}</b><span>{ui('ui.tryADifferentSearchTerm')}</span></div>}
       {!busy && !searched && !error && <div className="pdf-search-state muted"><span>{pdf ? ui('search.startHint') : sourceHint || ui('search.sourceHint')}</span></div>}

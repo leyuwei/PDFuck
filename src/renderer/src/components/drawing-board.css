@@ -3,8 +3,8 @@
   z-index: 190;
   width: min(720px, calc(100vw - 32px));
   height: min(560px, calc(100vh - 44px));
-  min-width: 360px;
-  min-height: 440px;
+  min-width: min(360px, calc(100vw - 16px));
+  min-height: min(440px, calc(100vh - 16px));
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   box-sizing: border-box;

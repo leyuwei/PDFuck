@@ -1,3 +1,5 @@
+import type { FeatureResourceRequest, ResourceAction, ResourceDownloadState, ResourceProxy } from './resources'
+import type { GrammarRequest, GrammarResponse } from './grammar'
 import type { OcrPageRequest, OcrPageResult } from './ocr'
 import type { InterfaceLanguage } from './i18n-catalogue'
 import type { MarkdownDocument, MarkdownRenderRequest, SaveMarkdownRequest, TextEncoding, TextLineEnding } from './markdown'
@@ -213,6 +215,7 @@ export interface UpdateCheckResult {
   currentVersion: string
   latestVersion?: string
   releaseUrl?: string
+  releaseNotes?: string
 }
 
 export interface AiRequest {
@@ -233,9 +236,18 @@ export interface AiResponse {
 }
 
 export interface DesktopApi {
+  ensureFeatureResources(request:FeatureResourceRequest):Promise<boolean>
+  resourceState():Promise<ResourceDownloadState|undefined>
+  onResourceState(callback:(state:ResourceDownloadState|undefined)=>void):()=>void
+  resourceAction(id:string,action:ResourceAction):Promise<void>
+  cancelFeatureResources(request:FeatureResourceRequest):void
+  resourceProxy():Promise<ResourceProxy>
+  saveResourceProxy(proxy:ResourceProxy):Promise<ResourceProxy>
+  checkGrammar(request: GrammarRequest): Promise<GrammarResponse>
   readonly platform: string
   openPdf(): Promise<OpenedPdf | null>
   choosePdfImports(): Promise<PdfImportFile[] | null>
+  importPdfFile(path: string): Promise<PdfImportFile>
   chooseImage(): Promise<ImageImportFile | null>
   recognizeOcrPage(request: OcrPageRequest, onProgress: (value: number) => void): Promise<OcrPageResult>
   cancelOcr(jobId: string): void

@@ -21,7 +21,7 @@ export function cancelOcr(owner: number, jobId?: string, reason = 'ocr.canceled'
   void job.worker.terminate().catch(() => undefined)
 }
 
-export async function recognizeOcrPage(owner: number, request: OcrPageRequest, assetPath: string, progress: (value: number) => void): Promise<OcrPageResult> {
+export async function recognizeOcrPage(owner: number, request: OcrPageRequest, assetPath: string, progress: (value: number) => void, enginePath?:string): Promise<OcrPageResult> {
   const { jobId, language, image } = request || {}
   if (typeof jobId !== 'string' || !/^[\w-]{1,80}$/.test(jobId) || !Object.hasOwn(OCR_LANGUAGES, language)
     || !(image instanceof Uint8Array) || image.length < 24 || image.length > 64 * 1024 * 1024
@@ -33,7 +33,7 @@ export async function recognizeOcrPage(owner: number, request: OcrPageRequest, a
   if (!job) {
     const controller = new AbortController()
     // Own the host thread so cancellation also stops a stuck engine initialization.
-    const worker = new Worker(join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'ocr-worker.js'), { workerData: { language, assetPath } })
+    const worker = new Worker(join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'ocr-worker.js'), { workerData: { language, assetPath, enginePath } })
     const stopped = () => { if (jobs.get(owner)?.worker === worker) cancelOcr(owner, jobId, 'ocr.failed') }
     worker.on('error', stopped)
     worker.on('exit', stopped)

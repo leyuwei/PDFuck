@@ -10,6 +10,7 @@
 
 ## 简体中文
 
+
 **为论文精读、审稿与修改设计的文档编辑器。**
 
 支持 Windows、macOS 和十种界面语言，将阅读、写作、编辑与审稿放在同一个工作区。
@@ -23,7 +24,8 @@
 - **读懂复杂论文版式**：框选兼顾双栏、行内公式、上下标与跨页文本，复制时整理断行与断词。通过图表定位、章节书签与参考文献关联快速回到原文。
 - **AI 审稿落到原文**：检查语言、逻辑、数学推导与篇章结构，直接生成文内批注；结合上下文给出修改建议，也可翻译选区、解读图片，将结果导出为带原文的 PDF 报告。
 - **让批注成为修改清单**：区分批注人，用“已处理／想一想／不做了”跟进进度；支持 Markdown 内容、文内浮窗和回复，随 PDF 保存。
-- **扫描件也能选中、复制**：内置本地 OCR，支持中英等 11 种语言。识别文字随 PDF 保存，保留原页面外观，无需联网或另装 OCR 软件。
+- **扫描件也能选中、复制**：本地 OCR 支持中英等 11 种语言，首次使用按需下载引擎与所选语言资源，之后可离线识别。识别文字随 PDF 保存，保留原页面外观。
+- **本地语法检查**：LanguageTool 多语言规则提供解释、替换建议与原文定位。资源按需下载，文档不上传；下载支持暂停继续、断点恢复与代理设置。各语言覆盖不同，韩语语法暂不支持。
 - **编辑与导出一站完成**：添加文字、图片、图形和批量水印，智能裁切图片，管理页面并打印。支持 EPS 导入与矢量导出，识别加密权限与数字签名。
 
 ### 安装与开始使用
@@ -41,7 +43,11 @@
 
 使用“编辑页面文字”修改现有文本，或用“在页面上添加文字”放置文字框。添加的文字可拖动、调整尺寸和双击编辑；页面修改支持撤销与重做。原生 PDF 表单文字可以选择复制，在“编辑”模块直接填写，离开字段时自动应用；支持多行、同名字段同步和保存重开，保留表单结构及只读限制。临时目录中的文件会在文档标签上显示琥珀色时钟图标，悬停可查看另存提醒。
 
+文字框选自动跳过叠加水印，保留淡色脚注和普通旋转文字。
+
 从表格单元格内开始拖选，可选择格内文字与换行，选区保持在该单元格中。“一键图表”以淡色半透明区域显示图表，并提供点击定位的索引；选择正文时会跳过独立图表及图注。
+
+关联引文、一键图表和缩写快查以按钮底色显示开关，按文档保存并在下次打开时恢复；分析期间会显示等待提示。书签跳转后会闪烁标出正文起始位置。
 
 实验室的多轮批注会归并重叠说明；同一范围的改写保留一份完整建议。人工批注、人工修改和带回复的内容受到保护。
 
@@ -82,7 +88,7 @@ Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 
 
 ### 开源与许可
 
-基于 [Electron](https://github.com/electron/electron)、[React](https://github.com/facebook/react)、[PDF.js](https://github.com/mozilla/pdf.js)、[pdf-lib](https://github.com/Hopding/pdf-lib)、[Tesseract.js](https://github.com/naptha/tesseract.js)、[react-markdown](https://github.com/remarkjs/react-markdown) 和 [remark-gfm](https://github.com/remarkjs/remark-gfm) 构建。完整依赖见 [package.json](package.json)，OCR 来源与许可见 [OCR 说明](resources/OCR-NOTICE.txt)。可选转换工具由用户另行安装，遵循各自许可证。
+基于 [Electron](https://github.com/electron/electron)、[React](https://github.com/facebook/react)、[PDF.js](https://github.com/mozilla/pdf.js)、[pdf-lib](https://github.com/Hopding/pdf-lib)、[Tesseract.js](https://github.com/naptha/tesseract.js)、[LanguageTool](https://github.com/languagetool-org/languagetool)、[Temurin](https://github.com/adoptium/temurin17-binaries)、[react-markdown](https://github.com/remarkjs/react-markdown) 和 [remark-gfm](https://github.com/remarkjs/remark-gfm) 构建。完整依赖见 [package.json](package.json)，OCR 来源与许可见 [OCR 说明](resources/OCR-NOTICE.txt)。可选转换工具由用户另行安装，遵循各自许可证。
 
 本项目采用 [MIT 许可证](LICENSE)。© 2026 [leyuwei](https://github.com/leyuwei)
 
@@ -105,7 +111,8 @@ Available on Windows and macOS in ten interface languages. Read, write, edit, an
 - **Read complex papers comfortably**: select text across columns and pages, including inline equations, superscripts, and subscripts. Copying cleans up line breaks and split words; figure lookup, section bookmarks, and citation links help you find the source.
 - **AI review anchored to the text**: check language, logic, mathematical reasoning, and structure with in-document annotations. Get contextual revision suggestions, translate selections, interpret figures, and export reports with their source material.
 - **Turn annotations into a revision checklist**: identify reviewers and track items as Done, Think about it, or Won’t do. Markdown content, in-document cards, and replies are saved with the PDF.
-- **Select and copy scanned text**: bundled local OCR supports 11 languages, including Chinese and English. Save recognized text inside the PDF while preserving page appearance, without a network connection or a separate OCR installation.
+- **Select and copy scanned text**: local OCR supports 11 languages, including Chinese and English. Download the engine and selected language on first use, then recognize text offline. Save recognized text inside the PDF while preserving page appearance.
+- **Check grammar locally**: multilingual LanguageTool rules provide explanations, replacement suggestions and PDF destinations. Download resources on demand with pause, resume, interruption recovery and proxy settings; documents stay local. Rule coverage varies by language; Korean grammar is unsupported.
 - **Edit and export in one place**: add text, images, shapes, and batch watermarks; crop figures, manage pages, and print. Import EPS, export vector EPS, and inspect encryption permissions and digital signatures.
 
 ### Install and get started
@@ -123,7 +130,11 @@ Open or drop a document to begin. Change language, theme, paper background, and 
 
 Use **Edit page text** to change existing text, or **Add text to page** to place a text box. Drag added text, resize it, or double-click to edit it. Page edits support undo and redo. Select and copy native PDF form text, or fill fields directly in **Edit** mode; changes apply when leaving a field. Multiline values, linked fields, saving and reopening preserve the form structure and read-only restrictions. Files in temporary folders show an amber clock icon on their document tab; hover for the save-copy reminder.
 
+Text selection skips overlay watermarks while retaining faint footnotes and ordinary rotated labels.
+
 Start a selection inside a table cell to select its text and wrapped lines while keeping the selection within that cell. **Figures & tables** displays translucent regions with a clickable index; body-text selections skip separate figures and captions.
+
+Citation links, figures and tables, and abbreviation lookup show their enabled state on the buttons and remember it for each document. A waiting notice appears during analysis. Bookmark jumps briefly highlight the destination text.
 
 Repeated Lab reviews coalesce overlapping notes and keep one complete rewrite for the same source range. Manual annotations, edits and replies remain protected.
 
@@ -164,6 +175,6 @@ The Electron main process in `src/main` handles files, windows, printing, AI req
 
 ### Open source and license
 
-Built with [Electron](https://github.com/electron/electron), [React](https://github.com/facebook/react), [PDF.js](https://github.com/mozilla/pdf.js), [pdf-lib](https://github.com/Hopding/pdf-lib), [Tesseract.js](https://github.com/naptha/tesseract.js), [react-markdown](https://github.com/remarkjs/react-markdown), and [remark-gfm](https://github.com/remarkjs/remark-gfm). See [package.json](package.json) for dependencies and the [OCR notice](resources/OCR-NOTICE.txt) for OCR provenance and licenses. Optional converters are installed separately and retain their own licenses.
+Built with [Electron](https://github.com/electron/electron), [React](https://github.com/facebook/react), [PDF.js](https://github.com/mozilla/pdf.js), [pdf-lib](https://github.com/Hopding/pdf-lib), [Tesseract.js](https://github.com/naptha/tesseract.js), [LanguageTool](https://github.com/languagetool-org/languagetool), [Temurin](https://github.com/adoptium/temurin17-binaries), [react-markdown](https://github.com/remarkjs/react-markdown), and [remark-gfm](https://github.com/remarkjs/remark-gfm). See [package.json](package.json) for dependencies and the [OCR notice](resources/OCR-NOTICE.txt) for OCR provenance and licenses. Optional converters are installed separately and retain their own licenses.
 
 Licensed under [MIT](LICENSE). © 2026 [leyuwei](https://github.com/leyuwei)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { citationLinks, fileDirectory, grammarIssues, isTemporaryDocumentPath, stablePathColor, visualHits } from '../../../../../src/renderer/src/lib/document-insights'
+import { citationLinks, fileDirectory, isTemporaryDocumentPath, stablePathColor, visualHits } from '../../../../../src/renderer/src/lib/document-insights'
 
 describe('document insights', () => {
   it('detects temporary folders and keeps tab identity by path', () => {
@@ -9,13 +9,12 @@ describe('document insights', () => {
     expect(stablePathColor('/a/report.pdf')).not.toBe(stablePathColor('/b/report.pdf'))
   })
 
-  it('indexes each verified visual with its own bounds and keeps common spelling checks', () => {
+  it('indexes each verified visual with its own bounds', () => {
     const figure = { rect: { x: 20, y: 30, width: 100, height: 80 }, caption: 'Figure 1: system overview.', label: 'Figure 1', kind: 'figure' as const }
     const table = { rect: { x: 20, y: 150, width: 100, height: 80 }, caption: 'Table 1: Results.', label: 'Table 1', kind: 'table' as const }
     const visuals = visualHits([{ pageIndex: 0, text: '', visuals: [figure, table] }])
     expect(visuals.map((hit) => hit.label)).toEqual(['Figure 1', 'Table 1'])
     expect(visuals.map((hit) => hit.rects)).toEqual([[figure.rect], [table.rect]])
-    expect(grammarIssues([{ pageIndex: 1, text: 'teh results recieve data' }])[0]).toEqual(expect.objectContaining({ term: 'teh', replacement: 'the' }))
   })
 
   it('does not report prose citations or statistical fields as verified tables', () => {
@@ -46,21 +45,6 @@ describe('document insights', () => {
     expect(links.map((link) => link.citation)).toEqual(['1', '4', '6'])
     expect(links[1].reference).toBe('[4] Fourth reference.')
     expect(links[2].reference).toBe('[6] Sixth reference.')
-  })
-
-  it('only reports high-confidence grammar findings', () => {
-    expect(grammarIssues([{ pageIndex: 1, text: 'The result is tested and the input was received.' }])).toEqual([])
-    const issues = grammarIssues([{ pageIndex: 1, text: 'It are tested. They was repeated repeated.' }])
-    expect(issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "ui.subjectVerbAgreement", term: 'are', replacement: 'is', anchor: 'It are' }),
-      expect.objectContaining({ label: "ui.subjectVerbAgreement", term: 'was', replacement: 'were', anchor: 'They was' }),
-      expect.objectContaining({ label: "ui.repeatedWord", term: 'repeated', anchor: 'repeated repeated' })
-    ]))
-  })
-
-  it('ignores invoice identifiers and mixed-language form fragments', () => {
-    expect(grammarIssues([{ pageIndex: 0, text: '91330108MA2KCE2W7D 3*-8+0+/+0<15/64*69531+/654 2022 05 26' }])).toEqual([])
-    expect(grammarIssues([{ pageIndex: 0, text: '中央非税收入统一票据 electronic code 91330108MA2KCE2W7D' }])).toEqual([])
   })
 
   it('parses inline IEEE references when PDF text extraction has no line breaks', () => {

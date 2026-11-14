@@ -35,6 +35,7 @@ async function main() {
       assert.ok(box, `${label}: text-map box unavailable`)
       await window.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2)
       await documentPage.locator('.text-selection').first().waitFor({ timeout: 10000 })
+      await documentPage.locator('canvas[data-rendered="true"]').first().waitFor()
       const geometry = await documentPage.evaluate((element) => {
         const pageBox = element.getBoundingClientRect()
         const selection = element.querySelector('.text-selection').getBoundingClientRect()
@@ -51,7 +52,7 @@ async function main() {
         }
         const x0 = Math.max(0, Math.floor((relative.left + 1) * scaleX))
         const x1 = Math.min(canvas.width, Math.ceil((relative.right - 1) * scaleX))
-        const y0 = Math.max(0, Math.floor((relative.top - relative.height * 1.5) * scaleY))
+        const y0 = Math.max(0, Math.floor((relative.top - relative.height * 0.3) * scaleY))
         const y1 = Math.min(canvas.height, Math.ceil((relative.bottom + relative.height * 0.3) * scaleY))
         const pixels = context.getImageData(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0))
         let darkTop = Number.POSITIVE_INFINITY
@@ -108,7 +109,7 @@ async function main() {
       return { count: rects.length, minLeft: Math.min(...rects.map((rect) => rect.left)), maxRight: Math.max(...rects.map((rect) => rect.right)), pageWidth: pageBox.width }
     })
     assert.ok(wrappedBody.minLeft >= 55 && wrappedBody.maxRight <= wrappedBody.pageWidth - 40, `Chinese wrapped-body selection escaped its text flow: ${JSON.stringify(wrappedBody)}`)
-    await window.keyboard.press('Control+C')
+    await window.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
     const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
     assert.match(copied, /项目支撑国家数据基础设施建设工程[\s\S]*科技创新榜单双第一/u)
     const screenshot = path.join(artifactDir, `selection-chinese-alignment-${version}-page-3.png`)

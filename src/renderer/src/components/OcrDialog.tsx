@@ -31,7 +31,7 @@ export function OcrDialog({ pageCount, currentPage, hidden = false, onMinimize, 
     setBusy(true); setError(''); setResult(undefined); setProgress(undefined)
     try { const count = await onRecognize({ pages: parsed.pages, language }, active.signal, setProgress); if (!active.signal.aborted) setResult(count) }
     catch (reason) {
-      if (!active.signal.aborted) setError(String(reason).includes('ocr.timeout') ? ui('ocr.timeout') : ui('ocr.failed'))
+      if (!active.signal.aborted&&!String(reason).includes('resources.canceled')) setError(String(reason).includes('ocr.timeout') ? ui('ocr.timeout') : ui('ocr.failed'))
     } finally { if (controller.current === active) { controller.current = undefined; setBusy(false) } }
   }
   const dismiss = () => { if (busy) onMinimize(); else close() }

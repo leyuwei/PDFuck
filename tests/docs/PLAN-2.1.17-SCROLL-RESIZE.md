@@ -1,0 +1,7 @@
+# Scroll hint and sidebar responsiveness plan
+
+1. Remove all background page-number DOM, CSS, resize variables and extra paper stacking rules. Keep the digits-only transient HUD and existing reading features.
+2. Require intentional vertical wheel/scrollbar input for the HUD, exclude Ctrl/Meta zoom and every zoom value change, and use a bounded 220 ms same-direction sample window. Require at least two scroll samples, 420 px or 65% viewport travel (whichever is greater), and 1.8 px/ms. Native scrollbar dragging remains a deliberate direct signal. Preserve temporary/return notice spacing, theme colors, fade and document cleanup.
+3. Share direct sidebar resize handling: disable width animation during capture, coalesce DOM width updates by animation frame, commit React width on release, retain limits/capture/cancel cleanup, and fix logical edges/direction in RTL. Suspend PDF auto-fit and scroll tracking while dragging; run one final fit after release. Constrain the outer grid track to the window so intrinsic content cannot push RTL sidebars offscreen or mask viewport shrinkage.
+4. Add new focused unit/component tests and source-window tests using sanitized/synthetic files, including wheel/zoom/bar input, drag-to-width lag, render counts, zoom counts, cancellation, both sidebars, themes and RTL. Run only this round's new tests, typecheck and direct build.
+5. Keep root README unchanged and on-demand engines excluded. Rebuild current-version APP/DMG/ZIP and verify statically only; do not launch packaged products.

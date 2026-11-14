@@ -5,7 +5,22 @@
 .theme-dark .ai-polish-window textarea, .theme-dark .annotation-suggestion-inline textarea, .theme-dark .ai-model-settings textarea { border-color: #40516a; background: #202c3e; }
 /* Floating controls must never enter Electron's native title-bar drag region. */
 .annotation-lab[hidden], .drawing-board-window[hidden] { display: none !important; }
-.annotation-lab .ai-polish-window { z-index: 90; right: auto; top: 96px; bottom: auto; max-height: min(640px, var(--floating-max-height, calc(100vh - 112px))); max-width: calc(100vw - 16px); overscroll-behavior: contain; -webkit-app-region: no-drag; }
+.annotation-lab .ai-polish-window {
+  z-index: 90;
+  right: auto;
+  top: 96px;
+  bottom: auto;
+  width: min(550px, calc(100vw - 16px));
+  min-width: min(360px, calc(100vw - 16px));
+  min-height: min(300px, calc(100vh - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(640px, var(--floating-max-height, calc(100vh - 112px)));
+  box-sizing: border-box;
+  resize: both;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  -webkit-app-region: no-drag;
+}
 .annotation-lab .ai-polish-window * { -webkit-app-region: no-drag; }
 .annotation-lab .lab-window-actions { flex: none; margin-left: auto; gap: 2px; }
 .annotation-lab .lab-window-actions button { width: 30px; height: 30px; padding: 0; }
@@ -28,7 +43,7 @@
 .annotation-lab .annotation-lab-settings-backdrop, .annotation-lab .lab-modal-backdrop { padding-top: 88px; }
 .annotation-lab .lab-modal-backdrop { place-items: end; padding: 120px 16px 36px; }
 .annotation-lab .lab-modal-backdrop .lab-disclaimer { max-height: calc(100dvh - 156px); }
-.annotation-lab .annotation-lab-settings, .annotation-lab .lab-disclaimer { max-height: calc(100vh - 112px); overflow: auto; -webkit-app-region: no-drag; }
+.annotation-lab .annotation-lab-settings, .annotation-lab .lab-disclaimer { max-height: calc(100vh - 112px); overflow: hidden; -webkit-app-region: no-drag; }
 .tool-panel .drawing-board-window { z-index: 90; min-height: min(360px, calc(100vh - 112px)); max-height: calc(100vh - 112px); min-width: min(360px, calc(100vw - 16px)); -webkit-app-region: no-drag; }
 .drawing-board-window > header { flex-shrink: 0; }
 .drawing-board-window > header .drawing-board-heading { flex: 1; }
@@ -65,10 +80,10 @@
 @media (prefers-reduced-motion: reduce) { .ai-stream-activity.active > summary > i { animation: none; } }
 
 .annotation-lab .annotation-lab-settings-backdrop[hidden] { display: none; }
-.annotation-lab .annotation-lab-settings.ai-model-settings { position: fixed; left: max(16px, calc((100vw - 980px) / 2)); top: 96px; right: auto; bottom: auto; width: min(980px, calc(100vw - 32px)); max-height: var(--floating-max-height, calc(100vh - 112px)); padding: 0; overflow: hidden; border-radius: 16px; }
-.annotation-lab .ai-model-settings > header { position: static; margin: 0; padding: 16px 20px; border-bottom: 1px solid #dce3ef; background: inherit; cursor: move; }
+.annotation-lab .annotation-lab-settings.ai-model-settings { position: fixed; left: max(16px, calc((100vw - 980px) / 2)); top: 96px; right: auto; bottom: auto; width: min(980px, calc(100vw - 32px)); min-width: min(620px, calc(100vw - 16px)); min-height: min(420px, calc(100vh - 112px)); max-width: calc(100vw - 16px); max-height: var(--floating-max-height, calc(100vh - 112px)); box-sizing: border-box; resize: both; padding: 0; overflow: hidden; border-radius: 16px; }
+.annotation-lab .ai-model-settings > header { position: static; flex: none; margin: 0; padding: 16px 20px; border-bottom: 1px solid #dce3ef; background: inherit; cursor: move; touch-action: none; user-select: none; }
 .annotation-lab .ai-model-settings > header > b { font-size: var(--ui-font-title); line-height: 1.4; }
-.annotation-lab .ai-model-settings > .window-scroll-body { padding: 18px 20px 0; }
+.annotation-lab .ai-model-settings > .window-scroll-body { min-height: 0; overflow: auto; overflow-x: hidden; scrollbar-gutter: auto; padding: 18px 20px 0; }
 .annotation-lab .ai-settings-intro { display: grid; gap: 12px; margin-bottom: 24px; }
 .annotation-lab .ai-settings-intro .lab-settings-note { margin: 0; color: #657189; font-size: var(--ui-font-small); line-height: 1.65; }
 .annotation-lab .ai-active-model { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 16px; background: #f6f8fb; border: 1px solid #e2e7ef; border-radius: 12px; }
@@ -124,3 +139,7 @@
 .figure-explanation-preview { display: block; max-width: 100%; max-height: 200px; object-fit: contain; margin: 14px auto; background: #fff; border-radius: 8px; }
 
 .theme-dark .ai-stream-actions { border-color: #40516a; }
+
+/* Keep intrinsic content heights; the shared body scrolls when a window is small. */
+.annotation-lab .ai-polish-window > .window-scroll-body > * { flex-shrink: 0; min-width: 0; }
+.annotation-lab .ai-polish-window > .window-scroll-body > .ai-polish-result { max-height: none; overflow: visible; overflow-wrap: anywhere; }

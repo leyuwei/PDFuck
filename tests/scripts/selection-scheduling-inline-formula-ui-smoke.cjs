@@ -56,6 +56,8 @@ async function main() {
   })
   try {
     const page = await app.firstWindow()
+    await page.locator('.text-map span').first().waitFor({timeout:60000})
+    await page.getByRole('button', {name:'连续滚动',exact:true}).click()
     const pageFiveRects = await selectAndRead(page, 4, {
       start: { text: 'The', left: 312, top: 368 }, end: { text: '(C5).', left: 312, top: 416 },
       expected: [{ text: 'α', left: 377, top: 366 }, { text: 'i', left: 377, top: 372 }, { text: 'μ', left: 312, top: 380 }]

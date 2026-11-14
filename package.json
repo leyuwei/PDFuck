@@ -1,7 +1,7 @@
 {
   "name": "pdfuck",
-  "version": "2.1.12",
-  "description": "简洁、高清、顺手的跨平台 PDF 查看、编辑、批注、打印与导出工具",
+  "version": "2.1.17",
+  "description": "支持 PDF、Markdown 与 TXT 的跨平台写作、阅读、编辑、批注与 AI 文档工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
   "license": "MIT",
@@ -102,7 +102,18 @@
     "test:release-2.1.11": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11.test.ts",
     "test:release-2.1.11-followup": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-followup.test.ts",
     "test:release-2.1.11-visual-bounds": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.11-visual-bounds.test.ts",
-    "test:release-2.1.12": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.12.test.ts"
+    "test:release-2.1.12": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.12.test.ts",
+    "test:release-2.1.13": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.13.test.tsx",
+    "test:release-2.1.14": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.14.test.tsx tests/unit/main/release-2.1.14-macos-print.test.ts",
+    "test:release-2.1.15": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/components/Release2115.test.tsx",
+    "test:release-2.1.16": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.16.test.ts && node tests/scripts/release-2.1.16-layout.cjs",
+    "test:release-2.1.17": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17.test.ts tests/unit/renderer/src/lib/release-2.1.17-print.test.ts tests/unit/renderer/src/lib/release-2.1.17-review.test.ts tests/unit/main/release-2.1.17-print-path.test.ts tests/unit/renderer/src/lib/release-2.1.17-input-archive.test.ts && node tests/scripts/release-2.1.17-selection-review.cjs && electron-vite build && node tests/scripts/release-2.1.17-ui.cjs && node tests/scripts/release-2.1.17-performance.cjs",
+    "test:release-2.1.17-inputs": "node tests/scripts/release-2.1.17-input-pdfs.cjs && electron-vite build && node tests/scripts/release-2.1.17-input-ui.cjs",
+    "test:release-2.1.17-tables": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17-tables.test.ts && node tests/scripts/release-2.1.17-table-pdfs.cjs && electron-vite build && node tests/scripts/release-2.1.17-tables-ui.cjs",
+    "prepare:grammar": "node scripts/prepare-grammar.cjs",
+    "test:release-2.1.17-grammar-layout": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17-grammar-layout.test.tsx && node tests/scripts/release-2.1.17-grammar-engine.cjs && node tests/scripts/release-2.1.17-selection-latest.cjs && electron-vite build && node tests/scripts/release-2.1.17-grammar-layout-ui.cjs",
+    "test:resources": "node tests/scripts/run-vitest.cjs run tests/unit/main/release-2.1.17-resources.test.ts tests/unit/renderer/src/lib/release-2.1.17-resource-dialog.test.tsx",
+    "test:resources-ui": "electron-vite build && node tests/scripts/release-2.1.17-resource-api.cjs && electron tests/scripts/release-2.1.17-resource-network.cjs && node tests/scripts/release-2.1.17-resource-crash.cjs && electron tests/scripts/release-2.1.17-resource-install.cjs && node tests/scripts/release-2.1.17-resources-ui.cjs && node tests/scripts/release-2.1.17-resource-proxy-layout.cjs && node tests/scripts/release-2.1.17-resource-grammar-ui.cjs && node tests/scripts/release-2.1.17-resource-startup.cjs"
   },
   "dependencies": {
     "chardet": "2.2.0",
@@ -112,8 +123,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1",
-    "tesseract.js": "7.0.0"
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
@@ -138,7 +148,8 @@
     "jsdom": "^26.0.0",
     "typescript": "^5.9.0",
     "vite": "7.3.6",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "tesseract.js": "7.0.0"
   },
   "build": {
     "appId": "cn.pdfuck.app",
@@ -155,9 +166,7 @@
     "artifactBuildCompleted": "scripts/macos-installer-icon.cjs",
     "asarUnpack": [
       "node_modules/koffi/**/*",
-      "node_modules/{tesseract.js,tesseract.js-core,wasm-feature-detect,zlibjs,node-fetch,is-url,regenerator-runtime,idb-keyval,bmp-js,tr46,webidl-conversions,whatwg-url}/**/*",
       "node_modules/{pdf-lib,@pdf-lib,pako,tslib}/**/*",
-      "out/ocr/**/*",
       "out/main/ocr-worker.js"
     ],
     "win": {
@@ -317,7 +326,13 @@
           "path": "/Applications"
         }
       ]
-    }
+    },
+    "extraResources": [
+      {
+        "from": "resources/feature-notices",
+        "to": "resource-notices"
+      }
+    ]
   },
   "optionalDependencies": {
     "windows-pdf-printer-native": "2.1.1"

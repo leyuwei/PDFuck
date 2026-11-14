@@ -1,5 +1,39 @@
 # PDFuck macOS / Windows 打包指引
 
+**2.1.17 滚动与侧栏修复（2026-11-13，最新）**：移除背景大页码；滚动浮窗排除缩放并提高到同方向快速移动判定；两侧栏逐帧直接预览宽度、松手提交，移除拖动时的宽度动画和反复 PDF 适配，修复 RTL 手柄及外层网格撑宽。仅执行本轮新增 21 项单元、源码滚动/缩放及 40 组真实拖动检查。生产构建后仅用 `tests/scripts/release-2.1.17-scroll-package-check.cjs` 静态核验 APP/DMG/ZIP，不启动成品；继续排除按需资源。详见 `tests/docs/SCROLL-RESIZE-2.1.17.md`。
+
+**2.1.17 跨页与页码交互（2026-11-13，此前阶段）**：修复跨页双栏选区溢出；添加文字保存已确认的样式；批注状态改为左侧悬浮操作；新增纸张后方淡色大页码和快速滚动半透明页码提示，二者均只显示数字。仅本轮新增单元、脱敏 PDF 和源码窗口专项，继续使用按需资源基础包。按用户要求，APP/DMG/ZIP 仅静态核验，入口为 `tests/scripts/release-2.1.17-crosspage-package-check.cjs`。范围与命令见 `tests/docs/CROSSPAGE-STATUS-2.1.17.md`。
+
+**2.1.17 按需资源交付（2026-11-13，此前阶段）**：基础包去掉 OCR 引擎/WASM/模型、LanguageTool 和 Java；首次使用才下载，支持断点、代理、暂停和退出恢复。README 去除版本日志。仅本轮新增 36 单元、真实网络/引擎/强制中断及源码窗口专项，成品仅静态核验。打包前不运行 `prepare:grammar`，不得把 `resources/grammar/tmp` 或开发用模型复制进安装包。配置只附带 `resources/feature-notices`。详见 `tests/docs/ON-DEMAND-2.1.17.md`，新的静态核验为 `release-2.1.17-resource-package-check.cjs`。
+
+**2.1.17 离线语法与紧凑窗口（2026-11-13，最新交付）**：语法检查替换为本地 LanguageTool 6.6 + Temurin JRE 17，正文重建、公式/图表/参考文献隔离、精确建议定位和十语言提示；缩小搜索标题并分离结果滚动区，修复栏缝越界，重绘撤销/重做，缩小关于更新说明标题。资源版本、来源、SHA-256 与许可证见 `resources/grammar/manifest.json`、`NOTICE.txt`，先执行 `npm run prepare:grammar`。本轮仅新增专项、类型检查和直接生产构建，成品只做静态代码/语法资源/许可证/签名/DMG/ZIP 核对。具体命令与结果见 `tests/docs/GRAMMAR-SELECTION-2.1.17.md`。
+
+**2.1.17 阅读与批注交互（2026-11-13，此前交付）**：删除批注保留画布及原生外观过滤集合，打印/管理页面/水印预览取最新模型快照；普通弹窗、结果窗标题可拖动；阅读工具六图标与文档独立持久化开关，分析等待提示；搜索标题、缩写定义文案、书签起点闪烁。新增 22 单元、15 组源码交互、20 组十语言/双主题排版、30 页脱敏档案五表定位和 3 组小窗口检查通过。重建 2.1.17 APP/DMG/ZIP，仅运行静态 `release-2.1.17-reading-package-check.cjs`，不启动成品复测。详见 tests/docs/READING-2.1.17.md。
+
+**2.1.17 长段落三线表修复（此前阶段）**：新增表题与顶线/表头线/底线、重复列起点识别，覆盖长段落、单列续行、标题短下划线和多行表注。新 30 页输入已脱敏归档；原件/副本全部页 720 组、此前六份 18 页 216 组、8 项新单元和源码 40 次实际拖选通过。重建 APP/DMG/ZIP，仅执行静态 `release-2.1.17-open-table-package-check.cjs`，不启动成品复测。详见 tests/docs/OPEN-TABLES-2.1.17.md。
+
+**2.1.17 表格回归修复（此前阶段）**：恢复多网格合成表格及单元格，修复紧凑行高漏检、居中表题、无框表格范围和正文隔离。13 项新增单元、六份/18 页 216 组实际 PDF 组合与 16 次源码窗口拖选/复制通过；两张实际表汇总 651/45 个单元格。执行 typecheck、直接生产构建，重建 APP/DMG/ZIP；沿用用户“成品勿复测”要求，仅运行新的静态 `release-2.1.17-table-package-check.cjs`。具体范围见 tests/docs/TABLES-2.1.17.md。
+
+
+**2.1.17 六份输入归档补充交付（2026-11-12，此前阶段）**：六份/18 页替代内容 PDF 已放入 tests/fixtures，随机文件名，完整 SHA-256 清单；源码逐页 216 组版式、1,159 组正文范围、204 次实际拖选/复制通过（含表题），40 项新增单元通过。追加修复正文被图题吞入、Esc 清选区、跨栏图题页边行号、居中 TABLE 与罗马数字拆分。重新构建 APP/DMG/ZIP；用户明确要求成品勿复测，因此仅执行静态包内字节/版本/资源/签名/DMG/ZIP 核验，不启动成品，也不沿用旧成品运行结果。详见 tests/docs/INPUTS-2.1.17.md 和 VALIDATION-2.1.17.md 最新节。
+
+
+**2.1.17 需求复核重打包（2026-11-12）**：补齐离屏引文惰性布局与直接字符几何、重复批注闪烁和应用内 hint、正反向及同名缩写定义，修复图题冒号/罗马数字与跨栏归属覆盖。用户确认 HP M1536dnf 故障；本机 PPD 的 PDF 直通已通过主机 URF 路径绕开，真实系统过滤器三种单双面转换通过，尚未物理出纸。新增 36 项单元、1,038 组正文跨行、30 组图题正反向范围，以及源码/成品 UI 和引文性能验证。详见 `tests/docs/VALIDATION-2.1.17.md`。
+
+**2.1.17（2026-11-12，macOS arm64）**：新增缩写快查、内部链接返回；返回按钮与临时目录提醒分别占位。引文按页缓存匹配，删除批注后刷新 PDF 底图，批注提示和列表闪烁。修复局部伪栏缝并扩展图注连续行归组。macOS 保留 CUPS 双面驱动参数，打印数据转换为 300 DPI 图像 PDF；原文档保存不受影响。仅运行本轮新增测试和必要构建检查，未连接真实打印机。计划见 `tests/docs/PLAN-2.1.17.md`，验收见 `tests/docs/VALIDATION-2.1.17.md`。
+
+
+**2.1.16（2026-11-10，当前交付，macOS arm64）**：修复报销页漏字/字段误分栏、含双侧行号及图表的双栏漏识别、跨栏表注右半边拖选、上方跨栏公式吸入正文，以及整页表格误分栏。选择输入过滤带标记、半透明及几何叠加水印；十语言共用，无新增生产依赖。公开 23 份、223 页 PDF 全部替换内容，仅保留版式/几何，原图片和私密 PDF 对象不复制；143 个表单控件使用合成名称和值。旧原文锚点用例需迁移，Git 历史未自动改写。
+
+本轮仅运行新增 50 项单元、84 组版式/字体/输入顺序组合、244 组逐字选区、脱敏实际输入 12 次窗口拖选，以及源码与最终 APP 各 6 次跨栏/公式/水印拖选、十语言切换；typecheck、直接生产构建、隐私和 diff 检查通过。不运行旧测试全集、`npm run build` 或一键全量打包脚本。
+
+生成 APP：`npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist`；补齐并严格验证 ad-hoc 签名。成品新增 UI 明确使用独立 `--user-data-dir`，避免单实例锁干扰现有应用。然后以 `--prepackaged release/mac-arm64/PDFuck.app --mac dmg` 生成 DMG，以 `ditto -c -k --keepParent` 生成 ZIP。`node tests/scripts/release-2.1.16-package-check.cjs` 核验版本、全部生产字节、11 个 OCR 模型、签名、DMG/ZIP 和 SHA-256，输出发布 JSON/校验清单。无 Developer ID、未公证；Windows/Intel/真实安装卸载未验证。详见 [计划](tests/docs/PLAN-2.1.16.md)、[验收记录](tests/docs/VALIDATION-2.1.16.md) 和 [夹具隐私说明](tests/fixtures/README.md)。
+
+**2.1.15（2026-11-04，macOS arm64，最新重打包）**：修复公式/缩进混排导致重复栏缝的共享候选归属与边界定位，保留原有图注、表格及手动分栏能力。新增 40 个实文档变体、24 个多栏组合及两档缩放界面检查通过；重跑可执行的历史分栏/选择专项，82 项相关单元通过。4 份早期样本缺失，相关用例明确列为未验证，不能宣称全部通过。类型检查与直接生产构建通过，重建 APP、DMG、ZIP 和 SHA-256。按用户要求不启动成品复测；ad-hoc 签名，未公证、未验证 Windows。详见 [验收记录](tests/docs/VALIDATION-2.1.15.md)。
+
+
+**2.1.14 实文档追加验收（2026-11-04）**：共享单栏流域与同基线片段修复，搜索选项紧凑换行并记忆可调尺寸。收到用户完整框选回归要求后，追加 203 项相关单元、31 页实文档 3,004 组范围、20 次真实拖选、八份历史界面专项、56 单元格和普通正文跨页检查；缺失历史样本明列于 `tests/docs/VALIDATION-2.1.14.md`。成品实文档检查已完成；用户随后要求停止成品复测，因此未执行成品跨页及最终包核验脚本，具体范围见验收记录。
+
 本文档用于版本更新后的桌面端发布。后续会话应按顺序完成版本同步、检查、生产构建、签名、打包和产物验证，不要只改版本号或只生成其中一个文件。
 
 ## 1. 发布产物
@@ -17,6 +51,10 @@ Windows（建议在 Windows 上构建）：
 - `release/PDFuck-<version>-Windows.exe`：便携版，实际名称以 `package.json` 的 `artifactName` 为准。
 
 ## 2. 环境准备
+
+**2.1.14 当前交付（2026-11-04，macOS arm64）**：修复单栏正文跨行选区、全文评价自定义模板持久化、选区搜索预填与全词匹配、密集书签高亮与页码右侧布局、合并前选择插入/新建，以及 macOS CUPS 双面参数传递。新增文案覆盖十语言。仅运行本轮新增 25 项单元测试、`node tests/scripts/release-2.1.14-ui.cjs`、typecheck、直接生产构建和 diff 检查；不运行旧测试全集。直接生成 APP，ad-hoc 签名后生成 DMG/ZIP；新增 `node tests/scripts/release-2.1.14-package-check.cjs` 核对生产字节、版本、11 个 OCR 模型、签名、DMG/ZIP 完整性及 SHA-256。无 Developer ID，未公证；未向真实打印机发送作业，未做 Windows 实机验证。详见 [验收记录](tests/docs/VALIDATION-2.1.14.md)。
+
+**2.1.13 当前交付（2026-11-03，macOS arm64）**：保留无文档合并入口、十语言外部文件转换确认，以及实验室窗口的尺寸持久化和提示词伸展布局。本轮修正范围越界：恢复“关于”复用的 OCR 组件/样式和普通批注原有行为，仅实验室功能新增调整尺寸与持久化。只运行本轮新增 `node tests/scripts/release-2.1.13-dialog-scope-ui.cjs`，检查十语言“关于”、OCR、普通批注与实验室窗口的真实拖动、间距和尺寸恢复；首轮 6 项单元测试及历史测试不重跑。另执行 typecheck、直接生产构建和 diff 检查。使用 `npx --no-install electron-builder --mac dir --config.electronDist=node_modules/electron/dist` 生成 APP，补齐 ad-hoc 签名，再用 `npx --no-install electron-builder --prepackaged release/mac-arm64/PDFuck.app --mac dmg` 和 `ditto -c -k --keepParent release/mac-arm64/PDFuck.app release/PDFuck-2.1.13-macOS.zip` 生成 DMG/ZIP。按用户最新要求，成品不复测、不启动，也不运行静态包验收脚本；仅生成 SHA-256 发布元数据。验收计划见 [PLAN-2.1.13](tests/docs/PLAN-2.1.13.md)，结果见 [VALIDATION-2.1.13](tests/docs/VALIDATION-2.1.13.md)。
 
 **2.1.12 当前交付（2026-10-30，macOS arm64）**：在表单外观修复后，按[补充计划](tests/docs/PLAN-2.1.12-form-followup.md)增加文字表单选择复制、原字段填写与外观更新，保护连续填写、撤销重做、保存、跨页同名字段及关闭流程；标签增加临时文件时钟图标。本次只运行新增的 10 项单元测试和六组 Electron 交互验收、typecheck、直接生产构建及包检查，不重跑既有 2.1.12 或更早测试。单元命令为 `node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.12-form-followup.test.tsx --reporter=json --outputFile=tests/output/form-followup/unit-results.json`；UI 命令为 `node tests/scripts/release-2.1.12-form-followup-ui.cjs`，按用户最新要求，打包后不启动 APP、不运行 APP 测试，仅做交付包完整性、资源一致性与签名校验。验收放 `tests/output/form-followup/{source,packaged}/`，临时输入和隔离配置放 `tests/tmp/form-followup/`，均已忽略。初次 2.1.12 验收属于之前的记录，不代表本次重跑。根 README 只保留能力与使用说明，不记录版本迭代。
 

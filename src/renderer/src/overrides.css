@@ -215,3 +215,64 @@
   .print-controls { padding-inline: 15px; }
   .print-preview { padding-inline: 14px; }
 }
+/* Give the temporary-path notice its own row, including when text wraps. */
+.document-area:has(> .temporary-document-warning) { display: flex; flex-direction: column; }
+.document-area:has(> .temporary-document-warning) > .temporary-document-warning { position: relative; top: auto; left: auto; transform: none; align-self: center; flex-shrink: 0; margin: 12px auto 0; }
+.document-area:has(> .temporary-document-warning) > .viewer { position: relative; inset: auto; flex: 1; min-height: 0; }
+
+/* Modal titles remain draggable; the top strip also permits moving the native window. */
+.modal-backdrop::before, .lab-modal-backdrop::before, .theme-color-dialog-backdrop::before { content: ''; position: fixed; inset: 0 0 auto; height: var(--dialog-titlebar-height, 58px); -webkit-app-region: drag; }
+.modal-backdrop .modal { -webkit-app-region: no-drag; }
+[data-floating-heading] { cursor: move; touch-action: none; user-select: none; }
+.reading-tools .tool-action-button { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 10px; text-align: start; }
+.reading-tools .tool-action-button > span { flex: 1; min-width: 0; }
+.reading-tools .tool-button.active { background: color-mix(in srgb, var(--theme-accent, #5575de) 15%, var(--panel-bg, #fff)); border-color: var(--theme-accent, #5575de); color: var(--theme-accent-soft-ink, #3157d5); }
+.reading-tools .tool-button.active .edit-tool-icon { color: currentColor; }
+.theme-dark .reading-tools .tool-button.active { background: color-mix(in srgb, var(--theme-accent, #5575de) 28%, #192231); color: #e7eefb; }
+.viewer-notices { position: sticky; top: 8px; z-index: 45; display: flex; align-items: flex-start; align-content: flex-start; justify-content: center; flex-wrap: wrap; gap: 8px; height: 0; margin: 0 12px; pointer-events: none; }
+.viewer-notices .pdf-link-return { position: static; margin: 0; transform: none; pointer-events: auto; }
+.reading-progress { display: flex; align-items: center; gap: 9px; max-width: 100%; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--theme-accent, #5575de) 32%, #dce2ed); border-radius: 12px; background: #f5f7ff; color: #344a86; box-shadow: 0 4px 16px #14235014; font-size: var(--ui-font-small); }
+.reading-progress i { flex: none; width: 13px; height: 13px; border: 2px solid #5575de40; border-top-color: var(--theme-accent, #5575de); border-radius: 50%; animation: reading-spin .8s linear infinite; }
+@keyframes reading-spin { to { transform: rotate(360deg); } }
+.theme-dark .reading-progress { background: #23324c; color: #e7eefb; border-color: #536d9b; }
+.pdf-search-heading b { font-size: var(--ui-font-body); }
+
+.insight-panel > header { cursor: move; touch-action: none; user-select: none; }
+.modal[data-floating-window] { max-height: var(--floating-max-height, calc(100dvh - 120px)); }
+.history-controls button { display: grid; place-items: center; }
+.history-icon { display: block; flex: none; }
+.about-dialog .release-notes > h3 { padding: 7px 12px; font-size: var(--ui-font-small); line-height: 1.35; font-weight: 650; }
+.about-dialog .release-notes-content :is(h1,h2,h3) { font-size: var(--ui-font-body); line-height: 1.4; margin: 12px 0 6px; }
+.about-dialog .release-notes-content :is(h4,h5,h6) { font-size: var(--ui-font-small); line-height: 1.4; margin: 10px 0 5px; }
+.insight-list .grammar-result-copy { display: block; white-space: normal; -webkit-line-clamp: unset; }
+.grammar-result-copy strong { font-weight: 600; }
+.grammar-result-copy em { display: block; margin-top: 4px; color: var(--theme-accent-soft-ink); font-style: normal; }
+
+/* Status actions float over content only while the left metadata area is in use. */
+.annotation-header, .annotation-row { grid-template-columns: 52px minmax(0, 1fr); }
+.annotation-meta { position: relative; align-self: center; min-width: 0; }
+.annotation-meta-trigger { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 28px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; border-radius: 6px; }
+.annotation-meta-trigger:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+.annotation-meta .annotation-statuses { position: absolute; inset-inline-start: 100%; top: 50%; transform: translateY(-50%) translateX(-3px); z-index: 5; padding: 3px 5px; gap: 3px; border: 1px solid color-mix(in srgb, var(--theme-accent) 22%, #dfe5ee); border-radius: 10px; background: #fff; box-shadow: 0 4px 16px #172b4d25; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s ease, transform .12s ease, visibility .12s; }
+.annotation-meta.status-open .annotation-statuses { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(-50%); }
+.annotation-row:has(.status-open) { z-index: 6; }
+.theme-dark .annotation-meta .annotation-statuses { background: #253247; border-color: #4a5b75; box-shadow: 0 4px 16px #0005; }
+.annotation-meta .annotation-status-button { width: 26px; min-width: 26px; height: 26px; }
+.theme-dark .annotation-meta .annotation-status-button:hover, .theme-dark .annotation-meta .annotation-status-button.active { background: #40516a; }
+
+@media (prefers-reduced-motion: reduce) { .annotation-meta .annotation-statuses { transition: none; } }
+
+.scroll-page-hint-slot { flex-basis: 100%; height: 0; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility .18s; }
+.scroll-page-hint-slot.visible { opacity: 1; visibility: visible; }
+.scroll-page-hint { display: flex; justify-content: center; align-items: center; min-width: 96px; max-width: 100%; padding: 8px 24px; border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, transparent); border-radius: 16px; color: var(--theme-accent-strong); background: color-mix(in srgb, var(--theme-accent) 10%, #f8faffcf); backdrop-filter: blur(14px); box-shadow: 0 6px 24px #172b4d18;  }
+.scroll-page-hint strong { font: 850 42px/1.1 Arial, sans-serif; font-variant-numeric: tabular-nums; direction: ltr; }
+.theme-dark .scroll-page-hint { background: color-mix(in srgb, var(--theme-accent) 12%, #1c2735cf); color: var(--theme-accent-soft-ink); box-shadow: 0 6px 24px #0003; }
+@media (prefers-reduced-motion: reduce) { .scroll-page-hint-slot { transition: none; } }
+
+.annotation-panel.sidebar-resizing, .bookmark-panel.sidebar-resizing { transition: none; }
+.annotation-resize-handle { left: auto; right: auto; inset-inline-start: -4px; touch-action: none; }
+.bookmark-resize-handle { left: auto; right: auto; inset-inline-end: -4px; touch-action: none; }
+
+/* Keep intrinsic paper/list width inside the viewport, including RTL sidebars. */
+.app-shell { grid-template-columns: minmax(0, 1fr); }
+.workspace { min-width: 0; }

@@ -1,0 +1,32 @@
+{
+  "engine": {
+    "version": "6.6",
+    "url": "https://languagetool.org/download/LanguageTool-6.6.zip",
+    "sha256": "53600506b399bb5ffe1e4c8dec794fd378212f14aaf38ccef9b6f89314d11631",
+    "license": "LGPL-2.1-or-later",
+    "source": "https://github.com/languagetool-org/languagetool/tree/v6.6"
+  },
+  "javaVersion": "17.0.21+9",
+  "runtimes": {
+    "mac-arm64": {
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_aarch64_mac_hotspot_17.0.21_9.tar.gz",
+      "sha256": "a5ab5bacd6e719d5a5570580ed14dceb2ed532208a39af927906b9742da1745e"
+    },
+    "mac-x64": {
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_mac_hotspot_17.0.21_9.tar.gz",
+      "sha256": "890214eb4d6c88dc06f990d5a6a3b72b91d5dffab6a0a6d8cffb98468bf26181"
+    },
+    "win-x64": {
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.21_9.zip",
+      "sha256": "fe4656bd78fb09812dc38c49da777f79cc33e7ee435a254be82f9e7f40d9d117"
+    },
+    "linux-x64": {
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz",
+      "sha256": "9f41bf88c7900c7097444a1bdeb84146ae692bc08842490ab098063c74bf9a8a"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.21_9.tar.gz",
+      "sha256": "1114f09d6174f54270c3117410b5e4022b43ebc0b43b751af08b927c55ed7bb5"
+    }
+  }
+}

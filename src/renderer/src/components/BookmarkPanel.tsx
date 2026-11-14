@@ -1,3 +1,4 @@
+import { useSidebarResize } from '../lib/sidebar-resize'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { PdfBookmark } from '../types'
 import { countBookmarks } from '../lib/bookmark-recognition'
@@ -82,14 +83,13 @@ export function BookmarkPanel({ bookmarks, collapsed, activeId, readOnly = false
   const total = countBookmarks(bookmarks)
   const [query, setQuery] = useState('')
   const [fontSize, setFontSize] = useState(1)
-  const [panelWidth, setPanelWidth] = useState(280)
+  const { width: panelWidth, panelRef, begin: beginResize, move: moveResize, finish: finishResize } = useSidebarResize(280, 220, 440, 'start')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initiallyExpanded(bookmarks)))
   const [editingId, setEditingId] = useState<string>()
   const [editingValue, setEditingValue] = useState('')
   const [deletingId, setDeletingId] = useState<string>()
   const committing = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
-  const resize = useRef<{ x: number; width: number } | undefined>(undefined)
   useEffect(() => { setExpanded((current) => new Set([...current, ...initiallyExpanded(bookmarks)])) }, [bookmarks])
   useEffect(() => {
     if (!activeId) return
@@ -112,16 +112,13 @@ export function BookmarkPanel({ bookmarks, collapsed, activeId, readOnly = false
     setEditingId(undefined); setEditingValue('')
     queueMicrotask(() => { committing.current = false })
   }
-  const beginResize = (event: React.PointerEvent) => { if (event.button !== 0) return; event.preventDefault(); resize.current = { x: event.clientX, width: panelWidth }; event.currentTarget.setPointerCapture(event.pointerId) }
-  const moveResize = (event: React.PointerEvent) => { if (!resize.current) return; event.preventDefault(); setPanelWidth(Math.max(220, Math.min(440, resize.current.width + event.clientX - resize.current.x))) }
-  const finishResize = (event?: React.PointerEvent) => { resize.current = undefined; if (event && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }
   const deleteOne = async (bookmark: PdfBookmark) => {
     if (deletingId) return
     setDeletingId(bookmark.id)
     try { await onDelete(bookmark.id) } finally { setDeletingId(undefined) }
   }
   if (collapsed) return <aside className="bookmark-panel collapsed"><button type="button" className="bookmark-expand" onClick={onToggle} title={ui("ui.expandBookmarksSidebar")} aria-label={ui("ui.expandBookmarksSidebar")}><span className="bookmark-panel-glyph">⌑</span><b>{ui("ui.bookmarks")}</b><em>{total}</em><i>›</i></button></aside>
-  return <aside className="bookmark-panel" style={{ '--bookmark-font-size': `var(--ui-font-${['small', 'body', 'title'][fontSize]})`, width: panelWidth, flexBasis: panelWidth } as CSSProperties} aria-label={ui("ui.bookmarksSidebar")}>
+  return <aside ref={panelRef} className="bookmark-panel" style={{ '--bookmark-font-size': `var(--ui-font-${['small', 'body', 'title'][fontSize]})`, width: panelWidth, flexBasis: panelWidth } as CSSProperties} aria-label={ui("ui.bookmarksSidebar")}>
     <div className="bookmark-resize-handle" role="separator" aria-orientation="vertical" aria-label={ui("ui.resizeBookmarksSidebar")} title={ui("ui.dragToResizeTheBookmarksSidebar")} onPointerDown={beginResize} onPointerMove={moveResize} onPointerUp={finishResize} onPointerCancel={finishResize} onLostPointerCapture={finishResize} />
     <header className="bookmark-heading"><div><h2>{ui("ui.bookmarks")}</h2><p>{message('bookmark.count', { count: total })}</p></div><button type="button" className="bookmark-collapse" onClick={onToggle} title={ui("ui.collapseBookmarksSidebar")} aria-label={ui("ui.collapseBookmarksSidebar")}>‹ {ui("ui.collapse")}</button></header>
     <div className="bookmark-search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={ui("ui.searchBookmarks")} aria-label={ui("ui.searchBookmarks")} /><button type="button" disabled={!query} onClick={() => setQuery('')} aria-label={ui("ui.clearBookmarkSearch")} title={ui("ui.clear")}>×</button></div>

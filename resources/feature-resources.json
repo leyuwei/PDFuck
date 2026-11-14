@@ -1,0 +1,217 @@
+{
+  "ocr": {
+    "version": "7.0.0",
+    "packages": [
+      {
+        "id": "node_modules/tesseract.js",
+        "version": "7.0.0",
+        "url": "https://registry.npmjs.org/tesseract.js/-/tesseract.js-7.0.0.tgz",
+        "integrity": "sha512-exPBkd+z+wM1BuMkx/Bjv43OeLBxhL5kKWsz/9JY+DXcXdiBjiAch0V49QR3oAJqCaL5qURE0vx9Eo+G5YE7mA==",
+        "path": "node_modules/tesseract.js",
+        "bytes": 616435
+      },
+      {
+        "id": "node_modules/bmp-js",
+        "version": "0.1.0",
+        "url": "https://registry.npmjs.org/bmp-js/-/bmp-js-0.1.0.tgz",
+        "integrity": "sha512-vHdS19CnY3hwiNdkaqk93DvjVLfbEcI8mys4UjuWrlX1haDmroo8o4xCzh4wD6DGV6HxRCyauwhHRqMTfERtjw==",
+        "path": "node_modules/bmp-js",
+        "bytes": 43502
+      },
+      {
+        "id": "node_modules/idb-keyval",
+        "version": "6.3.0",
+        "url": "https://registry.npmjs.org/idb-keyval/-/idb-keyval-6.3.0.tgz",
+        "integrity": "sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==",
+        "path": "node_modules/idb-keyval",
+        "bytes": 8152
+      },
+      {
+        "id": "node_modules/is-url",
+        "version": "1.2.4",
+        "url": "https://registry.npmjs.org/is-url/-/is-url-1.2.4.tgz",
+        "integrity": "sha512-ITvGim8FhRiYe4IQ5uHSkj7pVaPDrCTkNd3yq3cV7iZAcJdHTUMPMEHcqSOy9xZ9qFenQCvi+2wjH9a1nXqHww==",
+        "path": "node_modules/is-url",
+        "bytes": 2466
+      },
+      {
+        "id": "node_modules/node-fetch",
+        "version": "2.7.0",
+        "url": "https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz",
+        "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==",
+        "path": "node_modules/node-fetch",
+        "bytes": 44644
+      },
+      {
+        "id": "node_modules/node-fetch/node_modules/whatwg-url",
+        "version": "5.0.0",
+        "url": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-5.0.0.tgz",
+        "integrity": "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==",
+        "path": "node_modules/node-fetch/node_modules/whatwg-url",
+        "bytes": 11073
+      },
+      {
+        "id": "node_modules/node-fetch/node_modules/tr46",
+        "version": "0.0.3",
+        "url": "https://registry.npmjs.org/tr46/-/tr46-0.0.3.tgz",
+        "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==",
+        "path": "node_modules/node-fetch/node_modules/tr46",
+        "bytes": 64681
+      },
+      {
+        "id": "node_modules/node-fetch/node_modules/webidl-conversions",
+        "version": "3.0.1",
+        "url": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz",
+        "integrity": "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==",
+        "path": "node_modules/node-fetch/node_modules/webidl-conversions",
+        "bytes": 4727
+      },
+      {
+        "id": "node_modules/opencollective-postinstall",
+        "version": "2.0.3",
+        "url": "https://registry.npmjs.org/opencollective-postinstall/-/opencollective-postinstall-2.0.3.tgz",
+        "integrity": "sha512-8AV/sCtuzUeTo8gQK5qDZzARrulB3egtLzFgteqB2tcT4Mw7B8Kt7JcDHmltjz6FOAHsvTevk70gZEbhM4ZS9Q==",
+        "path": "node_modules/opencollective-postinstall",
+        "bytes": 1947
+      },
+      {
+        "id": "node_modules/regenerator-runtime",
+        "version": "0.13.11",
+        "url": "https://registry.npmjs.org/regenerator-runtime/-/regenerator-runtime-0.13.11.tgz",
+        "integrity": "sha512-kY1AZVr2Ra+t+piVaJ4gxaFaReZVH40AKNo7UCX6W+dEwBo/2oZJzqfuN1qLq1oL45o56cPaTXELwrTh8Fpggg==",
+        "path": "node_modules/regenerator-runtime",
+        "bytes": 8520
+      },
+      {
+        "id": "node_modules/tesseract.js-core",
+        "version": "7.0.0",
+        "url": "https://registry.npmjs.org/tesseract.js-core/-/tesseract.js-core-7.0.0.tgz",
+        "integrity": "sha512-WnNH518NzmbSq9zgTPeoF8c+xmilS8rFIl1YKbk/ptuuc7p6cLNELNuPAzcmsYw450ca6bLa8j3t0VAtq435Vw==",
+        "path": "node_modules/tesseract.js-core",
+        "bytes": 16935308
+      },
+      {
+        "id": "node_modules/wasm-feature-detect",
+        "version": "1.9.0",
+        "url": "https://registry.npmjs.org/wasm-feature-detect/-/wasm-feature-detect-1.9.0.tgz",
+        "integrity": "sha512-zonE+xlIIYtxPy++L24ow0hAD8CICb4+FgPyROd3buyXIqsJvUEDkBgfCCoXOd1Hu3DUr0GOfnPIdcGV+YpNaA==",
+        "path": "node_modules/wasm-feature-detect",
+        "bytes": 8247
+      },
+      {
+        "id": "node_modules/zlibjs",
+        "version": "0.3.1",
+        "url": "https://registry.npmjs.org/zlibjs/-/zlibjs-0.3.1.tgz",
+        "integrity": "sha512-+J9RrgTKOmlxFSDHo0pI1xM6BLVUv+o0ZT9ANtCxGkjIVCCUdx9alUF8Gm+dGLKbkkkidWIHFDZHDMpfITt4+w==",
+        "path": "node_modules/zlibjs",
+        "bytes": 1119325
+      }
+    ],
+    "models": {
+      "chi_sim": {
+        "id": "ocr-model-chi_sim",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/chi_sim@1.0.0/4.0.0/chi_sim.traineddata.gz",
+        "bytes": 20159757,
+        "sha256": "59388039851e4d1293d729c183fd8c1fa9bbbb959eed996e945024671e68c1d6"
+      },
+      "chi_tra": {
+        "id": "ocr-model-chi_tra",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/chi_tra@1.0.0/4.0.0/chi_tra.traineddata.gz",
+        "bytes": 27120340,
+        "sha256": "67a4357a69810bf1596e801cd95299e073030cacb0899e78d9923d2fa1185704"
+      },
+      "eng": {
+        "id": "ocr-model-eng",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0/eng.traineddata.gz",
+        "bytes": 10923060,
+        "sha256": "ed350f3752f81ee8f38769edc14d92d997dababe23b565c59879372cc46a2468"
+      },
+      "jpn": {
+        "id": "ocr-model-jpn",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/jpn@1.0.0/4.0.0_best_int/jpn.traineddata.gz",
+        "bytes": 2030256,
+        "sha256": "2b63ebfbf1484de4a08ce53b29ef98a1c17658a93cbd38acb665d7d316d0be88"
+      },
+      "rus": {
+        "id": "ocr-model-rus",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/rus@1.0.0/4.0.0/rus.traineddata.gz",
+        "bytes": 8634337,
+        "sha256": "63a48ae166be2bb9862839b6f75e11afbac5e3be5bd5fa9a155ea43d5cdf9575"
+      },
+      "spa": {
+        "id": "ocr-model-spa",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa@1.0.0/4.0.0/spa.traineddata.gz",
+        "bytes": 8362819,
+        "sha256": "6cd52c545bceeacb2e43fad64fc0703a711c482ba20d1ca4b6915c09de9973e6"
+      },
+      "fra": {
+        "id": "ocr-model-fra",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/fra@1.0.0/4.0.0/fra.traineddata.gz",
+        "bytes": 6279601,
+        "sha256": "1c0916fac2dbd6f121ca8a57a92f08e4a119227602c7c984da986222eab6cd3b"
+      },
+      "deu": {
+        "id": "ocr-model-deu",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/deu@1.0.0/4.0.0/deu.traineddata.gz",
+        "bytes": 7101284,
+        "sha256": "f5618a8b8d07f6c7a633ce243bf075bb90f4145bb15c9264734c7cc63aa33205"
+      },
+      "por": {
+        "id": "ocr-model-por",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/por@1.0.0/4.0.0/por.traineddata.gz",
+        "bytes": 6755162,
+        "sha256": "3f5feea9dfc39106c92348089097a39bec66e9d6d09ca49befebb0bb60947374"
+      },
+      "kor": {
+        "id": "ocr-model-kor",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/kor@1.0.0/4.0.0/kor.traineddata.gz",
+        "bytes": 6951378,
+        "sha256": "9d454186b4e2556854b625c43e44d93783a5be7ee89eb1dc6702dfbddced3f4f"
+      },
+      "ara": {
+        "id": "ocr-model-ara",
+        "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/ara@1.0.0/4.0.0/ara.traineddata.gz",
+        "bytes": 1673749,
+        "sha256": "400ab30fe4f4c4a03feeabe0779a7122cee6aa4fffb1629bb5b1671942859c9e"
+      }
+    }
+  },
+  "grammar": {
+    "engine": {
+      "version": "6.6",
+      "url": "https://languagetool.org/download/LanguageTool-6.6.zip",
+      "sha256": "53600506b399bb5ffe1e4c8dec794fd378212f14aaf38ccef9b6f89314d11631",
+      "license": "LGPL-2.1-or-later",
+      "source": "https://github.com/languagetool-org/languagetool/tree/v6.6",
+      "bytes": 251998221
+    },
+    "javaVersion": "17.0.21+9",
+    "runtimes": {
+      "mac-arm64": {
+        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_aarch64_mac_hotspot_17.0.21_9.tar.gz",
+        "sha256": "a5ab5bacd6e719d5a5570580ed14dceb2ed532208a39af927906b9742da1745e",
+        "bytes": 42822064
+      },
+      "mac-x64": {
+        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_mac_hotspot_17.0.21_9.tar.gz",
+        "sha256": "890214eb4d6c88dc06f990d5a6a3b72b91d5dffab6a0a6d8cffb98468bf26181",
+        "bytes": 37713920
+      },
+      "win-x64": {
+        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.21_9.zip",
+        "sha256": "fe4656bd78fb09812dc38c49da777f79cc33e7ee435a254be82f9e7f40d9d117",
+        "bytes": 43860024
+      },
+      "linux-x64": {
+        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz",
+        "sha256": "9f41bf88c7900c7097444a1bdeb84146ae692bc08842490ab098063c74bf9a8a",
+        "bytes": 46726088
+      },
+      "linux-arm64": {
+        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.21_9.tar.gz",
+        "sha256": "1114f09d6174f54270c3117410b5e4022b43ebc0b43b751af08b927c55ed7bb5",
+        "bytes": 46103747
+      }
+    }
+  }
+}
