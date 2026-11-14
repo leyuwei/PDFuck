@@ -1,3 +1,4 @@
+import { resourceStorageRoot, migrateResourceStorage } from './resource-storage'
 import { FeatureResourceCatalog, validResourceRequest } from './feature-resources'
 import { ResourceManager } from './resource-manager'
 import { ResourceProxyStore } from './resource-proxy'
@@ -41,10 +42,10 @@ let grammarEngine:LocalGrammarEngine|undefined
 let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;ready:Promise<void>}|undefined
 function resources(){
   if(!resourceService){
-    const root=join(app.getPath('userData'),'feature-resources'),notices=app.isPackaged?join(process.resourcesPath,'resource-notices'):join(__dirname,'../../resources/feature-notices')
-    const catalog=new FeatureResourceCatalog(root,notices),proxy=new ResourceProxyStore(join(root,'proxy.json'),safeStorage)
+    const previous=join(app.getPath('userData'),'feature-resources'),root=resourceStorageRoot(app.getPath('appData'),app.getPath('userData'),Boolean(testUserData)||app.commandLine.hasSwitch('user-data-dir')),notices=app.isPackaged?join(process.resourcesPath,'resource-notices'):join(__dirname,'../../resources/feature-notices')
+    const catalog=new FeatureResourceCatalog(root,notices),proxy=new ResourceProxyStore(join(previous,'proxy.json'),safeStorage)
     const manager=new ResourceManager(catalog,resourceTransport(proxy),(owner,state)=>{const window=BrowserWindow.getAllWindows().find(w=>w.webContents.id===owner);if(window&&!window.isDestroyed())window.webContents.send('resources:state',state)})
-    resourceService={manager,proxy,ready:catalog.cleanup()}
+    resourceService={manager,proxy,ready:migrateResourceStorage(previous,root).then(()=>catalog.cleanup())}
   }
   return resourceService
 }

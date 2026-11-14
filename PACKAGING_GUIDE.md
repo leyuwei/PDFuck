@@ -1,5 +1,9 @@
 # PDFuck macOS / Windows 打包指引
 
+**2.1.18 引导框定位修复（2026-11-14，当前交付）**：引导框逐帧跟随目标位置，并在 PDF 适配缩放时同步测量；替换页面后重新定位，取消框体几何过渡动画。仅运行新增 `GuidePosition.test.tsx`、`release-2.1.18-guide-position-ui.cjs`、类型检查和直接生产构建；重打同版本 macOS arm64 APP/DMG/ZIP，静态核验脚本为 `release-2.1.18-guide-position-package-check.cjs`。README 不变，验收见 `tests/docs/VALIDATION-2.1.18-guide-position.md`。
+
+**2.1.18 示例引导重做（2026-11-14，此前交付）**：重看入口移到关于；欢迎页与查看模块共用地球图标、SVG 国旗及语言原名选择器。三页可编辑练习 PDF 带正文、书签和真实批注，11 步覆盖阅读、批注、页面编辑管理、实验室、OCR/语法、写作及保存导出，配合真实操作按钮和可收起说明。十语言完整翻译，README 不变。仅执行本轮新增 `npm run test:release-2.1.18-practice`、`node tests/scripts/release-2.1.18-practice-ui.cjs`、typecheck 和直接生产构建；重建同版本 macOS arm64 APP/DMG/ZIP，静态检查使用 `node tests/scripts/release-2.1.18-practice-package-check.cjs`。方案与验收见 `tests/docs/PLAN-2.1.18-practice.md`、`tests/docs/VALIDATION-2.1.18-practice.md`。
+
 **2.1.17 滚动与侧栏修复（2026-11-13，最新）**：移除背景大页码；滚动浮窗排除缩放并提高到同方向快速移动判定；两侧栏逐帧直接预览宽度、松手提交，移除拖动时的宽度动画和反复 PDF 适配，修复 RTL 手柄及外层网格撑宽。仅执行本轮新增 21 项单元、源码滚动/缩放及 40 组真实拖动检查。生产构建后仅用 `tests/scripts/release-2.1.17-scroll-package-check.cjs` 静态核验 APP/DMG/ZIP，不启动成品；继续排除按需资源。详见 `tests/docs/SCROLL-RESIZE-2.1.17.md`。
 
 **2.1.17 跨页与页码交互（2026-11-13，此前阶段）**：修复跨页双栏选区溢出；添加文字保存已确认的样式；批注状态改为左侧悬浮操作；新增纸张后方淡色大页码和快速滚动半透明页码提示，二者均只显示数字。仅本轮新增单元、脱敏 PDF 和源码窗口专项，继续使用按需资源基础包。按用户要求，APP/DMG/ZIP 仅静态核验，入口为 `tests/scripts/release-2.1.17-crosspage-package-check.cjs`。范围与命令见 `tests/docs/CROSSPAGE-STATUS-2.1.17.md`。

@@ -1,3 +1,4 @@
+import { LanguagePicker } from './LanguagePicker'
 import { ReadingIcon } from './ReadingIcon'
 import { useAnnotationView, saveAnnotationView } from '../lib/annotation-preferences'
 import { InterfaceSizeDialog } from './InterfaceSizeDialog'
@@ -14,12 +15,13 @@ import type { FullReviewSendMode } from '../lib/ai-polish'
 import type { AutomaticAnnotationContextRequest, AutomaticAnnotationContextResult } from '../lib/automatic-annotation-context'
 import { EditIcon } from './EditIcon'
 import { ShapeCreator, ShapeToolIcon } from './ShapeCreator'
-import { INTERFACE_LANGUAGES, setInterfaceLanguage, t, ui, useInterfaceLanguage, type InterfaceLanguage } from '../lib/i18n'
+import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { isMacPlatform, shortcutLabel } from '../lib/platform-shortcuts'
 import { parseExportDpiInput } from '../lib/export-dpi'
 import './theme-settings.css'
 
 interface Props {
+  onHide?(): void
   module: ModuleKey
   activeTool: Tool
   mode: ViewMode
@@ -86,11 +88,6 @@ interface Props {
   platform?: string
 }
 
-const LANGUAGE_LABELS = {
-  zh: '简体中文', en: 'English', ja: '日本語', ru: 'Русский', es: 'Español',
-  fr: 'Français', de: 'Deutsch', pt: 'Português', ko: '한국어', ar: 'العربية'
-} satisfies Record<InterfaceLanguage, string>
-
 const ToolButton = ({ tool, activeTool, children, hint, icon, shortcut, disabled, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; shortcut?: string; disabled?: boolean; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}`} disabled={disabled} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
 
 const PanelAction = ({ children, hint, disabled, icon, onClick, tone = 'default', shortcut, windowState, className = '' }: { children: React.ReactNode; hint: string; disabled?: boolean; icon?: React.ReactNode; onClick(): void; tone?: 'default' | 'primary' | 'danger'; shortcut?: string; windowState?: 'closed' | 'open' | 'minimized'; className?: string }) => <button type="button" className={`tool-panel-action ${tone}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}${className ? ` ${className}` : ''}`} data-window-state={windowState} disabled={disabled} onClick={onClick}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
@@ -149,7 +146,7 @@ export function ToolPanel(props: Props) {
   const annotationView = useAnnotationView()
   const pdfAvailable = hasDocument && props.pdfAvailable !== false
   const documentDisabled = !pdfAvailable || readOnly
-  const language = useInterfaceLanguage()
+  useInterfaceLanguage()
   const platform = props.platform || 'win32'
   const mac = isMacPlatform(platform)
   const [sizeDialogOpen, setSizeDialogOpen] = useState(false)
@@ -168,12 +165,12 @@ export function ToolPanel(props: Props) {
     const dpi = parseExportDpiInput(value)
     if (dpi !== undefined) props.onExportDpi(dpi)
   }
-  return <><aside className="tool-panel"><ScrollWindow className="tool-panel-section" autoHideScrollbar><h2>{ui(({ view: "ui.view", edit: "ui.edit", annotate: "ui.annotate", save: "ui.save" } as const)[module])}</h2>
+  return <><aside className="tool-panel"><ScrollWindow className="tool-panel-section" autoHideScrollbar><h2 className="tool-panel-heading"><span>{ui(({ view: "ui.view", edit: "ui.edit", annotate: "ui.annotate", save: "ui.save" } as const)[module])}</span><button type="button" className="sidebar-hide" aria-label={ui('guide.hide')} title={ui('guide.hide')} onClick={props.onHide}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16m8-12-4 4 4 4"/></svg></button></h2>
     {module === 'view' && <><p className="subtitle">{ui("ui.chooseAPageLayoutForYourReadingFlow")}</p><h3>{ui("ui.pageLayout")}</h3>
       <div className="segmented"><button disabled={!pdfAvailable} className={mode === 'continuous' ? 'active' : ''} onClick={() => props.onMode('continuous')}>{ui("ui.continuous")}</button><button disabled={!pdfAvailable} className={mode === 'single' ? 'active' : ''} onClick={() => props.onMode('single')}>{ui("ui.singlePage")}</button></div>
       <h3>{ui("ui.theme")}</h3><div className="segmented"><button className={props.theme === 'light' ? 'active' : ''} onClick={() => props.onTheme('light')}>{ui("ui.bright")}</button><button className={props.theme === 'dark' ? 'active' : ''} onClick={() => props.onTheme('dark')}>{ui("ui.dark")}</button></div><div className="theme-settings"><div className="theme-setting"><div className="theme-setting-copy"><b>{ui("ui.appAccent")}</b><small>{ui("ui.buttonsAndHighlights")}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui("ui.appAccent")} value={props.accent} theme={props.theme} onChange={props.onAccent} /><button type="button" className="color-reset" disabled={!props.hasCustomAccent} onClick={props.onClearAccent} title={ui("ui.restoreDefaultAppAccent")} aria-label={ui("ui.restoreDefaultAppAccent")}>↺</button></div></div><div className="theme-setting"><div className="theme-setting-copy"><b>{ui('text.paper')}</b><small>{ui('text.paperHint')}</small></div><div className="theme-setting-action"><ThemeColorPicker label={ui('text.paper')} value={props.documentBackground} theme={props.theme} disabled={!hasDocument} onChange={props.onDocumentBackground} /><button type="button" className="color-reset" disabled={!hasDocument || !props.hasCustomDocumentBackground} onClick={props.onClearDocumentBackground} title={ui('text.restorePaper')} aria-label={ui('text.restorePaper')}>↺</button></div></div></div><p className="hint theme-settings-hint">{ui('text.paperLocal')}</p>
 <button type="button" className="wide tool-action-button interface-size-action" onClick={() => setSizeDialogOpen(true)}><span>{ui("ui.interfaceFontSize")}</span><output>{ui(INTERFACE_SIZE_LABELS[INTERFACE_SIZES.findIndex(size => size === interfaceSize)])}</output></button>
-<h3>{ui("ui.interfaceLanguage")}</h3><label className="language-select"><select value={language} aria-label={ui("ui.interfaceLanguage")} onChange={(event) => setInterfaceLanguage(event.target.value as InterfaceLanguage)}>{INTERFACE_LANGUAGES.map((code) => <option key={code} value={code}>{LANGUAGE_LABELS[code]}</option>)}</select></label>
+<h3>{ui("ui.interfaceLanguage")}</h3><LanguagePicker />
       <h3>{ui("ui.readingTools")}</h3><div className="reading-tools">
         <button type="button" className="wide tool-action-button search-pdf-action" disabled={!hasDocument} onClick={props.onSearch}><ReadingIcon kind="search"/><span>{ui(props.searchSource ? "ui.searchDocument" : "ui.searchPdf")}</span><kbd>{shortcutLabel('search', platform)}</kbd></button>
         <button type="button" className="wide tool-action-button recognize-bookmark-action" disabled={documentDisabled} onClick={() => props.onRecognizeBookmarks?.()}><ReadingIcon kind="bookmark"/><span>{ui("ui.recognizeBookmarks")}</span></button>

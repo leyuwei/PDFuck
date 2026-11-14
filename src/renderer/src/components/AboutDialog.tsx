@@ -6,7 +6,7 @@ import { ScrollWindow } from './ScrollWindow'
 import './ocr-dialog.css'
 import { ReleaseNotes } from './ReleaseNotes'
 
-export function AboutDialog({ version, onClose }: { version: string; onClose(): void }) {
+export function AboutDialog({ version, onClose, onGuide }: { version: string; onClose(): void; onGuide?(): void }) {
   useInterfaceLanguage()
   const floating = useFloatingWindow(true)
   const [attempt, setAttempt] = useState(0)
@@ -24,6 +24,7 @@ export function AboutDialog({ version, onClose }: { version: string; onClose(): 
       <header {...floating.dragHandlers}><h2 id="about-title">{ui('about.title')} PDFuck</h2><button autoFocus type="button" aria-label={ui('ui.close')} onClick={onClose}>×</button></header>
       <p>{ui('about.description')}</p>
       <p>{t('update.current', { version })}</p>
+      {onGuide && <button type="button" className="about-guide-entry" onClick={onGuide}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6a3 3 0 0 1 2 1 3 3 0 0 1 2-1h6v15h-6a3 3 0 0 0-2 1 3 3 0 0 0-2-1H4zM12 5v15"/></svg><span><b>{ui('guide.guide')}</b><small>{ui('tour.about')}</small></span><span aria-hidden="true">→</span></button>}
       <p className="ocr-description">{ui('about.credits')}</p>
       <p role="status" aria-live="polite">{!result ? ui('about.checking') : result.status === 'unavailable' ? ui('about.unavailable') : result.status === 'current' ? ui('about.current') : t('update.availableTitle', { version: result.latestVersion || '' })}</p>
       {result && result.status !== 'unavailable' && <ReleaseNotes content={result.releaseNotes} version={result.latestVersion} />}

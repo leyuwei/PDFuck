@@ -1,3 +1,4 @@
+import { guideMessages } from './guide-messages'
 import { resourceMessages } from './resource-messages'
 import { markdownMessages } from './markdown-messages'
 export const INTERFACE_LANGUAGES = ['zh', 'en', 'ja', 'ru', 'es', 'fr', 'de', 'pt', 'ko', 'ar'] as const
@@ -9,6 +10,7 @@ type LocalizedMessage = Record<InterfaceLanguage, string>
 export const messages = {
   ...markdownMessages,
   ...resourceMessages,
+  ...guideMessages,
   "grammar.preparing": {"zh": "正在整理正文并启动本地语法检查…", "en": "Preparing text and starting the local grammar checker…", "ja": "本文を整理し、ローカル文法チェックを開始しています…", "ru": "Подготовка текста и запуск локальной проверки…", "es": "Preparando el texto e iniciando la revisión local…", "fr": "Préparation du texte et démarrage de la vérification locale…", "de": "Text wird vorbereitet und lokale Grammatikprüfung gestartet…", "pt": "Preparando o texto e iniciando a revisão local…", "ko": "본문을 정리하고 로컬 문법 검사를 시작하는 중…", "ar": "جارٍ تجهيز النص وبدء التدقيق النحوي المحلي…"},
   "grammar.checking": {"zh": "正在本地检查正文 {done}/{total}…", "en": "Checking text locally {done}/{total}…", "ja": "ローカルで本文を確認中 {done}/{total}…", "ru": "Локальная проверка текста: {done}/{total}…", "es": "Revisando localmente {done}/{total}…", "fr": "Vérification locale {done}/{total}…", "de": "Lokale Textprüfung {done}/{total}…", "pt": "Revisando localmente {done}/{total}…", "ko": "로컬 본문 검사 중 {done}/{total}…", "ar": "جارٍ تدقيق النص محليًا {done}/{total}…"},
   "grammar.suggestion": {"zh": "语法建议", "en": "Grammar suggestion", "ja": "文法の提案", "ru": "Грамматическая рекомендация", "es": "Sugerencia gramatical", "fr": "Suggestion grammaticale", "de": "Grammatikvorschlag", "pt": "Sugestão gramatical", "ko": "문법 제안", "ar": "اقتراح نحوي"},

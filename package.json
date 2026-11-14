@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.1.17",
+  "version": "2.1.18",
   "description": "支持 PDF、Markdown 与 TXT 的跨平台写作、阅读、编辑、批注与 AI 文档工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",
@@ -112,6 +112,8 @@
     "test:release-2.1.17-tables": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17-tables.test.ts && node tests/scripts/release-2.1.17-table-pdfs.cjs && electron-vite build && node tests/scripts/release-2.1.17-tables-ui.cjs",
     "prepare:grammar": "node scripts/prepare-grammar.cjs",
     "test:release-2.1.17-grammar-layout": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/lib/release-2.1.17-grammar-layout.test.tsx && node tests/scripts/release-2.1.17-grammar-engine.cjs && node tests/scripts/release-2.1.17-selection-latest.cjs && electron-vite build && node tests/scripts/release-2.1.17-grammar-layout-ui.cjs",
+    "test:release-2.1.18-practice": "node tests/scripts/run-vitest.cjs run tests/unit/renderer/src/components/PracticeGuide.test.tsx",
+    "test:release-2.1.18": "node tests/scripts/run-vitest.cjs run tests/unit/main/release-2.1.18.test.ts tests/unit/renderer/src/components/Release2118.test.tsx",
     "test:resources": "node tests/scripts/run-vitest.cjs run tests/unit/main/release-2.1.17-resources.test.ts tests/unit/renderer/src/lib/release-2.1.17-resource-dialog.test.tsx",
     "test:resources-ui": "electron-vite build && node tests/scripts/release-2.1.17-resource-api.cjs && electron tests/scripts/release-2.1.17-resource-network.cjs && node tests/scripts/release-2.1.17-resource-crash.cjs && electron tests/scripts/release-2.1.17-resource-install.cjs && node tests/scripts/release-2.1.17-resources-ui.cjs && node tests/scripts/release-2.1.17-resource-proxy-layout.cjs && node tests/scripts/release-2.1.17-resource-grammar-ui.cjs && node tests/scripts/release-2.1.17-resource-startup.cjs"
   },
