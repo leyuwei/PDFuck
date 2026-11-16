@@ -282,8 +282,11 @@
 .app-shell .sidebar-hide:hover { border: 0; background: color-mix(in srgb, var(--app-accent) 12%, transparent); }
 .sidebar-hide svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 [dir="rtl"] .sidebar-hide svg { transform: scaleX(-1); }
-.pdf-selection-count { color: var(--app-accent); margin-inline-end: 12px; white-space: nowrap; flex-shrink: 0; }
-.app-shell > footer > span:last-child:has(.pdf-selection-count) { display: flex; min-width: 0; }
+.pdf-selection-count { color: var(--app-accent); white-space: nowrap; flex-shrink: 0; }
+.app-shell > footer .pdf-document-statistics { display: flex; align-items: center; justify-content: flex-end; gap: 16px; min-width: 0; }
+.pdf-selection-statistics { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pdf-selected-text { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdf-page-information { flex-shrink: 0; white-space: nowrap; }
 .app-shell > footer > span:last-child > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feature-guide { position: fixed; inset: 0; z-index: 1200; pointer-events: none; }
 .guide-spotlight { position: fixed; border: 2px solid var(--app-accent); border-radius: 10px; box-shadow: 0 0 0 9999px #0b12202e;  }

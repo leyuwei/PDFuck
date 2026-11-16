@@ -1,6 +1,8 @@
 # PDFuck macOS / Windows 打包指引
 
-**2.1.21 跨栏连续选择补修（2026-11-16，当前交付，版本不变）**：普通正文跨栏按阅读顺序连接，不再由共享图注块裁成两栏平行文字带；阅读范围保留目标栏上方的非跨栏正文块。单栏共享块限制在本栏，真实图表、单元格、跨栏公式规则保留。README、package.json 和锁文件逐字节不改；仅本轮新增 11 项单元、原件/脱密页 12 组/144 组选区、16 次实际窗口拖选，另做类型检查与直接构建。重打同名 APP/DMG/ZIP，原产物备份到 release/backups；新增包检查为 `release-2.1.21-crossflow-package-check.cjs`，验收见 `tests/docs/VALIDATION-2.1.21-crossflow.md`。
+**2.1.21 状态栏补修（2026-11-16，当前交付，版本不变）**：PDF 选区文字与计数在状态栏右侧排列，页码独立持续显示；长选区文字省略以保留页码空间。保留版权/下载进度与 Markdown 统计，沿用十语言。仅新增并执行 `release-2.1.21-statusbar-ui.cjs` 的 40 组布局和 4 项状态检查，另做类型检查、直接生产构建与 `release-2.1.21-statusbar-package-check.cjs` 静态包核验。README、版本及 package/lock 未改；方案与结果见 `tests/docs/PLAN-2.1.21-statusbar.md`、`tests/docs/VALIDATION-2.1.21-statusbar.md`。
+
+**2.1.21 跨栏连续选择补修（2026-11-16，此前交付，版本不变）**：普通正文跨栏按阅读顺序连接，不再由共享图注块裁成两栏平行文字带；阅读范围保留目标栏上方的非跨栏正文块。单栏共享块限制在本栏，真实图表、单元格、跨栏公式规则保留。README、package.json 和锁文件逐字节不改；仅本轮新增 11 项单元、原件/脱密页 12 组/144 组选区、16 次实际窗口拖选，另做类型检查与直接构建。重打同名 APP/DMG/ZIP，原产物备份到 release/backups；新增包检查为 `release-2.1.21-crossflow-package-check.cjs`，验收见 `tests/docs/VALIDATION-2.1.21-crossflow.md`。
 
 **2.1.21（2026-11-16，此前交付）**：新文档脱密归档至 tests/fixtures；修复页边行号参与伪表格检测、正文 Table/Figure 引用误判标题、左栏图注吞入右栏正文导致的漏选和反向拖选卡住。全 renderer 交互蓝色统一现有主题变量，含页面选中小字/底边、焦点、加载、进度与 portal 弹窗；保留批注、警告、状态和文档内容的独立颜色。十语言 × 两种主题色 × 明暗模式；README 不改。仅本轮新增测试与静态包核验，详见 `tests/docs/PLAN-2.1.21.md`、`tests/docs/VALIDATION-2.1.21.md`。
 
