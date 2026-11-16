@@ -1,0 +1,22 @@
+{
+  "version": "2.1.19",
+  "policy": "replacement content and geometry only",
+  "fixtures": [
+    {
+      "file": "688ba7ffc4b452610cdde9ad379c27c3.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 175528,
+      "sha256": "7249a7a89586e5b568163f3ed7e0c3788d3b4ed7fd82c7e353463ad8a426ba55",
+      "sourceSlot": 1
+    },
+    {
+      "file": "49d7d5d4cb95feae7b946643301253e5.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 208364,
+      "sha256": "9ec0c14788fe353ff3d53fab7446b6c18cd45cd0429df6ca7e52b23a08c13859",
+      "sourceSlot": 2
+    }
+  ]
+}

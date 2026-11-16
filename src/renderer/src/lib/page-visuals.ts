@@ -1,3 +1,4 @@
+import { captionLabel, captionPattern } from './caption-label'
 import type { PdfRect } from '../types'
 import { applyMatrix, multiplyMatrix, type Matrix } from './page-coordinates'
 import type { WordBox } from './text-layout'
@@ -11,7 +12,6 @@ const overlapX = (a: PdfRect, b: PdfRect) => Math.max(0, Math.min(right(a), righ
 const gapY = (a: PdfRect, b: PdfRect) => Math.max(a.y - bottom(b), b.y - bottom(a), 0)
 const union = (a: PdfRect, b: PdfRect): PdfRect => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.max(right(a), right(b)) - Math.min(a.x, b.x), height: Math.max(bottom(a), bottom(b)) - Math.min(a.y, b.y) })
 const inside = (a: PdfRect, b: PdfRect) => a.x + a.width / 2 >= b.x && a.x + a.width / 2 <= right(b) && a.y + a.height / 2 >= b.y && a.y + a.height / 2 <= bottom(b)
-const captionPattern = /^(?:(?:fig(?:ure)?\.?|image|plate|table|tab\.?)\s*(?:\d+(?:[.\-–]\d+)*[a-z]?|[IVX]+)\b|[图表]\s*\d+(?:[.\-–]\d+)*[a-z]?)/i
 
 /** Read painted bounds, including repeated images and PDF.js 6 vector paths. */
 export function pageGraphics(operators: { fnArray: number[]; argsArray: any[] }, viewport: Matrix, ops: Record<string, number>): PageGraphic[] {
@@ -135,10 +135,7 @@ export function detectPageVisuals(words: WordBox[], graphics: PageGraphic[], siz
     else rows.push({words: [word], rect: {...word.rect}, text: ''})
   }
   for (const row of rows) row.text = row.words.sort((a,b) => a.rect.x-b.rect.x).map(w => w.text).join(' ').replace(/([图表])\s+(?=\d)/g, '$1')
-  const captions = rows.filter(row => {
-    const marker = row.text.match(captionPattern)
-    return marker && !/^(?:shows?|illustrates?|is|are|was|were|can|provides?|compares?|summarizes?|presents?|所示|显示|展示|说明|给出)\b/i.test(row.text.slice(marker[0].length).trim())
-  })
+  const captions = rows.filter(row => captionLabel(row.text))
   const tables = detectTableGrids(words,graphics,size)
   // Open tables have no closed cells: their aligned top/header/footer rules bound wrapped prose.
   const horizontalRules = graphics.filter(g => !g.image).flatMap(g => g.rules || [g.rect])

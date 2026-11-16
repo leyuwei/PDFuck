@@ -3,14 +3,15 @@ import { Readable } from 'node:stream'
 import type { ResourceProxyStore } from './resource-proxy'
 import { resourceError, type ResourceTransport } from './resource-download'
 
-/** Downloads use an isolated session; proxy edits never alter PDF, AI or update networking. */
+/** Resource and update downloads share an isolated session; proxy edits leave PDF and AI networking alone. */
 export function resourceTransport(store:ResourceProxyStore):ResourceTransport {
-  let configured=''
+  let configured='',configuring:Promise<void>=Promise.resolve()
   return async(url,headers,signal)=>{
     signal.throwIfAborted()
     const proxy=store.credentials(),connection=session.fromPartition('pdfuck-resource-downloads',{cache:false})
     const settings=JSON.stringify(proxy)
-    if(configured!==settings){await connection.closeAllConnections();await connection.setProxy(proxy.mode==='manual'?{mode:'fixed_servers',proxyRules:proxy.url,proxyBypassRules:'<-loopback>'}:{mode:proxy.mode});configured=settings}
+    configuring=configuring.catch(()=>{}).then(async()=>{if(configured!==settings){await connection.closeAllConnections();await connection.setProxy(proxy.mode==='manual'?{mode:'fixed_servers',proxyRules:proxy.url,proxyBypassRules:'<-loopback>'}:{mode:proxy.mode});configured=settings}})
+    await configuring;signal.throwIfAborted()
     return new Promise((resolve,reject)=>{
       const request=net.request({url,session:connection,redirect:'manual',headers}),body=new Readable({read(){}})
       let settled=false,redirects=0,authAttempts=0

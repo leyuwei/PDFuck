@@ -39,7 +39,7 @@ export function selectionTextItems(items: TextItem[], operators: { fnArray: numb
     tape.cursor = start + text.length
     return tape.flags.slice(start, tape.cursor).reduce((minimum, flag) => Math.min(minimum, flag), 2)
   })
-  const heights = items.filter((_, index) => !flags[index]).map(item => Math.hypot(item.transform[2], item.transform[3])).filter(height => height > 0).sort((a,b) => a-b)
+  const heights = items.filter((_, index) => !flags[index]).flatMap(item => Array(Math.max(1,Math.min(200,compact(item.str).length))).fill(Math.hypot(item.transform[2],item.transform[3])) as number[]).filter(height => height > 0).sort((a,b) => a-b)
   const em = heights[Math.floor(heights.length / 2)] || 10
   const bounds = (item: TextItem) => {
     const [a,b,c,d,x,y] = item.transform, length = Math.hypot(a,b) || 1
@@ -52,13 +52,13 @@ export function selectionTextItems(items: TextItem[], operators: { fnArray: numb
     const angle = Math.atan2(item.transform[1], item.transform[0]), diagonal = Math.abs(Math.sin(angle * 2)) > .25
     const repeated = items.filter(other => compact(other.str) === compact(item.str)).length >= 2
     const oversized = Math.hypot(item.transform[2],item.transform[3]) >= em * 2 && compact(item.str).length >= 6
-    if (!flags[index] && !(oversized || diagonal && repeated)) return true
+    if (!flags[index] && !((oversized || diagonal) && repeated)) return true
     const rect = bounds(item)
     // Faint footnotes and ordinary rotated/vertical labels remain selectable unless they overlay body text.
     return !items.some((other, otherIndex) => {
       if (otherIndex === index || flags[otherIndex] || !other.str.trim() || Math.abs(other.transform[1]) > .01) return false
       const next = bounds(other)
-      return Math.min(rect.right,next.right) > Math.max(rect.left,next.left) && Math.min(rect.bottom,next.bottom) > Math.max(rect.top,next.top)
+      return Math.min(rect.right,next.right) - Math.max(rect.left,next.left) >= Math.min(rect.right-rect.left,next.right-next.left)*.4 && Math.min(rect.bottom,next.bottom) - Math.max(rect.top,next.top) >= Math.min(rect.bottom-rect.top,next.bottom-next.top)*.4
     })
   })
 }

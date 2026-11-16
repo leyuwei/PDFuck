@@ -1,0 +1,14 @@
+{
+  "version": "2.1.21",
+  "policy": "replacement text and geometry only",
+  "fixtures": [
+    {
+      "file": "fd554c1d917585050064b3f150a392f7.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 146765,
+      "sha256": "22b2a3c9ee8e7d75e6770855766ff81ce3d6a84e2a9d8b62f978c5b08cfa6b29",
+      "sourcePage": 10
+    }
+  ]
+}

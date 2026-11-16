@@ -1,3 +1,4 @@
+import type { AppUpdateState } from './app-update'
 import type { FeatureResourceRequest, ResourceAction, ResourceDownloadState, ResourceProxy } from './resources'
 import type { GrammarRequest, GrammarResponse } from './grammar'
 import type { OcrPageRequest, OcrPageResult } from './ocr'
@@ -211,6 +212,7 @@ export interface DetachedWindowPosition {
 }
 
 export interface UpdateCheckResult {
+  canDownload?: boolean
   status: 'available' | 'current' | 'skipped' | 'unavailable'
   currentVersion: string
   latestVersion?: string
@@ -236,6 +238,12 @@ export interface AiResponse {
 }
 
 export interface DesktopApi {
+  updateState():Promise<AppUpdateState|undefined>
+  onUpdateState(callback:(state:AppUpdateState|undefined)=>void):()=>void
+  downloadUpdate():Promise<void>
+  updateAction(action:import('./resources').ResourceAction):Promise<void>
+  installUpdate():Promise<void>
+  cancelUpdateInstall():void
   ensureFeatureResources(request:FeatureResourceRequest):Promise<boolean>
   resourceState():Promise<ResourceDownloadState|undefined>
   onResourceState(callback:(state:ResourceDownloadState|undefined)=>void):()=>void

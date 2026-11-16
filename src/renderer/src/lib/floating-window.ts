@@ -59,7 +59,7 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
     const fit = () => {
       const bounds = element.getBoundingClientRect()
       const minTop = floatingTop()
-      element.style.setProperty('--floating-max-height', `${Math.max(100, window.innerHeight - minTop - (bottomRight ? 44 : 16))}px`)
+      element.style.setProperty('--floating-max-height', `${Math.max(100, window.innerHeight - bounds.top - 8)}px`)
       if (resizable) {
         const nextSize = clampFloatingSize(sizeRef.current?.width ?? bounds.width, sizeRef.current?.height ?? bounds.height, window.innerWidth, window.innerHeight, minWidth, minHeight)
         if (!sizeRef.current || sizeRef.current.width !== nextSize.width || sizeRef.current.height !== nextSize.height) {
@@ -78,6 +78,40 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
         return current?.left === next.left && current.top === next.top ? current : next
       })
     }
+    let resize: { edge: string; x: number; y: number; left: number; top: number; width: number; height: number } | undefined
+    const edgeAt = (event: PointerEvent) => {
+      const r = element.getBoundingClientRect()
+      return `${Math.abs(event.clientY-r.top) <= 7 ? 'n' : Math.abs(event.clientY-r.bottom) <= 7 ? 's' : ''}${Math.abs(event.clientX-r.left) <= 7 ? 'w' : Math.abs(event.clientX-r.right) <= 7 ? 'e' : ''}`
+    }
+    const canResize = resizable || getComputedStyle(element).resize === 'both'
+    const down = (event: PointerEvent) => {
+      const edge = edgeAt(event)
+      if (!canResize || event.button !== 0 || !edge) return
+      const r = element.getBoundingClientRect()
+      resize = { edge, x:event.clientX, y:event.clientY, left:r.left, top:r.top, width:r.width, height:r.height }
+      moved.current = true; event.preventDefault(); event.stopPropagation(); element.setPointerCapture(event.pointerId)
+    }
+    const move = (event: PointerEvent) => {
+      if (!canResize) return
+      const edge = resize?.edge || edgeAt(event)
+      element.style.cursor = edge ? `${edge}-resize` : ''
+      if (!resize) return
+      event.preventDefault(); event.stopPropagation()
+      const dx = event.clientX-resize.x, dy=event.clientY-resize.y
+      const css=getComputedStyle(element), minW=parseFloat(css.minWidth)||minWidth, minH=parseFloat(css.minHeight)||minHeight
+      const left=edge.includes('w')?Math.max(8,Math.min(resize.left+dx,resize.left+resize.width-minW)):resize.left
+      const top=edge.includes('n')?Math.max(floatingTop(),Math.min(resize.top+dy,resize.top+resize.height-minH)):resize.top
+      const width=Math.min(window.innerWidth-left-8,Math.max(minW,edge.includes('w')?resize.width+resize.left-left:resize.width+(edge.includes('e')?dx:0)))
+      const height=Math.min(window.innerHeight-top-8,Math.max(minH,edge.includes('n')?resize.height+resize.top-top:resize.height+(edge.includes('s')?dy:0)))
+      element.style.setProperty('--floating-max-height',`${Math.max(100,window.innerHeight-top-8)}px`)
+      element.style.maxHeight=`${Math.max(100,window.innerHeight-top-8)}px`
+      const next={width,height}; sizeRef.current=next
+      Object.assign(element.style,{width:`${width}px`,height:`${height}px`,left:`${left}px`,top:`${top}px`,right:'auto',bottom:'auto'})
+      setSize(next); setPosition({left,top})
+      if(storageKey) { try { localStorage.setItem(storageKey,JSON.stringify(next)) } catch { /* Storage is optional. */ } }
+    }
+    const up = (event: PointerEvent) => { if (!resize) return; resize=undefined; if(element.hasPointerCapture(event.pointerId))element.releasePointerCapture(event.pointerId) }
+    element.addEventListener('pointerdown',down,true); element.addEventListener('pointermove',move,true); element.addEventListener('pointerup',up,true); element.addEventListener('pointercancel',up,true); element.addEventListener('lostpointercapture',up,true)
     fit()
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => {
       if (resizable && element) {
@@ -91,7 +125,7 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
     })
     observer?.observe(element)
     window.addEventListener('resize', fit)
-    return () => { observer?.disconnect(); window.removeEventListener('resize', fit) }
+    return () => { observer?.disconnect(); window.removeEventListener('resize', fit); element.removeEventListener('pointerdown',down,true); element.removeEventListener('pointermove',move,true); element.removeEventListener('pointerup',up,true); element.removeEventListener('pointercancel',up,true); element.removeEventListener('lostpointercapture',up,true); element.style.cursor='' }
   }, [active, bottomRight, minHeight, minWidth, resizable, storageKey])
   const style: CSSProperties | undefined = position || size ? { ...position, ...(size ? { width: size.width, height: size.height } : {}) } : undefined
   return { ref, style, dragHandlers: {

@@ -1,3 +1,5 @@
+import { AppUpdateDownload, selectUpdateAsset, type UpdateAsset } from './app-update'
+import { prepareUpdateLaunch } from './update-installer'
 import { resourceStorageRoot, migrateResourceStorage } from './resource-storage'
 import { FeatureResourceCatalog, validResourceRequest } from './feature-resources'
 import { ResourceManager } from './resource-manager'
@@ -39,13 +41,14 @@ import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 import { validExternalLink } from './external-links'
 
 let grammarEngine:LocalGrammarEngine|undefined
-let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;ready:Promise<void>}|undefined
+let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;transport:ReturnType<typeof resourceTransport>;ready:Promise<void>}|undefined
 function resources(){
   if(!resourceService){
     const previous=join(app.getPath('userData'),'feature-resources'),root=resourceStorageRoot(app.getPath('appData'),app.getPath('userData'),Boolean(testUserData)||app.commandLine.hasSwitch('user-data-dir')),notices=app.isPackaged?join(process.resourcesPath,'resource-notices'):join(__dirname,'../../resources/feature-notices')
     const catalog=new FeatureResourceCatalog(root,notices),proxy=new ResourceProxyStore(join(previous,'proxy.json'),safeStorage)
-    const manager=new ResourceManager(catalog,resourceTransport(proxy),(owner,state)=>{const window=BrowserWindow.getAllWindows().find(w=>w.webContents.id===owner);if(window&&!window.isDestroyed())window.webContents.send('resources:state',state)})
-    resourceService={manager,proxy,ready:migrateResourceStorage(previous,root).then(()=>catalog.cleanup())}
+    const transport=resourceTransport(proxy)
+    const manager=new ResourceManager(catalog,transport,(owner,state)=>{const window=BrowserWindow.getAllWindows().find(w=>w.webContents.id===owner);if(window&&!window.isDestroyed())window.webContents.send('resources:state',state)})
+    resourceService={manager,proxy,transport,ready:migrateResourceStorage(previous,root).then(()=>catalog.cleanup())}
   }
   return resourceService
 }
@@ -95,6 +98,15 @@ app.setAboutPanelOptions({
 const releasesApi = 'https://api.github.com/repos/leyuwei/PDFuck/releases/latest'
 const releasesPage = 'https://github.com/leyuwei/PDFuck/releases'
 
+let updateDownload:AppUpdateDownload|undefined
+let updateReady:Promise<void>|undefined
+let latestInstaller:{version:string;asset:UpdateAsset}|undefined
+let launchUpdate:(()=>void)|undefined
+function updater(){
+ if(!updateDownload){updateDownload=new AppUpdateDownload(join(resources().manager.catalog.root,'app-updates'),resources().transport,state=>{for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed())window.webContents.send('app:update-state',state)});updateReady=resources().ready.then(()=>updateDownload!.restore()).then(()=>{if(updateDownload?.state&&compareVersions(updateDownload.state.version,app.getVersion())<=0)updateDownload.action('cancel')})}
+ return updateDownload
+}
+app.on('will-quit',()=>{updateDownload?.stop();const launch=launchUpdate;launchUpdate=undefined;launch?.()})
 interface UpdatePreferences { skippedVersion?: string }
 
 function updatePreferencesPath(): string { return join(app.getPath('userData'), 'update-preferences.json') }
@@ -125,9 +137,13 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     let releaseUrl = releasesPage
     let releaseNotes: string | undefined
     if (!latestVersion) {
-      const response = await net.fetch(releasesApi, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PDFuck/${currentVersion}`, 'X-GitHub-Api-Version': '2022-11-28' } })
-      if (!response.ok) return { status: 'unavailable', currentVersion }
-      const release = await response.json() as { tag_name?: unknown; html_url?: unknown; body?: unknown }
+      await resources().ready
+      const response=await resources().transport(releasesApi,{Accept:'application/vnd.github+json','User-Agent':`PDFuck/${currentVersion}`,'X-GitHub-Api-Version':'2022-11-28'},AbortSignal.timeout(15000))
+      let release:{tag_name?:unknown;html_url?:unknown;body?:unknown;assets?:unknown}
+      try{if(response.status!==200)return {status:'unavailable',currentVersion};const chunks:Buffer[]=[];let bytes=0;for await(const chunk of response.body){const data=Buffer.from(chunk);bytes+=data.length;if(bytes>4*1024*1024)throw Error('updates.unavailable');chunks.push(data)}release=JSON.parse(Buffer.concat(chunks).toString('utf8'))}finally{response.close()}
+      const asset=selectUpdateAsset(release.assets,process.platform,process.arch)
+      const version=typeof release.tag_name==='string'?release.tag_name.replace(/^v/i,''):''
+      if(asset&&/^\d+(\.\d+){1,3}$/.test(version))latestInstaller={version,asset}
       releaseNotes = typeof release.body === 'string' ? release.body.trim().slice(0, 100_000) : undefined
       latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/i, '') : undefined
       if (typeof release.html_url === 'string' && validReleasePage(release.html_url)) releaseUrl = release.html_url
@@ -135,8 +151,8 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     if (!latestVersion || !/^\d+(?:\.\d+){1,3}$/.test(latestVersion)) return { status: 'unavailable', currentVersion }
     if (compareVersions(latestVersion, currentVersion) <= 0) return { status: 'current', currentVersion, latestVersion, releaseUrl, releaseNotes }
     const preferences = await readUpdatePreferences()
-    if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl, releaseNotes }
-    return { status: 'available', currentVersion, latestVersion, releaseUrl, releaseNotes }
+    if (preferences.skippedVersion === latestVersion) return { status: 'skipped', currentVersion, latestVersion, releaseUrl, releaseNotes,canDownload:latestInstaller?.version===latestVersion }
+    return { status: 'available', currentVersion, latestVersion, releaseUrl, releaseNotes, canDownload:latestInstaller?.version===latestVersion }
   } catch { return { status: 'unavailable', currentVersion } }
 }
 
@@ -912,6 +928,11 @@ app.whenReady().then(async () => {
     activeRequest.abortReason = 'user'
     activeRequest.controller.abort()
   })
+  ipcMain.handle('app:update-state',async(event)=>{requireMainWindow(event.sender);const service=updater();await updateReady;return service.state})
+  ipcMain.handle('app:update-download',async(event)=>{requireMainWindow(event.sender);const check=await checkForUpdates();if(!['available','skipped'].includes(check.status)||!latestInstaller||check.latestVersion!==latestInstaller.version)throw Error('updates.unavailable');const service=updater();await updateReady;await service.prepare(latestInstaller.version,latestInstaller.asset);service.action('start')})
+  ipcMain.handle('app:update-action',(event,action:unknown)=>{requireMainWindow(event.sender);if(!['start','pause','cancel'].includes(String(action)))throw Error('updates.unavailable');updater().action(action as ResourceAction)})
+  ipcMain.handle('app:update-install',async(event)=>{requireMainWindow(event.sender);if(!app.isPackaged)throw Error('updates.installUnavailable');const service=updater();await updateReady;const file=await service.installer();launchUpdate=await prepareUpdateLaunch(service.root,file,service.state!.version,app.getPath('exe'),process.platform,process.arch,nativeText(requireWindowSession(event.sender).interfaceLanguage,'updates.installUnavailable'));app.quit()})
+  ipcMain.on('app:update-cancel-install',event=>{requireMainWindow(event.sender);launchUpdate=undefined})
   ipcMain.handle('app:check-update', (event) => { requireMainWindow(event.sender); return checkForUpdates() })
   ipcMain.handle('app:skip-update-version', async (event, version: string) => {
     requireMainWindow(event.sender)
@@ -952,5 +973,5 @@ app.whenReady().then(async () => {
   createMainWindow()
 })
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('window-all-closed', () => { if (process.platform !== 'darwin'||launchUpdate) app.quit() })
 app.on('activate', () => createMainWindow())

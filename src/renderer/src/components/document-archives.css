@@ -1,6 +1,6 @@
 .document-archives { position: relative; flex: none; align-self: stretch; display: flex; align-items: center; -webkit-app-region: no-drag; }
 .document-archives .window-manager-heading { height: auto; min-height: 28px; padding: 4px 8px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; }
-.document-archives .window-manager-heading[aria-expanded="true"] { background: #e8edfa; color: #3157d5; }
+.document-archives .window-manager-heading[aria-expanded="true"] { background: #e8edfa; color: var(--theme-accent-soft-ink); }
 .document-archives-popover { position: absolute; z-index: 180; inset-inline-start: 0; top: calc(100% + 6px); width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 130px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dbe2ee; border-radius: 14px; background: #fff; color: #20283a; box-shadow: 0 16px 44px #18243d30; font-size: var(--ui-font-body); line-height: 1.5; -webkit-app-region: no-drag; }
 .document-archives-popover * { -webkit-app-region: no-drag; }
 .document-archives-popover > header { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
@@ -20,7 +20,7 @@
 .archive-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .document-archives-body .archive-action-button { width: 31px; min-width: 31px; min-height: 31px; padding: 0; display: grid; place-items: center; border-color: transparent; background: transparent; color: #66758d; }
 .archive-action-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
-.document-archives-body .archive-action-button:hover:not(:disabled) { background: #edf2ff; color: #3157d5; }
+.document-archives-body .archive-action-button:hover:not(:disabled) { background: var(--theme-accent-faint); color: var(--theme-accent-soft-ink); }
 .document-archives-body .archive-action-button.danger:hover:not(:disabled) { background: #fff0f1; color: #b72f3b; }
 .archive-delete-confirm { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px 10px; padding-top: 9px; border-top: 1px solid #e2e7ef; font-size: var(--ui-font-small); }
 .archive-delete-confirm > span { flex: 1 1 180px; }
@@ -33,5 +33,5 @@
 .theme-dark .archive-hint, .theme-dark .archive-empty, .theme-dark .document-archives-body small { color: #bdc8d8; }
 .theme-dark .archive-notice { background: #3c321f; color: #e2c387; }
 .theme-dark .archive-delete-confirm { border-color: #40516a; }
-.theme-dark .document-archives-body .archive-action-button:hover:not(:disabled) { background: #30415a; color: #bcd0f5; }
+.theme-dark .document-archives-body .archive-action-button:hover:not(:disabled) { background: #30415a; color: var(--theme-accent-soft-ink); }
 .theme-dark .document-archives-body .archive-action-button.danger:hover:not(:disabled) { background: #472c35; color: #f1b4bb; }

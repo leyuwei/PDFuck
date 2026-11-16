@@ -1,6 +1,6 @@
 {
   "name": "pdfuck",
-  "version": "2.1.18",
+  "version": "2.1.21",
   "description": "支持 PDF、Markdown 与 TXT 的跨平台写作、阅读、编辑、批注与 AI 文档工具",
   "main": "out/main/index.js",
   "author": "github@leyuwei",

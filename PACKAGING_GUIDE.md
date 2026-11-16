@@ -1,5 +1,14 @@
 # PDFuck macOS / Windows 打包指引
 
+**2.1.21 跨栏连续选择补修（2026-11-16，当前交付，版本不变）**：普通正文跨栏按阅读顺序连接，不再由共享图注块裁成两栏平行文字带；阅读范围保留目标栏上方的非跨栏正文块。单栏共享块限制在本栏，真实图表、单元格、跨栏公式规则保留。README、package.json 和锁文件逐字节不改；仅本轮新增 11 项单元、原件/脱密页 12 组/144 组选区、16 次实际窗口拖选，另做类型检查与直接构建。重打同名 APP/DMG/ZIP，原产物备份到 release/backups；新增包检查为 `release-2.1.21-crossflow-package-check.cjs`，验收见 `tests/docs/VALIDATION-2.1.21-crossflow.md`。
+
+**2.1.21（2026-11-16，此前交付）**：新文档脱密归档至 tests/fixtures；修复页边行号参与伪表格检测、正文 Table/Figure 引用误判标题、左栏图注吞入右栏正文导致的漏选和反向拖选卡住。全 renderer 交互蓝色统一现有主题变量，含页面选中小字/底边、焦点、加载、进度与 portal 弹窗；保留批注、警告、状态和文档内容的独立颜色。十语言 × 两种主题色 × 明暗模式；README 不改。仅本轮新增测试与静态包核验，详见 `tests/docs/PLAN-2.1.21.md`、`tests/docs/VALIDATION-2.1.21.md`。
+
+**2.1.20（2026-11-16，此前交付）**：hint 延迟 1.5 秒并缩小字号，过滤重复按钮文案和批注正文；修复小字号图注导致正常正文被误判为水印的漏字。Markdown 编辑改为可调左右分栏，原文复用复制断行整理；新增平台适配、摘要校验和断点恢复的应用内更新，关闭前处理未保存文档，macOS 安装失败回滚；资源和应用更新下载均可缩至版权位置并点击恢复。浮窗高度按实际位置计算。十语言、README 不改；仅本轮新增测试，详见 `tests/docs/PLAN-2.1.20.md` 与 `tests/docs/VALIDATION-2.1.20.md`。
+
+**2.1.19（2026-11-16，此前交付）**：修复双栏混合字体/公式选区的中段漏选及跨栏扩张；两份新输入脱密归档。共用浮窗支持四边拖动缩放，全局应用内按钮 hint 覆盖禁用控件与键盘焦点，重绘适配图标并固定页码提示半透明。README 不改；仅本轮新增单元、真实输入、UI 和包检查。计划见 `tests/docs/PLAN-2.1.19.md`，结果见 `tests/docs/VALIDATION-2.1.19.md`。
+
+
 **2.1.18 引导框定位修复（2026-11-14，当前交付）**：引导框逐帧跟随目标位置，并在 PDF 适配缩放时同步测量；替换页面后重新定位，取消框体几何过渡动画。仅运行新增 `GuidePosition.test.tsx`、`release-2.1.18-guide-position-ui.cjs`、类型检查和直接生产构建；重打同版本 macOS arm64 APP/DMG/ZIP，静态核验脚本为 `release-2.1.18-guide-position-package-check.cjs`。README 不变，验收见 `tests/docs/VALIDATION-2.1.18-guide-position.md`。
 
 **2.1.18 示例引导重做（2026-11-14，此前交付）**：重看入口移到关于；欢迎页与查看模块共用地球图标、SVG 国旗及语言原名选择器。三页可编辑练习 PDF 带正文、书签和真实批注，11 步覆盖阅读、批注、页面编辑管理、实验室、OCR/语法、写作及保存导出，配合真实操作按钮和可收起说明。十语言完整翻译，README 不变。仅执行本轮新增 `npm run test:release-2.1.18-practice`、`node tests/scripts/release-2.1.18-practice-ui.cjs`、typecheck 和直接生产构建；重建同版本 macOS arm64 APP/DMG/ZIP，静态检查使用 `node tests/scripts/release-2.1.18-practice-package-check.cjs`。方案与验收见 `tests/docs/PLAN-2.1.18-practice.md`、`tests/docs/VALIDATION-2.1.18-practice.md`。
@@ -128,7 +137,7 @@ Windows（建议在 Windows 上构建）：
 
 2.1.0 增加 Markdown 文件编辑、五种 PDF 模板、可拖动/隐藏的双栏及十语言界面。无需新增依赖。Windows 在 `build.win.fileAssociations` 注册 `.md` Editor；macOS 在 `CFBundleDocumentTypes` 与 `UTImportedTypeDeclarations` 声明 Markdown，保留现有原生 ICNS。
 
-本轮仅运行 `npm run typecheck`、`npm run test:markdown`（新增 10 项单元测试、生产构建和 Markdown UI 冒烟）及 `git diff --check`；不运行旧测试全集或一键打包脚本。新增 UI 检查源码保存/另存、真实五模板 PDF、多语言双主题四字号、拖动/关闭/恢复分栏、已有 PDF 编辑保护与关闭提示。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版与解包 EXE。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包程序，重跑同一新增 UI 脚本；便携程序实际启动并检查 `.md` 参数与偏好重启恢复。保存版本、资源、签名、SHA-256 和测试范围至 `tests/docs/VALIDATION-2.1.0.md` 与 release 清单。macOS 的 `.app`/DMG/ZIP 与 LaunchServices 默认程序行为需在 macOS 原生构建验收，不能将配置检查写成实机通过。
+本轮仅运行 `npm run typecheck`、`npm run test:markdown`（新增 11 项单元测试、生产构建和 Markdown UI 冒烟）及 `git diff --check`；不运行旧测试全集或一键打包脚本。新增 UI 检查源码保存/另存、真实五模板 PDF、多语言双主题四字号、拖动/关闭/恢复分栏、已有 PDF 编辑保护与关闭提示。通过后直接使用 `npx --no-install electron-builder --win --config.electronDist=node_modules/electron/dist` 生成 Windows 安装版、便携版与解包 EXE。使用 `PDFUCK_SMOKE_EXECUTABLE` 指向解包程序，重跑同一新增 UI 脚本；便携程序实际启动并检查 `.md` 参数与偏好重启恢复。保存版本、资源、签名、SHA-256 和测试范围至 `tests/docs/VALIDATION-2.1.0.md` 与 release 清单。macOS 的 `.app`/DMG/ZIP 与 LaunchServices 默认程序行为需在 macOS 原生构建验收，不能将配置检查写成实机通过。
 
 本次用户在 Markdown 测试通过后明确要求“修改后已经做过的测试别再重复做”，因此最终图标修改只执行新增 `tests/scripts/folder-button-ui-check.cjs`，不重跑上述已通过的单元或 Markdown UI 测试，也不在成品上重复同一套检查。更新生产构建后正常打包，保留此前结果；仅补做尚未执行过的 `tests/scripts/markdown-portable-smoke.cjs` 重启持久化检查和成品版本、资源、签名、哈希核验。PDF 排版和 14 类快捷插入使用可拖动浮窗，底部操作栏固定；语法图标尺寸随界面字号变化并禁止换行。
 

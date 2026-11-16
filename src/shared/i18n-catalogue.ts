@@ -1,3 +1,5 @@
+import { updateMessages } from './update-messages'
+import { interactionMessages } from './interaction-messages'
 import { guideMessages } from './guide-messages'
 import { resourceMessages } from './resource-messages'
 import { markdownMessages } from './markdown-messages'
@@ -8,6 +10,8 @@ type LocalizedMessage = Record<InterfaceLanguage, string>
 
 /** One semantic code maps to every complete interface-language value. */
 export const messages = {
+  ...updateMessages,
+  ...interactionMessages,
   ...markdownMessages,
   ...resourceMessages,
   ...guideMessages,

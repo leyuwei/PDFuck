@@ -1,3 +1,5 @@
+import { AnnotationEditSplit } from './AnnotationEditSplit'
+import { normalizeCopiedText } from '../lib/clipboard-text'
 import { addTextStyle, loadAddTextStyle, saveAddTextStyle } from '../lib/text-preferences'
 import { ReleaseNotes } from './ReleaseNotes'
 import { useFloatingWindow } from '../lib/floating-window'
@@ -82,12 +84,12 @@ export function AnnotationDialog({ state, onCancel, onSubmit, aiSuggestionsEnabl
         {state.sourceLoading ? <p className="annotation-source-empty">{ui('ui.annotationSourceLoading')}</p>
           : state.source?.length ? state.source.map(passage => <div className="annotation-source-passage" key={passage.pageIndex}>
             <small>{ui('ui.page')} {passage.pageIndex + 1}{passage.nearby && <> · {ui('ui.annotationNearbyText')}</>}</small>
-            {passage.pieces.length ? <p dir="auto">{passage.pieces.map((piece, index) => piece.selected ? <mark key={index}>{piece.text}</mark> : <span key={index}>{piece.text}</span>)}</p>
+            {passage.pieces.length ? <p dir="auto">{passage.pieces.map((piece, index) => piece.selected ? <mark key={index}>{normalizeCopiedText(piece.text.replace(/^\n+|\n+$/g,' '),true)}</mark> : <span key={index}>{normalizeCopiedText(piece.text.replace(/^\n+|\n+$/g,' '),true)}</span>)}</p>
               : <p className="annotation-source-empty">{ui('ui.annotationSourceEmpty')}</p>}
           </div>) : <p className="annotation-source-empty">{ui('ui.annotationSourceEmpty')}</p>}
       </div>
     </section>
-    <div className="annotation-editor-fields" hidden={suggesting}><label className="annotation-markdown-toggle"><input type="checkbox" checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label>{annotationView.markdown && value.trim() && <AnnotationContent text={value} marks={marks} markdown />}<AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} />
+    <div className="annotation-editor-fields" hidden={suggesting}><label className="annotation-markdown-toggle"><input type="checkbox" checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label><AnnotationEditSplit enabled={annotationView.markdown} preview={<AnnotationContent text={value} marks={marks} markdown />}><AnnotationRichEditor autoFocus tools={<AnnotationColorPicker compact color={color} onChange={setColor} />} label={ui("ui.annotationContent")} text={value} marks={marks} onChange={(content, next) => { setValue(content); setMarks(next) }} onSubmit={() => { if (state.optional || value.trim()) submit() }} /></AnnotationEditSplit>
     {state.edit && <details ref={replySection} className="annotation-reply-section"><summary>{ui("ui.reply")}</summary><AnnotationReplyPicker reply={reply} onChange={setReply} /></details>}
     <div className="modal-actions">{state.edit && aiSuggestionsEnabled && <button type="button" className="annotation-ai-suggestion" onClick={suggest}>{ui("ui.generateAiRevisionAdvice")}</button>}<button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!state.optional && !value.trim()} onClick={() => submit()}>{ui("ui.confirm")}</button></div></div><div className="annotation-suggestion-stage" hidden={!suggesting}><p className="annotation-suggestion-draft-hint">{ui("ui.annotationSuggestionDraftHint")}</p><div ref={suggestionHost} /></div></ScrollWindow></div>
 }

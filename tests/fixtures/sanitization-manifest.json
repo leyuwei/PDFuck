@@ -240,6 +240,38 @@
       "screenshotPages": [
         1
       ]
+    },
+    {
+      "file": "688ba7ffc4b452610cdde9ad379c27c3.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 175528,
+      "sha256": "7249a7a89586e5b568163f3ed7e0c3788d3b4ed7fd82c7e353463ad8a426ba55",
+      "sourceSlot": 1
+    },
+    {
+      "file": "49d7d5d4cb95feae7b946643301253e5.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 208364,
+      "sha256": "9ec0c14788fe353ff3d53fab7446b6c18cd45cd0429df6ca7e52b23a08c13859",
+      "sourceSlot": 2
+    },
+    {
+      "file": "4aeccb4afd905617973cddf3769f8bdb.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 110118,
+      "sha256": "78d548bcffd428c7fcb2f713a0a6a8b2aa293736f4fd0148ce6695edd342e900",
+      "sourceSlot": 1
+    },
+    {
+      "file": "fd554c1d917585050064b3f150a392f7.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 146765,
+      "sha256": "22b2a3c9ee8e7d75e6770855766ff81ce3d6a84e2a9d8b62f978c5b08cfa6b29",
+      "sourcePage": 10
     }
   ]
 }

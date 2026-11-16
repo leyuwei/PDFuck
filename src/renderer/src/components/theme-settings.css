@@ -81,7 +81,7 @@
   display: grid;
   place-items: center;
   height: 100%;
-  color: #5575de;
+  color: var(--theme-accent-soft-ink);
   font-size: var(--ui-font-body);
   border-right: 1px solid #edf0f5;
 }
@@ -100,8 +100,8 @@
 }
 
 .language-select:focus-within {
-  border-color: #6d87df;
-  box-shadow: 0 0 0 3px #5575de18;
+  border-color: var(--theme-accent-border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 9.41%, transparent);
 }
 
 .theme-dark .language-select {
@@ -111,7 +111,7 @@
 
 .theme-dark .language-select > span {
   border-color: #40516a;
-  color: #9eb3f0;
+  color: var(--theme-accent-soft-ink);
 }
 
 .theme-settings-hint {

@@ -48,7 +48,7 @@
   gap: 10px;
   padding: 11px 14px;
   border-bottom: 1px solid #e5eaf2;
-  background: #fafbfe;
+  background: var(--theme-accent-faint);
 }
 
 .drawing-board-control { min-width: 0; min-height: 59px; box-sizing: border-box; display: grid; grid-template-rows: minmax(17px, 1fr) 32px; gap: 6px; padding: 8px 9px 9px; border: 1px solid #dde3ed; border-radius: 9px; background: #fff; }

@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { AiRequest, DesktopApi, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, PdfPasswordUpdate, PrintPdfRequest, ReadingPosition, SavePdfRequest, WindowDocumentState } from '../shared/contracts'
 
 const api: DesktopApi = {
+  updateState:()=>ipcRenderer.invoke('app:update-state'),
+  onUpdateState:callback=>{const listener=(_event:Electron.IpcRendererEvent,state:import('../shared/app-update').AppUpdateState|undefined)=>callback(state);ipcRenderer.on('app:update-state',listener);return()=>ipcRenderer.removeListener('app:update-state',listener)},
+  downloadUpdate:()=>ipcRenderer.invoke('app:update-download'),
+  updateAction:action=>ipcRenderer.invoke('app:update-action',action),
+  installUpdate:()=>ipcRenderer.invoke('app:update-install'),
+  cancelUpdateInstall:()=>ipcRenderer.send('app:update-cancel-install'),
   platform: process.platform,
   ensureFeatureResources: request => ipcRenderer.invoke('resources:ensure',request),
   resourceState: () => ipcRenderer.invoke('resources:state'),

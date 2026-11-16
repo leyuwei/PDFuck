@@ -1,3 +1,5 @@
+import { captionLabel } from './caption-label'
+import { pageLineNumbers } from './page-line-numbers'
 import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src/display/api'
 import type { EditableTextRegion, NativeTextFont, PdfPoint, PdfRect, TextStyle } from '../types'
 import { multiplyMatrix, type Matrix } from './page-coordinates'
@@ -152,6 +154,11 @@ function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => 
 }
 
 function textFlowBounds(words: WordBox[], startWord: WordBox, endWord: WordBox, rowY: (word: WordBox) => number): TextFlowBounds | undefined {
+  const boundaries = startWord.columnBoundaries
+  if (boundaries?.length && startWord.column === endWord.column && startWord.column !== undefined && !startWord.columnAmbiguous && !endWord.columnAmbiguous) {
+    const column = startWord.column
+    return { left: column ? boundaries[column - 1] : -Infinity, right: boundaries[column] ?? Infinity, padding: 0 }
+  }
   const startRect = textLineRect(words, startWord, rowY)
   const endRect = textLineRect(words, endWord, rowY)
   if (!startRect || !endRect) return undefined
@@ -200,11 +207,12 @@ function textFlowBounds(words: WordBox[], startWord: WordBox, endWord: WordBox, 
 }
 
 function wordBelongsToFlow(word: WordBox, flow: TextFlowBounds): boolean {
-  const rect = word.textRunRect || word.rect
+  const rect = word.rect
   const left = flow.left - flow.padding
   const right = flow.right + flow.padding
   const overlap = Math.max(0, Math.min(right, rect.x + rect.width) - Math.max(left, rect.x))
   if (overlap <= 0) return false
+  if (rect.x >= left && rect.x + rect.width <= right) return true
   const flowWidth = Math.max(1, right - left)
   const runWidth = Math.max(1, rect.width)
   // Narrow formula fragments inside the flow are retained. A full-width
@@ -236,6 +244,13 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     }
   }
   if (!words.length || comparePosition(anchor, focus) === 0) return undefined
+  const anchorWord=words[anchor.wordIndex],focusWord=words[focus.wordIndex]
+  const spanningBlock=anchorWord?.visualBlock!==undefined&&anchorWord.visualBlock===focusWord?.visualBlock&&words.some(word=>word.visualBlock===anchorWord.visualBlock&&word.columnAmbiguous)
+  // Crossing ordinary columns follows reading order, even when a stale caption block joins both paragraphs.
+  if(order==='geometry'&&anchorWord&&focusWord&&anchorWord.column!==undefined&&focusWord.column!==undefined&&anchorWord.column!==focusWord.column
+    &&!anchorWord.columnAmbiguous&&!focusWord.columnAmbiguous&&!spanningBlock&&anchorWord.visualRegion===undefined&&focusWord.visualRegion===undefined){
+    return textSelectionBetween(words,anchor,focus,'reading')
+  }
   const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
   const anchorColumn = words[anchor.wordIndex]?.column
   const focusColumn = words[focus.wordIndex]?.column
@@ -310,7 +325,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // Cross-page carets already delimit a reading range; geometric expansion can spill into another column.
   const visualBandIndices = order === 'reading' ? undefined : useStructuralBand
     ? words.map((word, index) => ({ word, index })).filter(({ word }) => regionId !== undefined ? word.visualRegion === regionId : blockId !== undefined
-      ? word.visualBlock === blockId
+      ? word.visualBlock === blockId && (constrainedColumn===undefined||spanningBlock||word.column===constrainedColumn)
       : useCrossColumnStructuralBand
         ? word.rect.y >= minY && word.rect.y <= maxY
         : word.rect.y >= minY && word.rect.y <= maxY && [...fallbackRows.values()].some((row) => row.includes(word) && row.some((candidate) => candidate.columnAmbiguous))).sort((left, right) => visualOrder(left.word, right.word)).map(({ index }) => index)
@@ -355,7 +370,7 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     const useVisualBand = Boolean(visualBandIndices?.length)
     if (word?.tableCell !== undefined || word?.visualRegion !== words[anchor.wordIndex]?.visualRegion) continue
     // Column-major traversal must not pull the other half of an earlier spanning equation into body text.
-    if (!useStructuralBand && word?.visualBlock !== undefined && word.visualBlock !== startWord.visualBlock && word.visualBlock !== endWord.visualBlock && rowY(word) < minY) continue
+    if (!useStructuralBand && word?.visualBlock !== undefined && word.visualBlock !== startWord.visualBlock && word.visualBlock !== endWord.visualBlock && rowY(word) < minY && (order==='geometry'||word.columnAmbiguous)) continue
     if (!word || (order === 'geometry' && ((!useVisualBand && flowBounds !== undefined && !wordBelongsToFlow(word, flowBounds)) || (!useVisualBand && flowBounds === undefined && constrainedColumn !== undefined && word.column !== constrainedColumn) || (!useVisualBand && flowBounds === undefined && hasColumnEndpoints && word.columnAmbiguous && wordIndex !== start.wordIndex && wordIndex !== end.wordIndex)))) continue
     const chars = Array.from(selectionWordText(word)), count = Math.max(1, chars.length)
     const from = wordIndex === start.wordIndex || wordIndex === end.wordIndex ? Math.max(0, Math.min(count, entry.from)) : 0
@@ -762,6 +777,8 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       if (Math.abs(angle) < .01 && !native?.vertical) horizontalWords.add(words.at(-1)!)
     }
   }
+  const marginNumbers=pageLineNumbers(words,graphics)
+  for(let index=words.length-1;index>=0;index--)if(marginNumbers.has(words[index]))words.splice(index,1)
   // PDF.js generally follows content-stream order, but mathematical
   // expressions are frequently emitted as independent text objects and can
   // appear before/after their surrounding prose in that order. Reconstruct
@@ -1044,7 +1061,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     const first = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[0]
     const second = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[1]
       || (first && /^(?:Fig\.?|Figure|Table|TABLE|图|表)$/u.test(first.text) && words.filter(word=>word!==first&&Math.abs((word.baselineY??word.rect.y)-(first.baselineY??first.rect.y))<first.rect.height*.35&&word.rect.x>=first.rect.x+first.rect.width-first.rect.height*.1&&word.rect.x-first.rect.x-first.rect.width<first.rect.height*1.8).sort((a,b)=>a.rect.x-b.rect.x)[0])
-    return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/iu.test(first.text) && /^(?:\d+[.):]?|[IVXLCDM]+[.):]?|\d+\([a-z]\))$/iu.test(second.text))
+    return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/iu.test(first.text) && /^(?:\d+[.):]?|[IVXLCDM]+[.):]?|\d+\([a-z]\))$/iu.test(second.text) && captionLabel([...new Set([...run.words,second])].sort((a,b)=>a.rect.x-b.rect.x).map(w=>w.text).join(' ')))
   }
   const equationWords = new Set(visualRows.filter(row => {
     const text = row.map(word => word.text).join(''), operators = text.match(/[=+−∑∫√×÷<>≤≥/]/gu)?.length || 0
@@ -1088,15 +1105,17 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   const captionTextRight=words.reduce((right,word)=>/^\d+$/.test(word.text)?right:Math.max(right,word.rect.x+word.rect.width),-Infinity)
   const captionOwnership=new Map<WordBox,number|undefined>()
   for (const caption of runs.filter(captionStart)) {
-    const height=Math.max(...caption.words.map(word=>word.rect.height))
-    const spanning=caption.words.some(word=>word.columnAmbiguous) || columnBoundaries.some(boundary=>Math.abs(caption.right-boundary)<=height*2 && runs.some(other=>other!==caption&&!captionStart(other)&&Math.abs(other.baselineY-caption.baselineY)<height*.4&&other.left>=boundary-height*.3&&other.left-boundary<height*2))
+    const captionHeights=caption.words.filter(word=>/\p{L}/u.test(word.text)).map(word=>word.rect.height).sort((a,b)=>a-b)
+    const height=captionHeights[Math.floor(captionHeights.length/2)]||Math.max(...caption.words.map(word=>word.rect.height))
+    const letterCount=(run:VisualRun,accept:(word:WordBox)=>boolean)=>run.words.reduce((count,w)=>count+(/\p{L}/u.test(w.text)&&accept(w)?w.text.length:0),0)
+    const spanning=caption.words.some(word=>word.columnAmbiguous) || columnBoundaries.some(boundary=>Math.abs(caption.right-boundary)<=height*2 && runs.some(other=>other!==caption&&!captionStart(other)&&Math.abs(other.baselineY-caption.baselineY)<height*.4&&letterCount(other,w=>Math.abs(w.rect.height-height)<=height*.07)>=letterCount(other,()=>true)*.6&&other.left>=boundary-height*.3&&other.left-boundary<height*2))
     let bottom=caption.baselineY
     const members:WordBox[]=[]
     for(const run of [...runs].sort((a,b)=>a.baselineY-b.baselineY||a.left-b.left)) {
       if(run.baselineY<caption.baselineY-height*.4 || !spanning&&run.column!==caption.column)continue
       if(run.baselineY-bottom>height*1.8)break
       if(run!==caption&&captionStart(run)&&run.baselineY>caption.baselineY+height*.4)break
-      if(run.words.some(word=>word.rect.height>height*1.18))break
+      if(letterCount(run,w=>w.rect.height>height*1.08)>letterCount(run,()=>true)*.5)break
       if(!spanning&&Math.min(caption.right,run.right)-Math.max(caption.left,run.left)<=0)continue
       members.push(...run.words);bottom=Math.max(bottom,run.baselineY)
     }

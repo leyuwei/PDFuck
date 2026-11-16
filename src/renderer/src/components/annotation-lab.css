@@ -57,7 +57,7 @@
 .ai-stream-activity[open] > summary { border-bottom: 1px solid #e2e8f3; }
 .ai-stream-activity > summary::-webkit-details-marker { display: none; }
 .ai-stream-activity > summary > i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #7d8aa4; }
-.ai-stream-activity.active > summary > i { background: #5575de; box-shadow: 0 0 0 4px #5575de1f; animation: ai-stream-pulse 1.25s ease-in-out infinite; }
+.ai-stream-activity.active > summary > i { background: var(--theme-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent) 12.16%, transparent); animation: ai-stream-pulse 1.25s ease-in-out infinite; }
 .ai-stream-activity > summary > b { min-width: 0; font-size: var(--ui-font-small); }
 .ai-stream-activity > summary > span { flex: 1 1 200px; margin-inline-start: auto; text-align: end; font-size: var(--ui-font-small); }
 .ai-stream-activity-body { display: grid; gap: 12px; max-height: 240px; padding: 14px; overflow: auto; }

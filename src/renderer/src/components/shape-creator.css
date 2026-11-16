@@ -76,7 +76,7 @@
 .theme-dark .shape-creator-preview > div { border-color: #475a73; background-color: #263347; background-image: linear-gradient(45deg, #303e53 25%, transparent 25%), linear-gradient(-45deg, #303e53 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #303e53 75%), linear-gradient(-45deg, transparent 75%, #303e53 75%); }
 .theme-dark .shape-creator-settings legend { color: #c1cede; }
 .theme-dark .shape-creator-kinds button.active,
-.theme-dark .shape-creator-segmented button.active { background: color-mix(in srgb, var(--theme-accent, #5575de) 22%, #202c3e); color: #dce7ff; }
+.theme-dark .shape-creator-segmented button.active { background: color-mix(in srgb, var(--theme-accent, #5575de) 22%, #202c3e); color: var(--theme-accent-soft-ink); }
 .theme-dark .shape-creator-range output,
 .theme-dark .shape-creator-color-control { border-color: #475a73; background: #202c3e; color: #c5d1e2; }
 .theme-dark .shape-creator-segmented { background: #111a28; }
