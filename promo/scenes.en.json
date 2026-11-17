@@ -1,0 +1,252 @@
+[
+  {
+    "id": "intro",
+    "shot": "01-workspace",
+    "seconds": 5,
+    "chapter": "PDFuck",
+    "title": [
+      "Turn complex",
+      "feedback into",
+      "clear next steps"
+    ],
+    "body": [
+      "AI support for close reading,",
+      "review and revision."
+    ],
+    "tag": "Make feedback actionable",
+    "foot": "Windows / macOS · Open-source PDF editor"
+  },
+  {
+    "id": "lab",
+    "shot": "02-lab",
+    "seconds": 5,
+    "chapter": "01 / AI-assisted reading",
+    "title": [
+      "AI, right where",
+      "you read"
+    ],
+    "body": [
+      "Document checks · Annotations",
+      "Translation · Figure insights"
+    ],
+    "tag": "Stay in your reading flow",
+    "focus": [
+      150,
+      650,
+      750,
+      1660
+    ],
+    "foot": "Connect your preferred AI service"
+  },
+  {
+    "id": "review",
+    "shot": "03b-review-result",
+    "seconds": 6,
+    "chapter": "01 / AI-assisted reading",
+    "title": [
+      "From feedback",
+      "to a focused",
+      "revision plan"
+    ],
+    "body": [
+      "Review logic, language",
+      "and evidence in context."
+    ],
+    "tag": "Whole-document review",
+    "focus": [
+      1740,
+      900,
+      2860,
+      1850
+    ],
+    "foot": "Illustrative AI response · Fixed local demo · Results vary"
+  },
+  {
+    "id": "annotation",
+    "shot": "03c-annotation",
+    "seconds": 4,
+    "chapter": "01 / AI-assisted reading",
+    "title": [
+      "Keep advice",
+      "beside the text"
+    ],
+    "body": [
+      "Add the review as an annotation",
+      "and keep track of revisions."
+    ],
+    "tag": "From review to action",
+    "focus": [
+      2110,
+      210,
+      2880,
+      1180
+    ],
+    "foot": "Illustrative AI response"
+  },
+  {
+    "id": "figure",
+    "shot": "04b-figure-focus",
+    "seconds": 5,
+    "chapter": "02 / Connected reading",
+    "title": [
+      "Find that figure.",
+      "Keep reading."
+    ],
+    "body": [
+      "Open the figure index",
+      "and jump to the page."
+    ],
+    "tag": "Figures & tables",
+    "foot": "Less page flipping between the text and its figures"
+  },
+  {
+    "id": "citation",
+    "shot": "05-citations",
+    "seconds": 5,
+    "chapter": "02 / Connected reading",
+    "title": [
+      "Follow a claim",
+      "to its source"
+    ],
+    "body": [
+      "Link in-text citations",
+      "to their references."
+    ],
+    "tag": "Linked citations",
+    "focus": [
+      1650,
+      1150,
+      2870,
+      1850
+    ],
+    "foot": "Keep the evidence and its source connected"
+  },
+  {
+    "id": "abbreviation",
+    "shot": "06-abbreviations",
+    "seconds": 5,
+    "chapter": "02 / Connected reading",
+    "title": [
+      "Acronym?",
+      "Look it up."
+    ],
+    "body": [
+      "Find the definition",
+      "without losing your place."
+    ],
+    "tag": "Abbreviation lookup",
+    "focus": [
+      1750,
+      1300,
+      2870,
+      1850
+    ],
+    "foot": "Figures, citations and definitions, close at hand"
+  },
+  {
+    "id": "crop",
+    "shot": "08-crop",
+    "seconds": 4,
+    "chapter": "03 / Smart cropping",
+    "title": [
+      "Need a figure?",
+      "Draw a box."
+    ],
+    "body": [
+      "Select the area to keep,",
+      "then let Smart Crop refine it."
+    ],
+    "tag": "Select your region",
+    "foot": "Original vector diagram · Actual cropping workflow",
+    "focus": [
+      1140,
+      980,
+      2460,
+      1510
+    ]
+  },
+  {
+    "id": "smart",
+    "shot": "09-smart-crop",
+    "seconds": 5,
+    "chapter": "03 / Smart cropping",
+    "title": [
+      "Clean edges.",
+      "Less tweaking."
+    ],
+    "body": [
+      "Detect content boundaries",
+      "and adjust the margin."
+    ],
+    "tag": "Smart Crop",
+    "foot": "Select → Detect boundaries → Confirm crop",
+    "focus": [
+      1140,
+      1040,
+      2460,
+      1510
+    ]
+  },
+  {
+    "id": "eps",
+    "shot": "11-eps",
+    "seconds": 4,
+    "chapter": "03 / Figure export",
+    "title": [
+      "Crop neatly.",
+      "Export as EPS."
+    ],
+    "body": [
+      "Choose EPS for your",
+      "next vector-editing step."
+    ],
+    "tag": "Vector export",
+    "foot": "EPS requires Poppler (pdftocairo) · Format selection shown",
+    "focus": [
+      160,
+      820,
+      750,
+      1380
+    ]
+  },
+  {
+    "id": "tools",
+    "shot": "12-tools",
+    "seconds": 6,
+    "chapter": "04 / Everyday PDF tools",
+    "title": [
+      "Your everyday",
+      "PDF toolkit"
+    ],
+    "body": [
+      "Merge files · Edit text",
+      "Add shapes · Watermarks",
+      "OCR for scanned documents"
+    ],
+    "tag": "Keep working in one place",
+    "focus": [
+      150,
+      370,
+      760,
+      1650
+    ],
+    "foot": "Feature overview · Office import requires Office or LibreOffice"
+  },
+  {
+    "id": "outro",
+    "shot": "01-workspace",
+    "seconds": 6,
+    "chapter": "Try PDFuck",
+    "title": [
+      "Read, revise",
+      "and organize",
+      "with less friction"
+    ],
+    "body": [
+      "PDFuck",
+      "Windows / macOS"
+    ],
+    "tag": "Start with one PDF",
+    "foot": "github.com/leyuwei/PDFuck/releases"
+  }
+]

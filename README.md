@@ -4,11 +4,11 @@
 
 [简体中文](#chinese) · [English](#english)
 
-<img width="2154" height="1352" alt="ScreenShot_2026-09-18_113723_792" src="promo/output/PDFuck-2.1.21-promo-small.gif" />
-
 <a id="chinese"></a>
 
 ## 简体中文
+
+<img width="960" alt="PDFuck 中文演示" src="promo/output/PDFuck-promo-zh-small.gif" />
 
 
 **为论文精读、审稿与修改设计的文档编辑器。**
@@ -97,6 +97,8 @@ Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 
 <a id="english"></a>
 
 ## English
+
+<img width="960" alt="PDFuck demo in English" src="promo/output/PDFuck-promo-en-small.gif" />
 
 **A document editor for close reading, peer review, and revision.**
 

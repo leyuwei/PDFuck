@@ -1,10 +1,11 @@
-import json, subprocess, hashlib, re
+import json, subprocess, hashlib, re, sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
 P=Path(__file__).resolve().parents[1];O=P/'output';Q=P/'qa';ff=imageio_ffmpeg.get_ffmpeg_exe()
-scenes=json.loads((P/'scenes.json').read_text());duration=sum(s['seconds'] for s in scenes)
-video=O/'PDFuck-2.1.21-promo.mp4';gif=O/'PDFuck-2.1.21-promo.gif'
+lang='en' if '--en' in sys.argv else 'zh';Q=Q/lang;stem=f'PDFuck-promo-{lang}'
+scenes=json.loads((P/('scenes.en.json' if lang=='en' else 'scenes.json')).read_text());duration=sum(s['seconds'] for s in scenes)
+video=O/f'{stem}.mp4';gif=O/f'{stem}.gif'
 reader=imageio_ffmpeg.read_frames(str(video));meta=next(reader);reader.close()
 assert meta['size']==(1920,1080),meta
 assert meta['fps']==30,meta
@@ -18,7 +19,17 @@ with Image.open(gif) as im:
  n=im.n_frames;total=0
  for i in range(n):im.seek(i);im.load();total+=im.info.get('duration',0)
  assert abs(total/1000-duration)<.11,(total,duration)
-assert len(list(O.glob('*.mp4')))==1 and len(list(O.glob('*.gif')))==1
+small=O/f'{stem}-small.gif'
+assert small.stat().st_size<2_000_000
+with Image.open(small) as im:
+ assert im.info.get('loop')==0
+ small_frames=im.n_frames;small_duration=0;small_size=im.size
+ for index in range(small_frames):im.seek(index);im.load();small_duration+=im.info.get('duration',0)
+ assert abs(small_duration/1000-duration)<.11
+# Public copy, filenames and rendered app version tag must remain version-free.
+assert not re.search(r'\bv?\d+\.\d+\.\d+\b',json.dumps(scenes))
+assert not re.search(r'\bv?\d+\.\d+\.\d+\b',(O/f'promo.{lang}.srt').read_text())
+
 ends=[];time=0
 for s in scenes:time+=s['seconds'];ends.append(round((time-.5)*30))
 expr='+'.join(f'eq(n,{n})' for n in ends)
@@ -28,5 +39,5 @@ f=ImageFont.truetype('/System/Library/Fonts/STHeiti Light.ttc',18)
 for i,s in enumerate(scenes):
  im=Image.open(Q/f'encoded-{i+1:02}.png');x=i%3*640;y=i//3*390;contact.paste(im,(x,y));d.text((x+12,y+362),f'{i+1:02} / {s["id"]}',font=f,fill='white')
 contact.save(Q/'encoded-storyboard.jpg',quality=92)
-report={'status':'passed','durationSeconds':duration,'video':{'size':list(meta['size']),'fps':meta['fps'],'framesDecoded':frames,'audioCodec':meta['audio_codec'],'fullDecodeErrors':0},'gif':{'size':[960,540],'frames':n,'durationSeconds':total/1000,'loop':0},'outputs':{p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in [video,gif,O/'cover.png']},'visualReview':'See VALIDATION.md; encoded storyboard extracted from final MP4.'}
+report={'status':'passed','durationSeconds':duration,'video':{'size':list(meta['size']),'fps':meta['fps'],'framesDecoded':frames,'audioCodec':meta['audio_codec'],'fullDecodeErrors':0},'gif':{'size':[960,540],'frames':n,'durationSeconds':total/1000,'loop':0},'smallGif':{'size':small_size,'frames':small_frames,'durationSeconds':small_duration/1000,'bytes':small.stat().st_size},'outputs':{p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in [video,gif,small,O/f'cover-{lang}.png']},'visualReview':'See VALIDATION.md; encoded storyboard extracted from final MP4.'}
 (Q/'verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2));print(json.dumps(report,ensure_ascii=False,indent=2))

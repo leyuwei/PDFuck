@@ -1,7 +1,7 @@
 # 发布配文
 
 ## 标题
-用 AI 拆解复杂的导师批注｜PDFuck 2.1.21
+用 AI 拆解复杂的导师批注｜PDFuck
 
 ## 完整版
 导师批注很复杂？把修改放回论文的上下文里。
@@ -14,11 +14,11 @@ PDFuck 将 AI 工具集成到 PDF 阅读过程中：全文检查、自动批注�
 
 合并创建 PDF、编辑页面文字、添加图形、OCR 识别扫描件和添加水印等常用功能也都支持。
 
-欢迎试用 PDFuck 2.1.21，支持 Windows 和 macOS。
+欢迎试用 PDFuck，支持 Windows 和 macOS。
 下载：https://github.com/leyuwei/PDFuck/releases
 
 ## 短版
-读论文、回批注、裁图表，一个工作区完成。PDFuck 2.1.21：AI 辅助阅读，一键图表、引文关联、缩写快查与智能裁切。Windows / macOS，欢迎试用！
+读论文、回批注、裁图表，一个工作区完成。PDFuck：AI 辅助阅读，一键图表、引文关联、缩写快查与智能裁切。Windows / macOS，欢迎试用！
 https://github.com/leyuwei/PDFuck/releases
 
 ## 素材说明

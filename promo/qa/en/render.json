@@ -1,0 +1,13 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "seconds": 60,
+  "frames": 1800,
+  "scenes": 12,
+  "audioPeak": 0.03587054666943462,
+  "renderer": "Pillow + FFmpeg",
+  "capture": "Electron CDP screencast + lossless stills",
+  "gifWidth": 960,
+  "gifFps": 10
+}

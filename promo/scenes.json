@@ -3,7 +3,7 @@
     "id": "intro",
     "shot": "01-workspace",
     "seconds": 5,
-    "chapter": "PDFuck 2.1.21",
+    "chapter": "PDFuck",
     "title": [
       "用 AI 拆解",
       "复杂的",
@@ -242,7 +242,7 @@
       "更顺手"
     ],
     "body": [
-      "PDFuck 2.1.21",
+      "PDFuck",
       "Windows / macOS"
     ],
     "tag": "从一份 PDF 开始",

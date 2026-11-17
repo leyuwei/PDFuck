@@ -6,10 +6,15 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
 P=Path(__file__).resolve().parents[1]; O=P/'output';Q=P/'qa';O.mkdir(exist_ok=True)
+LANG='en' if '--en' in sys.argv else 'zh'
+Q=Q/LANG;Q.mkdir(exist_ok=True);CAP=P/'captures'/LANG
+STEM=f'PDFuck-promo-{LANG}'
 W,H,FPS=1920,1080,30
-SCENES=json.loads((P/'scenes.json').read_text()); DURATION=sum(s['seconds'] for s in SCENES)
+SCENES=json.loads((P/('scenes.en.json' if LANG=='en' else 'scenes.json')).read_text()); DURATION=sum(s['seconds'] for s in SCENES)
 FF=imageio_ffmpeg.get_ffmpeg_exe()
 FONT='/System/Library/Fonts/STHeiti Medium.ttc'; REG='/System/Library/Fonts/STHeiti Light.ttc'
+if LANG=='en':
+ FONT='/System/Library/Fonts/Supplemental/Arial Bold.ttf';REG='/System/Library/Fonts/Supplemental/Arial.ttf'
 @lru_cache(None)
 def font(size,bold=False):return ImageFont.truetype(FONT if bold else REG,size)
 # A restrained navy gradient; all captions stay outside the app viewport.
@@ -33,17 +38,17 @@ def txt(d,xy,text,size,color='#f4f8ff',bold=False,maxwidth=None):
 STATIC=[]
 for i,s in enumerate(SCENES):
  im=BG.copy();d=ImageDraw.Draw(im);im.paste(ICON,(64,44),ICON)
- txt(d,(140,50),'PDFuck',40,bold=True);txt(d,(310,61),'2.1.21',22,'#99adbf')
+ txt(d,(140,50),'PDFuck',40,bold=True)
  txt(d,(600,67),s['chapter'],24,'#a5bcce')
  txt(d,(1770,68),f'{i+1:02d} / {len(SCENES):02d}',20,'#a5bcce')
  d.line((64,126,1856,126),fill='#294053',width=1)
  txt(d,(64,227),s['tag'],26,'#64dec7',True,maxwidth=490)
- for k,line in enumerate(s['title']):txt(d,(62,301+k*83),line,62,bold=True,maxwidth=496)
+ for k,line in enumerate(s['title']):txt(d,(62,301+k*83),line,52 if LANG=='en' else 62,bold=True,maxwidth=496)
  base=332+len(s['title'])*83
  d.line((64,base,130,base),fill='#64dec7',width=4)
  for k,line in enumerate(s['body']):txt(d,(64,base+35+k*45),line,28,'#b9cbda',maxwidth=495)
  if s['id']=='outro':
-  d.rounded_rectangle((64,829,490,903),18,fill='#64dec7');txt(d,(105,848),'欢迎下载试用',32,'#102d35',True)
+  d.rounded_rectangle((64,829,490,903),18,fill='#64dec7');txt(d,(105,848),'Try PDFuck' if LANG=='en' else '欢迎下载试用',32,'#102d35',True)
  else:txt(d,(64,900),'READ  /  REVIEW  /  REVISE',19,'#68879d')
  # frame and fixed safe footer
  d.rounded_rectangle((594,148,1866,1000),18,fill='#30465a')
@@ -57,8 +62,8 @@ def screen(s,t):
  if t<1.4 and span:
   stamp=max(0,endpoint-span)+t/1.4*min(span,endpoint)
   idx=max(0,bisect.bisect_right(MT,stamp)-1)
-  img=read_image(str(P/'captures/motion'/MOTION[idx]['file']))
- else:img=read_image(str(P/'captures'/(s['shot']+'.png')))
+  img=read_image(str(CAP/'motion'/MOTION[idx]['file']))
+ else:img=read_image(str(CAP/(s['shot']+'.png')))
  rect=(0,0,2880,1920)
  if s.get('focus'):
   goal=focus_box(s['focus']);z=ease((t-1.5)/1.2)
@@ -89,14 +94,14 @@ def timestamp(seconds):
 thumbs=[];current=0;srt=[]
 for i,s in enumerate(SCENES):
  im=frame(i,s['seconds']-.5,current+s['seconds']-.5);im.save(Q/f'{i+1:02}-{s["id"]}.png');thumbs.append(im.resize((640,360)))
- srt.append(f'{i+1}\n{timestamp(current)} --> {timestamp(current+s["seconds"])}\n'+''.join(s['title'])+'\n'+'；'.join(s['body'])+'\n');current+=s['seconds']
-(P/'output/promo.zh-CN.srt').write_text('\n'.join(srt))
-cover=frame(0,4,0);cover.save(O/'cover.png')
+ srt.append(f'{i+1}\n{timestamp(current)} --> {timestamp(current+s["seconds"])}\n'+(' ' if LANG=='en' else '').join(s['title'])+'\n'+(' / ' if LANG=='en' else '；').join(s['body'])+'\n');current+=s['seconds']
+(O/f'promo.{LANG}.srt').write_text('\n'.join(srt))
+cover=frame(0,4,0);cover.save(O/f'cover-{LANG}.png')
 contact=Image.new('RGB',(1920,4*390),'#0c192b');d=ImageDraw.Draw(contact)
 for i,im in enumerate(thumbs):x=i%3*640;y=i//3*390;contact.paste(im,(x,y));d.text((x+12,y+362),f'{i+1:02} / {SCENES[i]["id"]}',font=font(18),fill='#c6d5e3')
 contact.save(Q/'storyboard.jpg',quality=92)
 if '--preview' in sys.argv:print('Preview ready');sys.exit()
-peak=music();output=O/'PDFuck-2.1.21-promo.mp4'
+peak=music();output=O/f'{STEM}.mp4'
 cmd=[FF,'-y','-hide_banner','-loglevel','error','-f','rawvideo','-pix_fmt','rgb24','-s','1920x1080','-r',str(FPS),'-i','-','-i',str(P/'assets/music.wav'),'-c:v','libx264','-preset','fast','-crf','19','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-movflags','+faststart','-shortest',str(output)]
 proc=subprocess.Popen(cmd,stdin=subprocess.PIPE);elapsed=0;last=None
 try:
@@ -109,6 +114,14 @@ try:
 finally:proc.stdin.close()
 assert proc.wait()==0,'MP4 encoding failed'
 # Palette generation / use in one graph avoids an extra deliverable GIF palette.
-subprocess.run([FF,'-y','-hide_banner','-loglevel','error','-i',str(output),'-filter_complex','fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff:max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3','-loop','0',str(O/'PDFuck-2.1.21-promo.gif')],check=True)
+subprocess.run([FF,'-y','-hide_banner','-loglevel','error','-i',str(output),'-filter_complex','fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff:max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3','-loop','0',str(O/f'{STEM}.gif')],check=True)
+# Keep the lightweight web variant strictly under decimal 2 MB.
+small=O/f'{STEM}-small.gif'
+for width,fps,colors in [(640,3,64),(640,2,64),(600,2,48),(560,2,48)]:
+ graph=f'fps={fps},scale={width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle'
+ subprocess.run([FF,'-y','-v','error','-i',str(output),'-filter_complex',graph,'-loop','0',str(small)],check=True)
+ if small.stat().st_size<2_000_000:break
+assert small.stat().st_size<2_000_000
+(Q/'compression.json').write_text(json.dumps({'width':width,'fps':fps,'colors':colors,'bytes':small.stat().st_size},indent=2))
 (Q/'render.json').write_text(json.dumps({'width':W,'height':H,'fps':FPS,'seconds':DURATION,'frames':DURATION*FPS,'scenes':len(SCENES),'audioPeak':peak,'renderer':'Pillow + FFmpeg','capture':'Electron CDP screencast + lossless stills','gifWidth':960,'gifFps':10},indent=2))
 print('Rendered MP4 and GIF',flush=True)

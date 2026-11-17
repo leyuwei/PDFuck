@@ -1,0 +1,59 @@
+1
+00:00:00,000 --> 00:00:05,000
+Turn complex feedback into clear next steps
+AI support for close reading, / review and revision.
+
+2
+00:00:05,000 --> 00:00:10,000
+AI, right where you read
+Document checks · Annotations / Translation · Figure insights
+
+3
+00:00:10,000 --> 00:00:16,000
+From feedback to a focused revision plan
+Review logic, language / and evidence in context.
+
+4
+00:00:16,000 --> 00:00:20,000
+Keep advice beside the text
+Add the review as an annotation / and keep track of revisions.
+
+5
+00:00:20,000 --> 00:00:25,000
+Find that figure. Keep reading.
+Open the figure index / and jump to the page.
+
+6
+00:00:25,000 --> 00:00:30,000
+Follow a claim to its source
+Link in-text citations / to their references.
+
+7
+00:00:30,000 --> 00:00:35,000
+Acronym? Look it up.
+Find the definition / without losing your place.
+
+8
+00:00:35,000 --> 00:00:39,000
+Need a figure? Draw a box.
+Select the area to keep, / then let Smart Crop refine it.
+
+9
+00:00:39,000 --> 00:00:44,000
+Clean edges. Less tweaking.
+Detect content boundaries / and adjust the margin.
+
+10
+00:00:44,000 --> 00:00:48,000
+Crop neatly. Export as EPS.
+Choose EPS for your / next vector-editing step.
+
+11
+00:00:48,000 --> 00:00:54,000
+Your everyday PDF toolkit
+Merge files · Edit text / Add shapes · Watermarks / OCR for scanned documents
+
+12
+00:00:54,000 --> 00:01:00,000
+Read, revise and organize with less friction
+PDFuck / Windows / macOS

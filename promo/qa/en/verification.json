@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "durationSeconds": 60,
+  "video": {
+    "size": [
+      1920,
+      1080
+    ],
+    "fps": 30.0,
+    "framesDecoded": 1800,
+    "audioCodec": "aac",
+    "fullDecodeErrors": 0
+  },
+  "gif": {
+    "size": [
+      960,
+      540
+    ],
+    "frames": 600,
+    "durationSeconds": 60.0,
+    "loop": 0
+  },
+  "smallGif": {
+    "size": [
+      640,
+      360
+    ],
+    "frames": 180,
+    "durationSeconds": 60.0,
+    "bytes": 1917012
+  },
+  "outputs": {
+    "PDFuck-promo-en.mp4": {
+      "bytes": 11971970,
+      "sha256": "8d5faca1a8ba49e19f961a9a73c642752f8d1b3057e406a24ae21ae75823e10a"
+    },
+    "PDFuck-promo-en.gif": {
+      "bytes": 13092886,
+      "sha256": "9443d3f39b4c2e03343dca14c4a2665aea4ec69a8fd2000d7b74a49ea5936c36"
+    },
+    "PDFuck-promo-en-small.gif": {
+      "bytes": 1917012,
+      "sha256": "43e8f7284e7c75a4319be757d2bb575810c070290994614ed5516cbb8b0ba419"
+    },
+    "cover-en.png": {
+      "bytes": 365876,
+      "sha256": "cdfcc30969c04300511dcef7f679eb7a4844a2df34b7503e3b59c779f4db237e"
+    }
+  },
+  "visualReview": "See VALIDATION.md; encoded storyboard extracted from final MP4."
+}
