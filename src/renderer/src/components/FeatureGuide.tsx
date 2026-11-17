@@ -3,10 +3,19 @@ import { ui, useInterfaceLanguage } from '../lib/i18n'
 import type { ModuleKey, Tool } from '../types'
 import { LanguagePicker } from './LanguagePicker'
 
-const KEY = 'pdfuck.feature-guide.version'
-const revision = (version: string) => `${version}:practice-1`
-export function guideNeeded(version: string): boolean { try { return localStorage.getItem(KEY) !== revision(version) } catch { return true } }
-export function markGuideSeen(version: string): void { try { localStorage.setItem(KEY, revision(version)) } catch { /* Profiles can disable local storage. */ } }
+const KEY = 'pdfuck.feature-guide.completed'
+const LEGACY_KEY = 'pdfuck.feature-guide.version'
+export function guideNeeded(_version?: string): boolean {
+  try {
+    if (localStorage.getItem(KEY) === 'true') return false
+    if (/^\d+\.\d+\.\d+(?::practice-\d+)?$/.test(localStorage.getItem(LEGACY_KEY) || '')) {
+      markGuideSeen()
+      return false
+    }
+    return true
+  } catch { return true }
+}
+export function markGuideSeen(_version?: string): void { try { localStorage.setItem(KEY, 'true') } catch { /* Profiles can disable local storage. */ } }
 export const GUIDE_STEPS = [
   { id: 'workspace', module: 'view', target: '.left-dock' },
   { id: 'reading', module: 'view', page: 0, target: '.bookmark-panel, .document-area' },

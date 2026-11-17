@@ -1,6 +1,6 @@
 import type { AddAnnotationRequest, AnnotationKind, PdfPoint, PdfRect } from '../types'
 import type { PageTextSelection } from './page-text-selection'
-import { textSelectionForQuery, type WordBox } from './text-layout'
+import { insertionPointAt, textSelectionForQuery, type WordBox } from './text-layout'
 import { sourceQuoteMatch } from './text-document'
 
 export const AUTOMATIC_ANNOTATION_SCHEMA_VERSION = 1
@@ -368,11 +368,11 @@ function selectionRects(selection: PageTextSelection | undefined, pageIndex: num
   return selection.pageIndex === pageIndex ? selection.rects : []
 }
 
-function insertionPoint(rects: PdfRect[], side: AutomaticAnnotationInsertSide, quote: string): PdfPoint {
+function insertionPoint(rects: PdfRect[], side: AutomaticAnnotationInsertSide, quote: string, words: WordBox[]): PdfPoint {
   const rect = side === 'before' ? rects[0] : rects.at(-1)!
   const rightToLeft = RIGHT_TO_LEFT_SCRIPT.test(quote)
   const useRightEdge = side === 'before' ? rightToLeft : !rightToLeft
-  return { x: useRightEdge ? rect.x + rect.width : rect.x, y: rect.y + rect.height }
+  return insertionPointAt(words, { x: useRightEdge ? rect.x + rect.width : rect.x, y: rect.y + rect.height / 2 })
 }
 
 function annotationKind(action: AutomaticAnnotationAction): AnnotationKind {
@@ -404,7 +404,7 @@ export function draftAutomaticAnnotations(response: AutomaticAnnotationModelResp
       kind: annotationKind(finding.action),
       rects: target.rects.map((rect) => ({ ...rect })),
       content: annotationContent(finding),
-      point: finding.action === 'insert' ? insertionPoint(target.rects, finding.insertSide!, finding.quote)
+      point: finding.action === 'insert' ? insertionPoint(target.rects, finding.insertSide!, finding.quote, block.words)
         : finding.action === 'note' ? { x: target.rects[0].x, y: target.rects[0].y } : undefined,
       action: finding.action,
       blockId: finding.blockId,

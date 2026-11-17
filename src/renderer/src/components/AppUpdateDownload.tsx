@@ -8,7 +8,7 @@ import './resource-download.css'
 export function AppUpdateDownload(){
  useInterfaceLanguage()
  const [state,setState]=useState<AppUpdateState>(),[minimized,setMinimized]=useState(false),[error,setError]=useState('')
- const floating=useFloatingWindow(state?.version&&!minimized)
+ const floating=useFloatingWindow(state?.version&&!minimized, false, { storageKey: 'pdfuck.update-download-window.v1' })
  useEffect(()=>{let active=true,seen=false;const off=window.desktop.onUpdateState(s=>{seen=true;setState(s)});void window.desktop.updateState().then(s=>{if(active&&!seen)setState(s)}).catch(()=>{});return()=>{active=false;off()}},[])
  useEffect(()=>{setMinimized(false);setError('')},[state?.version])
  if(!state)return null

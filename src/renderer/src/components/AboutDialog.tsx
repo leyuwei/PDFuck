@@ -8,7 +8,7 @@ import { ReleaseNotes } from './ReleaseNotes'
 
 export function AboutDialog({ version, onClose, onGuide }: { version: string; onClose(): void; onGuide?(): void }) {
   useInterfaceLanguage()
-  const floating = useFloatingWindow(true)
+  const floating = useFloatingWindow(true, false, { storageKey: 'pdfuck.about-window.v1' })
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<UpdateCheckResult>()
   const [linkError, setLinkError] = useState<false|'download'|'link'>(false)

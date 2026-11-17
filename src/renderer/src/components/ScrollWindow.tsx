@@ -5,7 +5,7 @@ import { Children, cloneElement, isValidElement, useEffect, useRef, type Compone
 export function ScrollWindow({ children, footer, className = '', autoHideScrollbar = false, ref: externalRef, ...props }: ComponentPropsWithRef<'div'> & { autoHideScrollbar?: boolean; footer?: ReactNode }) {
   const body = useRef<HTMLDivElement>(null)
   const automaticDrag = className.split(/\s+/).includes('modal') && !externalRef
-  const floating = useFloatingWindow(automaticDrag)
+  const floating = useFloatingWindow(automaticDrag, false, { storageKey: `pdfuck.modal-window.${className.trim().split(/\s+/).sort().join('.')}.v1` })
   useEffect(() => {
     const element = automaticDrag ? floating.ref.current : typeof externalRef === 'object' ? externalRef?.current : undefined
     const backdrop = element?.closest<HTMLElement>('.modal-backdrop')

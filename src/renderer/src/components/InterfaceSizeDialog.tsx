@@ -8,7 +8,7 @@ export function InterfaceSizeDialog({ theme, onClose }: { theme: 'light' | 'dark
   useInterfaceLanguage()
   const [size, setSize] = useState(savedInterfaceSize)
   const fonts = interfaceFontSizes(size)
-  const floating = useFloatingWindow(true)
+  const floating = useFloatingWindow(true, false, { storageKey: 'pdfuck.interface-size-window.v1' })
   useLayoutEffect(() => { applyInterfaceSize(size); return () => applyInterfaceSize(savedInterfaceSize()) }, [size])
   return <div className={`modal-backdrop interface-size-backdrop theme-${theme}`} onClick={event => { if (event.target === event.currentTarget) onClose() }} onKeyDownCapture={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
     <ScrollWindow ref={floating.ref} style={floating.style} className="modal interface-size-dialog" role="dialog" aria-modal="true" aria-labelledby="interface-size-title">

@@ -74,7 +74,7 @@ function sourceCaretPoint(editor: HTMLTextAreaElement, reveal = false) {
 }
 
 function MarkdownLayoutDialog({ document, onChange, onClose }: { document: MarkdownDocument; onChange(options: MarkdownOptions): void; onClose(): void }) {
-  const floating = useFloatingWindow(true), options = document.options
+  const floating = useFloatingWindow(true, false, { storageKey: 'pdfuck.markdown-options-window.v1' }), options = document.options
   const update = (patch: Partial<MarkdownOptions>) => onChange({ ...options, ...patch })
   return <div className="modal-backdrop md-dialog-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }} onKeyDownCapture={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
     <ScrollWindow ref={floating.ref} style={floating.style} className="modal md-layout-dialog md-dialog" role="dialog" aria-modal="true" aria-labelledby="md-layout-title" footer={<div className="modal-actions"><span>A4 · {ui(`md.${options.template}`)}</span><button autoFocus type="button" className="primary" onClick={onClose}>{ui('ui.close')}</button></div>}>
@@ -94,7 +94,7 @@ function MarkdownLayoutDialog({ document, onChange, onClose }: { document: Markd
 }
 
 function MarkdownInsertDialog({ selectedText, initialType, onInsert, onClose }: { selectedText: string; initialType: MarkdownInsertType; onInsert(type: MarkdownInsertType, content: string, address: string, options: MarkdownInsertionOptions): void; onClose(): void }) {
-  const floating = useFloatingWindow(true)
+  const floating = useFloatingWindow(true, false, { storageKey: 'pdfuck.markdown-insert-window.v1' })
   const [type, setType] = useState(initialType), [content, setContent] = useState(selectedText), [address, setAddress] = useState('')
   const [options, setOptions] = useState<MarkdownInsertionOptions>({ level: 2, rows: 2, columns: 2, language: '' })
   const preview = markdownInsertion('', 0, 0, type, content || ui(`md.${type}`), address, options).source

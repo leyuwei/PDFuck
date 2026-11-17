@@ -18,7 +18,7 @@ export function OcrDialog({ pageCount, currentPage, hidden = false, onMinimize, 
   const [range, setRange] = useState(() => compactPageSelection(allPageIndices(pageCount)))
   const [busy, setBusy] = useState(false), [progress, setProgress] = useState<OcrProgress>()
   const [result, setResult] = useState<number>(), [error, setError] = useState('')
-  const controller = useRef<AbortController | undefined>(undefined), floating = useFloatingWindow(!hidden)
+  const controller = useRef<AbortController | undefined>(undefined), floating = useFloatingWindow(!hidden, false, { storageKey: 'pdfuck.ocr-window.v1' })
   const parsed = parsePageSelection(range, pageCount), valid = parsed.pages.length > 0 && !parsed.invalid.length
   useEffect(() => {
     const detach = window.desktop.onWindowRequestClose(() => controller.current?.abort())

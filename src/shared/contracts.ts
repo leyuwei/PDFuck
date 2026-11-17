@@ -143,7 +143,7 @@ export interface LabReportRequest {
   name: string
   html: string
   markdown: string
-  sourceText: string
+  sourceText?: string
   fontSizes: { small: number; body: number; title: number }
   sourcePdf?: Uint8Array
 }

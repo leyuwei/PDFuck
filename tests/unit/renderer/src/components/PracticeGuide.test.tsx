@@ -27,9 +27,9 @@ it('switches all ten languages using native names and SVG flags, and persists th
     expect(interfaceLanguage()).toBe(code); expect(localStorage.getItem('pdfuck.interface-language.v1')).toBe(code); expect(host.querySelector('.language-globe')).toBeTruthy(); expect(host.querySelector('.language-picker-options')).toBeNull()
   }
 })
-it('reoffers the practice tour to users of the earlier guide, then remembers completion', () => {
-  localStorage.setItem('pdfuck.feature-guide.version', '2.1.18'); expect(guideNeeded('2.1.18')).toBe(true)
-  markGuideSeen('2.1.18'); expect(guideNeeded('2.1.18')).toBe(false); expect(guideNeeded('2.1.19')).toBe(true)
+it('remembers prior guide completion across updates', () => {
+  localStorage.setItem('pdfuck.feature-guide.version', '2.1.18'); expect(guideNeeded('2.1.18')).toBe(false)
+  markGuideSeen('2.1.18'); expect(guideNeeded('2.1.18')).toBe(false); expect(guideNeeded('2.1.19')).toBe(false)
 })
 it('starts with language selection, opens a sample only on request and navigates all eleven lessons', async () => {
   const start = vi.fn(async () => {}), step = vi.fn(), close = vi.fn(), action = vi.fn()

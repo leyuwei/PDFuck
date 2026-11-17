@@ -103,9 +103,9 @@ describe('PDF text layout', () => {
     expect(caret?.x).toBe(40)
   })
 
-  it('places an insertion marker below the line at the nearest character boundary', () => {
+  it('locates an insertion boundary and carries its text height', () => {
     const point = insertionPointAt([{ text: 'word', order: 0, rect: { x: 10, y: 20, width: 40, height: 12 } }], { x: 27, y: 25 })
-    expect(point).toEqual({ x: 30, y: 32 })
+    expect(point).toEqual({ x: 30, y: 29.6, textHeight: 12 })
   })
 
   it('uses measured proportional character boundaries for English text', () => {

@@ -9,7 +9,7 @@ const errorText=(error:unknown)=>{const key=String(error).match(/resources\.[A-Z
 export function ResourceDownloadDialog(){
   const language=useInterfaceLanguage(),[state,setState]=useState<ResourceDownloadState>(),[settings,setSettings]=useState(false),[proxy,setProxy]=useState<ResourceProxy>({mode:'system',url:'',username:''}),[error,setError]=useState(''),[saved,setSaved]=useState(false),[saving,setSaving]=useState(false)
   const [minimized,setMinimized]=useState(false)
-  const floating=useFloatingWindow(state?.id&&!minimized),closeRef=useRef<HTMLButtonElement>(null),priorFocus=useRef<HTMLElement|null>(null)
+  const floating=useFloatingWindow(state?.id&&!minimized, false, { storageKey: 'pdfuck.resource-download-window.v1' }),closeRef=useRef<HTMLButtonElement>(null),priorFocus=useRef<HTMLElement|null>(null)
   useEffect(()=>{let active=true,seen=false;const detach=window.desktop.onResourceState(value=>{seen=true;if(active)setState(value)});void window.desktop.resourceState().then(value=>{if(active&&!seen)setState(value)}).catch(()=>{});return()=>{active=false;detach()}},[])
   useEffect(()=>{if(!state?.id)return;const detach=window.desktop.onWindowRequestClose(()=>{void window.desktop.resourceAction(state.id,'cancel').catch(()=>{})});return detach},[state?.id])
   useEffect(()=>{if(!state?.id)return;setMinimized(false);priorFocus.current=document.activeElement as HTMLElement;closeRef.current?.focus();setSettings(false);setError('');void window.desktop.resourceProxy().then(setProxy).catch(reason=>setError(errorText(reason)));return()=>{if(priorFocus.current?.isConnected)priorFocus.current.focus()}},[state?.id])

@@ -41,18 +41,37 @@ function readFloatingSize(key: string | undefined): FloatingSize | undefined {
   } catch { return undefined }
 }
 
+function readFloatingPosition(key: string | undefined): { left: number; top: number } | undefined {
+  if (!key) return undefined
+  try {
+    const value = JSON.parse(localStorage.getItem(`${key}.position`) || '')
+    return value && Number.isFinite(value.left) && Number.isFinite(value.top) ? { left: value.left, top: value.top } : undefined
+  } catch { return undefined }
+}
+
+function saveFloatingPosition(key: string | undefined, position: { left: number; top: number }) {
+  if (key) { try { localStorage.setItem(`${key}.position`, JSON.stringify(position)) } catch { /* Storage is optional. */ } }
+}
+
 export function useFloatingWindow(active: unknown, bottomRight = false, options: FloatingWindowOptions = {}) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ left: number; top: number }>()
   const [size, setSize] = useState<FloatingSize>()
   const drag = useRef<{ x: number; y: number; left: number; top: number } | undefined>(undefined)
   const moved = useRef(false)
+  const positions = useRef(new Map<string, { left: number; top: number }>())
   const sizeRef = useRef<FloatingSize | undefined>(undefined)
   const { storageKey, resizable = false, minWidth = 320, minHeight = 240 } = options
+  const rememberPosition = (next: { left: number; top: number }) => {
+    if (storageKey) positions.current.set(storageKey, next)
+    saveFloatingPosition(storageKey, next)
+  }
   useLayoutEffect(() => {
     const element = ref.current
     if (!element || !active) return
-    moved.current = false
+    const restoredPosition = (storageKey && positions.current.get(storageKey)) || readFloatingPosition(storageKey)
+    moved.current = Boolean(restoredPosition)
+    setPosition(restoredPosition)
     const restored = resizable ? readFloatingSize(storageKey) : undefined
     sizeRef.current = restored
     setSize(restored)
@@ -107,7 +126,7 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
       element.style.maxHeight=`${Math.max(100,window.innerHeight-top-8)}px`
       const next={width,height}; sizeRef.current=next
       Object.assign(element.style,{width:`${width}px`,height:`${height}px`,left:`${left}px`,top:`${top}px`,right:'auto',bottom:'auto'})
-      setSize(next); setPosition({left,top})
+      setSize(next); setPosition({left,top}); rememberPosition({left,top})
       if(storageKey) { try { localStorage.setItem(storageKey,JSON.stringify(next)) } catch { /* Storage is optional. */ } }
     }
     const up = (event: PointerEvent) => { if (!resize) return; resize=undefined; if(element.hasPointerCapture(event.pointerId))element.releasePointerCapture(event.pointerId) }
@@ -140,7 +159,8 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
       if (!drag.current || !ref.current) return
       moved.current = true
       const bounds = ref.current.getBoundingClientRect()
-      setPosition(clampFloatingPosition(drag.current.left + event.clientX - drag.current.x, drag.current.top + event.clientY - drag.current.y, bounds.width, bounds.height, window.innerWidth, window.innerHeight, floatingTop()))
+      const next = clampFloatingPosition(drag.current.left + event.clientX - drag.current.x, drag.current.top + event.clientY - drag.current.y, bounds.width, bounds.height, window.innerWidth, window.innerHeight, floatingTop())
+      setPosition(next); rememberPosition(next)
     },
     onPointerUp() { drag.current = undefined },
     onPointerCancel() { drag.current = undefined },

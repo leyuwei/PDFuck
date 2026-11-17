@@ -30,8 +30,8 @@ export function inlineAnnotationPosition(anchor: PdfRect, view: PdfRect, width: 
   const usable = spaces.filter(space => space.width >= Math.min(240, width) && space.height >= Math.min(160, height))
   const options = usable.length ? usable : spaces.filter(space => space.width >= Math.min(180, width))
   const space = options.find(space => space.width >= width && space.height >= height) || options.sort((a, b) => Math.min(b.width, width) * Math.min(b.height, height) - Math.min(a.width, width) * Math.min(a.height, height))[0]
-  // A selection filling the viewport has no free area: retain its anchor below it.
-  if (!space) return { left: view.x, top: anchor.y + anchor.height + gap, width, maxHeight: height }
+  // A full-viewport selection keeps its card visible without moving the document.
+  if (!space) return { left: view.x, top: view.y, width: Math.min(width, view.width), maxHeight: Math.min(height, view.height) }
   const w = Math.min(width, space.width), h = Math.min(height, space.height)
   const clamp = (value: number, start: number, end: number) => Math.max(start, Math.min(value, end))
   return { left: space.side === 'left' ? space.x + space.width - w : clamp(anchor.x, space.x, space.x + space.width - w), top: space.side === 'above' ? space.y + space.height - h : clamp(anchor.y, space.y, space.y + space.height - h), width: w, maxHeight: h }
@@ -54,18 +54,18 @@ export function InlineAnnotation({ annotation, zoom, markdown, onReply, onEdit, 
       setPosition({ ...next, visibility: 'visible' })
     }
     place()
-    const reveal = requestAnimationFrame(() => {
-      const box = card.getBoundingClientRect(), view = viewer.getBoundingClientRect()
-      if (box.top >= view.bottom || box.bottom <= view.top) card.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    })
     const observer = new ResizeObserver(place); observer.observe(viewer); observer.observe(card)
     viewer.addEventListener('scroll', place); window.addEventListener('resize', place)
-    return () => { cancelAnimationFrame(reveal); observer.disconnect(); viewer.removeEventListener('scroll', place); window.removeEventListener('resize', place) }
+    return () => { observer.disconnect(); viewer.removeEventListener('scroll', place); window.removeEventListener('resize', place) }
   }, [annotation.id, annotation.content, annotation.reason, annotation.reply, markdown, zoom, bounds.x, bounds.y, bounds.width, bounds.height])
   return <aside ref={ref} className="inline-annotation" role="dialog" aria-label={ui('ui.annotationContent')} style={{ ...position, '--annotation-color': annotation.color } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onDoubleClick={event => { event.stopPropagation(); onEdit(annotation) }} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') onClose() }}>
     <header><span className="inline-annotation-author" dir="auto" title={annotation.author}>{annotation.author}</span>{annotation.aiGenerated && <AiAnnotationBadge />}<button type="button" aria-label={ui('ui.close')} onClick={onClose}>×</button></header>
-    <div className="inline-annotation-statuses">{STATUSES.filter(item => item.status !== 'unreplied').map(item => <button key={item.status} type="button" className={item.status} aria-pressed={annotation.reply?.status === item.status || item.status === 'handled' && annotation.reply?.status === 'custom'} onDoubleClick={event => event.stopPropagation()} onClick={() => onReply(annotation.id, annotation.reply?.status === item.status ? undefined : quickReply(item.status))}><i aria-hidden="true">{item.icon}</i>{ui(item.label)}</button>)}</div>
+    <AnnotationStatusControls annotation={annotation} onReply={onReply} />
     <div className="inline-annotation-body"><AnnotationContent text={annotation.content || ui('ui.noContent')} marks={annotation.marks} markdown={markdown} />{annotation.reason && <section><b>{ui('ui.reason')}</b><AnnotationContent text={annotation.reason} markdown={markdown} /></section>}{annotation.reply?.status === 'custom' && <section><b>{ui('ui.currentReply')}</b><AnnotationContent text={annotation.reply.content} marks={annotation.reply.marks} markdown={markdown} /></section>}</div>
     <button type="button" className="inline-annotation-edit" onClick={() => onEdit(annotation)}>{ui('ui.editAnnotation')}</button>
   </aside>
+}
+
+export function AnnotationStatusControls({ annotation, onReply }: { annotation: AnnotationRecord; onReply(id: string, reply?: AnnotationReply): void }) {
+  return <div className="inline-annotation-statuses">{STATUSES.filter(item => item.status !== 'unreplied').map(item => <button key={item.status} type="button" className={item.status} aria-pressed={annotation.reply?.status === item.status || item.status === 'handled' && annotation.reply?.status === 'custom'} onDoubleClick={event => event.stopPropagation()} onClick={() => onReply(annotation.id, annotation.reply?.status === item.status ? undefined : quickReply(item.status))}><i aria-hidden="true">{item.icon}</i>{ui(item.label)}</button>)}</div>
 }

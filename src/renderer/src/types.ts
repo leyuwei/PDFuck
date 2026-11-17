@@ -23,7 +23,7 @@ export type AnnotationKind = 'highlight' | 'note' | 'replace' | 'insert' | 'dele
 export type AnnotationReplyStatus = 'handled' | 'thinking' | 'declined' | 'custom'
 
 export interface PdfRect { x: number; y: number; width: number; height: number }
-export interface PdfPoint { x: number; y: number }
+export interface PdfPoint { x: number; y: number; textHeight?: number }
 
 export interface TextSelection {
   text: string
@@ -35,6 +35,7 @@ export interface TextSelection {
 export interface AnnotationRecord {
   id: string
   pdfAnnotationId?: string
+  insertionAligned?: boolean
   /** Shared identifier for visual segments of one cross-page annotation. */
   groupId?: string
   pageIndex: number
@@ -129,6 +130,7 @@ export interface PageTextEdit {
 export interface TextObjectRecord {
   id: string
   pdfAnnotationId?: string
+  insertionAligned?: boolean
   pageIndex: number
   rect: PdfRect
   text: string
@@ -171,6 +173,7 @@ export interface PageNumberSettings {
 export interface PageNumberRecord {
   id: string
   pdfAnnotationId?: string
+  insertionAligned?: boolean
   pageIndex: number
   text: string
   rect: PdfRect
@@ -192,6 +195,7 @@ export interface WatermarkSettings {
 export interface WatermarkRecord {
   id: string
   pdfAnnotationId?: string
+  insertionAligned?: boolean
   pageIndex: number
   settings: WatermarkSettings
 }
@@ -218,6 +222,7 @@ export interface ImageDraft {
 export interface ImageObjectRecord {
   id: string
   pdfAnnotationId?: string
+  insertionAligned?: boolean
   pageIndex: number
   name: string
   data: Uint8Array

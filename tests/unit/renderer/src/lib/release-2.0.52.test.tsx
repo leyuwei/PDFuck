@@ -64,13 +64,13 @@ describe('2.0.52 annotations and AI reports', () => {
     await act(async () => saveAnnotationView({ mode: 'document' }))
     expect(host.querySelector('.annotation-panel')).toBeNull()
   })
-  it('includes original source, safe Markdown, full raw response and source image in reports', () => {
+  it('exports a safe readable AI response without duplicate source material', () => {
     setInterfaceLanguage('en')
-    const html = labReportHtml('Report <unsafe>', '# Result\n\n**B**\n\n<script>bad()</script>', { text: 'Source <img onerror=bad()>', image: 'data:image/png;base64,AA==' })
+    const html = labReportHtml('Report <unsafe>', '# Result\n\n**B**\n\n<script>bad()</script>')
     expect(html).toContain('<h1>Result</h1>'); expect(html).toContain('<strong>B</strong>')
-    expect(html).toContain('Source &lt;img'); expect(html).toContain('Markdown source')
-    expect(html).not.toContain('<script>'); expect(html).toContain('&lt;script&gt;')
-    expect(html).toContain('data:image/png;base64,AA==')
+    expect(html).not.toContain('Source &lt;img'); expect(html).not.toContain('Markdown source')
+    expect(html).not.toContain('<script>'); expect(html).not.toContain('bad()')
+    expect(html).not.toContain('data:image/png;base64,AA==')
   })
   it('uses an icon-only AI badge in the existing kind cell without adding content metadata', async () => {
     const host = await mount(<AnnotationPanel annotations={[item, { ...item, id: 'human', aiGenerated: undefined }]} collapsed={false} annotationAuthor="Reviewer" showAnnotationAuthors theme="light" accent="#5575de" onAuthorSettings={vi.fn()} onToggle={vi.fn()} onSelect={vi.fn()} onEdit={vi.fn()} onReply={async () => {}} onDelete={vi.fn()} />)

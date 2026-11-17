@@ -1,0 +1,9 @@
+import { expect, it } from 'vitest'
+import { focusScrollDelta, revealFocusRect } from '../../../src/renderer/src/lib/focus-navigation'
+import { inlineAnnotationPosition } from '../../../src/renderer/src/components/InlineAnnotation'
+it.each([[30,60,0],[20,80,0],[10,40,-10],[60,100,20],[10,120,-10],[30,150,10]])('reveals %s..%s with only the required offset',(a,b,delta)=>expect(focusScrollDelta(a,b,20,80)).toBe(delta))
+it('does not issue any scroll for a visible highlight',()=>{let calls=0;const viewport={getBoundingClientRect:()=>({left:0,top:0}),clientWidth:500,clientHeight:600,scrollTop:150,scrollLeft:0,scrollTo:()=>calls++};const page={getBoundingClientRect:()=>({left:30,top:20})};revealFocusRect(viewport as any,page as any,{x:10,y:100,width:100,height:20},1);expect(calls).toBe(0)})
+it('moves an offscreen highlight directly without smooth scrolling',()=>{let request:any;const viewport={getBoundingClientRect:()=>({left:0,top:0}),clientWidth:500,clientHeight:600,scrollTop:150,scrollLeft:0,scrollTo:(value:any)=>request=value};const page={getBoundingClientRect:()=>({left:30,top:20})};revealFocusRect(viewport as any,page as any,{x:10,y:900,width:100,height:20},1);expect(request).toEqual({top:514,left:0,behavior:'instant'})})
+it('keeps a card inside the viewport when the annotation fills it',()=>{const area={x:0,y:0,width:300,height:200};expect(inlineAnnotationPosition(area,area,360,420)).toEqual({left:0,top:0,width:300,maxHeight:200})})
+
+it('does not nudge an already visible target near a viewport edge',()=>{let calls=0;const viewport={getBoundingClientRect:()=>({left:0,top:0}),clientWidth:500,clientHeight:600,scrollTop:150,scrollLeft:0,scrollTo:()=>calls++};const page={getBoundingClientRect:()=>({left:0,top:0})};revealFocusRect(viewport as any,page as any,{x:2,y:580,width:100,height:18},1);expect(calls).toBe(0)})

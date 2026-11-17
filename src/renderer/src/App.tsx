@@ -354,7 +354,7 @@ export default function App() {
   const [documentName, setDocumentName] = useState('未打开文档')
   const [status, setStatus] = useState('准备就绪')
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [guideOpen, setGuideOpen] = useState(() => guideNeeded(APP_VERSION))
+  const [guideOpen, setGuideOpen] = useState(() => guideNeeded())
   const guideDocumentId = useRef<number | undefined>(undefined)
   const guideSourceId = useRef<number | undefined>(undefined)
   const [ocrDocuments, setOcrDocuments] = useState<number[]>([])
@@ -377,7 +377,7 @@ export default function App() {
   const nextReadingRequest = useRef(0)
   const [dismissedTemporaryDocuments, setDismissedTemporaryDocuments] = useState<Set<number>>(() => new Set())
   const [insight, setInsight] = useState<{ kind: 'visual' | 'citation' | 'grammar' | 'abbreviation'; hits: InsightHit[] | CitationLink[] | GrammarIssue[]; notice?: string }>()
-  const insightFloating = useFloatingWindow(Boolean(insight),true)
+  const insightFloating = useFloatingWindow(Boolean(insight), true, { storageKey: 'pdfuck.insight-window.v1' })
   const [annotationPanelCollapsed, setAnnotationPanelCollapsed] = useState(false)
   const [bookmarkPanelCollapsed, setBookmarkPanelCollapsed] = useState(false)
   const [annotationSuggestionsEnabled, setAnnotationSuggestionsEnabled] = useState(() => loadLabPreferences().annotationSuggestionsEnabled === true)
@@ -520,6 +520,13 @@ export default function App() {
     if (restoreOpenDialog) setDialog({ type: 'open_pdf' })
   }, [askConfirmation, showError])
   const askUnsavedClose = useCallback((message: string, options?: { title?: string; discardLabel?: string; saveLabel?: string }): Promise<UnsavedCloseDecision> => new Promise((resolve) => { closeDecisionResolve.current = resolve; setDialog({ type: 'unsaved_close', message, title: options?.title, discardLabel: options?.discardLabel, saveLabel: options?.saveLabel }) }), [])
+  const alignLegacyInsertions = useCallback(async (model: PdfDocumentModel) => {
+    if (modelRef.current !== model || !model.annotations().some(annotation => annotation.kind === 'insert' && annotation.insertionAligned === false)) return
+    const documentId = activeDocumentIdRef.current
+    const layouts = await viewerRef.current?.insertionLayouts()
+    if (modelRef.current !== model || documentId !== activeDocumentIdRef.current) throw new Error(ui('ui.theActiveDocumentChangedOpenTheToolAgain'))
+    if (layouts && await model.alignInsertionMarkers(layouts)) syncModel(ui('ui.insertText'), false, model, documentId)
+  }, [syncModel])
   const saveSession = useCallback(async (session: DocumentSession, saveAs = false, automaticSaveAs = false, allowLifecycleLock = false, target: 'all' | 'source' | 'pdf' = 'all'): Promise<boolean> => {
     if (!await commitFocusedFormField()) return false
     if (!session.model) return false
@@ -544,6 +551,7 @@ export default function App() {
         }
         if (target === 'source' || !model.dirty) return true
       }
+      await alignLegacyInsertions(model)
       if (!saveAs && !model.dirty) return true
       try {
         let result = await window.desktop.savePdf({ data: model.bytes, currentPath: model.filePath || session.markdown?.path.replace(/\.(md|txt)$/i, '.pdf'), saveAs: saveAs || Boolean(session.markdown && !model.filePath) })
@@ -558,7 +566,7 @@ export default function App() {
         return true
       } catch (error) { showError(error); return false }
     }, allowLifecycleLock) } catch (error) { showError(error); return false }
-  }, [publishSession, runDocumentOperation, showError])
+  }, [alignLegacyInsertions, publishSession, runDocumentOperation, showError])
   const saveDirtySessions = useCallback(async (allowLifecycleLock = false): Promise<boolean> => {
     sessionsRef.current.set(activeDocumentIdRef.current, liveSessionRef.current)
     const sessions = [...sessionsRef.current.values()].filter((session) => session.dirty).sort((left, right) => Number(right.id === activeDocumentIdRef.current) - Number(left.id === activeDocumentIdRef.current))
@@ -1267,7 +1275,7 @@ export default function App() {
     if (bookmark.pageIndex === undefined) return
     clickedBookmarkRef.current = { id: bookmark.id, documentId: activeDocumentIdRef.current, page: bookmark.pageIndex }
     setActiveBookmarkId(bookmark.id)
-    setMarkdownHistoryTarget('pdf'); setCurrentPage(bookmark.pageIndex); viewerRef.current?.focusBookmark(bookmark.pageIndex, bookmark.position, bookmark.title); setStatus(t('bookmark.navigated', { title: bookmark.title, page: bookmark.pageIndex + 1 }))
+    setMarkdownHistoryTarget('pdf'); viewerRef.current?.focusBookmark(bookmark.pageIndex, bookmark.position, bookmark.title); setStatus(t('bookmark.navigated', { title: bookmark.title, page: bookmark.pageIndex + 1 }))
   }, [showError])
   const receiveReadOnlyBookmarks = useCallback((items: PdfBookmark[]) => {
     const session = sessionsRef.current.get(activeDocumentIdRef.current)
@@ -1636,7 +1644,7 @@ export default function App() {
   const revealAnnotation = useCallback((id: string) => {
     if (annotationFocusTimer.current !== undefined) window.clearTimeout(annotationFocusTimer.current)
     setFocusedAnnotation(id); setAnnotationFocusToken((value) => value + 1)
-    annotationFocusTimer.current = window.setTimeout(() => { setFocusedAnnotation((current) => current === id ? undefined : current); annotationFocusTimer.current = undefined }, 1050)
+    annotationFocusTimer.current = window.setTimeout(() => { setFocusedAnnotation((current) => current === id ? undefined : current); annotationFocusTimer.current = undefined }, 5500)
   }, [])
   const selectAnnotation = useCallback((annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }) => {
     setMarkdownHistoryTarget('pdf')
@@ -1650,7 +1658,7 @@ export default function App() {
       if (options?.additive) { const next = current.includes(annotation.id) ? current.filter((id) => id !== annotation.id) : [...current, annotation.id]; setSelectedAnnotation(next.at(-1)); return next }
       setSelectedAnnotation(annotation.id); return [annotation.id]
     })
-    revealAnnotation(annotation.id); setCurrentPage(annotation.pageIndex)
+    revealAnnotation(annotation.id)
     viewerRef.current?.focusAnnotation(annotation.id, annotation.pageIndex)
   }, [annotations, revealAnnotation])
   const selectPageAnnotation = useCallback((annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }) => {
@@ -1737,6 +1745,7 @@ export default function App() {
     if (!model || printingRef.current) return
     printingRef.current = true; setPrinting(true); setStatus(t('status.preparingPrint', { count: pages.length }))
     try {
+      await alignLegacyInsertions(model)
       let printed = true
       for await (const { data: batchData, batch, index, total } of imposePdfForPrintBatches(model.bytes, pages, options)) {
         setStatus(total > 1 ? t('status.printBatch', { current: index + 1, total }) : t('status.preparingPrint', { count: pages.length }))
@@ -1746,7 +1755,7 @@ export default function App() {
       setStatus(printed ? t('status.sentPrint', { count: pages.length }) : ui("ui.printingCanceled"))
     } catch (error) { showError(error) }
     finally { printingRef.current = false; setPrinting(false) }
-  }, [showError])
+  }, [alignLegacyInsertions, showError])
 
   useEffect(() => { const handler = (event: KeyboardEvent) => {
     if (isImeCompositionKey(event)) return
@@ -1788,6 +1797,7 @@ export default function App() {
   const exportPages = useCallback(async (selectedPages: number[]) => {
     const model = modelRef.current; if (!model) return
     try {
+      await alignLegacyInsertions(model)
       setStatus(`正在准备导出 ${selectedPages.length} 页…`)
       if (exportFormat === 'pdf') {
         if (pdfExportMode === 'combined') {
@@ -1807,7 +1817,7 @@ export default function App() {
       const outputs = await window.desktop.exportPages({ format: exportFormat, pages, sourceName: model.fileName })
       if (outputs) setStatus(`已导出 ${outputs.length} 个文件 · ${outputs[0]}`); else setStatus('已取消导出')
     } catch (error) { showError(error) }
-  }, [exportDpi, exportFormat, pdfExportMode, showError])
+  }, [alignLegacyInsertions, exportDpi, exportFormat, pdfExportMode, showError])
 
   const selectModule = (value: ModuleKey) => {
     if (encrypted && value !== 'view') { setStatus('加密 PDF 当前以只读模式打开，仅支持阅读、翻页和缩放'); return }
@@ -1940,7 +1950,7 @@ export default function App() {
     <ButtonHints/>
     <ResourceDownloadDialog/>
     <AppUpdateDownload/>
-    {guideOpen && <FeatureGuide ready={windowDocumentReady} onStart={openGuidePractice} onStep={showGuideStep} onAction={performGuideAction} onClose={() => { markGuideSeen(APP_VERSION); setGuideOpen(false) }} />}
+    {guideOpen && <FeatureGuide ready={windowDocumentReady} onStart={openGuidePractice} onStep={showGuideStep} onAction={performGuideAction} onClose={() => { markGuideSeen(); setGuideOpen(false) }} />}
     {aboutOpen && <AboutDialog version={APP_VERSION} onClose={() => setAboutOpen(false)} onGuide={() => { setAboutOpen(false); setGuideOpen(true) }} />}
     {security && (security.encrypted || security.signatures.length > 0) && <PdfSecurityNotice security={security} busy={securityConversionBusy} onForceEditableCopy={() => void forceEditableCopy()} />}
     {documentTabs.documents.filter(({ id }) => ocrDocuments.includes(id)).map(({ id }) => <OcrDialog key={id} hidden={id !== activeDocumentId || dialog?.type !== 'ocr'} pageCount={id === activeDocumentId ? pageCount : sessionsRef.current.get(id)?.pageCount || 0} currentPage={id === activeDocumentId ? currentPage : sessionsRef.current.get(id)?.currentPage || 0} onMinimize={() => setDialog(null)} onClose={() => { setOcrDocuments(ids => ids.filter(value => value !== id)); if (id === activeDocumentId) setDialog(null) }} onRecognize={recognizeDocument} />)}
@@ -1964,6 +1974,6 @@ export default function App() {
     {errorMessage && <ErrorDialog message={errorMessage} onClose={() => setErrorMessage(undefined)} />}
     {availableUpdate && <UpdateDialog update={availableUpdate} onLater={() => setAvailableUpdate(undefined)} onSkip={() => { const version = availableUpdate.latestVersion; setAvailableUpdate(undefined); void window.desktop.skipUpdateVersion(version) }} onDownload={() => { if(availableUpdate.canDownload){setAvailableUpdate(undefined);void window.desktop.downloadUpdate().catch(()=>setErrorMessage(ui('updates.unavailable')));return} const url = availableUpdate.releaseUrl; setAvailableUpdate(undefined); void window.desktop.openReleasePage(url) }} />}
     <Toast message={status.startsWith('操作失败') ? visibleStatus : ''} />
-    {insight && <div ref={insightFloating.ref} className="insight-panel" style={insightFloating.style ? {...insightFloating.style,right:'auto',bottom:'auto'} : undefined}><header {...insightFloating.dragHandlers}><div><b>{insightTitle}</b><small>{insight.notice || (insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound"))}</small></div><button type="button" onClick={() => { setInsight(undefined) }} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setMarkdownHistoryTarget('pdf'); setCurrentPage(hit.pageIndex); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span className={'message' in hit ? 'grammar-result-copy' : undefined}>{'message' in hit && hit.message && <><strong>{hit.message}</strong><br/></>}{'reference' in hit ? hit.reference : translateUiText(hit.context)}{'replacement' in hit && hit.replacement && <em>{ui('grammar.suggested')}: {hit.replacement}</em>}</span></button>)}</div></div>}
+    {insight && <div ref={insightFloating.ref} className="insight-panel" style={insightFloating.style ? {...insightFloating.style,right:'auto',bottom:'auto'} : undefined}><header {...insightFloating.dragHandlers}><div><b>{insightTitle}</b><small>{insight.notice || (insight.hits.length ? t('insight.items', { count: insight.hits.length }) : ui("ui.noMatchingItemsFound"))}</small></div><button type="button" onClick={() => { setInsight(undefined) }} aria-label={ui("ui.closeResults")} title={ui("ui.close")}>×</button></header><div className="insight-list">{insight.hits.map((hit, index) => <button type="button" key={`${hit.pageIndex}-${index}`} onClick={() => { setMarkdownHistoryTarget('pdf'); if (hit.rects?.length) viewerRef.current?.focusVisual(hit.pageIndex, hit.rects); else if (hit.anchor) viewerRef.current?.focusText(hit.pageIndex, hit.anchor, hit.anchorOccurrence || 0); else if (insight.kind === 'visual') viewerRef.current?.focusVisual(hit.pageIndex); else viewerRef.current?.goToPage(hit.pageIndex) }}><b>{t('insight.page', { page: hit.pageIndex + 1, label: translateUiText(hit.label) })}</b><span className={'message' in hit ? 'grammar-result-copy' : undefined}>{'message' in hit && hit.message && <><strong>{hit.message}</strong><br/></>}{'reference' in hit ? hit.reference : translateUiText(hit.context)}{'replacement' in hit && hit.replacement && <em>{ui('grammar.suggested')}: {hit.replacement}</em>}</span></button>)}</div></div>}
   </div>
 }

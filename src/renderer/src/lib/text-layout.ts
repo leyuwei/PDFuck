@@ -52,6 +52,13 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
     const cell=cells.find(c=>point.x>=c.x&&point.x<=c.x+c.width&&point.y>=c.y&&point.y<=c.y+c.height)
     if(cell && !words.some(w=>w.tableCellRect===cell))return undefined
   }
+  const region = anchor ? words[anchor.wordIndex]?.visualRegion : words.find(word => word.visualRegion !== undefined && point.x >= word.rect.x && point.x <= word.rect.x + word.rect.width && point.y >= word.rect.y && point.y <= word.rect.y + word.rect.height)?.visualRegion
+  if (region !== undefined && (!anchor || words[anchor.wordIndex]?.tableCell === undefined)) {
+    const members = words.map((word, index) => ({ word, index })).filter(({ word }) => word.visualRegion === region)
+    const local = members.map(({ word }) => ({ ...word, visualRegion: undefined, column: undefined, columnAmbiguous: false }))
+    const caret = textCaretAtPoint(local, point)
+    return caret ? { ...caret, wordIndex: members[caret.wordIndex].index } : undefined
+  }
   const cell=anchor && words[anchor.wordIndex]?.tableCell
   const insideCell=cell === undefined ? words.find(w=>w.tableCellRect && point.x>=w.tableCellRect.x && point.x<=w.tableCellRect.x+w.tableCellRect.width && point.y>=w.tableCellRect.y && point.y<=w.tableCellRect.y+w.tableCellRect.height)?.tableCell : cell
   const candidates=insideCell === undefined ? words : words.filter(w=>w.tableCell===insideCell)
@@ -101,7 +108,7 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
 
 export function insertionPointAt(words: WordBox[], point: PdfPoint): PdfPoint {
   const caret = textCaretAtPoint(words, point)
-  return caret ? { x: caret.x, y: caret.y + caret.height } : point
+  return caret ? { x: caret.x, y: words[caret.wordIndex].baselineY ?? caret.y + caret.height * .8, textHeight: caret.height } : point
 }
 
 export function moveTextPosition(words: WordBox[], position: TextPosition, direction: -1 | 1): TextPosition {
@@ -234,6 +241,17 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
     if(!selected)return undefined
     selected.rects=selected.rects.flatMap(r=>{const x=Math.max(r.x,bounds.x),y=Math.max(r.y,bounds.y),right=Math.min(r.x+r.width,bounds.x+bounds.width),bottom=Math.min(r.y+r.height,bounds.y+bounds.height);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]})
     return selected
+  }
+  const region = words[anchor.wordIndex]?.visualRegion
+  if (order === 'geometry' && region !== undefined && words[anchor.wordIndex]?.tableCell === undefined) {
+    const members = words.map((word, index) => ({ word, index })).filter(({ word }) => word.visualRegion === region)
+      .sort((a, b) => Math.abs(a.word.rect.y - b.word.rect.y) > Math.min(a.word.rect.height, b.word.rect.height) * .5 ? a.word.rect.y - b.word.rect.y : (a.word.rtl ? -1 : 1) * (a.word.rect.x - b.word.rect.x))
+    const local = members.map(({ word }, order) => ({ ...word, order, visualRegion: undefined, column: 0, columnAmbiguous: false, visualBlock: undefined }))
+    const a = { ...anchor, wordIndex: members.findIndex(member => member.index === anchor.wordIndex) }
+    const focusPoint = caretForTextPosition(words, focus)
+    const b = members.findIndex(member => member.index === focus.wordIndex)
+    const target = b >= 0 ? { ...focus, wordIndex: b } : focusPoint && textCaretAtPoint(local, focusPoint)
+    return target ? textSelectionBetween(local, a, target) : undefined
   }
   if (order === 'geometry' && words[anchor.wordIndex]?.visualRegion === undefined && words[focus.wordIndex]?.visualRegion === undefined) {
     const body = words.filter(word => word.visualRegion === undefined && word.tableCell === undefined)

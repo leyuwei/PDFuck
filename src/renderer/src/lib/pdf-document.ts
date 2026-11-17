@@ -1,3 +1,4 @@
+import { insertionMarkerRect, insertionMarkerShape } from './insertion-marker'
 import { planAiAnnotationWrites, type ExistingAiAnnotation } from './ai-annotation-merge'
 import type { OcrLayer } from '../../../shared/ocr'
 import { multiplyMatrix } from './page-coordinates'
@@ -961,6 +962,7 @@ export class PdfDocumentModel {
       const reply = ['handled', 'thinking', 'declined', 'custom'].includes(replyStatus) && replyContent ? { status: replyStatus, content: replyContent, ...(decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' ? { aiGenerated: true } : {}), ...(replyMarks.length ? { marks: replyMarks } : {}) } : undefined
       return [{
         id, pdfAnnotationId: pdfAnnotationId(entry), groupId, pageIndex: entry.pageIndex, kind,
+        ...(kind === 'insert' ? { insertionAligned: decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckInsertionAligned'))) === 'true' || !id.startsWith('pdfuck-') || !storedColor } : {}),
         ...((decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckAI'))) === 'true' || decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckReplyAI'))) === 'true' || kind === 'ai_polish') ? { aiGenerated: true } : {}),
         author: decodeObject(this.document, entry.dict.get(PDFName.of('T'))) || 'PDFuck',
         content: decodeObject(this.document, entry.dict.get(PDFName.of('Contents'))),
@@ -1089,17 +1091,14 @@ export class PdfDocumentModel {
     if (!request || typeof request !== 'object' || !Number.isInteger(request.pageIndex) || request.pageIndex < 0 || request.pageIndex >= this.pageCount || !ANNOTATION_KINDS.has(request.kind) || !Array.isArray(request.rects)) throw new Error('ui.annotationRequestInvalid')
     if (request.aiRevision !== undefined && typeof request.aiRevision !== 'boolean' || request.aiGenerated !== undefined && typeof request.aiGenerated !== 'boolean') throw new Error('ui.annotationRequestInvalid')
     if ([request.content, request.color, request.groupId, request.author, request.reason].some((value) => value !== undefined && typeof value !== 'string')) throw new Error('ui.annotationRequestInvalid')
+    if (request.point?.textHeight !== undefined && (!Number.isFinite(request.point.textHeight) || request.point.textHeight <= 0)) throw new Error('ui.annotationPositionInvalid')
     if (request.point && (!Number.isFinite(request.point.x) || !Number.isFinite(request.point.y))) throw new Error('ui.annotationPositionInvalid')
     if (request.rects.some((rect) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('ui.annotationAreaInvalid')
     const page = this.document.getPage(request.pageIndex)
     const geometry = pageGeometry(page)
     let normalized = request.rects.map((rect) => ({ ...rect }))
     if (request.kind === 'note' && request.point) normalized = [{ x: request.point.x, y: request.point.y, width: 20, height: 20 }]
-    if (request.kind === 'insert' && request.point) {
-      const displayWidth = geometry.rotation % 180 ? geometry.height : geometry.width
-      const displayHeight = geometry.rotation % 180 ? geometry.width : geometry.height
-      normalized = [{ x: Math.max(0, Math.min(displayWidth - 14, request.point.x - 7)), y: Math.max(0, Math.min(displayHeight - 18, request.point.y)), width: 14, height: 18 }]
-    }
+    if (request.kind === 'insert' && request.point) normalized = [insertionMarkerRect(request.point)]
     if (!normalized.length) throw new Error('请先选择文字或页面位置。')
     return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
   }
@@ -1134,7 +1133,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('F'), PDFNumber.of(4))
     dictionary.set(PDFName.of('Subj'), pdfString(translateMessage('zh', KIND_LABEL[kind])))
     if (!['note', 'insert'].includes(kind)) dictionary.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(normalized, geometry)))
-    if (kind === 'insert') dictionary.set(PDFName.of('Sy'), PDFName.of('P'))
+    if (kind === 'insert') { dictionary.set(PDFName.of('Sy'), PDFName.of('P')); dictionary.set(PDFName.of('PDFuckInsertionAligned'), PDFName.of('true')) }
     if (kind === 'insert') this.setAnnotationColor(dictionary, colorHex)
     page.node.addAnnot(this.document.context.register(dictionary))
     return id
@@ -1179,6 +1178,25 @@ export class PdfDocumentModel {
     }
   }
 
+  async alignInsertionMarkers(layouts: Array<{ id: string; rect: PdfRect }>): Promise<boolean> {
+    const legacy = new Map(this.annotations().filter(annotation => annotation.kind === 'insert' && annotation.insertionAligned === false).map(annotation => [annotation.id, annotation]))
+    const updates = layouts.filter(layout => legacy.has(layout.id))
+    if (!updates.length) return false
+    if (updates.some(({ rect }) => !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0)) throw new Error('ui.annotationAreaInvalid')
+    const candidate = await PdfDocumentModel.load(this.bytes)
+    for (const { id, rect } of updates) {
+      const { dict, page } = candidate.findAnnotation(id)
+      dict.set(PDFName.of('Rect'), candidate.document.context.obj(displayRectToPdfBounds(rect, pageGeometry(page))))
+      dict.set(PDFName.of('PDFuckInsertionAligned'), PDFName.of('true'))
+      candidate.setAnnotationColor(dict, legacy.get(id)!.color)
+    }
+    const next = Uint8Array.from(await candidate.document.save({ useObjectStreams: false, addDefaultPage: false }))
+    this.undoStack.push(this.bytes); this.trimHistory(this.undoStack); this.redoStack = []
+    this.document = candidate.document; this.currentBytes = next
+    this.dirty = this.externallyDirty || !sameBytes(next, this.savedBytes)
+    return true
+  }
+
   async addAnnotation(pageIndex: number, kind: AnnotationKind, rects: PdfRect[], content = '', point?: PdfPoint, colorValue?: string, groupId?: string, author?: string, reason?: string, marks?: TextMark[], aiGenerated = false): Promise<string> {
     const [id] = await this.addAnnotations([{ pageIndex, kind, rects, content, point, color: colorValue, groupId, author, reason, marks, aiGenerated }])
     return id
@@ -1199,9 +1217,10 @@ export class PdfDocumentModel {
     dict.set(PDFName.of('PDFuckColor'), pdfString(normalized))
     if (kindFor(dict, this.document) === 'insert') {
       const rect = numberArray(this.document, dict.get(PDFName.of('Rect')))
-      const width = Math.max(8, Math.abs((rect[2] || 18) - (rect[0] || 0))), height = Math.max(8, Math.abs((rect[3] || 22) - (rect[1] || 0)))
-      const [red, green, blue] = hexColor(normalized), center = width / 2, wing = Math.min(5, width * .34), base = Math.min(6, height * .34)
-      const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg 2.4 w 1 J ${center} 1 m ${center} ${height - base} l S ${center - wing} ${height - base} m ${center} ${height} l ${center + wing} ${height - base} l h f Q`
+      const width = Math.max(1, Math.abs((rect[2] ?? 14) - (rect[0] ?? 0))), height = Math.max(1, Math.abs((rect[3] ?? 18) - (rect[1] ?? 0)))
+      const [red, green, blue] = hexColor(normalized), center = width / 2
+      const { triangle, stroke } = insertionMarkerShape(width, height)
+      const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg ${stroke} w 1 J ${center} ${triangle} m ${center} ${height - stroke / 2} l S 0 0 m ${center} ${triangle} l ${width} 0 l h f Q`
       const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, width, height], Resources: {} })
       dict.set(PDFName.of('AP'), this.document.context.obj({ N: this.document.context.register(stream) }))
     } else dict.delete(PDFName.of('AP'))
