@@ -1,0 +1,251 @@
+[
+  {
+    "id": "intro",
+    "shot": "01-workspace",
+    "seconds": 5,
+    "chapter": "PDFuck 2.1.21",
+    "title": [
+      "用 AI 拆解",
+      "复杂的",
+      "导师批注"
+    ],
+    "body": [
+      "为论文精读、审稿与修改而设计。"
+    ],
+    "tag": "让修改有头绪",
+    "foot": "Windows / macOS  ·  开源 PDF 编辑器"
+  },
+  {
+    "id": "lab",
+    "shot": "02-lab",
+    "seconds": 5,
+    "chapter": "01 / AI 辅助阅读",
+    "title": [
+      "读到哪里，",
+      "AI 就在哪里"
+    ],
+    "body": [
+      "全文检查 · 自动批注",
+      "智能翻译 · 图片解释"
+    ],
+    "tag": "集成在阅读过程里",
+    "focus": [
+      150,
+      650,
+      750,
+      1660
+    ],
+    "foot": "按需连接你的 AI 服务"
+  },
+  {
+    "id": "review",
+    "shot": "03b-review-result",
+    "seconds": 6,
+    "chapter": "01 / AI 辅助阅读",
+    "title": [
+      "把复杂意见",
+      "拆成可执行",
+      "的修改建议"
+    ],
+    "body": [
+      "结合全文，梳理逻辑、",
+      "表述与证据。"
+    ],
+    "tag": "全文评价",
+    "focus": [
+      1740,
+      900,
+      2860,
+      1850
+    ],
+    "foot": "AI 回复为演示示例 · 本地固定响应 · 非效果保证"
+  },
+  {
+    "id": "annotation",
+    "shot": "03c-annotation",
+    "seconds": 4,
+    "chapter": "01 / AI 辅助阅读",
+    "title": [
+      "建议留在",
+      "原文旁边"
+    ],
+    "body": [
+      "评价一键添加到批注，",
+      "继续跟进修改。"
+    ],
+    "tag": "从评价到行动",
+    "focus": [
+      2110,
+      210,
+      2880,
+      1180
+    ],
+    "foot": "AI 回复为演示示例"
+  },
+  {
+    "id": "figure",
+    "shot": "04b-figure-focus",
+    "seconds": 5,
+    "chapter": "02 / 连贯的阅读体验",
+    "title": [
+      "图表在哪？",
+      "一键定位"
+    ],
+    "body": [
+      "开启一键图表，",
+      "从索引直达页面。"
+    ],
+    "tag": "一键图表",
+    "foot": "减少在正文与图表之间来回翻找"
+  },
+  {
+    "id": "citation",
+    "shot": "05-citations",
+    "seconds": 5,
+    "chapter": "02 / 连贯的阅读体验",
+    "title": [
+      "顺着引文，",
+      "找到来源"
+    ],
+    "body": [
+      "关联正文引用，",
+      "快速查看参考文献。"
+    ],
+    "tag": "关联引文",
+    "focus": [
+      1650,
+      1150,
+      2870,
+      1850
+    ],
+    "foot": "让论据与出处连在一起"
+  },
+  {
+    "id": "abbreviation",
+    "shot": "06-abbreviations",
+    "seconds": 5,
+    "chapter": "02 / 连贯的阅读体验",
+    "title": [
+      "遇到缩写，",
+      "随手查定义"
+    ],
+    "body": [
+      "不用再翻回首次出现",
+      "缩写的那一页。"
+    ],
+    "tag": "缩写快查",
+    "focus": [
+      1750,
+      1300,
+      2870,
+      1850
+    ],
+    "foot": "图表 · 引文 · 缩写，阅读线索随时可查"
+  },
+  {
+    "id": "crop",
+    "shot": "08-crop",
+    "seconds": 4,
+    "chapter": "03 / 智能裁切",
+    "title": [
+      "想提取图表，",
+      "先轻轻一框"
+    ],
+    "body": [
+      "圈定要保留的区域，",
+      "再交给智能裁切。"
+    ],
+    "tag": "框选区域",
+    "foot": "自制矢量图表 · 实际裁切操作",
+    "focus": [
+      1140,
+      980,
+      2460,
+      1510
+    ]
+  },
+  {
+    "id": "smart",
+    "shot": "09-smart-crop",
+    "seconds": 5,
+    "chapter": "03 / 智能裁切",
+    "title": [
+      "边界对齐，",
+      "不用反复调"
+    ],
+    "body": [
+      "识别内容边界，",
+      "按需设置留白。"
+    ],
+    "tag": "智能裁切",
+    "foot": "框选 → 智能识别 → 确认裁切",
+    "focus": [
+      1140,
+      1040,
+      2460,
+      1510
+    ]
+  },
+  {
+    "id": "eps",
+    "shot": "11-eps",
+    "seconds": 4,
+    "chapter": "03 / 图表导出",
+    "title": [
+      "裁得整齐，",
+      "也能导出 EPS"
+    ],
+    "body": [
+      "选择 EPS 格式，",
+      "用于后续矢量编辑。"
+    ],
+    "tag": "矢量导出",
+    "foot": "EPS 导出需安装 Poppler（pdftocairo）· 本镜头展示格式选择",
+    "focus": [
+      160,
+      820,
+      750,
+      1380
+    ]
+  },
+  {
+    "id": "tools",
+    "shot": "12-tools",
+    "seconds": 6,
+    "chapter": "04 / 常用 PDF 工具",
+    "title": [
+      "常用编辑，",
+      "也都在这里"
+    ],
+    "body": [
+      "合并创建 · 编辑文字",
+      "添加图形 · 文件水印",
+      "OCR 识别扫描件"
+    ],
+    "tag": "阅读之外，继续编辑",
+    "focus": [
+      150,
+      370,
+      760,
+      1650
+    ],
+    "foot": "功能入口展示 · Office 导入需 Office 或 LibreOffice"
+  },
+  {
+    "id": "outro",
+    "shot": "01-workspace",
+    "seconds": 6,
+    "chapter": "欢迎试用",
+    "title": [
+      "让阅读、修改",
+      "与整理",
+      "更顺手"
+    ],
+    "body": [
+      "PDFuck 2.1.21",
+      "Windows / macOS"
+    ],
+    "tag": "从一份 PDF 开始",
+    "foot": "github.com/leyuwei/PDFuck/releases"
+  }
+]

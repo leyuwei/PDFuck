@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "durationSeconds": 60,
+  "video": {
+    "size": [
+      1920,
+      1080
+    ],
+    "fps": 30.0,
+    "framesDecoded": 1800,
+    "audioCodec": "aac",
+    "fullDecodeErrors": 0
+  },
+  "gif": {
+    "size": [
+      960,
+      540
+    ],
+    "frames": 600,
+    "durationSeconds": 60.0,
+    "loop": 0
+  },
+  "outputs": {
+    "PDFuck-2.1.21-promo.mp4": {
+      "bytes": 11687176,
+      "sha256": "6b55f2d1d6803d82efd1de1a1c2a2cc429842b3741ef970b7e804e5801541ea8"
+    },
+    "PDFuck-2.1.21-promo.gif": {
+      "bytes": 12746282,
+      "sha256": "a0c64a6c2161b4eec842935350f82460a88c9fdd1e4265f02fbbef000f411370"
+    },
+    "cover.png": {
+      "bytes": 359989,
+      "sha256": "d8c98103c93086d70dbf700a937f1574e492cca30aa5617041a2663379f7fa5a"
+    }
+  },
+  "visualReview": "See VALIDATION.md; encoded storyboard extracted from final MP4."
+}
