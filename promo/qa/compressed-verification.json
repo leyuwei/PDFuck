@@ -1,0 +1,14 @@
+{
+  "bytes": 1805017,
+  "dimensions": [
+    640,
+    360
+  ],
+  "fps": 3,
+  "paletteColors": 64,
+  "dither": "none",
+  "frames": 180,
+  "durationMs": 60000,
+  "loop": 0,
+  "allFramesDecoded": true
+}

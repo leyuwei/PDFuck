@@ -4,7 +4,7 @@
 
 [简体中文](#chinese) · [English](#english)
 
-<img width="2154" height="1352" alt="ScreenShot_2026-09-18_113723_792" src="promo/output/PDFuck-2.1.21-promo.gif" />
+<img width="2154" height="1352" alt="ScreenShot_2026-09-18_113723_792" src="promo/output/PDFuck-2.1.21-promo-small.gif" />
 
 <a id="chinese"></a>
 
