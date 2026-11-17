@@ -22,3 +22,5 @@ PLAN.md
 PROGRESS.md
 /HANDOVER.md
 .DS_Store
+!/promo/output/
+!/promo/output/**
