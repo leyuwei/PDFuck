@@ -1,0 +1,22 @@
+{
+  "version": "2.2.0",
+  "policy": "synthetic text and geometry; no original pixels or PDF objects",
+  "fixtures": [
+    {
+      "file": "b093bc86f923ac74a39b1003ba35c93a.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 72439,
+      "sha256": "1d1c753b37a4ebb7192d2c4eff67302eab27060474042fecd1774c0fd21aeb86",
+      "sourceSlot": 1
+    },
+    {
+      "file": "bd20b877f5623954a2be1ff7210d3cf2.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 73411,
+      "sha256": "a2993d424f6d64a7e31b2817a23beaba4e8ba5b97a4dfc3470a221d0662c6fe2",
+      "sourceSlot": 2
+    }
+  ]
+}

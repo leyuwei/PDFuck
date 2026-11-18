@@ -557,12 +557,12 @@ export class PdfDocumentModel {
     const bookmarks = this.bookmarks()
     const reordered = await PDFDocument.create()
     const pages = await reordered.copyPages(this.document, pageIndices)
+    pages.forEach(page => reordered.addPage(page))
+    if (bookmarks.length) replacePdfBookmarks(reordered, remapPdfBookmarks(bookmarks, pageIndices))
     pages.forEach((page, index) => {
       const rotation = rotationFor(pageIndices[index])
       if (rotation) page.setRotation(degrees((page.getRotation().angle + rotation) % 360))
-      reordered.addPage(page)
     })
-    if (bookmarks.length) replacePdfBookmarks(reordered, remapPdfBookmarks(bookmarks, pageIndices))
     this.document = reordered
     await this.commit()
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
@@ -1295,26 +1295,36 @@ export class PdfDocumentModel {
   }
 
   async deleteAnnotation(id: string): Promise<boolean> {
-    // Deletion is intentionally idempotent. UI events can arrive twice before
-    // React has removed the row (for example, a very fast double click), and a
-    // stale delete must never turn into a native error/focus interruption.
-    const entry = this.findAnnotationOptional(id)
-    if (!entry) return false
-    const groupId = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
-    const matches = groupId
-      ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId)
-      : [entry]
-    const byPage = new Map<PDFPage, number[]>()
-    matches.forEach((candidate) => {
-      const indexes = byPage.get(candidate.page) || []
-      indexes.push(candidate.index)
-      byPage.set(candidate.page, indexes)
-    })
-    byPage.forEach((indexes, page) => {
-      indexes.sort((left, right) => right - left).forEach((index) => page.node.Annots()?.remove(index))
-    })
-    await this.commit()
-    return true
+    return (await this.deleteAnnotations([id])) > 0
+  }
+
+  async deleteAnnotations(ids: string[]): Promise<number> {
+    const requested = new Set(ids)
+    if (!requested.size) return 0
+    const selectedEntries = new Set<AnnotationEntry>()
+    const selectedGroups = new Set<string>()
+    const groups = new Map<AnnotationEntry, string>()
+    for (const entry of this.annotationEntries()) {
+      if (!kindFor(entry.dict, this.document)) continue
+      const id = decodeObject(this.document, entry.dict.get(PDFName.of('NM'))) || `${entry.pageIndex}:${entry.ref?.toString() || entry.index}`
+      const group = decodeObject(this.document, entry.dict.get(PDFName.of('PDFuckGroup')))
+      groups.set(entry, group)
+      if (!requested.has(id)) continue
+      if (group) selectedGroups.add(group)
+      else selectedEntries.add(entry)
+    }
+    const count = selectedEntries.size + selectedGroups.size
+    if (!count) return 0
+
+    const entries = [...groups].filter(([entry, group]) => selectedEntries.has(entry) || selectedGroups.has(group)).reverse()
+    for (const [entry] of entries) entry.page.node.Annots()?.remove(entry.index)
+    try {
+      await this.commit()
+    } catch (error) {
+      for (const [entry] of entries.reverse()) entry.page.node.Annots()?.insert(entry.index, entry.ref ?? entry.dict)
+      throw error
+    }
+    return count
   }
 }
 

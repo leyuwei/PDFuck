@@ -26,6 +26,7 @@ export interface RecognizedBookmark {
   title: string
   pageIndex: number
   level: number
+  horizontalPosition?: number
   top: number
   pageHeight: number
   fontSize: number
@@ -222,7 +223,7 @@ export function recognizeBookmarkCandidates(lines: BookmarkTextLine[], options: 
     if (duplicates.has(duplicate)) continue
     duplicates.add(duplicate)
     const level = result.length ? Math.min(match.level, result.at(-1)!.level + 1) : 1
-    result.push({ id: `recognized-${line.pageIndex}-${Math.round(line.top * 10)}-${result.length}`, title: recognizedTitle, pageIndex: line.pageIndex, level, top: line.top, pageHeight: line.pageHeight, fontSize: line.fontSize, rule: custom ? 'custom' : match.rule })
+    result.push({ id: `recognized-${line.pageIndex}-${Math.round(line.top * 10)}-${result.length}`, title: recognizedTitle, pageIndex: line.pageIndex, level, horizontalPosition: Math.max(0, Math.min(1, line.left / line.pageWidth)), top: line.top, pageHeight: line.pageHeight, fontSize: line.fontSize, rule: custom ? 'custom' : match.rule })
     if (result.length >= 2000) break
   }
   return result
@@ -232,7 +233,7 @@ export function bookmarkTreeFromCandidates(candidates: RecognizedBookmark[]): Pd
   const roots: PdfBookmark[] = []
   const stack: Array<{ level: number; bookmark: PdfBookmark }> = []
   candidates.forEach((candidate) => {
-    const bookmark: PdfBookmark = { id: candidate.id, title: candidate.title, pageIndex: candidate.pageIndex, position: Math.max(0, Math.min(1, candidate.top / candidate.pageHeight)), open: candidate.level < 3, children: [] }
+    const bookmark: PdfBookmark = { id: candidate.id, title: candidate.title, pageIndex: candidate.pageIndex, position: Math.max(0, Math.min(1, candidate.top / candidate.pageHeight)), horizontalPosition: candidate.horizontalPosition, open: candidate.level < 3, children: [] }
     while (stack.length && stack.at(-1)!.level >= candidate.level) stack.pop()
     if (stack.length) stack.at(-1)!.bookmark.children.push(bookmark)
     else roots.push(bookmark)

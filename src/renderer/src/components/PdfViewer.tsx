@@ -15,7 +15,7 @@ import { useAnnotationView } from '../lib/annotation-preferences'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import { createPortal } from 'react-dom'
 import { ContextMenu } from './ContextMenu'
-import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { AnnotationMode, getDocument, normalizeUnicode, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
@@ -56,7 +56,7 @@ import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride
 
 const EMPTY_CITATIONS: CitationLink[] = []
 
-export interface ViewerHandle { insertionLayouts(): Promise<Array<{ id: string; rect: PdfRect }>>; captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusBookmark(pageIndex: number, position: number | undefined, title: string): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(pageIndices?: number[]): Promise<AutomaticAnnotationSourcePage[]>; annotationSourceContext(request: AutomaticAnnotationContextRequest): Promise<AnnotationSourcePassage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(initialQuery?: string): void; closeSearch(): void; showVisuals(): void; hideVisuals(): void; lookupAbbreviations(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
+export interface ViewerHandle { insertionLayouts(): Promise<Array<{ id: string; rect: PdfRect }>>; captureFigure(pageIndex: number, rect: PdfRect): Promise<string>; fitWidth(): void; fitPage(): void; goToPage(pageIndex: number, position?: number): void; focusBookmark(bookmark: PdfBookmark): void; clearSelection(): void; focusAnnotation(id: string, pageIndex: number): void; focusText(pageIndex: number, text: string, occurrence?: number): void; focusVisual(pageIndex: number, rects?: PdfRect[]): void; documentText(): Promise<string>; autoAnnotationPages(pageIndices?: number[]): Promise<AutomaticAnnotationSourcePage[]>; annotationSourceContext(request: AutomaticAnnotationContextRequest): Promise<AnnotationSourcePassage[]>; automaticAnnotationContext(request: AutomaticAnnotationContextRequest, level: number): Promise<AutomaticAnnotationContextResult>; recognizeBookmarks(options: BookmarkRecognitionOptions): Promise<RecognizedBookmark[]>; openSearch(initialQuery?: string): void; closeSearch(): void; showVisuals(): void; hideVisuals(): void; lookupAbbreviations(): void; linkCitations(): void; clearCitations(): void; checkGrammar(): void }
 
 function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
   const viewportBounds = viewport.getBoundingClientRect(), pageBounds = page.getBoundingClientRect()
@@ -64,6 +64,7 @@ function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
 }
 
 interface ViewerProps {
+  notice?: ReactNode
   data?: Uint8Array
   password?: string
   mode: ViewMode
@@ -125,6 +126,7 @@ interface PageProps {
   renderZoom: number
   tool: Tool
   annotations: AnnotationRecord[]
+  nativeAnnotationIds?: Set<string>
   focusedAnnotationId?: string
   annotationFocusToken: number
   textObjects: TextObjectRecord[]
@@ -185,6 +187,10 @@ function selectionFromRange(words: WordBox[], first: number, last: number): Text
   return textSelectionBetween(words, { wordIndex: start, offset: 0 }, { wordIndex: end, offset: Array.from(lastWord.text).length })
 }
 
+function openSelectionPolish() {
+  window.dispatchEvent(new Event('pdfuck:open-ai-polish'))
+}
+
 function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { selection: TextSelection; zoom: number; pageSize: { width: number; height: number }; onChoose(tool: Tool): void }) {
   useInterfaceLanguage()
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -215,7 +221,7 @@ function SelectionAnnotationToolbar({ selection, zoom, pageSize, onChoose }: { s
   return <div className="selection-annotation-toolbar" style={{ left: baseLeft + offset.x, top: baseTop + offset.y }} onPointerDown={(event) => event.stopPropagation()} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag}>
     <button type="button" className="selection-toolbar-grip" aria-label={ui("ui.dragAnnotationToolbar")} title={ui("ui.dragToolbar")} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag}>⠿</button>
     {tools.map((item) => <button type="button" key={item.tool} className="selection-toolbar-button" aria-label={item.label} title={item.label} onClick={(event) => { event.stopPropagation(); onChoose(item.tool) }}><AnnotationIcon kind={item.kind} size={18} /></button>)}
-    <button type="button" className="selection-toolbar-button" aria-label={ui("ui.aiPolish")} title={`${ui("ui.aiPolish")} (${shortcutLabel('aiPolish', window.desktop.platform)})`} onClick={(event) => { event.stopPropagation(); window.dispatchEvent(new Event('pdfuck:open-ai-polish')) }}><AnnotationIcon kind="ai_polish" size={18} /></button>
+    <button type="button" className="selection-toolbar-button" aria-label={ui("ui.aiPolish")} title={`${ui("ui.aiPolish")} (${shortcutLabel('aiPolish', window.desktop.platform)})`} onClick={(event) => { event.stopPropagation(); openSelectionPolish() }}><AnnotationIcon kind="ai_polish" size={18} /></button>
   </div>
 }
 
@@ -611,7 +617,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdown, onInlineClose, onAnnotationReply, document, pageIndex, zoom, renderZoom, tool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, citationHits, textFocus, visualFocus, showVisualRegions }: PageProps) {
+function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdown, onInlineClose, onAnnotationReply, document, pageIndex, zoom, renderZoom, tool, annotations, nativeAnnotationIds, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, citationHits, textFocus, visualFocus, showVisualRegions }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -769,11 +775,11 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     if (activePage) setTextRequested(true)
   }, [activePage])
 
-  const suppressedAnnotations = useRef({ document, ids: new Set<string>() })
-  if (suppressedAnnotations.current.document !== document) suppressedAnnotations.current = { document, ids: new Set() }
-  // Keep deleted native appearances suppressed for this loaded PDF; overlays own their visibility.
-  for (const id of [...formFieldIds, ...[...annotations,...textObjects,...imageObjects].map(object => object.pdfAnnotationId)]) if (id) suppressedAnnotations.current.ids.add(id)
-  const overlaidAnnotationIds = [...suppressedAnnotations.current.ids].join(',')
+  const suppressedObjects = useRef(new Set<string>())
+  for (const id of [...formFieldIds, ...[...textObjects, ...imageObjects].map(object => object.pdfAnnotationId)]) {
+    if (id) suppressedObjects.current.add(id)
+  }
+  const overlaidAnnotationIds = [...new Set([...nativeAnnotationIds ?? [], ...suppressedObjects.current])].join(',')
 
   useEffect(() => {
     if (!page || !canvasRef.current || !renderEligible) return
@@ -1082,7 +1088,8 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   })
   const insertPreview = hoverInsert && insertionMarkerRect(hoverInsert)
   const contextAnnotation = menu?.annotation && (annotations.find(annotation => annotation.id === menu.annotation!.id) || menu.annotation)
-  return <div className="pdf-sheet" style={{ width: size.width * zoom }}>{inlineMode && <PageAnnotationSummary annotations={annotations} />}<div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : inlineMode && inlineAnnotationId && annotations.some(annotation => annotation.id === inlineAnnotationId) ? 40 : imageDraft || cropDraft ? 30 : undefined }}
+  const quickToolbarVisible = annotationMode && showSelectionToolbar && Boolean(activeSelection?.text) && !menu
+  return <div className="pdf-sheet" style={{ width: size.width * zoom }}>{inlineMode && <PageAnnotationSummary annotations={annotations} />}<div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : quickToolbarVisible ? 80 : inlineMode && inlineAnnotationId && annotations.some(annotation => annotation.id === inlineAnnotationId) ? 40 : imageDraft || cropDraft ? 30 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -1128,7 +1135,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     {imageObjects.filter((image) => image.id !== imageDraft?.id).map((image) => <SavedImageOverlay key={image.id} image={image} zoom={zoom} editable={editableTextObjects && tool !== 'crop'} onEdit={onImageEdit} />)}
     {imageDraft && <ImageDraftOverlay draft={imageDraft} zoom={zoom} bounds={size} busy={imageDraftBusy} onChange={onImageDraftChange} onConfirm={onImageDraftConfirm} onCancel={onImageDraftCancel} onDelete={onImageDraftDelete} pageCount={document.numPages} onPage={onImageDraftPage} />}
     {tool === 'insert' && insertPreview && <div className="insert-preview" style={{ left: insertPreview.x * zoom, top: insertPreview.y * zoom, width: insertPreview.width * zoom, height: insertPreview.height * zoom }}><InsertionMarker width={insertPreview.width} height={insertPreview.height}/></div>}
-    {annotationMode && showSelectionToolbar && activeSelection?.text && !menu && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
+    {quickToolbarVisible && activeSelection && <SelectionAnnotationToolbar selection={activeSelection} zoom={zoom} pageSize={size} onChoose={chooseQuickAnnotation} />}
     {inlineMode && !menu && displayAnnotations.filter(annotation => annotation.id === inlineAnnotationId).map(annotation => <InlineAnnotation key={annotation.id} annotation={annotation} zoom={zoom} markdown={annotationMarkdown} onReply={onAnnotationReply} onEdit={onAnnotationEdit} onClose={onInlineClose} />)}
     {displayAnnotations.map((annotation) => { const focused = annotation.id === focusedAnnotationId; return <AnnotationOverlay key={annotation.id} annotation={annotation} zoom={zoom} focused={focused} focusToken={annotationFocusToken} suppressHint={Boolean(menu) || inlineMode && annotation.id === inlineAnnotationId} onMove={onAnnotationMove} onSelect={onAnnotationSelect} onEdit={onAnnotationEdit} onContext={openAnnotationMenu} /> })}
     <div className="watermark-layer" aria-hidden="true">{textObjects.filter((textObject) => textObject.watermark).map((textObject) => <TextObjectOverlay key={textObject.id} textObject={textObject} zoom={zoom} pageSize={size} editable={false} onMove={onTextObjectMove} onResize={onTextObjectResize} onEdit={onTextObjectEdit} onDelete={onTextObjectDelete} />)}</div>
@@ -1143,6 +1150,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       </> : <>
         {selection?.text && <button className="copy-item" onClick={copyMenuSelection}><span className="menu-copy-icon" aria-hidden="true">▣</span><span>{ui("ui.copy")}</span><kbd>{shortcutLabel('copy', window.desktop.platform)}</kbd></button>}
         {translationEnabled && actionSelection?.text && <button className="translate-item" onClick={translateMenuSelection}><AnnotationIcon kind="ai_translate" size={18} /><span>{ui("ui.translateSelectedText")}</span></button>}
+        {annotationMode && actionSelection?.text && <button type="button" className="polish-item" onClick={() => { setMenu(undefined); openSelectionPolish() }}><AnnotationIcon kind="ai_polish" size={18} /><span>{ui("ui.aiPolish")}</span><kbd>{shortcutLabel('aiPolish', window.desktop.platform)}</kbd></button>}
         {selection?.text && <i />}<button className="column-boundary-item" onClick={() => { setMenu(undefined); setBoundaryEditing(true) }}><span className="menu-column-boundary-icon" aria-hidden="true">╎</span><span>{ui('ui.correctColumnBoundaries')}</span></button>
         {annotationMode && <><i />{selection?.text && <><button onClick={() => runMenu('highlight')}><AnnotationIcon kind="highlight" size={18} /><span>{ui("ui.highlightText")}</span></button><button onClick={() => runMenu('replace')}><AnnotationIcon kind="replace" size={18} /><span>{ui("ui.replaceText")}</span></button>
           <button onClick={() => runMenu('delete_text')}><AnnotationIcon kind="delete_text" size={18} /><span>{ui("ui.deleteText")}</span></button><button onClick={() => runMenu('underline')}><AnnotationIcon kind="underline" size={18} /><span>{ui("ui.underlineText")}</span></button></>}
@@ -1195,11 +1203,20 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
   const [crossSelecting, setCrossSelecting] = useState(false)
   const crossSelection = useMemo(() => mergePageTextSelections(crossSelecting ? dragPageSelections : pageSelections), [crossSelecting, dragPageSelections, pageSelections])
   const selectionAnchorRef = useRef<{ pageIndex: number; position: TextPosition } | undefined>(undefined)
+  const nativeAnnotationIdsRef = useRef({ data, pages: new Map<number, Set<string>>() })
+  if (nativeAnnotationIdsRef.current.data !== data) nativeAnnotationIdsRef.current = { data, pages: new Map() }
+  const nativeAnnotationIds = nativeAnnotationIdsRef.current.pages
+  for (const { pageIndex, pdfAnnotationId } of annotations) {
+    if (!pdfAnnotationId) continue
+    let ids = nativeAnnotationIds.get(pageIndex)
+    if (!ids) nativeAnnotationIds.set(pageIndex, ids = new Set())
+    ids.add(pdfAnnotationId)
+  }
   const [selectionCancelToken, setSelectionCancelToken] = useState(0)
   const wordMapsRef = useRef(new Map<number, WordBox[]>())
   const wordMapsDocumentRef = useRef<PDFDocumentProxy | undefined>(undefined)
   const insightFocusSequenceRef = useRef(0)
-  const pendingNavigationRef = useRef<{ pageIndex: number; position?: number; focusRect?: PdfRect; focusApplied?: boolean } | undefined>(undefined)
+  const pendingNavigationRef = useRef<{ pageIndex: number; position?: number; focusRect?: PdfRect; centerPage?: boolean; focusApplied?: boolean } | undefined>(undefined)
   const navigationTimerRef = useRef<number | undefined>(undefined)
   const restoredDocumentRef = useRef<string | undefined>(undefined)
   const restoringPositionRef = useRef(true)
@@ -1482,10 +1499,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     handledFitPageRequestRef.current = fitPageRequest
     fitPage()
   }, [currentPage, document, fitPage, fitPageRequest, sizes])
-  const goToPage = (pageIndex: number, position?: number, focusRect?: PdfRect) => {
+  const goToPage = (pageIndex: number, position?: number, focusRect?: PdfRect, centerPage = false) => {
     if (!document) return
+    ++insightFocusSequenceRef.current
+    setTextFocus(undefined); setVisualFocus(undefined)
     const nextPage = Math.max(0, Math.min(document.numPages - 1, pageIndex))
-    pendingNavigationRef.current = { pageIndex: nextPage, position, focusRect }
+    pendingNavigationRef.current = { pageIndex: nextPage, position, focusRect, centerPage }
     if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
     navigationTimerRef.current = window.setTimeout(() => { pendingNavigationRef.current = undefined }, 5000)
     restoringPositionRef.current = false
@@ -1498,8 +1517,10 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const viewport = viewportRef.current
     const target = pending && viewport?.querySelector<HTMLElement>(`[data-page="${pending.pageIndex}"]`)
     if (!pending || !viewport || !target || currentPage !== pending.pageIndex || !sizes[pending.pageIndex]) return
-    if (pending.focusRect) {
-      if (!pending.focusApplied) revealFocusRect(viewport, target, pending.focusRect, zoom)
+    const { width, height } = sizes[pending.pageIndex]
+    const focus = pending.focusRect ?? (pending.centerPage ? { x: width / 2, y: height / 2, width: 0, height: 0 } : undefined)
+    if (focus) {
+      if (!pending.focusApplied) revealFocusRect(viewport, target, focus, zoom)
       pending.focusApplied = true
     } else {
       const viewportBounds = viewport.getBoundingClientRect(), targetBounds = target.getBoundingClientRect()
@@ -1515,13 +1536,13 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       const viewport = viewportRef.current
       const page = viewport?.querySelector<HTMLElement>(`[data-page="${currentPage}"]`)
       if (viewport && page) setReturnPosition({ page: currentPage, offset: readingOffsetForPage(viewport.getBoundingClientRect().top, page.getBoundingClientRect().top, page.getBoundingClientRect().height) })
-      goToPage(target.pageIndex, target.position)
+      if (target.position !== undefined || target.horizontalPosition !== undefined) focusBookmark({ ...target, title: '' })
+      else goToPage(target.pageIndex)
     }
   }
   const focusAnnotation = (id: string, pageIndex: number) => {
-    ++insightFocusSequenceRef.current
-    setTextFocus(undefined); setVisualFocus(undefined)
-    const rect = annotations.find(annotation => annotation.id === id)?.rects[0]
+    const rects = annotations.find(annotation => annotation.id === id)?.rects
+    const rect = rects?.length ? rectUnion(rects) : undefined
     goToPage(pageIndex, undefined, rect)
   }
   const focusText = (pageIndex: number, text: string, occurrence = 0, caseSensitive = false, ignoreWhitespace = false) => {
@@ -1530,26 +1551,33 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     void wordsForPage(pageIndex).catch(() => []).then(words => {
       if (token !== insightFocusSequenceRef.current || source !== wordMapsDocumentRef.current) return
       const target = { pageIndex, text, occurrence, caseSensitive, ignoreWhitespace, token }
-      const rect = textSelectionForQuery(words, text, target)?.rects[0]
+      const rects = textSelectionForQuery(words, text, target)?.rects
+      const rect = rects?.length ? rectUnion(rects) : undefined
       goToPage(pageIndex, undefined, rect)
-      setVisualFocus(undefined); setTextFocus(target)
+      setTextFocus(target)
     }).catch(() => undefined)
   }
-  const focusBookmark = (pageIndex: number, position: number | undefined, title: string) => {
+  const focusBookmark = ({ pageIndex, position, horizontalPosition, title }: Pick<PdfBookmark, 'pageIndex' | 'position' | 'horizontalPosition' | 'title'>) => {
+    if (!document || pageIndex === undefined) return
     const token = ++insightFocusSequenceRef.current
     const source = document
-    void wordsForPage(pageIndex).catch(() => []).then(words => {
+    void Promise.all([wordsForPage(pageIndex).catch(() => []), document.getPage(pageIndex + 1)]).then(([words, page]) => {
       if (token !== insightFocusSequenceRef.current || source !== wordMapsDocumentRef.current) return
-      const rects = bookmarkFocusRects(words,sizes[pageIndex]?.height || 792,position,title)
-      const fallback = { x: 12, y: Math.max(0,Math.min(.98,position || 0)) * (sizes[pageIndex]?.height || 792), width: 16, height: 16 }
-      goToPage(pageIndex, position, rects[0] || fallback)
-      setTextFocus(undefined); setVisualFocus({ pageIndex, rects: rects.length ? rects : [fallback], token })
+      const { width, height } = page.getViewport({ scale: 1 })
+      const x = horizontalPosition === undefined ? undefined : width * horizontalPosition
+      const rects = bookmarkFocusRects(words, height, position, title, x !== undefined && x > 0 && x < width ? x : undefined)
+      const fallback = position !== undefined || x !== undefined
+        ? { x: Math.max(0, Math.min(width - 16, x ?? 12)), y: Math.max(0, Math.min(height - 16, (position ?? 0) * height)), width: 16, height: 16 }
+        : undefined
+      const highlights = rects.length ? rects : fallback ? [fallback] : undefined
+      goToPage(pageIndex, position, highlights?.length ? rectUnion(highlights) : undefined, true)
+      setVisualFocus({ pageIndex, rects: highlights, token })
     }).catch(() => undefined)
   }
   const focusVisual = (pageIndex: number, rects?: PdfRect[]) => {
     const token = ++insightFocusSequenceRef.current
-    goToPage(pageIndex, undefined, rects?.[0])
-    setTextFocus(undefined); setVisualFocus({ pageIndex, rects, token })
+    goToPage(pageIndex, undefined, rects?.length ? rectUnion(rects) : undefined, true)
+    setVisualFocus({ pageIndex, rects, token })
   }
   const wordsForPage = useCallback(async (pageIndex: number): Promise<WordBox[]> => {
     if (!document || pageIndex < 0 || pageIndex >= document.numPages) return []
@@ -1718,7 +1746,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       const hits = abbreviationLinks(await pageSnapshots())
       setAbbreviations(hits)
       onInsight('abbreviation', hits.filter((hit, index) => hits.findIndex(other => other.citation === hit.citation && other.reference === hit.reference) === index))
-    }, insertionLayouts, fitWidth, fitPage, goToPage, focusBookmark, focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, annotationSourceContext, recognizeBookmarks, openSearch: (initialQuery = '') => { setSearchInitialQuery(initialQuery); setSearchOpen(true); setSearchToken(token => token + 1) }, closeSearch: () => setSearchOpen(false), showVisuals, hideVisuals: () => { setShowVisualRegions(false); setVisualFocus(undefined) }, linkCitations, clearCitations, checkGrammar }))
+    }, insertionLayouts, fitWidth, fitPage, goToPage, focusBookmark, clearSelection: () => updateSelection([]), focusAnnotation, focusText, focusVisual, documentText, autoAnnotationPages, automaticAnnotationContext, annotationSourceContext, recognizeBookmarks, openSearch: (initialQuery = '') => { setSearchInitialQuery(initialQuery); setSearchOpen(true); setSearchToken(token => token + 1) }, closeSearch: () => setSearchOpen(false), showVisuals, hideVisuals: () => { setShowVisualRegions(false); setVisualFocus(undefined) }, linkCitations, clearCitations, checkGrammar }))
 
   useEffect(() => { if (mode === 'single') return; const viewport = viewportRef.current; if (!viewport) return
     let frame: number | undefined
@@ -1838,12 +1866,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     return () => { observer.disconnect(); window.removeEventListener('resize', place) }
   }, [])
   return <div className="viewer" ref={viewportRef} onPointerMove={(event) => { zoomPointerRef.current = { clientX: event.clientX, clientY: event.clientY } }}>
-      {viewportRef.current && createPortal(<div className="viewer-notices" style={noticeBounds}>{grammarProgress && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{grammarProgress.total?t('grammar.checking',{done:grammarProgress.done,total:grammarProgress.total}):ui('grammar.preparing')}</div>}{readingBusy.length > 0 && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{t('reading.preparing', { tools: readingBusy.map(kind => ui(kind === 'visual' ? 'ui.findFiguresTables' : kind === 'citation' ? 'ui.linkCitations' : 'ui.abbreviationLookup')).join(' · ') })}</div>}{returnPosition && <button type="button" className="pdf-link-return" onClick={() => { goToPage(returnPosition.page, returnPosition.offset); setReturnPosition(undefined) }}>↶ {ui('ui.returnBeforeJump')}</button>}<ScrollPageHint zoom={zoom} viewport={viewportRef} documentKey={document?.fingerprints[0]} pageIndex={currentPage} pageCount={document?.numPages || 0} navigating={pendingNavigationRef} restoring={restoringPositionRef} /></div>, viewportRef.current.parentElement!)}
+      {viewportRef.current && createPortal(<div className="viewer-notices" style={noticeBounds}>{props.notice}{grammarProgress && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{grammarProgress.total?t('grammar.checking',{done:grammarProgress.done,total:grammarProgress.total}):ui('grammar.preparing')}</div>}{readingBusy.length > 0 && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{t('reading.preparing', { tools: readingBusy.map(kind => ui(kind === 'visual' ? 'ui.findFiguresTables' : kind === 'citation' ? 'ui.linkCitations' : 'ui.abbreviationLookup')).join(' · ') })}</div>}{returnPosition && <button type="button" className="pdf-link-return" onClick={() => { goToPage(returnPosition.page, returnPosition.offset); setReturnPosition(undefined) }}>↶ {ui('ui.returnBeforeJump')}</button>}<ScrollPageHint zoom={zoom} viewport={viewportRef} documentKey={document?.fingerprints[0]} pageIndex={currentPage} pageCount={document?.numPages || 0} navigating={pendingNavigationRef} restoring={restoringPositionRef} /></div>, viewportRef.current.parentElement!)}
       <ZoomScrollAnchor zoom={zoom} currentPage={currentPage} viewport={viewportRef} anchor={wheelAnchorRef} pointer={zoomPointerRef} sizes={sizes} pages={virtualized ? visiblePages : undefined}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(0, visiblePages[0], sizes, zoom) }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.loadingTask.docId}-${pageIndex}`}>
       {virtualized && index > 0 && pageIndex > visiblePages[index - 1] + 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages[index - 1] + 1, pageIndex, sizes, zoom) }} aria-hidden />}
       <PdfPage key={`${document.loadingTask.docId}-${pageIndex}`} document={document} pageIndex={pageIndex} initialSize={sizes[pageIndex]} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
-      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
+      annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} nativeAnnotationIds={nativeAnnotationIds.get(pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={(annotation, options) => { setInlineAnnotationId(annotation.id); onAnnotationSelect(annotation, options) }} onAnnotationReply={onAnnotationReply} inlineAnnotationId={inlineAnnotationId} inlineMode={annotationView.mode === 'document'} annotationMarkdown={annotationView.markdown} onInlineClose={() => setInlineAnnotationId(undefined)} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} citationHits={citationsByPage.get(pageIndex) || EMPTY_CITATIONS} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} showVisualRegions={showVisualRegions} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages.at(-1)! + 1, document.numPages, sizes, zoom) }} aria-hidden />}</div>
       </ZoomScrollAnchor>

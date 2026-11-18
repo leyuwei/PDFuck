@@ -12,7 +12,7 @@ export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
 export interface TextLayoutOverride { columnBoundaries?: number[]; spanningRegions?: Array<{ top: number; bottom: number }> }
-export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean; includeAllMatchedWords?: boolean }
+export interface TextQueryOptions { occurrence?: number; caseSensitive?: boolean; ignoreWhitespace?: boolean; includeAllMatchedWords?: boolean; matchScore?(first: WordBox): number; normalizeCharacter?(char: string): string }
 
 export function selectionWordText(word: WordBox): string { return word.text + (word.spaceAfter?.text || '') }
 function characterCount(word: WordBox): number { return Math.max(1, Array.from(selectionWordText(word)).length) }
@@ -246,7 +246,8 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   if (order === 'geometry' && region !== undefined && words[anchor.wordIndex]?.tableCell === undefined) {
     const members = words.map((word, index) => ({ word, index })).filter(({ word }) => word.visualRegion === region)
       .sort((a, b) => Math.abs(a.word.rect.y - b.word.rect.y) > Math.min(a.word.rect.height, b.word.rect.height) * .5 ? a.word.rect.y - b.word.rect.y : (a.word.rtl ? -1 : 1) * (a.word.rect.x - b.word.rect.x))
-    const local = members.map(({ word }, order) => ({ ...word, order, visualRegion: undefined, column: 0, columnAmbiguous: false, visualBlock: undefined }))
+    // A visual region defines its own reading flow independently of the page gutters.
+    const local = members.map(({ word }, order) => ({ ...word, order, visualRegion: undefined, column: 0, columnBoundaries: [], columnAmbiguous: false, visualBlock: undefined }))
     const a = { ...anchor, wordIndex: members.findIndex(member => member.index === anchor.wordIndex) }
     const focusPoint = caretForTextPosition(words, focus)
     const b = members.findIndex(member => member.index === focus.wordIndex)
@@ -435,12 +436,15 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
 }
 
 export function textSelectionForQuery(words: WordBox[], query: string, options: TextQueryOptions = {}): { text: string; rects: PdfRect[] } | undefined {
-  const { occurrence = 0, caseSensitive = false, ignoreWhitespace = false, includeAllMatchedWords = false } = options
+  const { occurrence = 0, caseSensitive = false, ignoreWhitespace = false, includeAllMatchedWords = false, matchScore, normalizeCharacter } = options
   const indexed: Array<{ char: string; start: TextPosition; end: TextPosition }> = []
+  const comparable = (char: string) => {
+    const normalized = normalizeCharacter ? normalizeCharacter(char) : char
+    const value = caseSensitive ? normalized : normalized.toLocaleLowerCase()
+    return ignoreWhitespace ? value.replace(/\s/gu, '') : value
+  }
   const append = (char: string, start: TextPosition, end: TextPosition) => {
-    if (ignoreWhitespace && /\s/u.test(char)) return
-    const comparable = caseSensitive ? char : char.toLocaleLowerCase()
-    for (const normalizedChar of Array.from(comparable)) indexed.push({ char: normalizedChar, start, end })
+    for (const normalizedChar of comparable(char)) indexed.push({ char: normalizedChar, start, end })
   }
   const entries = words.map((word, wordIndex) => ({ word, wordIndex }))
   const spanningBlocks = new Set(words.filter(word => word.columnAmbiguous && word.visualBlock !== undefined).map(word => word.visualBlock!))
@@ -463,10 +467,7 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
       Array.from(selectionWordText(word)).forEach((char, offset) => append(char, { wordIndex, offset }, { wordIndex, offset: offset + 1 }))
     })
   }
-  const normalizedNeedle = Array.from(query.trim().replace(/\s+/gu, ' ')).flatMap((char) => {
-    if (ignoreWhitespace && /\s/u.test(char)) return []
-    return Array.from(caseSensitive ? char : char.toLocaleLowerCase())
-  }).join('')
+  const normalizedNeedle = Array.from(query.trim().replace(/\s+/gu, ' '), comparable).join('')
   if (!normalizedNeedle || !entries.length) return undefined
   let start = -1
   // AI blocks may already have their own reading order. Preserve their exact
@@ -474,11 +475,16 @@ export function textSelectionForQuery(words: WordBox[], query: string, options: 
   for (const order of [entries, readingOrder]) {
     indexOrder(order)
     const source = indexed.map(entry => entry.char).join('')
-    let cursor = 0
-    for (let index = 0; index <= occurrence; index++) {
-      start = source.indexOf(normalizedNeedle, cursor)
-      if (start < 0) break
-      cursor = start + Math.max(1, normalizedNeedle.length)
+    let cursor = 0, bestScore = Infinity
+    for (let index = 0; matchScore || index <= occurrence; index++) {
+      const match = source.indexOf(normalizedNeedle, cursor)
+      if (match < 0) break
+      cursor = match + Math.max(1, normalizedNeedle.length)
+      if (matchScore) {
+        const score = matchScore(words[indexed[match].start.wordIndex])
+        if (score < bestScore) { start = match; bestScore = score }
+        if (bestScore === 0) break
+      } else if (index === occurrence) start = match
     }
     if (start >= 0) break
   }

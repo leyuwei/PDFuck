@@ -19,6 +19,7 @@ export function markGuideSeen(_version?: string): void { try { localStorage.setI
 export const GUIDE_STEPS = [
   { id: 'workspace', module: 'view', target: '.left-dock' },
   { id: 'reading', module: 'view', page: 0, target: '.bookmark-panel, .document-area' },
+  { id: 'navigation', module: 'view', target: '.titlebar-tools' },
   { id: 'highlight', module: 'annotate', tool: 'highlight', page: 0, target: '.pdf-page, .document-area' },
   { id: 'notes', module: 'annotate', page: 0, action: 'note', target: '.annotation-panel, .tool-panel' },
   { id: 'status', module: 'annotate', page: 0, action: 'status', target: '.annotation-panel, .tool-panel' },

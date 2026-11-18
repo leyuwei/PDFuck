@@ -1,0 +1,13 @@
+{
+  "version": "2.2.0",
+  "policy": "synthetic text and geometry; no original pixels or PDF objects",
+  "fixtures": [
+    {
+      "file": "43758d35fbe94821a2cb6e877c271bd6.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 17763,
+      "sha256": "b4e8c561c3e1ce055f0df91352376b4afc87a0c68a5d9f72811784b96e52c60d"
+    }
+  ]
+}

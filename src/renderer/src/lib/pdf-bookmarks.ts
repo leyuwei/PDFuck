@@ -1,5 +1,6 @@
-import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNull, PDFNumber, PDFObject, PDFRef, PDFString } from 'pdf-lib'
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNull, PDFNumber, PDFObject, PDFRef, PDFString, type PDFPage } from 'pdf-lib'
 import type { PdfBookmark } from '../types'
+import { applyMatrix, inverseMatrix, pageViewportMatrix, pdfDestinationPosition } from './page-coordinates'
 
 const MAX_BOOKMARKS = 10_000
 const MAX_BOOKMARK_DEPTH = 16
@@ -66,7 +67,19 @@ function destinationArray(document: PDFDocument, object?: PDFObject): PDFArray |
   return value instanceof PDFArray ? value : undefined
 }
 
-function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<string, number>): Pick<PdfBookmark, 'pageIndex' | 'position'> {
+function bookmarkViewport(page: PDFPage) {
+  const media = page.getMediaBox(), crop = page.getCropBox()
+  const x = Math.max(media.x, crop.x), y = Math.max(media.y, crop.y)
+  const width = Math.min(media.x + media.width, crop.x + crop.width) - x
+  const height = Math.min(media.y + media.height, crop.y + crop.height) - y
+  const box = width > 0 && height > 0 ? { x, y, width, height } : media
+  const angle = page.getRotation().angle
+  const rotation = angle % 90 === 0 ? angle : 0
+  const rotated = rotation % 180 !== 0
+  return { matrix: pageViewportMatrix({ ...box, rotation }), width: rotated ? box.height : box.width, height: rotated ? box.width : box.height }
+}
+
+function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<string, number>): Pick<PdfBookmark, 'pageIndex' | 'position' | 'horizontalPosition'> {
   let destination = destinationArray(document, item.get(PDFName.of('Dest')))
   if (!destination) {
     const action = dictionary(document, item.get(PDFName.of('A')))
@@ -78,10 +91,11 @@ function bookmarkDestination(document: PDFDocument, item: PDFDict, pages: Map<st
   if (pageIndex === undefined || !destination) return {}
   const mode = text(document, destination.get(1))
   const topIndex = mode === 'XYZ' ? 3 : mode === 'FitH' || mode === 'FitBH' ? 2 : mode === 'FitR' ? 5 : -1
+  const leftIndex = mode === 'XYZ' || mode === 'FitV' || mode === 'FitBV' || mode === 'FitR' ? 2 : -1
   const top = topIndex >= 0 ? number(document, destination.get(topIndex)) : undefined
-  const pageHeight = document.getPage(pageIndex).getHeight()
-  const position = top === undefined || !pageHeight ? undefined : Math.max(0, Math.min(1, (pageHeight - top) / pageHeight))
-  return { pageIndex, ...(position === undefined ? {} : { position }) }
+  const left = leftIndex >= 0 ? number(document, destination.get(leftIndex)) : undefined
+  const { matrix, width, height } = bookmarkViewport(document.getPage(pageIndex))
+  return { pageIndex, ...pdfDestinationPosition({ left, top }, matrix, width, height) }
 }
 
 function bookmarkUrl(document: PDFDocument, item: PDFDict): string | undefined {
@@ -168,10 +182,15 @@ function writeBranch(document: PDFDocument, bookmarks: PdfBookmark[], parent: PD
     if (index + 1 < entries.length) dict.set(PDFName.of('Next'), entries[index + 1].ref)
     if (bookmark.pageIndex !== undefined) {
       const page = document.getPage(bookmark.pageIndex)
-      const position = bookmark.position
-      dict.set(PDFName.of('Dest'), position === undefined
-        ? document.context.obj([page.ref, PDFName.of('Fit')])
-        : document.context.obj([page.ref, PDFName.of('XYZ'), PDFNull, PDFNumber.of(page.getHeight() * (1 - position)), PDFNull]))
+      const { position, horizontalPosition } = bookmark
+      if (position === undefined && horizontalPosition === undefined) dict.set(PDFName.of('Dest'), document.context.obj([page.ref, PDFName.of('Fit')]))
+      else {
+        const { matrix, width, height } = bookmarkViewport(page)
+        const { x, y } = applyMatrix(inverseMatrix(matrix), { x: (horizontalPosition ?? 0) * width, y: (position ?? 0) * height })
+        const left = (matrix[0] ? horizontalPosition : position) === undefined ? PDFNull : PDFNumber.of(x)
+        const top = (matrix[2] ? horizontalPosition : position) === undefined ? PDFNull : PDFNumber.of(y)
+        dict.set(PDFName.of('Dest'), document.context.obj([page.ref, PDFName.of('XYZ'), left, top, PDFNull]))
+      }
     } else if (bookmark.url) {
       const action = document.context.obj({})
       action.set(PDFName.of('S'), PDFName.of('URI'))
@@ -205,7 +224,9 @@ function validateBookmarks(document: PDFDocument, bookmarks: PdfBookmark[]): voi
       ids.add(item.id)
       if (!item.title.trim()) throw new Error('书签文字不能为空。')
       if (item.pageIndex !== undefined && (!Number.isInteger(item.pageIndex) || item.pageIndex < 0 || item.pageIndex >= document.getPageCount())) throw new Error('书签目标页无效。')
-      if (item.position !== undefined && (item.pageIndex === undefined || !Number.isFinite(item.position) || item.position < 0 || item.position > 1)) throw new Error('ui.invalidBookmarkPosition')
+      for (const position of [item.position, item.horizontalPosition]) {
+        if (position !== undefined && (item.pageIndex === undefined || !Number.isFinite(position) || position < 0 || position > 1)) throw new Error('ui.invalidBookmarkPosition')
+      }
       if (item.url !== undefined && (!item.url.trim() || item.url.length > 4096)) throw new Error('pdfLink.invalidBookmark')
       visit(item.children, depth + 1)
     })

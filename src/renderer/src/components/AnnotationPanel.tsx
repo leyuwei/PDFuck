@@ -1,5 +1,5 @@
 import { useSidebarResize } from '../lib/sidebar-resize'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { AnnotationRecord, AnnotationReply, AnnotationReplyStatus } from '../types'
 import { AnnotationIcon } from './AnnotationIcon'
 import { AnnotationContent, AiAnnotationBadge } from './AnnotationContent'
@@ -17,6 +17,7 @@ interface Props {
   selectedIds?: string[]
   collapsed: boolean
   onToggle(): void
+  onSelectRange?(ids: string[]): void
   onSelect(annotation: AnnotationRecord, options?: { additive?: boolean; range?: boolean }): void
   onEdit(annotation: AnnotationRecord): void
   onReply(id: string, reply?: AnnotationReply): Promise<void>
@@ -47,7 +48,7 @@ function AnnotationRow({ annotation, authorColors, selected, focusToken, showAut
   const [statusOpen, setStatusOpen] = useState(false)
   useEffect(() => {
     // Keep the target still between two pointer clicks; external navigation may reveal it.
-    if (selected && !selectedByPointer.current) {
+    if (selected && focusToken !== undefined && !selectedByPointer.current) {
       rowRef.current?.scrollIntoView({ block: 'nearest' })
       if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) rowRef.current?.animate?.([{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }], { duration: 350, iterations: 2 })
     }
@@ -66,7 +67,7 @@ function AnnotationRow({ annotation, authorColors, selected, focusToken, showAut
   </div>
 }
 
-export function AnnotationPanel({ annotations, selectedId, focusToken, selectedIds = [], collapsed, annotationAuthor, showAnnotationAuthors, theme, accent, onToggle, onSelect, onEdit, onReply, onDelete, onAuthorSettings }: Props) {
+export function AnnotationPanel({ annotations, selectedId, focusToken, selectedIds = [], collapsed, annotationAuthor, showAnnotationAuthors, theme, accent, onToggle, onSelect, onSelectRange, onEdit, onReply, onDelete, onAuthorSettings }: Props) {
   const { mode } = useAnnotationView()
   const authorPalette = useMemo(() => annotationAuthorPalette(annotations.map((item) => item.author)), [annotations])
   useInterfaceLanguage()
@@ -75,6 +76,67 @@ export function AnnotationPanel({ annotations, selectedId, focusToken, selectedI
   const [fontSize, setFontSize] = useState(1)
   const [summaryCollapsed, setSummaryCollapsed] = useState(false)
   const { width: panelWidth, panelRef, begin: beginResize, move: moveResize, finish: finishResize } = useSidebarResize(370, 280, 560, 'end')
+  const drag = useRef<{ pointerId: number; anchor: number; startY: number; y: number; end: number; selecting: boolean } | undefined>(undefined)
+  const dragFrame = useRef<number | undefined>(undefined)
+  const suppressClick = useRef(false)
+  const [dragRange, setDragRange] = useState<[number, number]>()
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current) }, [])
+  const beginRange = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.pointerType === 'touch' || !onSelectRange || !(event.target instanceof Element)) return
+    suppressClick.current = false
+    const row = event.target.closest<HTMLElement>('.annotation-row')
+    if (!row || event.target.closest('.annotation-status-button, a')) return
+    const anchor = Array.prototype.indexOf.call(event.currentTarget.children, row)
+    if (anchor < 0) return
+    drag.current = { pointerId: event.pointerId, anchor, end: anchor, startY: event.clientY, y: event.clientY, selecting: false }
+  }
+  const updateRange = (list: HTMLDivElement) => {
+    const active = drag.current
+    if (!active?.selecting) return
+    const bounds = list.getBoundingClientRect()
+    const edge = 22
+    const delta = active.y < bounds.top + edge ? active.y - bounds.top - edge
+      : active.y > bounds.bottom - edge ? active.y - bounds.bottom + edge : 0
+    const previous = list.scrollTop
+    if (delta) list.scrollTop += Math.sign(delta) * Math.min(24, Math.ceil(Math.abs(delta) / 3))
+    const y = Math.max(bounds.top + 1, Math.min(bounds.bottom - 1, active.y))
+    const row = document.elementFromPoint(bounds.left + list.clientLeft + list.clientWidth / 2, y)?.closest('.annotation-row')
+    const end = row ? Array.prototype.indexOf.call(list.children, row) : list.scrollTop === 0 ? 0 : list.children.length - 1
+    if (end >= 0) {
+      active.end = end
+      const first = Math.min(active.anchor, end), last = Math.max(active.anchor, end)
+      setDragRange(current => current?.[0] === first && current[1] === last ? current : [first, last])
+    }
+    dragFrame.current = list.scrollTop !== previous ? requestAnimationFrame(() => updateRange(list)) : undefined
+  }
+  const moveRange = (event: PointerEvent<HTMLDivElement>) => {
+    const active = drag.current
+    if (!active || active.pointerId !== event.pointerId || !(event.buttons & 1)) return
+    active.y = event.clientY
+    if (!active.selecting) {
+      if (Math.abs(active.y - active.startY) < 5) return
+      active.selecting = true
+      event.currentTarget.setPointerCapture(event.pointerId)
+      window.getSelection()?.removeAllRanges()
+    }
+    event.preventDefault()
+    if (dragFrame.current === undefined) updateRange(event.currentTarget)
+  }
+  const finishRange = (event: PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const active = drag.current
+    if (!active || active.pointerId !== event.pointerId) return
+    drag.current = undefined
+    if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current)
+    dragFrame.current = undefined
+    if (!active.selecting) return
+    suppressClick.current = true
+    setDragRange(undefined)
+    if (commit) {
+      const first = Math.min(active.anchor, active.end), last = Math.max(active.anchor, active.end)
+      onSelectRange?.(annotations.slice(first, last + 1).map(({ id }) => id))
+    }
+  }
   const selected = annotations.find((annotation) => annotation.id === selectedId)
   const counts = annotationSummary(annotations)
   const statuses: Array<{ status: AnnotationSummaryStatus; label: TranslationKey }> = [
@@ -90,7 +152,10 @@ export function AnnotationPanel({ annotations, selectedId, focusToken, selectedI
     <div className="annotation-toolbar"><span>{t("ui.listFontSize")}</span><div className="annotation-font-stepper"><button type="button" disabled={fontSize <= 0} onClick={() => setFontSize((value) => Math.max(0, value - 1))} aria-label={t("ui.decreaseAnnotationListFontSize")} title={t("ui.decreaseFontSize")}>A−</button><output>{['S', 'M', 'L'][fontSize]}</output><button type="button" disabled={fontSize >= 2} onClick={() => setFontSize((value) => Math.min(2, value + 1))} aria-label={t("ui.increaseAnnotationListFontSize")} title={t("ui.increaseFontSize")}>A＋</button></div><AnnotationAuthorSettings author={annotationAuthor} showAuthors={showAnnotationAuthors} theme={theme} accent={accent} onSave={onAuthorSettings} /><button type="button" className="annotation-line-toggle" aria-pressed={singleLine} title={t(singleLine ? "ui.switchToFullMultiLineDisplay" : "ui.switchToCompactSingleLineDisplay")} onClick={() => setSingleLine((value) => !value)}><svg className="annotation-line-icon" viewBox="0 0 20 20" aria-hidden="true"><path d={singleLine ? "M2 5h16M2 10h16M2 15h10" : "M2 10h5m3 0h3m3 0h2"} /></svg><span className="annotation-line-label">{t(singleLine ? "ui.multiLine" : "ui.singleLine")}</span></button></div>
     <section className={`annotation-summary${summaryCollapsed ? ' collapsed' : ''}`}><header><div><b>{t("ui.replySummary")}</b><small>{message('annotation.count', { count: annotations.length })}</small></div><button type="button" onClick={() => setSummaryCollapsed((value) => !value)} aria-expanded={!summaryCollapsed} aria-label={t(summaryCollapsed ? "ui.expandReplySummary" : "ui.collapseReplySummary")} title={t(summaryCollapsed ? "ui.expandSummary" : "ui.collapseSummary")}>{summaryCollapsed ? '⌄' : '⌃'}</button></header>{!summaryCollapsed && <div className="annotation-summary-grid">{statuses.map((item) => <button type="button" key={item.status} className={item.status} disabled={!counts[item.status]} onClick={() => jumpToStatus(item.status)} title={counts[item.status] ? message('annotation.jumpToFirst', { status: t(item.label) }) : message('annotation.noneForStatus', { status: t(item.label) })}><b>{counts[item.status]}</b><span>{t(item.label)}</span></button>)}</div>}</section>
     <div className="annotation-header"><span>{t("ui.page")}</span><span>{t("ui.contentDoubleClickToEdit")}</span></div>
-    <div className="annotation-list">{annotations.length ? annotations.map((annotation) => <AnnotationRow key={annotation.id} annotation={annotation} authorColors={authorPalette.get(annotationAuthorKey(annotation.author))!} focusToken={annotation.id === selectedId ? focusToken : undefined} selected={selectedIds.includes(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} singleLine={singleLine} onSelect={(options) => onSelect(annotation, options)} onEdit={() => onEdit(annotation)} onReply={(reply) => onReply(annotation.id, reply)} />) : <div className="empty-list">{t("ui.noAnnotationsYet")}<br /><small>{t("ui.selectTextOnThePageToStartAnnotating")}</small></div>}</div>
+    <div className={`annotation-list${dragRange ? ' range-selecting' : ''}`} onPointerDown={beginRange} onPointerMove={moveRange}
+      onPointerUp={event => finishRange(event, true)} onPointerCancel={event => finishRange(event, false)} onLostPointerCapture={event => finishRange(event, false)}
+      onPointerLeave={() => { if (!drag.current?.selecting) drag.current = undefined }}
+      onClickCapture={event => { if (suppressClick.current && event.detail) { suppressClick.current = false; event.stopPropagation(); event.preventDefault() } }}>{annotations.length ? annotations.map((annotation, index) => <AnnotationRow key={annotation.id} annotation={annotation} authorColors={authorPalette.get(annotationAuthorKey(annotation.author))!} focusToken={annotation.id === selectedId ? focusToken : undefined} selected={dragRange ? index >= dragRange[0] && index <= dragRange[1] : selectedSet.has(annotation.id) || annotation.id === selectedId} showAuthor={showAnnotationAuthors} singleLine={singleLine} onSelect={(options) => onSelect(annotation, options)} onEdit={() => onEdit(annotation)} onReply={(reply) => onReply(annotation.id, reply)} />) : <div className="empty-list">{t("ui.noAnnotationsYet")}<br /><small>{t("ui.selectTextOnThePageToStartAnnotating")}</small></div>}</div>
     <div className="annotation-actions"><button onClick={() => onDelete(selectedIds.length ? selectedIds : selected ? [selected.id] : [])} disabled={!selectedIds.length && !selected} className="danger">{selectedIds.length > 1 ? message('annotation.deleteMany', { count: selectedIds.length }) : message('annotation.delete')}</button></div>
   </aside>
 }

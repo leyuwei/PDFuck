@@ -24,7 +24,7 @@ def replacement(text):
     return ''.join(result)
 
 
-def sanitize(source, target, *, split_graphics=False):
+def sanitize(source, target, *, split_graphics=False, graphic_placeholder=None, preserve_thin_rules=False):
     original = fitz.open(source)
     print('Rebuilding',target.name,flush=True)
     clean = fitz.open()
@@ -35,13 +35,22 @@ def sanitize(source, target, *, split_graphics=False):
         safe_font = fitz.Font('cjk')
         # Preserve only straight table rules. All other graphics become plain placeholders.
         rules=page.new_shape()
-        for drawing in old.get_drawings():
+        for drawing in old.get_drawings() if graphic_placeholder is None else []:
             for part in drawing['items']:
                 if part[0] == 'l':
                     a, b = part[1:3]
                     if abs(a.x-b.x) < .1 or abs(a.y-b.y) < .1:
                         rules.draw_line(a,b)
-                elif part[0] == 're' and part[1].width >= 30 and part[1].height >= 20: rules.draw_rect(part[1])
+                elif part[0] == 're':
+                    rect = part[1]
+                    if rect.width >= 30 and rect.height >= 20:
+                        rules.draw_rect(rect)
+                    elif preserve_thin_rules and min(rect.width, rect.height) <= 1.2 and max(rect.width, rect.height) >= 2:
+                        cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+                        if rect.width >= rect.height:
+                            rules.draw_line((rect.x0, cy), (rect.x1, cy))
+                        else:
+                            rules.draw_line((cx, rect.y0), (cx, rect.y1))
             if split_graphics:
                 rules.finish(color=(.45,.45,.45),width=.3)
                 rules.commit()
@@ -49,9 +58,11 @@ def sanitize(source, target, *, split_graphics=False):
         rules.finish(color=(.45,.45,.45),width=.3)
         rules.commit()
         # No source image is embedded, including scans, signatures, logos and QR codes.
-        for image in old.get_image_info():
+        for image in old.get_image_info() if graphic_placeholder is None else []:
             rect = fitz.Rect(image['bbox']) & page.rect
             if not rect.is_empty: page.draw_rect(rect,color=(.65,.65,.65),fill=(.94,.94,.94),width=.4)
+        if graphic_placeholder is not None:
+            page.draw_rect(fitz.Rect(graphic_placeholder), color=(.65,.65,.65), fill=(.94,.94,.94), width=.4)
         shape=page.new_shape()
         for block in old.get_text('rawdict')['blocks']:
             for line in block.get('lines',[]):

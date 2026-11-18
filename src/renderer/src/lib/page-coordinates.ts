@@ -55,6 +55,16 @@ export function pageViewportMatrix(page: PageGeometry): Matrix {
   return [a, b, c, d, offsetX - a * centerX - c * centerY, offsetY - b * centerX - d * centerY]
 }
 
+export function pdfDestinationPosition(values: { left?: number; top?: number }, matrix: Matrix, width: number, height: number): { position?: number; horizontalPosition?: number } {
+  const [a, , c] = matrix
+  const point = applyMatrix(matrix, { x: values.left ?? 0, y: values.top ?? 0 })
+  const clamp = (value: number) => Math.max(0, Math.min(1, value))
+  return {
+    ...(Number.isFinite(a ? values.left : values.top) && width > 0 ? { horizontalPosition: clamp(point.x / width) } : {}),
+    ...(Number.isFinite(c ? values.left : values.top) && height > 0 ? { position: clamp(point.y / height) } : {})
+  }
+}
+
 function rectCorners(rect: PdfRect): PdfPoint[] {
   return [
     { x: rect.x, y: rect.y },

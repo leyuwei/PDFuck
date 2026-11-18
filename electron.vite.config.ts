@@ -2,6 +2,7 @@ import { copyFileSync, cpSync, mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { pdfjsGlyphFallback } from './scripts/pdfjs-glyph-fallback'
 
 export default defineConfig({
   main: {
@@ -17,8 +18,10 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    optimizeDeps: { exclude: ['pdfjs-dist'] },
+    worker: { format: 'es', plugins: () => [pdfjsGlyphFallback()] },
     build: { rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') } },
-    plugins: [react(), {
+    plugins: [react(), pdfjsGlyphFallback(), {
       name: 'copy-pdfjs-wasm-assets',
       closeBundle() {
         const target = resolve(__dirname, 'out/renderer/pdfjs-wasm')

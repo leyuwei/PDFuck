@@ -191,6 +191,30 @@ export const guideMessages = {
     "ko": "본문을 드래그해 복사하고 책갈피로 다른 페이지로 이동해 보세요. 검색으로 구절을 찾고 인용·도표·약어 도구로 긴 문서의 흐름을 따라가세요.",
     "ar": "حدد نص التدريب وانسخه ثم انتقل بوساطة علامة مرجعية إلى صفحة أخرى. ابحث عن الكلمات والعبارات واستعن بأدوات المراجع والأشكال والاختصارات في المستندات الطويلة."
   },
+  "tour.navigation": {
+    "zh": "翻页和缩放",
+    "en": "Navigate and zoom",
+    "ja": "ページ移動と拡大・縮小",
+    "ru": "Страницы и масштаб",
+    "es": "Navegar y ajustar el zoom",
+    "fr": "Navigation et zoom",
+    "de": "Blättern und zoomen",
+    "pt": "Navegar e ajustar o zoom",
+    "ko": "페이지 이동과 확대·축소",
+    "ar": "التنقل والتكبير"
+  },
+  "tour.navigationBody": {
+    "zh": "点页码两侧的箭头翻页，或直接输入页码跳转。右侧可输入缩放百分比，也可一键适合宽度或整页。点击书签、搜索结果或批注时，目标会尽量居中，靠近首尾时停在可滚动的边界。",
+    "en": "Use the arrows to turn pages or type a page number to jump. Type a zoom percentage or use the buttons to fit the width or whole page. Select a bookmark, search result or annotation to bring it into view. The viewer centers the target when the scroll range allows it.",
+    "ja": "矢印でページをめくり、ページ番号を入力して直接移動できます。右側で倍率を入力したり、幅やページ全体に合わせたりできます。しおり・検索結果・注釈を選ぶと、スクロールできる範囲で対象を閲覧領域の中央に表示します。",
+    "ru": "Перелистывайте страницы стрелками или введите номер нужной страницы. Справа можно ввести масштаб в процентах, подогнать страницу по ширине или показать её целиком. При выборе закладки, результата поиска или аннотации нужный фрагмент по возможности появится в центре области просмотра.",
+    "es": "Use las flechas para pasar de página o introduzca un número para ir directamente a ella. A la derecha puede introducir un porcentaje de zoom, ajustar al ancho o mostrar la página completa. Al elegir un marcador, un resultado de búsqueda o una anotación, el visor centra el contenido dentro de los límites de desplazamiento.",
+    "fr": "Utilisez les flèches pour changer de page ou saisissez son numéro pour y accéder. À droite, saisissez un pourcentage de zoom ou ajustez à la largeur ou à la page entière. Un clic sur un signet, un résultat de recherche ou une annotation centre le passage dans les limites du défilement.",
+    "de": "Blättern Sie mit den Pfeilen oder geben Sie eine Seitenzahl ein. Rechts können Sie den Zoom in Prozent eingeben, die Breite anpassen oder die ganze Seite anzeigen. Bei einem Klick auf ein Lesezeichen, einen Suchtreffer oder eine Anmerkung erscheint die Fundstelle möglichst mittig im Lesebereich.",
+    "pt": "Use as setas para trocar de página ou digite o número para ir direto até ela. À direita, digite a porcentagem de zoom, ajuste à largura ou exiba a página inteira. Ao clicar em um marcador, resultado de busca ou anotação, o trecho é centralizado dentro dos limites de rolagem.",
+    "ko": "화살표로 페이지를 넘기거나 페이지 번호를 입력해 이동하세요. 오른쪽에 확대·축소 비율을 입력하거나 너비 또는 전체 페이지에 맞출 수 있습니다. 책갈피, 검색 결과, 주석을 선택하면 스크롤 가능한 범위에서 해당 위치를 읽기 영역 중앙에 표시합니다.",
+    "ar": "استخدم الأسهم للتنقل بين الصفحات أو أدخل رقم الصفحة للانتقال إليها مباشرة. أدخل نسبة التكبير في المجموعة المجاورة أو اختر الملاءمة لعرض الصفحة أو للصفحة كاملة. عند اختيار علامة مرجعية أو نتيجة بحث أو تعليق، يظهر الموضع في وسط منطقة القراءة متى سمح نطاق التمرير بذلك."
+  },
   "tour.highlight": {
     "zh": "把想法留在原文旁",
     "en": "Annotate as you read",

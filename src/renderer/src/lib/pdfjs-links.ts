@@ -1,10 +1,12 @@
 import type { PDFDocumentProxy, RefProxy } from 'pdfjs-dist/types/src/display/api'
 import type { PdfRect } from '../types'
+import { pdfDestinationPosition, type Matrix } from './page-coordinates'
 
 export interface PdfLinkTarget {
   pageIndex?: number
   /** Normalized vertical destination within pageIndex (0 = top, 1 = bottom). */
   position?: number
+  horizontalPosition?: number
   url?: string
 }
 
@@ -16,11 +18,11 @@ export interface PdfPageLink extends PdfLinkTarget {
 export interface PdfJsDestinationSource {
   getDestination(id: string): Promise<Array<unknown> | null>
   getPageIndex(ref: RefProxy): Promise<number>
-  getPage?(pageNumber: number): Promise<{ view: number[] }>
+  getPage?(pageNumber: number): Promise<{ view: number[]; getViewport?(options: { scale: number }): { transform: number[]; width: number; height: number } }>
 }
 
 /** Resolve every PDF.js destination form used by outlines and Link annotations. */
-export async function pdfJsDestination(document: PdfJsDestinationSource, destination: unknown): Promise<Pick<PdfLinkTarget, 'pageIndex' | 'position'>> {
+export async function pdfJsDestination(document: PdfJsDestinationSource, destination: unknown): Promise<Pick<PdfLinkTarget, 'pageIndex' | 'position' | 'horizontalPosition'>> {
   const resolved = typeof destination === 'string' ? await document.getDestination(destination) : destination
   if (!Array.isArray(resolved) || !resolved.length) return {}
   const target = resolved[0]
@@ -33,11 +35,14 @@ export async function pdfJsDestination(document: PdfJsDestinationSource, destina
   const mode = resolved[1] && typeof resolved[1] === 'object' && 'name' in resolved[1] ? String((resolved[1] as { name: unknown }).name) : ''
   const topIndex = mode === 'XYZ' ? 3 : mode === 'FitH' || mode === 'FitBH' ? 2 : mode === 'FitR' ? 5 : -1
   const top = topIndex >= 0 && typeof resolved[topIndex] === 'number' ? resolved[topIndex] as number : undefined
-  if (top === undefined || !document.getPage) return { pageIndex }
+  const left = ['XYZ', 'FitV', 'FitBV', 'FitR'].includes(mode) && typeof resolved[2] === 'number' ? resolved[2] : undefined
+  if ((top === undefined && left === undefined) || !document.getPage) return { pageIndex }
   try {
-    const view = (await document.getPage(pageIndex + 1)).view
-    const height = Math.abs(view[3] - view[1])
-    return { pageIndex, position: height ? Math.max(0, Math.min(1, (Math.max(view[1], view[3]) - top) / height)) : 0 }
+    const page = await document.getPage(pageIndex + 1)
+    const viewport = page.getViewport?.({ scale: 1 })
+    const [x1, y1, x2, y2] = page.view
+    const matrix = viewport?.transform as Matrix | undefined ?? [1, 0, 0, -1, -Math.min(x1, x2), Math.max(y1, y2)]
+    return { pageIndex, ...pdfDestinationPosition({ left, top }, matrix, viewport?.width ?? Math.abs(x2 - x1), viewport?.height ?? Math.abs(y2 - y1)) }
   } catch { return { pageIndex } }
 }
 

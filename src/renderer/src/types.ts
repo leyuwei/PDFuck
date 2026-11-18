@@ -10,6 +10,8 @@ export interface PdfBookmark {
   pageIndex?: number
   /** Normalized vertical destination within pageIndex (0 = top, 1 = bottom). */
   position?: number
+  /** Normalized horizontal destination on the displayed page. */
+  horizontalPosition?: number
   /** External URI action attached to the outline item. */
   url?: string
   open: boolean
