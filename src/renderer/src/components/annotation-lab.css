@@ -69,7 +69,7 @@
 .ai-stream-request > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; color: #53617a; font-size: var(--ui-font-small); }
 .ai-stream-request > div > span { font-weight: 700; }.ai-stream-request bdi { overflow-wrap: anywhere; }
 .ai-stream-request ul { display: grid; gap: 6px; margin: 8px 0 0; padding-inline-start: 18px; color: #657189; font-size: var(--ui-font-small); line-height: 1.55; overflow-wrap: anywhere; }
-.ai-stream-activity-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #303a4e; font: var(--ui-font-small)/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.ai-stream-activity-body pre { user-select: text; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #303a4e; font: var(--ui-font-small)/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .ai-stream-activity-body small { color: #657189; line-height: 1.5; }
 .theme-dark .ai-stream-activity { border-color: #3b4964; background: #252c39; }
 .theme-dark .ai-stream-activity[open] > summary { border-color: #39445a; }

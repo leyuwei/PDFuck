@@ -2,13 +2,18 @@ import type { PdfRect } from '../types'
 import type { PDFPageProxy } from './pdfjs'
 
 /** Render only the selected area, independently of screen zoom/theme. */
-export async function renderFigureRegion(page: PDFPageProxy, rect: PdfRect, requestedScale = 3): Promise<HTMLCanvasElement> {
+export async function renderFigureRegion(page: PDFPageProxy, rect: PdfRect, requestedScale = 3, signal?: AbortSignal): Promise<HTMLCanvasElement> {
+  signal?.throwIfAborted()
   const scale = Math.min(requestedScale, 4096 / Math.max(rect.width, rect.height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.ceil(rect.width * scale))
   canvas.height = Math.max(1, Math.ceil(rect.height * scale))
   const context = canvas.getContext('2d')!
-  await page.render({ canvas, canvasContext: context, viewport: page.getViewport({ scale }), transform: [1, 0, 0, 1, -rect.x * scale, -rect.y * scale], background: '#ffffff' }).promise
+  const render = page.render({ canvas, canvasContext: context, viewport: page.getViewport({ scale }), transform: [1, 0, 0, 1, -rect.x * scale, -rect.y * scale], background: '#ffffff' })
+  const cancel = () => render.cancel()
+  signal?.addEventListener('abort', cancel, { once: true })
+  try { await render.promise }
+  finally { signal?.removeEventListener('abort', cancel) }
   return canvas
 }
 

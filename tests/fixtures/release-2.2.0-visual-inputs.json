@@ -1,0 +1,13 @@
+{
+  "version": "2.2.0",
+  "policy": "synthetic glyphs and diagram placeholders; no original PDF objects or pixels",
+  "fixtures": [
+    {
+      "file": "a7264eca2cd44af9ad0a68ca83dbbbe5.pdf",
+      "pages": 9,
+      "widgets": 0,
+      "bytes": 724664,
+      "sha256": "683ed2d076387c862c98a7cdee283e103c0bef897849c5dd14081b7156d3342d"
+    }
+  ]
+}

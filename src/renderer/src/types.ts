@@ -79,6 +79,7 @@ export interface TextStyle {
 
 export interface EditableTextRegion {
   id: string
+  savedBlock?: boolean
   text: string
   rect: PdfRect
   sourceRects: PdfRect[]
@@ -127,6 +128,7 @@ export interface PageTextEdit {
   style: TextStyle
   backgroundColor: string
   preserveSourceAppearance?: boolean
+  targetRect?: PdfRect
 }
 
 export interface TextObjectRecord {
@@ -134,6 +136,7 @@ export interface TextObjectRecord {
   pdfAnnotationId?: string
   insertionAligned?: boolean
   pageIndex: number
+  pageTextBlock?: boolean
   rect: PdfRect
   text: string
   style: TextStyle

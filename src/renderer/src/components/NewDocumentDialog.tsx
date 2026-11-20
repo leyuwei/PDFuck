@@ -3,7 +3,10 @@ import { ui } from '../lib/i18n'
 import './new-document.css'
 
 export function NewDocumentIcon({ plus = true }: { plus?: boolean }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3H5v18h14V9l-6-6Zm0 0v6h6" />{plus && <path d="M8 15h8m-4-4v8" />}</svg>
+  return <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeWidth="1.75" d="M6.1 3h7.8l4.9 4.9v10.9a2.1 2.1 0 0 1-2.1 2.1H6.1A2.1 2.1 0 0 1 4 18.8V5.1A2.1 2.1 0 0 1 6.1 3Zm7.8 0v3.7a1.2 1.2 0 0 0 1.2 1.2h3.7"/>
+    {plus && <path className="new-document-plus" strokeWidth="2" d="M7.9 14.4h7M11.4 10.9v7"/>}
+  </svg>
 }
 
 export function NewDocumentDialog({ busy, onCancel, onCreate }: { busy: boolean; onCancel(): void; onCreate(type: 'md' | 'txt'): void }) {

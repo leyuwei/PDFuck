@@ -48,15 +48,23 @@ export function pageTextCaretOffsetAt(region: EditableTextRegion, point: PdfPoin
   const natural = characters.map((character) => estimatedCharacterWidth(character, region.style.size))
   const naturalWidth = natural.reduce((sum, width) => sum + width, 0)
   const scale = naturalWidth > 0 ? line.rect.width / naturalWidth : 1
-  const target = Math.max(0, Math.min(line.rect.width, point.x - line.rect.x))
+  const horizontal = line.sources?.[0]?.rtl ? line.rect.x + line.rect.width - point.x : point.x - line.rect.x
+  const target = Math.max(0, Math.min(line.rect.width, horizontal))
   let width = 0, characterOffset = 0
   for (const [index, advance] of natural.entries()) {
     if (target < width + advance * scale / 2) break
     width += advance * scale
     characterOffset = index + 1
   }
-  const preceding = lines.slice(0, lineIndex).map((value) => value.text).join('\n')
-  return preceding.length + (lineIndex ? 1 : 0) + characters.slice(0, characterOffset).join('').length
+  let lineStart = 0
+  // The painted lines of a saved block can skip an empty line or wrap a long one.
+  for (const painted of lines.slice(0, lineIndex + 1)) {
+    const matched = region.text.indexOf(painted.text, lineStart)
+    if (painted === line && matched >= 0) return matched + characters.slice(0, characterOffset).join('').length
+    lineStart = matched >= 0 ? matched + painted.text.length : lineStart + painted.text.length + 1
+  }
+  const preceding = lines.slice(0, lineIndex).map(value => value.text).join('\n')
+  return Math.min(region.text.length, preceding.length + (lineIndex ? 1 : 0) + characters.slice(0, characterOffset).join('').length)
 }
 
 export function pageTextRegionHasReplacement(region: EditableTextRegion, objects: TextObjectRecord[]): boolean {

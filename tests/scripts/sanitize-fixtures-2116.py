@@ -11,7 +11,7 @@ CJK = '测试样本文字内容布局数据'
 
 def replacement(text):
     # Only standard figure/table markers survive, so discovery still has semantic labels.
-    marker = re.match(r'^(?:Fig\.?|Figure|TABLE|Table|图|表)\s*(?:[IVX]+|\d+)?[.:]?', text)
+    marker = re.match(r'^(?:(?:Figure|Fig\.?|Table)(?![a-z])|[图圖図表])(?:\s*(?:\d+(?:[.\-]\d+)*[a-z]?|[IVXLCDM]+)(?![a-z])[.:]?)?', text, re.IGNORECASE)
     prefix = marker.end() if marker else 0
     result = []
     for i, c in enumerate(text):
@@ -24,7 +24,7 @@ def replacement(text):
     return ''.join(result)
 
 
-def sanitize(source, target, *, split_graphics=False, graphic_placeholder=None, preserve_thin_rules=False):
+def sanitize(source, target, *, split_graphics=False, graphic_placeholder=None, preserve_thin_rules=False, close_rule_paths=True):
     original = fitz.open(source)
     print('Rebuilding',target.name,flush=True)
     clean = fitz.open()
@@ -52,17 +52,19 @@ def sanitize(source, target, *, split_graphics=False, graphic_placeholder=None, 
                         else:
                             rules.draw_line((cx, rect.y0), (cx, rect.y1))
             if split_graphics:
-                rules.finish(color=(.45,.45,.45),width=.3)
+                rules.finish(color=(.45,.45,.45),width=.3,closePath=close_rule_paths)
                 rules.commit()
                 rules=page.new_shape()
-        rules.finish(color=(.45,.45,.45),width=.3)
+        rules.finish(color=(.45,.45,.45),width=.3,closePath=close_rule_paths)
         rules.commit()
         # No source image is embedded, including scans, signatures, logos and QR codes.
         for image in old.get_image_info() if graphic_placeholder is None else []:
             rect = fitz.Rect(image['bbox']) & page.rect
             if not rect.is_empty: page.draw_rect(rect,color=(.65,.65,.65),fill=(.94,.94,.94),width=.4)
         if graphic_placeholder is not None:
-            page.draw_rect(fitz.Rect(graphic_placeholder), color=(.65,.65,.65), fill=(.94,.94,.94), width=.4)
+            rect = fitz.Rect(graphic_placeholder)
+            if not rect.is_empty:
+                page.draw_rect(rect, color=(.65,.65,.65), fill=(.94,.94,.94), width=.4)
         shape=page.new_shape()
         for block in old.get_text('rawdict')['blocks']:
             for line in block.get('lines',[]):

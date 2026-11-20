@@ -1,4 +1,5 @@
 import { insertionMarkerRect, insertionMarkerShape } from './insertion-marker'
+import { pageTextBlocks } from './page-text-blocks'
 import { planAiAnnotationWrites, type ExistingAiAnnotation } from './ai-annotation-merge'
 import type { OcrLayer } from '../../../shared/ocr'
 import { multiplyMatrix } from './page-coordinates'
@@ -25,6 +26,7 @@ import { translateMessage, type TranslationKey } from '../../../shared/i18n-cata
 import { writePageText } from './page-text-write'
 import type { FormFieldEdit } from './pdf-form-fields'
 import type { PageTextRenderRequest, PageTextRenderResult } from '../../../shared/contracts'
+import { version } from '../../../../package.json'
 
 const KIND_LABEL: Record<AnnotationKind, TranslationKey> = {
   highlight: "ui.highlightText", note: "ui.note", replace: "ui.replaceText", insert: "ui.insertText", delete: "ui.deleteText", underline: "ui.underlineText", ai_polish: "ui.aiPolish"
@@ -57,6 +59,44 @@ function decodeObject(document: PDFDocument, object?: PDFObject): string {
   if (resolved instanceof PDFString || resolved instanceof PDFHexString) return resolved.decodeText()
   if (resolved instanceof PDFName) return resolved.asString().replace(/^\//, '')
   return ''
+}
+
+const ANNOTATION_MARKS = PDFName.of('PDFuckMarks')
+const RICH_CONTENTS = PDFName.of('RC')
+const LEGACY_RICH_BODY = '<body xmlns="http://www.w3.org/1999/xhtml"><p>'
+
+function writeAnnotationRichContents(dict: PDFDict, content: string, marks: TextMark[]): void {
+  if (!marks.length || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(content)) {
+    dict.delete(RICH_CONTENTS)
+    return
+  }
+  const insideSurrogatePair = (offset: number) => /[\uDC00-\uDFFF]/.test(content.charAt(offset))
+  const spans = marks.map(mark => ({
+    ...mark, start: insideSurrogatePair(mark.start) ? mark.start - 1 : mark.start,
+    end: insideSurrogatePair(mark.end) ? mark.end + 1 : mark.end
+  }))
+  const body = richTextHtml(content, spans).replace(/[^\x20-\x7E]/gu, char => `&#x${char.codePointAt(0)!.toString(16)};`)
+  const xml = `<?xml version="1.0"?><body xmlns="http://www.w3.org/1999/xhtml" xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/" xfa:contentType="text/html" xfa:APIVersion="PDFuck:${version}" xfa:spec="2.4"><p>${body}</p></body>`
+  // Some readers pass RC bytes straight to XML parsers without decoding a PDF UTF-16 string first.
+  dict.set(RICH_CONTENTS, PDFHexString.of(Array.from(xml, char => char.charCodeAt(0).toString(16)).join('')))
+}
+
+function writeAnnotationText(dict: PDFDict, content: string, marks?: TextMark[]): void {
+  dict.set(PDFName.Contents, pdfString(content))
+  const normalized = normalizeMarks(content, marks)
+  if (normalized.length) dict.set(ANNOTATION_MARKS, pdfString(JSON.stringify(normalized)))
+  else dict.delete(ANNOTATION_MARKS)
+  writeAnnotationRichContents(dict, content, normalized)
+}
+
+function legacyAnnotationText(document: PDFDocument, dict: PDFDict): boolean {
+  return dict.has(ANNOTATION_MARKS) && dict.has(PDFName.of('PDFuckColor')) && dict.has(PDFName.Contents)
+    && decodeObject(document, dict.get(RICH_CONTENTS)).startsWith(LEGACY_RICH_BODY)
+}
+
+interface PreparedPdfSave {
+  data: Uint8Array
+  repairedDocument?: PDFDocument
 }
 
 function numberArray(document: PDFDocument, object?: PDFObject): number[] {
@@ -242,6 +282,7 @@ export class PdfDocumentModel {
     const subset = await PDFDocument.create()
     const copies = await subset.copyPages(this.document, pages)
     copies.forEach((page) => subset.addPage(page))
+    this.repairLegacyAnnotationText(subset)
     return Uint8Array.from(await subset.save({ useObjectStreams: false, addDefaultPage: false }))
   }
   getPageSize(pageIndex: number): { width: number; height: number } {
@@ -331,7 +372,22 @@ export class PdfDocumentModel {
     await this.restoreHistory(next)
   }
 
-  markSaved(path: string): void {
+  hasLegacyAnnotationRichText(): boolean {
+    return this.annotationEntries().some(({dict}) => legacyAnnotationText(this.document, dict))
+  }
+
+  async prepareSave(): Promise<PreparedPdfSave> {
+    if (!this.hasLegacyAnnotationRichText()) return { data: this.bytes }
+    const repairedDocument = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
+    this.repairLegacyAnnotationText(repairedDocument)
+    return { data: await repairedDocument.save({ useObjectStreams: false, addDefaultPage: false }), repairedDocument }
+  }
+
+  markSaved(path: string, prepared?: PreparedPdfSave): void {
+    if (prepared?.repairedDocument) {
+      this.document = prepared.repairedDocument
+      this.currentBytes = Uint8Array.from(prepared.data)
+    }
     this.filePath = path
     this.fileName = path.split(/[\\/]/).pop() || this.fileName
     this.savedBytes = Uint8Array.from(this.currentBytes)
@@ -873,19 +929,23 @@ export class PdfDocumentModel {
     return removed
   }
 
-  async editPageText(pageIndex: number, region: EditableTextRegion, text: string, style = region.style, preserve = true, render?: (request: PageTextRenderRequest) => Promise<PageTextRenderResult>): Promise<void> {
+  async editPageText(pageIndex: number, region: EditableTextRegion, text: string, style = region.style, preserve = true, render?: (request: PageTextRenderRequest) => Promise<PageTextRenderResult>, targetRect?: PdfRect): Promise<void> {
     if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= this.pageCount) throw new Error('ui.nativeTextStale')
     try {
       // The viewer reads saved bytes. Reload the same snapshot so subsequent
       // edits see raw streams rather than pdf-lib's in-memory operator streams.
       this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
       const page = this.document.getPage(pageIndex)
-      const result = await writePageText(this.document, page, pageViewportMatrix(pageGeometry(page)), region, text, style, preserve, render)
+      const result = await writePageText(this.document, page, pageViewportMatrix(pageGeometry(page)), region, text, style, preserve, render, targetRect)
       if (result.changed) await this.commit()
     } catch (error) {
       this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
       throw error
     }
+  }
+
+  editedPageTextBlocks(): TextObjectRecord[] {
+    return this.document.getPages().flatMap((page, pageIndex) => pageTextBlocks(page, pageGeometry(page)).map(({ record }) => ({ ...record, pageIndex })))
   }
 
   async replacePageText(pageIndex: number, rects: PdfRect[], text: string, style: TextStyle, rasterPng?: Uint8Array, replacementRect?: PdfRect, backgroundColor = '#ffffff'): Promise<string> {
@@ -932,16 +992,24 @@ export class PdfDocumentModel {
     try { return await operation } finally { if (this.pageTextEditQueues.get(sourceKey) === settled) this.pageTextEditQueues.delete(sourceKey) }
   }
 
-  private annotationEntries(): AnnotationEntry[] {
+  private annotationEntries(document = this.document): AnnotationEntry[] {
     const entries: AnnotationEntry[] = []
-    this.document.getPages().forEach((page, pageIndex) => {
+    document.getPages().forEach((page, pageIndex) => {
       const annots = page.node.Annots()
       annots?.asArray().forEach((object, index) => {
-        const resolved = object instanceof PDFRef ? this.document.context.lookup(object) : object
+        const resolved = object instanceof PDFRef ? document.context.lookup(object) : object
         if (resolved instanceof PDFDict) entries.push({ dict: resolved, ref: object instanceof PDFRef ? object : undefined, index, page, pageIndex })
       })
     })
     return entries
+  }
+
+  private repairLegacyAnnotationText(document: PDFDocument): void {
+    for (const {dict} of this.annotationEntries(document)) {
+      if (!legacyAnnotationText(document, dict)) continue
+      const content = decodeObject(document, dict.get(PDFName.Contents))
+      writeAnnotationRichContents(dict, content, readMarks(content, decodeObject(document, dict.get(ANNOTATION_MARKS))))
+    }
   }
 
   annotations(): AnnotationRecord[] {
@@ -1112,11 +1180,7 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('Type'), PDFName.of('Annot'))
     dictionary.set(PDFName.of('Subtype'), PDFName.of(subtypeFor(kind)))
     dictionary.set(PDFName.of('Rect'), this.document.context.obj(displayRectToPdfBounds(bounds, geometry)))
-    dictionary.set(PDFName.of('Contents'), pdfString(content))
-    if (marks?.length) {
-      dictionary.set(PDFName.of('PDFuckMarks'), pdfString(JSON.stringify(normalizeMarks(content, marks))))
-      dictionary.set(PDFName.of('RC'), pdfString(`<body xmlns="http://www.w3.org/1999/xhtml"><p>${richTextHtml(content, marks)}</p></body>`))
-    }
+    writeAnnotationText(dictionary, content, marks)
     dictionary.set(PDFName.of('T'), pdfString(normalizeAnnotationAuthor(author)))
     dictionary.set(PDFName.of('NM'), pdfString(id))
     if (aiGenerated) {
@@ -1204,9 +1268,8 @@ export class PdfDocumentModel {
 
   async updateAnnotation(id: string, content: string): Promise<void> {
     const dict = this.findAnnotation(id).dict
-    dict.set(PDFName.of('Contents'), pdfString(content))
+    writeAnnotationText(dict, content)
     dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true'))
-    dict.delete(PDFName.of('PDFuckMarks')); dict.delete(PDFName.of('RC'))
     dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     await this.commit()
   }
@@ -1266,9 +1329,7 @@ export class PdfDocumentModel {
     const entries = groupId ? this.annotationEntries().filter((candidate) => decodeObject(this.document, candidate.dict.get(PDFName.of('PDFuckGroup'))) === groupId) : [entry]
     for (const { dict } of entries) {
       dict.set(PDFName.of('PDFuckAIUserEdited'), PDFName.of('true'))
-      dict.set(PDFName.of('Contents'), pdfString(content))
-      dict.set(PDFName.of('PDFuckMarks'), pdfString(JSON.stringify(normalizeMarks(content, marks))))
-      dict.set(PDFName.of('RC'), pdfString(`<body xmlns="http://www.w3.org/1999/xhtml"><p>${richTextHtml(content, marks)}</p></body>`))
+      writeAnnotationText(dict, content, marks)
       this.setAnnotationColor(dict, color); this.setAnnotationReply(dict, reply)
       dict.set(PDFName.of('M'), PDFString.fromDate(new Date()))
     }

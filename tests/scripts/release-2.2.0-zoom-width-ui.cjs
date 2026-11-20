@@ -50,10 +50,11 @@ async function main() {
               window.dispatchEvent(new StorageEvent('storage', { key }))
               return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
             }, size)
-            for (const value of ['100%', '136.05%', '399.99%']) {
+            for (const [value, committed] of [['100%', '100%'], ['136.05%', '136.1%'], ['399.94%', '399.9%']]) {
               await zoom.fill(value)
+              assert.equal(await zoom.inputValue(), value)
               await zoom.press('Enter')
-              assert.equal(await zoom.inputValue(), value, JSON.stringify({ width, language, theme, size, value }))
+              assert.equal(await zoom.inputValue(), committed, JSON.stringify({ width, language, theme, size, value }))
               const bounds = await zoom.evaluate(input => {
                 const css = getComputedStyle(input)
                 const measure = document.createElement('span')

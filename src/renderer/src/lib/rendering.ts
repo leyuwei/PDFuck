@@ -17,13 +17,19 @@ export function wheelZoom(current: number, deltaY: number): number {
   return Math.max(0.25, Math.min(4, next))
 }
 
-export function parseZoomPercent(input: string): number | undefined {
+export function parseLocalizedRatio(input: string): number | undefined {
   const value = input.normalize('NFKC').trim().replace(/[%٪]$/u, '').trim()
     .replace(/[٠-٩۰-۹]/gu, (digit) => String('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹'.indexOf(digit) % 10))
     .replace(/[,٫]/gu, '.')
   if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/u.test(value)) return undefined
   const percent = Number(value)
-  return Number.isFinite(percent) && percent > 0 ? Math.max(.25, Math.min(4, percent / 100)) : undefined
+  return Number.isFinite(percent) ? percent : undefined
+}
+
+export function parseZoomPercent(input: string): number | undefined {
+  const percent = parseLocalizedRatio(input)
+  if (percent === undefined || percent === 0) return undefined
+  return Math.max(.25, Math.min(4, percent / 100))
 }
 
 /** Normalize a wheel event and return the intended whole-page direction. */

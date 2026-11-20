@@ -1,5 +1,7 @@
 .titlebar-tools .new-document-button { display: grid; place-items: center; flex: none; width: 36px; min-width: 36px; padding: 7px; }
 .new-document-button svg, .new-document-dialog svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.new-document-button svg { width: calc(var(--ui-font-body) + 7px); height: calc(var(--ui-font-body) + 7px); }
+.new-document-button .new-document-plus { stroke: var(--titlebar-brand-accent); }
 .new-document-dialog { position: relative; width: min(460px, calc(100vw - 36px)); max-height: calc(100dvh - 130px); overflow: auto; border: 1px solid #dce3ef; border-radius: 18px; padding: 44px 22px 22px; background: #fff; color: #182033; box-shadow: 0 20px 70px #10203c40; }
 .new-document-dialog .new-document-close { position: absolute; inset-inline-end: 10px; top: 10px; width: 28px; height: 28px; padding: 4px; display: grid; place-items: center; border-color: transparent; background: transparent; }
 .new-document-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

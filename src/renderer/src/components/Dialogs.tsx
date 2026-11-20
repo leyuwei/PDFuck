@@ -1,3 +1,4 @@
+import { RatioInput } from './RatioInput'
 import { AnnotationEditSplit } from './AnnotationEditSplit'
 import { normalizeCopiedText } from '../lib/clipboard-text'
 import { addTextStyle, loadAddTextStyle, saveAddTextStyle } from '../lib/text-preferences'
@@ -20,7 +21,7 @@ import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
 import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
-import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, printPaperSize, printSheetCount, type ResolvedPrintOrientation } from '../lib/print-layout'
+import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, printCellsForSheet, printPaperSize, printSheetCount, printSheetOrientation, type ResolvedPrintOrientation } from '../lib/print-layout'
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, validatePageNumberTemplate } from '../lib/page-numbers'
 import { DEFAULT_WATERMARK_SETTINGS, validateWatermarkSettings, watermarkTiles } from '../lib/watermarks'
@@ -125,7 +126,7 @@ export function PageNumberDialog({ initial, existingCount, pageCount, onCancel, 
       <label className={`page-number-template${error ? ' invalid' : ''}`}>{ui("ui.template")}<input value={settings.template} maxLength={120} spellCheck={false} onChange={(event) => update('template', event.target.value)} /><small>{error ? translateUiText(error) : ui("ui.tokensPageCurrentPageTotalTotalPages")}</small></label>
     </section>
     <section className="page-number-section"><h3>{ui("ui.fontStyle")}</h3><div className="page-number-format"><label>{ui("ui.font")}<select value={normalizeFontFamily(settings.font)} onChange={(event) => update('font', event.target.value)}>{fontOptionsFor(settings.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label><label>{ui("ui.fontSize")}<input type="number" min="6" max="72" value={settings.size} onChange={(event) => update('size', Math.max(6, Math.min(72, Number(event.target.value) || 6)))} /></label><label>{ui("ui.color")}<input type="color" value={settings.color} onChange={(event) => update('color', event.target.value)} /></label><div className="format-toggles"><button type="button" className={settings.bold ? 'active' : ''} onClick={() => update('bold', !settings.bold)}><b>B</b> {ui("ui.bold")}</button><button type="button" className={settings.italic ? 'active' : ''} onClick={() => update('italic', !settings.italic)}><i>I</i> {ui("ui.italic")}</button></div></div></section>
-    <section className="page-number-section page-number-position"><h3>{ui("ui.position")}</h3><label><span>{ui("ui.horizontalAlignment")}</span><div className="segmented"><button type="button" className={settings.horizontal === 'left' ? 'active' : ''} onClick={() => update('horizontal', 'left')}>{ui("ui.left3")}</button><button type="button" className={settings.horizontal === 'center' ? 'active' : ''} onClick={() => update('horizontal', 'center')}>{ui("ui.center")}</button><button type="button" className={settings.horizontal === 'right' ? 'active' : ''} onClick={() => update('horizontal', 'right')}>{ui("ui.right3")}</button></div></label><label><span>{ui("ui.verticalPosition")}</span><div className="segmented"><button type="button" className={settings.vertical === 'top' ? 'active' : ''} onClick={() => update('vertical', 'top')}>{ui("ui.pageTop")}</button><button type="button" className={settings.vertical === 'bottom' ? 'active' : ''} onClick={() => update('vertical', 'bottom')}>{ui("ui.pageBottom")}</button></div></label><div className="page-number-offsets"><label>{ui("ui.distanceFromEdge")}<span><input type="number" min="0" max="30" step="0.5" value={settings.edgeOffsetPercent} onChange={(event) => update('edgeOffsetPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label><label>{ui("ui.sideSafeMargin")}<span><input type="number" min="0" max="30" step="0.5" value={settings.sideMarginPercent} onChange={(event) => update('sideMarginPercent', Math.max(0, Math.min(30, Number(event.target.value) || 0)))} /><i>%</i></span></label></div></section>
+    <section className="page-number-section page-number-position"><h3>{ui("ui.position")}</h3><label><span>{ui("ui.horizontalAlignment")}</span><div className="segmented"><button type="button" className={settings.horizontal === 'left' ? 'active' : ''} onClick={() => update('horizontal', 'left')}>{ui("ui.left3")}</button><button type="button" className={settings.horizontal === 'center' ? 'active' : ''} onClick={() => update('horizontal', 'center')}>{ui("ui.center")}</button><button type="button" className={settings.horizontal === 'right' ? 'active' : ''} onClick={() => update('horizontal', 'right')}>{ui("ui.right3")}</button></div></label><label><span>{ui("ui.verticalPosition")}</span><div className="segmented"><button type="button" className={settings.vertical === 'top' ? 'active' : ''} onClick={() => update('vertical', 'top')}>{ui("ui.pageTop")}</button><button type="button" className={settings.vertical === 'bottom' ? 'active' : ''} onClick={() => update('vertical', 'bottom')}>{ui("ui.pageBottom")}</button></div></label><div className="page-number-offsets"><label>{ui("ui.distanceFromEdge")}<span><RatioInput min={0} max={30} value={settings.edgeOffsetPercent} onCommit={value=>update('edgeOffsetPercent',value)} /><i>%</i></span></label><label>{ui("ui.sideSafeMargin")}<span><RatioInput min={0} max={30} value={settings.sideMarginPercent} onCommit={value=>update('sideMarginPercent',value)} /><i>%</i></span></label></div></section>
     <div className="page-number-preview"><small>{ui("ui.livePreview")}</small><div style={{ color: settings.color, fontFamily: fontCssFamily(settings.font), fontSize: `${Math.max(10, Math.min(24, settings.size))}px`, fontWeight: settings.bold ? 700 : 400, fontStyle: settings.italic ? 'italic' : 'normal', textAlign: settings.horizontal }}>{formatPageNumber(settings.template, Math.min(3, pageCount), pageCount)}</div></div>
     <div className="modal-actions page-number-actions">{existingCount > 0 && <button type="button" className="danger" onClick={onDelete}>{ui("ui.removeExistingPageNumbers")}</button>}<span /><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={Boolean(error)} onClick={() => onSubmit(settings)}>{existingCount > 0 ? ui("ui.updatePageNumbers") : ui("ui.addPageNumbers2")}</button></div>
   </ScrollWindow></div>
@@ -549,7 +550,15 @@ interface ImposedPrintPreview {
   pixelHeight: number
 }
 
-/** Render the actual imposed PDF sheet, at retina density, so preview and job cannot drift. */
+function printPreviewCanvas(width: number, height: number) {
+  const canvas = window.document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width))
+  canvas.height = Math.max(1, Math.round(height))
+  const context = canvas.getContext('2d', { alpha: false })
+  if (!context) throw new Error('Canvas is unavailable')
+  return { canvas, context }
+}
+
 function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): ImposedPrintPreview {
   const [preview, setPreview] = useState<ImposedPrintPreview>({ loading: pageIndices.length > 0, failed: false, pixelWidth: 0, pixelHeight: 0 })
   const pageKey = pageIndices.join(',')
@@ -557,36 +566,75 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
   useEffect(() => {
     let active = true
     let task: ReturnType<typeof getDocument> | undefined
+    const withDocument = async <T,>(bytes: Uint8Array, render: (document: PDFDocumentProxy) => Promise<T>) => {
+      if (!active) throw new Error('Preview cancelled')
+      const loading = getDocument({ data: bytes.slice() })
+      task = loading
+      try { return await render(await loading.promise) }
+      finally {
+        if (task === loading) {
+          task = undefined
+          await loading.destroy().catch(() => undefined)
+        }
+      }
+    }
+    const renderImposed = async () => {
+      const job = await createImposedPrintJob(data, pageIndices, options)
+      const orientation = job.orientations[0] || 'portrait'
+      return withDocument(job.data, async (document) => {
+        const page = await document.getPage(1)
+        const base = page.getViewport({ scale: 1 })
+        const viewport = page.getViewport({ scale: 1600 / Math.max(1, base.width, base.height) })
+        const { canvas, context } = printPreviewCanvas(viewport.width, viewport.height)
+        await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+        if (options.orientation !== 'auto' || orientation !== 'landscape') return { canvas, orientation }
+        const rotated = printPreviewCanvas(canvas.height, canvas.width)
+        rotated.context.translate(rotated.canvas.width, 0)
+        rotated.context.rotate(Math.PI / 2)
+        rotated.context.drawImage(canvas, 0, 0)
+        return { canvas: rotated.canvas, orientation }
+      })
+    }
+    // The reader tolerates streams that the vector page embedder cannot copy.
+    const renderSource = () => withDocument(data, async (document) => {
+      const pages = await Promise.all(pageIndices.map(index => document.getPage(index + 1)))
+      const sizes = pages.map(page => page.getViewport({ scale: 1 }))
+      const orientation = printSheetOrientation(sizes, 0, options)
+      const [width, height] = printPaperSize(options, orientation)
+      const scale = 1600 / Math.max(width, height)
+      const { canvas, context } = printPreviewCanvas(width * scale, height * scale)
+      context.fillStyle = '#fff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      for (const cell of printCellsForSheet(sizes, 0, options, orientation)) {
+        const page = pages[cell.pageIndex]
+        const viewport = page.getViewport({ scale: cell.width * scale / sizes[cell.pageIndex].width })
+        const raster = printPreviewCanvas(viewport.width, viewport.height)
+        await page.render({ canvas: raster.canvas, canvasContext: raster.context, viewport, intent: 'print', annotationMode: AnnotationMode.ENABLE }).promise
+        const x = cell.x * scale, y = (height - cell.y - cell.height) * scale
+        context.drawImage(raster.canvas, x, y, cell.width * scale, cell.height * scale)
+        if (options.frame) {
+          context.strokeStyle = '#a3aeba'
+          context.lineWidth = .65 * scale
+          context.strokeRect(x, y, cell.width * scale, cell.height * scale)
+        }
+        raster.canvas.width = 0
+      }
+      return { canvas, orientation }
+    })
     const timer = window.setTimeout(() => {
       if (!pageIndices.length) { setPreview({ loading: false, failed: false, pixelWidth: 0, pixelHeight: 0 }); return }
       setPreview({ loading: true, failed: false, pixelWidth: 0, pixelHeight: 0 })
       void (async () => {
-        const job = await createImposedPrintJob(data, pageIndices, options)
-        const orientation = job.orientations[0] || 'portrait'
-        task = getDocument({ data: job.data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
-        const document = await task.promise
-        const page = await document.getPage(1)
-        const base = page.getViewport({ scale: 1 })
-        const renderScale = Math.min(1600 / Math.max(1, base.width), 1600 / Math.max(1, base.height))
-        const viewport = page.getViewport({ scale: renderScale })
-        const canvas = window.document.createElement('canvas')
-        canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
-        const context = canvas.getContext('2d', { alpha: false })
-        if (!context) throw new Error('Canvas is unavailable')
-        await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
-        let displayCanvas = canvas
-        if (options.orientation === 'auto' && orientation === 'landscape' && canvas.height > canvas.width) {
-          const rotated = window.document.createElement('canvas')
-          rotated.width = canvas.height; rotated.height = canvas.width
-          const rotatedContext = rotated.getContext('2d', { alpha: false })
-          if (!rotatedContext) throw new Error('Canvas is unavailable')
-          rotatedContext.translate(rotated.width, 0); rotatedContext.rotate(Math.PI / 2); rotatedContext.drawImage(canvas, 0, 0)
-          displayCanvas = rotated
-        }
-        if (active) setPreview({ image: displayCanvas.toDataURL('image/png'), orientation, loading: false, failed: false, pixelWidth: displayCanvas.width, pixelHeight: displayCanvas.height })
+        const { canvas, orientation } = await renderImposed().catch(renderSource)
+        if (active) setPreview({ image: canvas.toDataURL('image/png'), orientation, loading: false, failed: false, pixelWidth: canvas.width, pixelHeight: canvas.height })
       })().catch(() => { if (active) setPreview({ loading: false, failed: true, pixelWidth: 0, pixelHeight: 0 }) })
     }, 90)
-    return () => { active = false; window.clearTimeout(timer); void task?.destroy() }
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+      void task?.destroy().catch(() => undefined)
+      task = undefined
+    }
   }, [data, optionsKey, pageKey])
   return preview
 }
@@ -681,7 +729,7 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
       <section className="print-control-section layout-section"><header><b>{ui("ui.pageLayout")}</b><span>{multiPage ? t('print.perSheet', { count: rows * columns }) : t('print.onePerSheet')}</span></header>
         <button type="button" role="switch" aria-checked={multiPage} className="print-multipage-toggle" onClick={() => { setMultiPage((value) => !value); setSheetIndex(0) }}><span><b>{ui("ui.printMultiplePagesPerSheet")}</b><small>{ui("ui.pdfuckWillGenerateTheLayoutShownInThePreview")}</small></span><i aria-hidden="true" /></button>
         {multiPage && <><div className="print-layout-presets" aria-label={ui("ui.pagesPerSheet")}><button type="button" className={rows === 1 && columns === 2 ? 'active' : ''} onClick={() => setPreset(1, 2)}>{t('page.count', { count: 2 })}</button><button type="button" className={rows === 2 && columns === 2 ? 'active' : ''} onClick={() => setPreset(2, 2)}>{t('page.count', { count: 4 })}</button><button type="button" className={rows === 2 && columns === 3 ? 'active' : ''} onClick={() => setPreset(2, 3)}>{t('page.count', { count: 6 })}</button><button type="button" className={rows === 3 && columns === 3 ? 'active' : ''} onClick={() => setPreset(3, 3)}>{t('page.count', { count: 9 })}</button></div><div className="print-options-grid advanced"><label>{ui("ui.rows")}<input type="number" min="1" max="6" value={rows} onChange={(event) => { setRows(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label><label>{ui("ui.columns")}<input type="number" min="1" max="6" value={columns} onChange={(event) => { setColumns(Math.max(1, Math.min(6, Number(event.target.value) || 1))); setSheetIndex(0) }} /></label></div><label className="print-frame-toggle"><input type="checkbox" checked={frame} onChange={(event) => setFrame(event.target.checked)} /><span><b>{ui("ui.showPageBorders")}</b><small>{ui("ui.keepLightGraySeparatorsWhenPrinting")}</small></span></label></>}
-        <div className="print-scale-control"><header><span>{ui("ui.printScale")}</span><label><input className="print-scale-number" aria-label={ui("ui.printScale")} type="number" min="25" max="200" value={scale} onChange={(event) => setScale(Math.max(25, Math.min(200, Number(event.target.value) || 100)))} /><small>%</small></label></header><input className="print-scale-slider" aria-label={ui("ui.printScaleSlider")} type="range" min="25" max="200" step="5" value={scale} onChange={(event) => setScale(Number(event.target.value))} /><div><button type="button" className={scale === 75 ? 'active' : ''} onClick={() => setScale(75)}>{printScaleLabel(75)}</button><button type="button" className={scale === 100 ? 'active' : ''} onClick={() => setScale(100)}>{printScaleLabel(100)}</button><button type="button" className={scale === 125 ? 'active' : ''} onClick={() => setScale(125)}>{printScaleLabel(125)}</button></div><small>{ui("ui.message100FitsThePaperEnlargingMayCropPageEdges")}</small></div>
+        <div className="print-scale-control"><header><span>{ui("ui.printScale")}</span><label><RatioInput className="print-scale-number" aria-label={ui("ui.printScale")} min={25} max={200} value={scale} onCommit={setScale} /><small>%</small></label></header><input className="print-scale-slider" aria-label={ui("ui.printScaleSlider")} type="range" min="25" max="200" step="5" value={scale} onChange={(event) => setScale(Number(event.target.value))} /><div><button type="button" className={scale === 75 ? 'active' : ''} onClick={() => setScale(75)}>{printScaleLabel(75)}</button><button type="button" className={scale === 100 ? 'active' : ''} onClick={() => setScale(100)}>{printScaleLabel(100)}</button><button type="button" className={scale === 125 ? 'active' : ''} onClick={() => setScale(125)}>{printScaleLabel(125)}</button></div><small>{ui("ui.message100FitsThePaperEnlargingMayCropPageEdges")}</small></div>
       </section>
     </aside><section className="print-preview"><header><div><b>{ui("ui.paperPreview")}</b><small>{orientation === 'auto' ? ui("ui.orientationIsAdaptedToTheCurrentSheetContents") : ui("ui.outputMatchesThePaperProportionsBelow")}</small></div><nav><button type="button" disabled={sheetIndex <= 0} aria-label={ui("ui.previousSheet")} title={ui("ui.previousSheet")} onClick={() => setSheetIndex((value) => Math.max(0, value - 1))}>‹</button><span>{sheetCount ? sheetIndex + 1 : 0} / {sheetCount}</span><button type="button" disabled={sheetIndex >= sheetCount - 1} aria-label={ui("ui.nextSheet")} title={ui("ui.nextSheet")} onClick={() => setSheetIndex((value) => Math.min(sheetCount - 1, value + 1))}>›</button></nav></header>
       <div className="print-paper-stage"><div className={`print-paper${resolvedOrientation === 'landscape' ? ' landscape' : ''}`} style={{ aspectRatio: `${paperWidth} / ${paperHeight}` }}>{preview.image ? <img className="print-job-preview" src={preview.image} alt={ui("ui.finalPrintJobPreview")} data-pixel-width={preview.pixelWidth} data-pixel-height={preview.pixelHeight} /> : <span className={`print-preview-loading${preview.failed ? ' failed' : ''}`}>{preview.failed ? ui("ui.previewUnavailable") : ui("ui.generatingHighResolutionPreview")}</span>}</div></div>
@@ -778,7 +826,7 @@ export function WatermarkDialog({ data, currentPage, initial, existingCount, pag
       <label className={invalidRange ? 'invalid' : ''}><span>{ui('ui.pageRange')}</span><input autoFocus dir="ltr" value={range} aria-invalid={invalidRange} placeholder={ui('ui.forExample135810')} onChange={(event) => setRange(event.target.value)} /><small>{parsed.invalid.length ? t('page.rangeInvalid', { value: parsed.invalid.join(', ') }) : t('page.selected', { count: parsed.pages.length })}</small></label>
       <label><span>{ui('ui.watermarkText')}</span><input value={settings.text} maxLength={120} onChange={(event) => update('text', event.target.value)} /></label>
       <div className="watermark-format"><label><span>{ui('ui.font')}</span><select value={normalizeFontFamily(settings.font)} onChange={(event) => update('font', event.target.value)}>{fontOptionsFor(settings.font).map((option) => <option key={option.value} value={option.value}>{localizedFontLabel(option.label)}</option>)}</select></label><label><span>{ui('ui.fontSize')}</span><input type="number" min="8" max="144" value={settings.size} onChange={(event) => update('size', Math.max(8, Math.min(144, Number(event.target.value) || 8)))} /></label><label><span>{ui('ui.color')}</span><input type="color" value={settings.color} onChange={(event) => update('color', event.target.value)} /></label></div>
-      <div className="watermark-format"><label><span>{ui('ui.rotationAngle')}</span><div className="input-suffix"><input type="number" min="-180" max="180" value={settings.rotation} onChange={(event) => update('rotation', Math.max(-180, Math.min(180, Number(event.target.value) || 0)))} /><i>°</i></div></label><label><span>{ui('ui.opacity')}</span><div className="input-suffix"><input type="number" min="5" max="100" value={Math.round(settings.opacity * 100)} onChange={(event) => update('opacity', Math.max(.05, Math.min(1, (Number(event.target.value) || 5) / 100)))} /><i>%</i></div></label></div>
+      <div className="watermark-format"><label><span>{ui('ui.rotationAngle')}</span><div className="input-suffix"><input type="number" min="-180" max="180" value={settings.rotation} onChange={(event) => update('rotation', Math.max(-180, Math.min(180, Number(event.target.value) || 0)))} /><i>°</i></div></label><label><span>{ui('ui.opacity')}</span><div className="input-suffix"><RatioInput min={5} max={100} decimals={0} value={settings.opacity*100} onCommit={value=>update('opacity',value/100)} /><i>%</i></div></label></div>
       <label className="watermark-density"><span>{ui('ui.watermarkDensity')}</span><input type="range" min="1" max="5" step="1" value={settings.density} onChange={(event) => update('density', Number(event.target.value))} /><small><span>{ui('ui.sparse')}</span><span>{ui('ui.balanced')}</span><span>{ui('ui.dense')}</span></small></label>
     </section><section className="watermark-preview"><h3>{ui('ui.livePreview')}</h3><div className="watermark-preview-stage"><svg className="watermark-preview-page" role="img" aria-label={ui('ui.livePreview')} width={previewPage.width} height={previewPage.height} viewBox={`0 0 ${previewPage.width} ${previewPage.height}`}><rect width="100%" height="100%" fill="#fff" />{thumbnails[currentPage] && <image href={thumbnails[currentPage]} width={previewPage.width} height={previewPage.height} />}{previewTiles.map((tile, index) => <text key={index} x={tile.x + tile.width / 2} y={tile.y + tile.height / 2} fill={settings.color} fillOpacity={settings.opacity} fontFamily={fontCssFamily(settings.font)} fontSize={settings.size} textAnchor="middle" dominantBaseline="central" transform={`rotate(${settings.rotation} ${tile.x + tile.width / 2} ${tile.y + tile.height / 2})`}>{settings.text || ui('ui.watermark')}</text>)}</svg>{!thumbnails[currentPage] && <small>{failed.has(currentPage) ? ui('ui.previewUnavailable') : ui('ui.generatingPreview')}</small>}</div></section></div>
     <div className="modal-actions page-number-actions">{existingCount > 0 && <button type="button" className="danger" onClick={onDelete}>{ui('ui.removeExistingWatermarks')}</button>}<span /><button type="button" onClick={onCancel}>{ui('ui.cancel')}</button><button type="button" className="primary" disabled={Boolean(error)} title={error} onClick={() => onSubmit(value)}>{existingCount > 0 ? ui('ui.updateWatermarks') : ui('ui.applyWatermark')}</button></div>

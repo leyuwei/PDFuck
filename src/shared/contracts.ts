@@ -13,6 +13,7 @@ export interface PageTextRenderRequest {
   bold: boolean; italic: boolean; align: 'left' | 'center' | 'right'; leading: number; baseline: number
   spacing: number; wordSpacing: number; scale: number; firstIndent: number
   justified?: boolean
+  preserveLineBreaks?: boolean
   bottom?: number
   kerning?: Record<string, number>
   source?: { name: string; loadedName: string; postscriptName?: string; program: Uint8Array; unicode: Record<number, string>; fontChars: Record<number, number>; widths: Record<number, number>; matrix: number }

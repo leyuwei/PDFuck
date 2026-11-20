@@ -295,6 +295,55 @@
       "widgets": 0,
       "bytes": 17763,
       "sha256": "b4e8c561c3e1ce055f0df91352376b4afc87a0c68a5d9f72811784b96e52c60d"
+    },
+    {
+      "file": "a7264eca2cd44af9ad0a68ca83dbbbe5.pdf",
+      "pages": 9,
+      "widgets": 0,
+      "bytes": 724664,
+      "sha256": "683ed2d076387c862c98a7cdee283e103c0bef897849c5dd14081b7156d3342d"
+    },
+    {
+      "file": "5a9d8b21713c4e0b98c2a475f691e30d.pdf",
+      "pages": 19,
+      "widgets": 0,
+      "bytes": 922875,
+      "sha256": "bdbf83e6be4e982af02270426348009aad9e2ed2eb5688a3e66a8bacc656edee"
+    },
+    {
+      "file": "de7504b89709419a91bce0c0865e21e8.pdf",
+      "pages": 13,
+      "widgets": 0,
+      "bytes": 838509,
+      "sha256": "c9bf71b1647566415427c9d4fca111e059b2171775340d8f032848f14306ff9a"
+    },
+    {
+      "file": "e6462b903ff64e8f9e29d521c37224.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 33600,
+      "sha256": "5ded881cbca35177ed2f69876de4a6d18c2b1511926f98b9709c2bd8a58de7eb"
+    },
+    {
+      "file": "f4b71cd2768941dc90a7bb345484c44e.pdf",
+      "pages": 15,
+      "widgets": 0,
+      "bytes": 1271999,
+      "sha256": "f347d438539609dc704a4d34286aec4913da15d99346ee162bd0bd3084655b34"
+    },
+    {
+      "file": "4e26cd2ff752427ab6d67223245812ca.pdf",
+      "pages": 1,
+      "widgets": 0,
+      "bytes": 63374,
+      "sha256": "89f0c640e3eceaa5629651d112f3887e7ffadb1f21a5675d7c8e610984420f44"
+    },
+    {
+      "file": "64dcae10ddce4efa8dcc1175cd61d94a.pdf",
+      "pages": 5,
+      "widgets": 0,
+      "bytes": 440003,
+      "sha256": "0c155f3b8ccd43c0ce2152543ee655b92017613206a08fdec74bf22d250ed54f"
     }
   ]
 }

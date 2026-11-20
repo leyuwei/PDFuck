@@ -1,4 +1,4 @@
-import { captionLabel } from './caption-label'
+import { captionLabel, captionMarkerPattern, captionNumberPattern } from './caption-label'
 import { pageLineNumbers } from './page-line-numbers'
 import type { TextItem, TextStyle as PdfJsTextStyle } from 'pdfjs-dist/types/src/display/api'
 import type { EditableTextRegion, NativeTextFont, PdfPoint, PdfRect, TextStyle } from '../types'
@@ -6,8 +6,9 @@ import { multiplyMatrix, type Matrix } from './page-coordinates'
 import { fontCssFamily, normalizeFontFamily } from './text-fonts'
 import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import type { PageGraphic } from './page-visuals'
+import type { MarginRegion } from './page-margins'
 
-export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; tableCell?: number; tableCellRect?: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[] }
+export interface WordBox { text: string; rect: PdfRect; selectionRect?: PdfRect; visualRegion?: number; tableCell?: number; tableCellRect?: PdfRect; order: number; boundaries?: number[]; spaceAfter?: { text: string; width: number }; rtl?: boolean; baselineY?: number; lineBreakAfter?: boolean; column?: number; columnAmbiguous?: boolean; visualBlock?: number; textRun?: number; textRunRect?: PdfRect; columnBoundaries?: number[]; bodyBand?: number; rotated?: true }
 export interface TextPosition { wordIndex: number; offset: number }
 export interface TextCaret extends TextPosition { x: number; y: number; height: number }
 export interface PdfFontDetails { name?: string; loadedName?: string; bold?: boolean; italic?: boolean; native?: NativeTextFont }
@@ -52,15 +53,15 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
     const cell=cells.find(c=>point.x>=c.x&&point.x<=c.x+c.width&&point.y>=c.y&&point.y<=c.y+c.height)
     if(cell && !words.some(w=>w.tableCellRect===cell))return undefined
   }
-  const region = anchor ? words[anchor.wordIndex]?.visualRegion : words.find(word => word.visualRegion !== undefined && point.x >= word.rect.x && point.x <= word.rect.x + word.rect.width && point.y >= word.rect.y && point.y <= word.rect.y + word.rect.height)?.visualRegion
-  if (region !== undefined && (!anchor || words[anchor.wordIndex]?.tableCell === undefined)) {
+  const anchorWord = anchor && words[anchor.wordIndex]
+  const region = anchor ? anchorWord?.visualRegion : words.find(word => word.visualRegion !== undefined && point.x >= word.rect.x && point.x <= word.rect.x + word.rect.width && point.y >= word.rect.y && point.y <= word.rect.y + word.rect.height)?.visualRegion
+  if (region !== undefined && (!anchor || anchorWord?.tableCell === undefined)) {
     const members = words.map((word, index) => ({ word, index })).filter(({ word }) => word.visualRegion === region)
     const local = members.map(({ word }) => ({ ...word, visualRegion: undefined, column: undefined, columnAmbiguous: false }))
     const caret = textCaretAtPoint(local, point)
     return caret ? { ...caret, wordIndex: members[caret.wordIndex].index } : undefined
   }
-  const cell=anchor && words[anchor.wordIndex]?.tableCell
-  const insideCell=cell === undefined ? words.find(w=>w.tableCellRect && point.x>=w.tableCellRect.x && point.x<=w.tableCellRect.x+w.tableCellRect.width && point.y>=w.tableCellRect.y && point.y<=w.tableCellRect.y+w.tableCellRect.height)?.tableCell : cell
+  const insideCell = anchor ? anchorWord?.tableCell : words.find(w=>w.tableCellRect && point.x>=w.tableCellRect.x && point.x<=w.tableCellRect.x+w.tableCellRect.width && point.y>=w.tableCellRect.y && point.y<=w.tableCellRect.y+w.tableCellRect.height)?.tableCell
   const candidates=insideCell === undefined ? words : words.filter(w=>w.tableCell===insideCell)
   if(candidates!==words) {
     const bounds=candidates[0]?.tableCellRect
@@ -71,23 +72,24 @@ export function textCaretAtPoint(words: WordBox[], point: PdfPoint, anchor?: Tex
   let nearestDistance = Number.POSITIVE_INFINITY
   let nearestColumn: number | undefined
   let nearestColumnDistance = Number.POSITIVE_INFINITY
+  const bodyAnchor = anchorWord && anchorWord.visualRegion === undefined && anchorWord.tableCell === undefined
+  const eligible = (word: WordBox) => !bodyAnchor || word.visualRegion === undefined && word.tableCell === undefined
   words.forEach((word) => {
-    if (word.column === undefined || word.columnAmbiguous) return
+    if (!eligible(word) || word.column === undefined || word.columnAmbiguous) return
     const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
     const distance = dx * dx + 16 * dy * dy
     if (distance < nearestColumnDistance) { nearestColumn = word.column; nearestColumnDistance = distance }
   })
-  const anchorWord = anchor && words[anchor.wordIndex]
   if (anchorWord && anchorWord.column !== undefined && !anchorWord.columnAmbiguous && anchorWord.visualRegion === undefined && nearestColumn !== anchorWord.column) {
     const boundaries = anchorWord.columnBoundaries || []
     const nearGutter = boundaries.some(x => Math.abs(point.x-x) <= anchorWord.rect.height*2)
-    const hitsOtherColumn = words.some(w => w.column === nearestColumn && point.x >= w.rect.x && point.x <= w.rect.x+w.rect.width && point.y >= w.rect.y && point.y <= w.rect.y+w.rect.height)
+    const hitsOtherColumn = words.some(w => eligible(w) && w.column === nearestColumn && point.x >= w.rect.x && point.x <= w.rect.x+w.rect.width && point.y >= w.rect.y && point.y <= w.rect.y+w.rect.height)
     // A small line-end overshoot in the gutter must not snap to indented reference text.
     if (nearGutter && !hitsOtherColumn) nearestColumn = anchorWord.column
   }
   words.forEach((word, index) => {
-    if (nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
+    if (!eligible(word) || nearestColumn !== undefined && word.column !== undefined && word.column !== nearestColumn && !word.columnAmbiguous) return
     const dx = Math.max(word.rect.x - (word.rtl ? word.spaceAfter?.width || 0 : 0) - point.x, 0, point.x - word.rect.x - word.rect.width - (!word.rtl ? word.spaceAfter?.width || 0 : 0))
     const dy = Math.max(word.rect.y - point.y, 0, point.y - word.rect.y - word.rect.height)
     // Lock ordinary text to the closest detected column, then weight vertical
@@ -137,7 +139,7 @@ function comparePosition(a: TextPosition, b: TextPosition): number {
 interface TextFlowBounds { left: number; right: number; padding: number }
 
 /** Join adjacent PDF objects on one baseline, without bridging a column gutter. */
-function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => number): PdfRect | undefined {
+export function textLineRect(words: WordBox[], word: WordBox, rowY: (word: WordBox) => number): PdfRect | undefined {
   if (!word.textRunRect) return undefined
   const rect = { ...word.textRunRect }
   const textLeft = words.reduce((left, candidate) => /^\d+$/.test(candidate.text) ? left : Math.min(left, candidate.rect.x), Infinity)
@@ -268,6 +270,13 @@ export function textSelectionBetween(words: WordBox[], anchor: TextPosition, foc
   // Crossing ordinary columns follows reading order, even when a stale caption block joins both paragraphs.
   if(order==='geometry'&&anchorWord&&focusWord&&anchorWord.column!==undefined&&focusWord.column!==undefined&&anchorWord.column!==focusWord.column
     &&!anchorWord.columnAmbiguous&&!focusWord.columnAmbiguous&&!spanningBlock&&anchorWord.visualRegion===undefined&&focusWord.visualRegion===undefined){
+    if (anchorWord.bodyBand !== undefined && focusWord.bodyBand !== undefined) {
+      const low = Math.min(anchorWord.bodyBand, focusWord.bodyBand)
+      const high = Math.max(anchorWord.bodyBand, focusWord.bodyBand)
+      const body = words.filter(word => word.bodyBand !== undefined && word.bodyBand >= low && word.bodyBand <= high)
+        .sort((a, b) => a.bodyBand! - b.bodyBand!)
+      return textSelectionBetween(body, {...anchor, wordIndex: body.indexOf(anchorWord)}, {...focus, wordIndex: body.indexOf(focusWord)}, 'reading')
+    }
     return textSelectionBetween(words,anchor,focus,'reading')
   }
   const [start, end] = comparePosition(anchor, focus) < 0 ? [anchor, focus] : [focus, anchor]
@@ -570,7 +579,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
   // Resource names change across subsets and reprints of the same typeface.
   // Keep distinct physical typefaces and each fragment's source binding.
   const typefaces = new Map<string, string>()
-  for (const details of Object.values(fontDetails)) for (const name of [details.loadedName, details.name]) if (name) typefaces.set(name, (details.name || name).replace(/^(?:[A-Z]{6}[+_])+/, '').replace(/-PDFuckEdit-[\da-f]+$/, ''))
+  for (const details of Object.values(fontDetails)) for (const name of [details.loadedName, details.name]) if (name) typefaces.set(name, (details.name || name).replace(/^(?:[A-Z]{6}[+_])+/, '').replace(/-PDFuckEdi(?:t-[\da-f]+)?$/, ''))
   const compatible = (left: TextStyle, right: TextStyle): boolean => left.font === right.font && (!left.sourceFont || !right.sourceFont || left.sourceFont === right.sourceFont || typefaces.has(left.sourceFont) && typefaces.get(left.sourceFont) === typefaces.get(right.sourceFont)) && left.bold === right.bold && left.italic === right.italic && Math.abs(left.size - right.size) <= Math.max(0.75, Math.max(left.size, right.size) * 0.08)
 
   const fragments: Fragment[] = items.flatMap((item, index) => {
@@ -609,27 +618,29 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
 
   const lines: TextLine[] = []
   for (const fragment of fragments) {
+    const smallFragment = Array.from(fragment.text.trim()).length <= 2
+    const gapFrom = (neighbor: Fragment) => Math.max(neighbor.rect.x - fragment.rect.x - fragment.rect.width, fragment.rect.x - neighbor.rect.x - neighbor.rect.width)
     const candidate = lines
-      .filter((line) => {
-        const smallContinuation = line.closed && fragment.style.size < line.style.size * 0.82
-        if ((line.closed && !smallContinuation) || !compatible(line.style, fragment.style)) return false
-        const baselineDistance = Math.abs(line.baselineY - fragment.baselineY)
+      .flatMap((line) => {
         const smallestSize = Math.min(line.style.size, fragment.style.size)
-        const baselineTolerance = smallestSize * 0.95
-        const baselineMatches = baselineDistance <= Math.max(4, baselineTolerance)
-        if (!baselineMatches) return false
-        const centerDistance = Math.abs(line.rect.y + line.rect.height / 2 - fragment.rect.y - fragment.rect.height / 2)
-        if (!baselineMatches && centerDistance > Math.max(line.rect.height, fragment.rect.height) * 0.34) return false
-        const gap = fragment.rect.x - (line.rect.x + line.rect.width)
-        const previous = line.fragments.at(-1)!
-        const spaces = items.slice(previous.index + 1, fragment.index)
+        const baselineDistance = Math.abs(line.baselineY - fragment.baselineY)
+        if (baselineDistance > Math.max(.9, smallestSize * .24)) return []
+        const nearest = line.fragments.reduce((best, item) => Math.abs(gapFrom(item)) < Math.abs(gapFrom(best)) ? item : best)
+        const gap = gapFrom(nearest)
+        const compact = smallFragment || Array.from(nearest.text.trim()).length <= 2
+        const detachedGlyph = compact && baselineDistance <= Math.max(.65, smallestSize * .15) &&
+          Math.abs(line.style.size - fragment.style.size) <= Math.max(1, smallestSize * .15) &&
+          gap >= -smallestSize * .25 && gap <= smallestSize * .38 &&
+          (/^[\p{P}\p{S}]{1,2}$/u.test(fragment.text.trim()) || /^[\p{P}\p{S}]{1,2}$/u.test(nearest.text.trim()) ||
+            line.style.font === fragment.style.font && fragment.style.bold === line.style.bold && fragment.style.italic === line.style.italic)
+        if (detachedGlyph) return [{ line, distance: Math.abs(gap) + baselineDistance }]
+        if (line.closed || !compatible(line.style, fragment.style)) return []
+        const spaces = items.slice(Math.min(nearest.index, fragment.index) + 1, Math.max(nearest.index, fragment.index))
         const explicitSpace = spaces.length > 0 && spaces.every((item) => Boolean(item.str) && !item.str.trim() && !item.hasEOL)
-        // PDF text items at a column boundary often sit only a few points
-        // apart after scaling. Keep the same-line threshold tight enough to
-        // split that gutter while still joining ordinary word fragments.
-        return gap >= -fragment.style.size * 0.45 && gap <= fragment.style.size * (explicitSpace ? 3 : 1.2)
+        return gap >= -smallestSize * .45 && gap <= smallestSize * (explicitSpace ? 3 : 1.2)
+          ? [{ line, distance: Math.abs(gap) + baselineDistance }] : []
       })
-      .sort((left, right) => Math.abs(fragment.rect.x - left.rect.x - left.rect.width) - Math.abs(fragment.rect.x - right.rect.x - right.rect.width))[0]
+      .sort((left, right) => left.distance - right.distance)[0]?.line
     if (candidate) {
       candidate.fragments.push(fragment)
       candidate.rect = union(candidate.rect, fragment.rect)
@@ -683,7 +694,7 @@ export function textItemsToEditableRegions(items: TextItem[], styles: Record<str
       const lineText = block.lines.map((line) => line.fragments.reduce((value, fragment, index, all) => {
         if (!index) return fragment.text
         const previous = all[index - 1]
-        const gap = fragment.rect.x - previous.rect.x - previous.rect.width
+        const gap = line.fragments[0].rtl ? previous.rect.x - fragment.rect.x - fragment.rect.width : fragment.rect.x - previous.rect.x - previous.rect.width
         const needsSpace = !/\s$/.test(value) && !/^\s/.test(fragment.text) && gap > fragment.style.size * 0.12
         return `${value}${needsSpace ? ' ' : ''}${fragment.text}`
       }, '').trim())
@@ -726,7 +737,7 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
   return natural.map((value) => Math.max(0, value) * scale)
 }
 
-export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride, graphics: PageGraphic[] = []): WordBox[] {
+export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride, graphics: PageGraphic[] = [], pageMargins?: (words: WordBox[]) => Map<WordBox, MarginRegion>): WordBox[] {
   const words: WordBox[] = []
   const horizontalWords = new Set<WordBox>()
   const fontWidths = new Map<NativeTextFont, Map<string, number>>()
@@ -797,7 +808,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       const upper = Math.max(ascent, cjk ? .9 : ascent), lower = Math.max(descent, cjk ? .22 : 1-ascent)
       const selectionRect = Math.abs(angle) < .01 ? { ...rect, y: transform[5] - upper * fontHeight, height: (upper + lower) * fontHeight } : rect
       const boundaries = [0, ...wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || logicalOffset) - logicalOffset)]
-      words.push({ text: match[0], order: order++, rect, selectionRect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
+      words.push({ text: match[0], order: order++, rect, selectionRect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), ...(Math.abs(angle) >= .01 && !native?.vertical ? { rotated: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
       if (Math.abs(angle) < .01 && !native?.vertical) horizontalWords.add(words.at(-1)!)
     }
   }
@@ -883,6 +894,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     line.rect = lineBounds(line)
   }
   lines.sort((left, right) => (left.baselineY ?? left.top) - (right.baselineY ?? right.top) || Math.min(...left.words.map((word) => word.rect.x)) - Math.min(...right.words.map((word) => word.rect.x)))
+  for (const [word, region] of pageMargins?.(words) ?? []) word.visualRegion = region
   const heights = words.map((word) => word.rect.height).sort((left, right) => left - right)
   const medianHeight = heights[Math.floor(heights.length / 2)] || 10
   // Repeated horizontal rules bound tables/plots, whose cell gaps are not prose gutters.
@@ -892,26 +904,57 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   // this gap is measured across repeated visual rows, a fraction of the
   // median glyph height is enough to distinguish it from ordinary word gaps.
   const minimumGutter = Math.max(3, medianHeight * 0.45)
-  interface GutterCluster { center: number; left: number; right: number; gaps: Array<{ left: number; right: number }>; rows: Set<number> }
+  interface GutterGap { left: number; right: number; row: number; laneInk: number }
+  interface GutterCluster { center: number; left: number; right: number; gaps: GutterGap[]; rows: Set<number> }
   const gutterClusters: GutterCluster[] = []
-  const candidateGaps: Array<{ left: number; right: number; row: number }> = []
-  const visualRows: WordBox[][] = []
+  const candidateGaps: GutterGap[] = []
+  const textRows: WordBox[][] = []
   const rowY = (word: WordBox) => word.baselineY ?? word.rect.y
   for (const word of [...words].sort((left, right) => rowY(left) - rowY(right) || left.rect.x - right.rect.x)) {
-    const row = visualRows.at(-1)
+    const row = textRows.at(-1)
     if (row && Math.abs(rowY(row[0]) - rowY(word)) <= medianHeight * 0.65) row.push(word)
-    else visualRows.push([word])
+    else textRows.push([word])
   }
-  const ruledBands = rules.flatMap(rule => {
-    const aligned = rules.filter(other => Math.abs(other.x-rule.x) < medianHeight && Math.abs(other.x+other.width-rule.x-rule.width) < medianHeight)
-    const ys = [...new Set(aligned.map(rect => rect.y))].sort((a,b) => a-b)
-    const closed = ys.length >= 2 && [rule.x,rule.x+rule.width].every(x => allRules.some(rect => rect.width <= medianHeight * .2 && Math.abs(rect.x-x) < medianHeight * .2 && rect.y <= ys[0]+medianHeight*.2 && rect.y+rect.height >= ys.at(-1)!-medianHeight*.2))
-    const bodyRows = closed ? visualRows.filter(row => {
-      const ink = row.filter(word => word.rect.x >= rule.x && word.rect.x+word.rect.width <= rule.x+rule.width && rowY(word) >= ys[0] && rowY(word) <= ys.at(-1)! && /\p{L}/u.test(word.text)).reduce((sum,word) => sum+word.rect.width,0)
+  const tolerance = medianHeight * .2
+  const alignedRules = (a: PdfRect, b: PdfRect, gap: number) =>
+    Math.abs(a.x-b.x) <= gap && Math.abs(a.x+a.width-b.x-b.width) <= gap
+  const verticals = allRules.filter(rule => rule.width <= tolerance && rule.height >= medianHeight)
+  const frameEdges = new Set<PdfRect>()
+  const frames: Array<{ left: number; right: number; top: number; bottom: number }> = []
+  for (const rule of rules) {
+    if (frameEdges.has(rule)) continue
+    const top = rule.y
+    const sides = verticals.filter(edge => Math.abs(edge.y-top) <= tolerance)
+    const left = sides.find(edge => Math.abs(edge.x-rule.x) <= tolerance)
+    if (!left) continue
+    const right = sides.find(edge => Math.abs(edge.x-rule.x-rule.width) <= tolerance && Math.abs(edge.height-left.height) <= tolerance)
+    if (!right) continue
+    const bottom = left.y+left.height
+    const base = rules.find(other => Math.abs(other.y-bottom) <= tolerance && alignedRules(rule,other,tolerance))
+    if (!base) continue
+    for (const edge of rules) {
+      if (alignedRules(rule,edge,tolerance) && (Math.abs(edge.y-top) <= tolerance || Math.abs(edge.y-bottom) <= tolerance)) frameEdges.add(edge)
+    }
+    const hasCells = rules.some(edge => edge.y > top+tolerance && edge.y < bottom-tolerance && alignedRules(rule,edge,tolerance))
+      && verticals.some(edge => edge.x > left.x+tolerance && edge.x < right.x-tolerance && edge.y <= top+tolerance && edge.y+edge.height >= bottom-tolerance)
+    const bodyRows = textRows.filter(row => {
+      const ink = row.filter(word => word.rect.x >= left.x && word.rect.x+word.rect.width <= right.x && rowY(word) >= top && rowY(word) <= bottom && /\p{L}/u.test(word.text)).reduce((sum,word) => sum+word.rect.width,0)
       return ink >= rule.width * .55
-    }).length : 0
-    return ys.length >= 3 || closed && bodyRows < 3 ? [{left:rule.x,right:rule.x+rule.width,top:ys[0],bottom:ys.at(-1)!}] : []
+    }).length
+    if (hasCells || bodyRows < 3) frames.push({left:left.x,right:right.x,top,bottom})
+  }
+  // A frame supplies its own bounds. Its edges cannot connect to a header or footer.
+  const openRules = rules.filter(rule => !frameEdges.has(rule))
+  const ruledBands = openRules.flatMap(rule => {
+    const ys = openRules.filter(other => alignedRules(rule,other,medianHeight))
+      .map(rect => rect.y).sort((a,b) => a-b).filter((y,i,all) => !i || y-all[i-1] > tolerance)
+    return ys.length >= 3 && ys[1]-ys[0] <= medianHeight * 5
+      ? [{left:rule.x,right:rule.x+rule.width,top:ys[0],bottom:ys.at(-1)!}] : []
   })
+  const visualRows = textRows.map(row => row.filter(word => {
+    const center = word.rect.x+word.rect.width/2
+    return word.visualRegion === undefined && !frames.some(frame => center >= frame.left && center <= frame.right && rowY(word) >= frame.top && rowY(word) <= frame.bottom)
+  })).filter(row => row.length)
   const textLeft = words.reduce((left, word) => /^\d+$/.test(word.text) ? left : Math.min(left, word.rect.x), Infinity)
   visualRows.forEach((row, lineIndex) => {
     // Columns need not share a baseline. Look at neighboring lines together:
@@ -950,7 +993,8 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
     for (const [position, index] of rowGutters.entries()) {
       // Reject small islands; the prose check below also excludes numbers and notation.
       const ink = (start: number, end: number) => merged.slice(start, end).reduce((sum, interval) => sum + interval.right - interval.left, 0)
-      if (ink(rowGutters[position - 1] ?? 0, index) + medianHeight * .001 < medianHeight * 2 || ink(index, rowGutters[position + 1] ?? merged.length) + medianHeight * .001 < medianHeight * 2) continue
+      const laneInk = Math.min(ink(rowGutters[position - 1] ?? 0, index), ink(index, rowGutters[position + 1] ?? merged.length))
+      if (laneInk + medianHeight * .001 < medianHeight * 2) continue
       const center = (merged[index - 1].right + merged[index].left) / 2
       if (ruledBands.some(band => center > band.left && center < band.right && rowY(row[0]) >= band.top && rowY(row[0]) <= band.bottom)) continue
       if (neighbors.flat().some(word => word.textRunRect && word.textRunRect.x < center && word.textRunRect.x + word.textRunRect.width > center)) continue
@@ -959,7 +1003,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
         let start = Infinity, end = -Infinity, letters = 0
         for (const word of [...row].sort((a,b) => a.rect.x-b.rect.x)) {
           const rect = word.rect
-          if (rect.x < left - medianHeight * .2 || rect.x + rect.width > right + medianHeight * .2) continue
+          if (rect.height < medianHeight * .85 || rect.x < left - medianHeight * .2 || rect.x + rect.width > right + medianHeight * .2) continue
           if (rect.x-end > medianHeight * .8) { start = rect.x; letters = 0 }
           end = rect.x + rect.width
           letters += word.text.match(/\p{L}/gu)?.length || 0
@@ -968,7 +1012,7 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
         return false
       })
       if (!prose(-Infinity, merged[index-1].right) || !prose(merged[index].left, Infinity)) continue
-      candidateGaps.push({ left: merged[index - 1].right, right: merged[index].left, row: lineIndex })
+      candidateGaps.push({ left: merged[index - 1].right, right: merged[index].left, row: lineIndex, laneInk })
     }
   })
   // Seed with narrow gaps and intersect their empty corridors. Short lines
@@ -1001,7 +1045,9 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       }
       const typical = [...cluster.gaps].sort((a,b) => a.right-a.left-(b.right-b.left)).slice(0, Math.ceil(cluster.gaps.length / 2))
       const center = (edge(typical.map(gap => gap.left)) + edge(typical.map(gap => gap.right))) / 2
-      return {...cluster,center:Math.max(cluster.left,Math.min(cluster.right,center))}
+      // Ragged lines can put the modal edge outside the shared empty corridor.
+      const clearance = Math.min(gutterCorridor,(cluster.right-cluster.left)*.4)
+      return {...cluster,center:center <= cluster.left+clearance || center >= cluster.right-clearance ? cluster.center : center}
     })
     // A real gutter has substantially more support than conflicting text.
     // Page-wide whitespace alone can otherwise promote equation-number gaps
@@ -1024,6 +1070,17 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       }
       return bands.some(support => {
         if (support.length < 3) return false
+        // Aligned label/value rows also leave an empty corridor. Look for
+        // consecutive reading lines, or longer proof of prose at wider leading.
+        const leading = medianHeight * 2.25
+        const continuous = support.some((y, i) => i >= 2 && y - support[i - 1] <= leading && support[i - 1] - support[i - 2] <= leading)
+        if (!continuous) {
+          const fullRows = new Set(cluster.gaps.filter(gap => {
+            const y = rowY(visualRows[gap.row][0])
+            return y >= support[0] && y <= support.at(-1)! && gap.laneInk >= medianHeight * 11
+          }).map(gap => gap.row))
+          if (fullRows.size < 6) return false
+        }
         const band = visualRows.filter(row => rowY(row[0]) >= support[0] && rowY(row[0]) <= support.at(-1)!)
         return band.filter(row => row.some(word => (word.textRunRect || word.rect).x < cluster.center + corridor && (word.textRunRect || word.rect).x + (word.textRunRect || word.rect).width > cluster.center - corridor)).length <= Math.min(band.length * .25, support.length * .5)
       })
@@ -1082,12 +1139,21 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
   // captions into a visual block so selection can use geometry for the whole
   // block rather than accidentally traversing the rest of a column.
   const captionStart = (run: VisualRun): boolean => {
-    const first = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[0]
-    const second = [...run.words].sort((left, right) => left.rect.x - right.rect.x || left.order - right.order)[1]
-      || (first && /^(?:Fig\.?|Figure|Table|TABLE|图|表)$/u.test(first.text) && words.filter(word=>word!==first&&Math.abs((word.baselineY??word.rect.y)-(first.baselineY??first.rect.y))<first.rect.height*.35&&word.rect.x>=first.rect.x+first.rect.width-first.rect.height*.1&&word.rect.x-first.rect.x-first.rect.width<first.rect.height*1.8).sort((a,b)=>a.rect.x-b.rect.x)[0])
-    return Boolean(first && second && /^(?:Fig\.?|Figure|Table|图|表)$/iu.test(first.text) && /^(?:\d+[.):]?|[IVXLCDM]+[.):]?|\d+\([a-z]\))$/iu.test(second.text) && captionLabel([...new Set([...run.words,second])].sort((a,b)=>a.rect.x-b.rect.x).map(w=>w.text).join(' ')))
+    const rtl = run.words.filter(word => word.rtl).length > run.words.length / 2
+    const readingOrder = (a: WordBox, b: WordBox) => (rtl ? -1 : 1) * (a.rect.x - b.rect.x) || a.order - b.order
+    const sorted = [...run.words].sort(readingOrder)
+    const first = sorted[0]
+    if (!first) return false
+    if (captionLabel(first.text)) return Boolean(captionLabel(sorted.map(word => word.text).join(' ')))
+    if (!captionMarkerPattern.test(first.text)) return false
+    const second = sorted[1] ?? words.filter(word => {
+      if (!captionNumberPattern.test(word.text) || Math.abs((word.baselineY ?? word.rect.y) - (first.baselineY ?? first.rect.y)) >= first.rect.height * .35) return false
+      const gap = rtl ? first.rect.x - word.rect.x - word.rect.width : word.rect.x - first.rect.x - first.rect.width
+      return gap >= -first.rect.height * .1 && gap < first.rect.height * 1.8
+    }).sort(readingOrder)[0]
+    return Boolean(second && captionNumberPattern.test(second.text) && captionLabel([...new Set([...sorted,second])].sort(readingOrder).map(word => word.text).join(' ')))
   }
-  const equationWords = new Set(visualRows.filter(row => {
+  const equationWords = new Set(textRows.filter(row => {
     const text = row.map(word => word.text).join(''), operators = text.match(/[=+−∑∫√×÷<>≤≥/]/gu)?.length || 0
     return operators >= 2 && operators / text.length >= .1 && columnBoundaries.some(boundary => row.some(word => word.rect.x + word.rect.width < boundary) && row.some(word => word.rect.x > boundary))
   }).flat())

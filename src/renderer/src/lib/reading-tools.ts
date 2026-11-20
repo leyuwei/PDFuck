@@ -7,8 +7,8 @@ export function loadReadingTools(): Record<string, ReadingTools> {
     const store = JSON.parse(localStorage.getItem(KEY) || '{}')
     if (!store || typeof store !== 'object' || Array.isArray(store)) return {}
     return Object.fromEntries(Object.entries(store).filter(([, v]) => v && typeof v === 'object' && !Array.isArray(v)).map(([key, value]) => {
-      const v = value as Partial<ReadingTools>
-      return [key, { citation: v.citation === true, visual: v.visual === true, abbreviation: v.abbreviation === true }]
+      const v = value as Partial<ReadingTools> & { visualReference?: boolean }
+      return [key, { citation: v.citation === true, visual: v.visual === true || v.visualReference === true, abbreviation: v.abbreviation === true }]
     }))
   } catch { return {} }
 }

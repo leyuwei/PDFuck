@@ -18,18 +18,27 @@ async function layout(request: PageTextRenderRequest): Promise<{ height: number;
   const fallback = request.family.replace(/["\\]/g, '')
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')!
   const entries = source ? Object.entries(source.unicode).filter(([code]) => source.fontChars[Number(code)] !== undefined).sort((a, b) => b[1].length - a[1].length) : []
+  const glyphs = new Map<string, typeof entries>()
+  for (const entry of entries) {
+    const first = entry[1][0]
+    if (!first) continue
+    const matches = glyphs.get(first)
+    if (matches) matches.push(entry)
+    else glyphs.set(first, [entry])
+  }
   const tokens: Array<{ logical: string; paint: string; native: boolean; width: number }> = []
-  const soft = (request.text.match(/\n/g)?.length || 0) <= (request.originalText.match(/\n/g)?.length || 0)
+  const soft = !request.preserveLineBreaks && (request.text.match(/\n/g)?.length || 0) <= (request.originalText.match(/\n/g)?.length || 0)
   const cjk = (value: string) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u.test(value)
   let remaining = soft ? request.text.replace(/([^\n])\n(?=[^\n])/g, (_match, before: string, index: number) => before + (cjk(before) && cjk(request.text[index + 2]) ? '' : ' ')) : request.text
   const contextual = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Thai}]/u.test(remaining)
+  const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' })
   while (remaining) {
-    const entry = native && !contextual ? entries.find(([, value]) => remaining.startsWith(value)) : undefined
+    const entry = native && !contextual ? glyphs.get(remaining[0])?.find(([, value]) => remaining.startsWith(value)) : undefined
     // Keep connected scripts together so Chromium measures and shapes a word,
     // rather than adding isolated letter widths or reversing native glyphs.
     const connected = contextual && remaining.match(/^[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Thai}\p{M}\u200c\u200d]+/u)?.[0]
     context.font = `${request.italic ? 'italic ' : ''}${request.bold ? 'bold ' : ''}${request.size}px ${entry ? 'NativePageText' : fallback}`
-    const logical = entry?.[1] || (connected && context.measureText(connected).width * request.scale <= request.width ? connected : '') || [...new Intl.Segmenter('und', { granularity: 'grapheme' }).segment(remaining)][0].segment
+    const logical = entry?.[1] || (connected && context.measureText(connected).width * request.scale <= request.width ? connected : '') || segmenter.segment(remaining)[Symbol.iterator]().next().value!.segment
     const code = entry ? Number(entry[0]) : undefined, paint = code === undefined ? logical : String.fromCodePoint(source!.fontChars[code])
     const natural = code === undefined ? context.measureText(logical).width : source!.widths[code] * source!.matrix * request.size
     const width = (natural + request.spacing * (connected ? Array.from(logical).length : 1) + (logical === ' ' ? request.wordSpacing : 0)) * request.scale
@@ -90,6 +99,14 @@ async function layout(request: PageTextRenderRequest): Promise<{ height: number;
   return { height, fallbackUsed }
 }
 
+// CJKRadicals.txt lists supplementary radicals without a Unicode compatibility decomposition.
+const cjkRadicals: Record<string, string> = {
+  '⺦': '丬', '⺰': '纟', '⻅': '见', '⻈': '讠', '⻉': '贝', '⻋': '车', '⻐': '钅', '⻓': '长',
+  '⻔': '门', '⻙': '韦', '⻚': '页', '⻛': '风', '⻜': '飞', '⻠': '饣', '⻢': '马', '⻥': '鱼',
+  '⻦': '鸟', '⻧': '卤', '⻨': '麦', '⻩': '黄', '⻪': '黾', '⻫': '斉', '⻬': '齐', '⻭': '歯',
+  '⻮': '齿', '⻯': '竜', '⻰': '龙', '⻲': '亀', '⻳': '龟'
+}
+
 function remapFonts(document: PDFDocument, request: PageTextRenderRequest) {
   const source = request.source, requested = new Set(Array.from(request.text))
   const unicode = new Map(source ? Object.entries(source.unicode).map(([code, value]) => [source.fontChars[Number(code)], value] as const) : [])
@@ -105,7 +122,7 @@ function remapFonts(document: PDFDocument, request: PageTextRenderRequest) {
       const logical = original ? unicode.get(value.codePointAt(0)!) || value : value
       // Chromium can choose the Kangxi-radical alias for a shared CJK glyph.
       // Correct only aliases requested by the edit, preserving full-width text.
-      const normalized = logical.normalize('NFKC').replace(/[\u06cc\u06a9]/gu, character => {
+      const normalized = logical.normalize('NFKC').replace(/[\u2e80-\u2eff]/gu, character => cjkRadicals[character] || character).replace(/[\u06cc\u06a9]/gu, character => {
         const arabic = character === '\u06cc' ? '\u064a' : '\u0643'
         return !requested.has(character) && requested.has(arabic) ? arabic : character
       })

@@ -1,3 +1,4 @@
+import { RatioInput } from './RatioInput'
 import { indentSource } from '../lib/source-indentation'
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -86,7 +87,7 @@ function MarkdownLayoutDialog({ document, onChange, onClose }: { document: Markd
       <section className="md-dialog-section"><h3>{ui('md.format')}</h3><div className="md-layout-fields">
         <label>{ui('md.font')}<select value={options.font} onChange={event => update({ font: event.target.value as MarkdownOptions['font'] })}>{MARKDOWN_FONTS.map(font => <option key={font} value={font}>{ui(`md.${font}`)}</option>)}</select></label>
         <label>{ui('md.size')}<input type="number" min="8" max="24" step=".5" value={options.fontSize} onChange={event => { if (event.target.validity.valid) update({ fontSize: event.target.valueAsNumber }) }} /></label>
-        <label>{ui('md.line')}<input type="number" min="1.2" max="2.4" step=".05" value={options.lineHeight} onChange={event => { if (event.target.validity.valid) update({ lineHeight: event.target.valueAsNumber }) }} /></label>
+        <label>{ui('md.line')}<RatioInput min={1.2} max={2.4} value={options.lineHeight} onCommit={lineHeight=>update({lineHeight})} /></label>
         <label>{ui('md.paragraph')}<input type="number" min="0" max="24" step="1" value={options.paragraphSpacing} onChange={event => { if (event.target.validity.valid) update({ paragraphSpacing: event.target.valueAsNumber }) }} /></label>
       </div><div className="md-size-presets" role="group" aria-label={ui('md.size')}>{[10, 11, 12, 14, 16].map(size => <button type="button" key={size} aria-pressed={options.fontSize === size} onClick={() => update({ fontSize: size })}>{size} pt</button>)}</div></section>
     </ScrollWindow>

@@ -35,11 +35,35 @@ export function loadPreferences(): AppPreferences {
 
 export function savePreferences(value: AppPreferences): void { localStorage.setItem(KEY, JSON.stringify(value)) }
 
+function colorChannels(color: string): number[] {
+  return color.slice(1).match(/.{2}/g)?.map(part => Number.parseInt(part, 16) / 255) ?? []
+}
+
+function relativeLuminance(rgb: number[]): number {
+  return rgb.map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+}
+
 export function contrastText(color: string, pureBlack = false): '#111827' | '#000000' | '#ffffff' {
-  const rgb = color.slice(1).match(/.{2}/g)?.map((part) => Number.parseInt(part, 16) / 255)
-  if (!rgb || rgb.length !== 3) return '#ffffff'
-  const luminance = rgb.map((channel) => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+  const rgb = colorChannels(color)
+  if (rgb.length !== 3) return '#ffffff'
+  const luminance = relativeLuminance(rgb)
   const whiteContrast = 1.05 / (luminance + .05)
   const darkContrast = (luminance + .05) / .05
   return darkContrast > whiteContrast ? pureBlack ? '#000000' : '#111827' : '#ffffff'
+}
+
+export function titlebarAccent(accent: string, theme: AppTheme): string {
+  // Use the tool-group surface, slightly closer to the accent than the titlebar itself.
+  const surface = relativeLuminance(colorChannels(theme === 'dark' ? '#202b3c' : '#f5f7fa'))
+  const rgb = colorChannels(accent)
+  const endpoint = theme === 'dark' ? 1 : 0
+  for (let step = 0; step < 10; step++) {
+    const candidate = rgb.map(channel => Math.round((channel + (endpoint - channel) * step / 10) * 255))
+    const ink = relativeLuminance(candidate.map(channel => channel / 255))
+    if ((Math.max(ink, surface) + .05) / (Math.min(ink, surface) + .05) >= 4.5) {
+      return '#' + candidate.map(channel => channel.toString(16).padStart(2, '0')).join('')
+    }
+  }
+  return theme === 'dark' ? '#ffffff' : '#000000'
 }
