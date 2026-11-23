@@ -52,7 +52,6 @@ function resources(){
   }
   return resourceService
 }
-app.on('will-quit',()=>{resourceService?.manager.stop();grammarEngine?.stop()})
 process.once('exit',()=>{resourceService?.manager.stop();grammarEngine?.stop()})
 
 interface MainWindowSession extends WindowDocumentState {
@@ -101,12 +100,34 @@ const releasesPage = 'https://github.com/leyuwei/PDFuck/releases'
 let updateDownload:AppUpdateDownload|undefined
 let updateReady:Promise<void>|undefined
 let latestInstaller:{version:string;asset:UpdateAsset}|undefined
-let launchUpdate:(()=>void)|undefined
+let launchUpdate:(()=>Promise<void>)|undefined
+let launchingUpdate=false
 function updater(){
  if(!updateDownload){updateDownload=new AppUpdateDownload(join(resources().manager.catalog.root,'app-updates'),resources().transport,state=>{for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed())window.webContents.send('app:update-state',state)});updateReady=resources().ready.then(()=>updateDownload!.restore()).then(()=>{if(updateDownload?.state&&compareVersions(updateDownload.state.version,app.getVersion())<=0)updateDownload.action('cancel')})}
  return updateDownload
 }
-app.on('will-quit',()=>{updateDownload?.stop();const launch=launchUpdate;launchUpdate=undefined;launch?.()})
+app.on('will-quit',event=>{
+ if(launchingUpdate){event.preventDefault();return}
+ const launch=launchUpdate
+ if(!launch){
+  resourceService?.manager.stop()
+  grammarEngine?.stop()
+  updateDownload?.stop()
+  return
+ }
+ event.preventDefault()
+ launchUpdate=undefined
+ launchingUpdate=true
+ void launch().then(()=>{
+  launchingUpdate=false
+  app.quit()
+ },error=>{
+  console.error('Could not launch the update installer.',error)
+  launchingUpdate=false
+  updateDownload?.setInstalling(false,'updates.installUnavailable')
+  createMainWindow()
+ })
+})
 interface UpdatePreferences { skippedVersion?: string }
 
 function updatePreferencesPath(): string { return join(app.getPath('userData'), 'update-preferences.json') }
@@ -143,7 +164,7 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
       try{if(response.status!==200)return {status:'unavailable',currentVersion};const chunks:Buffer[]=[];let bytes=0;for await(const chunk of response.body){const data=Buffer.from(chunk);bytes+=data.length;if(bytes>4*1024*1024)throw Error('updates.unavailable');chunks.push(data)}release=JSON.parse(Buffer.concat(chunks).toString('utf8'))}finally{response.close()}
       const asset=selectUpdateAsset(release.assets,process.platform,process.arch)
       const version=typeof release.tag_name==='string'?release.tag_name.replace(/^v/i,''):''
-      if(asset&&/^\d+(\.\d+){1,3}$/.test(version))latestInstaller={version,asset}
+      latestInstaller=asset&&/^\d+(\.\d+){1,3}$/.test(version)?{version,asset}:undefined
       releaseNotes = typeof release.body === 'string' ? release.body.trim().slice(0, 100_000) : undefined
       latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/i, '') : undefined
       if (typeof release.html_url === 'string' && validReleasePage(release.html_url)) releaseUrl = release.html_url
@@ -931,8 +952,36 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:update-state',async(event)=>{requireMainWindow(event.sender);const service=updater();await updateReady;return service.state})
   ipcMain.handle('app:update-download',async(event)=>{requireMainWindow(event.sender);const check=await checkForUpdates();if(!['available','skipped'].includes(check.status)||!latestInstaller||check.latestVersion!==latestInstaller.version)throw Error('updates.unavailable');const service=updater();await updateReady;await service.prepare(latestInstaller.version,latestInstaller.asset);service.action('start')})
   ipcMain.handle('app:update-action',(event,action:unknown)=>{requireMainWindow(event.sender);if(!['start','pause','cancel'].includes(String(action)))throw Error('updates.unavailable');updater().action(action as ResourceAction)})
-  ipcMain.handle('app:update-install',async(event)=>{requireMainWindow(event.sender);if(!app.isPackaged)throw Error('updates.installUnavailable');const service=updater();await updateReady;const file=await service.installer();launchUpdate=await prepareUpdateLaunch(service.root,file,service.state!.version,app.getPath('exe'),process.platform,process.arch,nativeText(requireWindowSession(event.sender).interfaceLanguage,'updates.installUnavailable'));app.quit()})
-  ipcMain.on('app:update-cancel-install',event=>{requireMainWindow(event.sender);launchUpdate=undefined})
+  ipcMain.handle('app:update-open-folder',async event=>{
+    requireMainWindow(event.sender)
+    const service=updater()
+    await updateReady
+    const file=await service.installer()
+    if(await shell.openPath(dirname(file)))throw Error('updates.folderUnavailable')
+  })
+  ipcMain.handle('app:update-install',async event=>{
+    const {interfaceLanguage}=requireWindowSession(event.sender)
+    if(!app.isPackaged||launchUpdate||launchingUpdate)throw Error('updates.installUnavailable')
+    const service=updater()
+    await updateReady
+    const state=service.state
+    const file=await service.installer()
+    if(!state||state!==service.state||launchUpdate||event.sender.isDestroyed())throw Error('updates.installUnavailable')
+    service.setInstalling(true)
+    try{
+      launchUpdate=await prepareUpdateLaunch(service.root,file,state.version,app.getPath('exe'),process.platform,process.arch,nativeText(interfaceLanguage,'updates.installUnavailable'))
+    }catch(error){
+      service.setInstalling(false)
+      throw error
+    }
+    app.quit()
+  })
+  ipcMain.on('app:update-cancel-install',event=>{
+    requireMainWindow(event.sender)
+    if(!launchUpdate)return
+    launchUpdate=undefined
+    updateDownload?.setInstalling(false)
+  })
   ipcMain.handle('app:check-update', (event) => { requireMainWindow(event.sender); return checkForUpdates() })
   ipcMain.handle('app:skip-update-version', async (event, version: string) => {
     requireMainWindow(event.sender)

@@ -240,8 +240,12 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, suppressHint
   const [hint, setHint] = useState(false)
   const bounds = rectUnion(annotation.rects)
   const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null)
-  const markup = !['note', 'insert'].includes(annotation.kind)
-  const style = { left: bounds.x * zoom, top: bounds.y * zoom, width: Math.max(8, bounds.width * zoom), height: Math.max(8, bounds.height * zoom), '--annotation-color': annotation.color } as CSSProperties
+  const note = annotation.kind === 'note'
+  const markup = !note && annotation.kind !== 'insert'
+  const style = {
+    left: bounds.x * zoom, top: bounds.y * zoom, '--annotation-color': annotation.color,
+    ...(!note && { width: Math.max(8, bounds.width * zoom), height: Math.max(8, bounds.height * zoom) })
+  } as CSSProperties
   return <div
     className={`annotation-hit ${markup ? 'markup' : 'point'} annotation-${annotation.kind}${focused ? ' focused' : ''}`}
     style={style}
@@ -249,7 +253,7 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, suppressHint
     onPointerEnter={() => setHint(true)} onPointerLeave={() => setHint(false)}
     onFocus={() => setHint(true)} onBlur={() => setHint(false)}
     aria-describedby={hint && !suppressHint ? `annotation-hint-${annotation.id}` : undefined}
-    role="button" tabIndex={0} aria-label={annotation.content || annotation.kind}
+    role="button" tabIndex={0} aria-label={annotation.content || (note ? ui('ui.note') : annotation.kind)}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onSelect(annotation) } }}
     onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }; onSelect(annotation, { additive: event.metaKey || event.ctrlKey, range: event.shiftKey }); event.currentTarget.setPointerCapture(event.pointerId) }}
     onPointerUp={(event) => {
@@ -265,12 +269,15 @@ function AnnotationOverlay({ annotation, zoom, focused, focusToken, suppressHint
     onDoubleClick={(event) => { event.stopPropagation(); onSelect(annotation); onEdit(annotation) }}
     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(annotation); onContext(annotation, event.clientX, event.clientY) }}
   >
-    {annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
+    {markup && annotation.rects.map((rect, index) => <span key={index} className="annotation-segment" style={{ left: (rect.x - bounds.x) * zoom, top: (rect.y - bounds.y) * zoom, width: rect.width * zoom, height: rect.height * zoom }} />)}
     {hint && !suppressHint && annotation.content && <span id={`annotation-hint-${annotation.id}`} role="tooltip" className="annotation-hover-hint" dir="auto"><AnnotationContent text={annotation.content} marks={annotation.marks} markdown={false} /></span>}
     {annotation.aiGenerated && <span className="annotation-ai-pin"><AiAnnotationBadge /></span>}
-    {annotation.kind === 'note' && <span className="note-pin">●</span>}
+    {note && <AnnotationIcon kind="note" />}
     {annotation.kind === 'insert' && <span className="insert-caret" style={{width: bounds.width * zoom, height: bounds.height * zoom}} aria-hidden="true"><InsertionMarker width={bounds.width} height={bounds.height}/></span>}
-    {focused && <>{annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}<span key={`badge-${focusToken}`} className="annotation-focus-badge" style={{ left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 7 }}>{t('annotation.current')}</span></>}
+    {focused && <>
+      {note ? <span key={focusToken} className="annotation-focus-ring" /> : annotation.rects.map((rect, index) => <span key={`${focusToken}-${index}`} className="annotation-focus-ring" style={{ left: (rect.x - bounds.x) * zoom - 2, top: (rect.y - bounds.y) * zoom - 2, width: Math.max(6, rect.width * zoom + 4), height: Math.max(6, rect.height * zoom + 4) }} />)}
+      <span key={`badge-${focusToken}`} className="annotation-focus-badge" style={note ? undefined : { left: (annotation.rects[0].x - bounds.x + annotation.rects[0].width / 2) * zoom, top: (annotation.rects[0].y - bounds.y) * zoom - 7 }}>{t('annotation.current')}</span>
+    </>}
   </div>
 }
 

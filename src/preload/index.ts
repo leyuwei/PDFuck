@@ -7,6 +7,7 @@ const api: DesktopApi = {
   downloadUpdate:()=>ipcRenderer.invoke('app:update-download'),
   updateAction:action=>ipcRenderer.invoke('app:update-action',action),
   installUpdate:()=>ipcRenderer.invoke('app:update-install'),
+  openUpdateFolder:()=>ipcRenderer.invoke('app:update-open-folder'),
   cancelUpdateInstall:()=>ipcRenderer.send('app:update-cancel-install'),
   platform: process.platform,
   ensureFeatureResources: request => ipcRenderer.invoke('resources:ensure',request),

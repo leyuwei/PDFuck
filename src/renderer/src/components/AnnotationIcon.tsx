@@ -6,7 +6,7 @@ export function AnnotationIcon({ kind, size = 22 }: { kind: IconKind; size?: num
   const normalized = kind === 'delete_text' ? 'delete' : kind
   return <svg className={`annotation-icon ${normalized}`} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
     {normalized === 'highlight' && <><path d="m6 15 8.9-8.9 3 3L9 18H6z" /><path className="accent" d="M4 19h14" /></>}
-    {normalized === 'note' && <><path d="M5 5h14v10H9l-4 4z" /><path className="detail" d="M8 9h8M8 12h5" /></>}
+    {normalized === 'note' && <><path d="M7 4h10a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-6l-4.5 3v-3A4 4 0 0 1 3 14V8a4 4 0 0 1 4-4Z" /><path d="M8 9.5h8M8 13h5" fill="none" /></>}
     {normalized === 'replace' && <><path d="M5 8h12l-3-3M19 16H7l3 3" /><path className="detail" d="M4 12h16" /></>}
     {normalized === 'insert' && <><path d="m6 17 6-10 6 10" /><path className="accent" d="M12 5v14M9.5 12h5" /></>}
     {normalized === 'delete' && <><path className="detail" d="M5 8h14M5 16h14" /><path className="accent" d="M4 12h16" /></>}

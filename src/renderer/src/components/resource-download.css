@@ -4,6 +4,7 @@
 .resource-title-icon { width: 43px; height: 43px; display: grid; place-items: center; flex: none; border-radius: 13px; background: var(--theme-accent-soft); color: var(--theme-accent-soft-ink); }
 .resource-title-icon svg { width: 26px; height: 26px; }
 .resource-download-dialog > header > div:nth-child(2) { flex: 1; min-width: 0; }
+.resource-download-dialog > header > .update-download-heading { flex: 1; min-width: 0; }
 .modal.resource-download-dialog h2 { margin: 0; font-size: var(--ui-font-title); line-height: 1.35; overflow-wrap: anywhere; }
 .resource-download-dialog > header span { display: block; margin-top: 3px; color: #667690; font-size: var(--ui-font-small); }
 .resource-download-dialog > header > button { width: 30px; min-height: 30px; padding: 0; flex: none; border: 0; background: transparent; font-size: var(--ui-font-title); }

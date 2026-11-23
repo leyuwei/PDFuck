@@ -24,16 +24,16 @@ export const updateMessages = {
     "ar": "جارٍ تنزيل المثبّت المناسب. يمكنك الإيقاف والاستئناف والتصغير."
   },
   "updates.ready": {
-    "zh": "安装包已准备好。安装前会关闭 PDFuck，未保存文档将先提示处理。",
-    "en": "The installer is ready. PDFuck will close for installation and prompt for unsaved documents.",
-    "ja": "準備完了。インストール前にPDFuckを終了し、未保存の文書は確認します。",
-    "ru": "Установщик готов. PDFuck закроется после проверки несохранённых документов.",
-    "es": "El instalador está listo. PDFuck se cerrará y preguntará por documentos sin guardar.",
-    "fr": "L’installateur est prêt. PDFuck se fermera après confirmation des documents non enregistrés.",
-    "de": "Installation bereit. PDFuck fragt nach ungespeicherten Dokumenten und wird dann beendet.",
-    "pt": "O instalador está pronto. PDFuck verificará documentos não salvos antes de fechar.",
-    "ko": "설치 파일이 준비되었습니다. 저장하지 않은 문서를 확인한 뒤 PDFuck을 닫습니다.",
-    "ar": "المثبّت جاهز. سيتحقق PDFuck من المستندات غير المحفوظة ثم يُغلق."
+    "zh": "下载已完成。可以退出 PDFuck 并安装，也可以打开安装包所在文件夹。退出前会提示处理未保存的文档。",
+    "en": "Download complete. Quit PDFuck to install or open the installer folder. You’ll be prompted about unsaved documents before quitting.",
+    "ja": "ダウンロードが完了しました。PDFuckを終了してインストールするか、インストーラーのフォルダーを開けます。終了前に未保存の文書を確認します。",
+    "ru": "Загрузка завершена. Закройте PDFuck для установки или откройте папку установщика. Перед выходом появится запрос о несохранённых документах.",
+    "es": "Descarga completada. Salga de PDFuck para instalar o abra la carpeta del instalador. Antes de salir, se le avisará si hay documentos sin guardar.",
+    "fr": "Téléchargement terminé. Quittez PDFuck pour installer la mise à jour ou ouvrez le dossier de l’installateur. Les documents non enregistrés seront signalés avant de quitter.",
+    "de": "Download abgeschlossen. Beenden Sie PDFuck zur Installation oder öffnen Sie den Ordner des Installationsprogramms. Vor dem Beenden werden Sie auf ungespeicherte Dokumente hingewiesen.",
+    "pt": "Download concluído. Saia do PDFuck para instalar ou abra a pasta do instalador. Você será avisado sobre documentos não salvos antes de sair.",
+    "ko": "다운로드가 완료되었습니다. PDFuck을 종료하고 설치하거나 설치 파일이 있는 폴더를 열 수 있습니다. 종료 전에 저장하지 않은 문서를 확인합니다.",
+    "ar": "اكتمل التنزيل. أغلق PDFuck للتثبيت أو افتح مجلد المثبّت. سيظهر تنبيه بشأن المستندات غير المحفوظة قبل الخروج."
   },
   "updates.install": {
     "zh": "退出并安装",
@@ -59,9 +59,21 @@ export const updateMessages = {
     "ko": "업데이트를 다운로드할 수 없습니다. 다시 시도하거나 릴리스 페이지를 여세요.",
     "ar": "تعذر التنزيل. أعد المحاولة أو افتح صفحة الإصدار."
   },
+  "updates.folderUnavailable": {
+    "zh": "无法打开安装包所在文件夹，请重试。",
+    "en": "Could not open the installer folder. Please try again.",
+    "ja": "インストーラーのフォルダーを開けませんでした。再試行してください。",
+    "ru": "Не удалось открыть папку установщика. Повторите попытку.",
+    "es": "No se pudo abrir la carpeta del instalador. Inténtelo de nuevo.",
+    "fr": "Impossible d’ouvrir le dossier de l’installateur. Réessayez.",
+    "de": "Der Ordner des Installationsprogramms konnte nicht geöffnet werden. Versuchen Sie es erneut.",
+    "pt": "Não foi possível abrir a pasta do instalador. Tente novamente.",
+    "ko": "설치 파일이 있는 폴더를 열 수 없습니다. 다시 시도하세요.",
+    "ar": "تعذر فتح مجلد المثبّت. حاول مرة أخرى."
+  },
   "updates.installUnavailable": {
     "zh": "安装未能启动，下载文件已保留。请重试安装。",
-    "en": "Installation could not start. The download is retained; retry installation.",
+    "en": "Installation could not start. The download is retained. Try installing again.",
     "ja": "インストールを開始できません。ファイルは保持されています。再試行してください。",
     "ru": "Не удалось начать установку. Файл сохранён; повторите попытку.",
     "es": "No se pudo iniciar la instalación. El archivo se conserva; reintente.",

@@ -26,15 +26,42 @@ export class AppUpdateDownload {
  private journal(){const data=Buffer.from(JSON.stringify({asset:this.asset,state:this.state}));this.writes=this.writes.catch(()=>{}).then(()=>atomicWrite(join(this.root,'pending.json'),data));return this.writes}
  private emit(){this.notify(this.state?{...this.state}:undefined)}
  async restore(){try{const saved=JSON.parse(await readFile(join(this.root,'pending.json'),'utf8'));const a=saved.asset as UpdateAsset;const valid=selectUpdateAsset([{name:a.name,size:a.bytes,digest:'sha256:'+a.sha256,browser_download_url:a.url}],process.platform,process.arch);if(!valid)return;this.asset=valid;this.state={version:String(saved.state.version),name:a.name,phase:'paused',downloaded:Math.min(a.bytes,await fileSize(downloadPath(this.root,a)+'.part')),total:a.bytes,speed:0};if(await verifiedFile(join(this.root,a.name),a))this.state={...this.state,phase:'ready',downloaded:a.bytes}}catch{/* A new profile has no download journal. */}}
- async prepare(version:string,asset:UpdateAsset){if(!/^\d+(\.\d+){1,3}$/.test(version))throw Error('updates.unavailable');if(this.controller)throw Error('resources.busy');this.asset=asset;this.state={version,name:asset.name,phase:'confirm',downloaded:Math.min(asset.bytes,await fileSize(downloadPath(this.root,asset)+'.part')),total:asset.bytes,speed:0};await this.journal();this.emit()}
+ async prepare(version:string,asset:UpdateAsset){
+  if(!/^\d+(\.\d+){1,3}$/.test(version))throw Error('updates.unavailable')
+  if(this.state?.version===version&&this.asset?.url===asset.url&&this.asset.sha256===asset.sha256&&this.state.phase==='ready'){this.emit();return}
+  if(this.controller||this.state?.installing)throw Error('resources.busy')
+  const downloaded=Math.min(asset.bytes,await fileSize(downloadPath(this.root,asset)+'.part'))
+  if(this.controller||this.state?.installing)throw Error('resources.busy')
+  this.asset=asset;this.state={version,name:asset.name,phase:'confirm',downloaded,total:asset.bytes,speed:0}
+  await this.journal();this.emit()
+ }
  action(action:'start'|'pause'|'cancel'){
+  if(this.state?.installing)return
   if(action==='pause'||action==='cancel'){this.controller?.abort();if(action==='cancel'){this.state=undefined;void this.journal().catch(()=>{});this.emit();return}if(this.state){this.state={...this.state,phase:'paused',speed:0};void this.journal().catch(()=>{});this.emit()}return}
-  if(this.controller||!this.asset||!this.state)return
+  if(this.controller||!this.asset||!this.state||this.state.phase==='ready')return
   const controller=new AbortController();this.controller=controller;const asset=this.asset
   this.state={...this.state,phase:'queued',error:undefined};this.emit()
   this.task=(async()=>{try{let lastBytes=this.state!.downloaded,lastTime=Date.now();const file=await downloadResource(this.root,asset,this.transport,controller.signal,(downloaded,phase)=>{if(controller.signal.aborted||!this.state)return;const now=Date.now(),elapsed=now-lastTime;this.state={...this.state!,downloaded,phase,speed:elapsed>=300?Math.max(0,(downloaded-lastBytes)*1000/elapsed):this.state!.speed};if(elapsed>=300){lastTime=now;lastBytes=downloaded}if(now-this.last>=150||phase==='verifying'){this.last=now;this.emit()}});controller.signal.throwIfAborted();await copyFile(file,join(this.root,asset.name));controller.signal.throwIfAborted();this.state={...this.state!,phase:'ready',downloaded:asset.bytes,speed:0};await this.journal();this.emit()}catch(error){if(this.state){this.state={...this.state,phase:controller.signal.aborted?'paused':'error',speed:0,error:controller.signal.aborted?undefined:error instanceof Error&&/^resources\./.test(error.message)?error.message:'resources.network'};await this.journal().catch(()=>{});this.emit()}}finally{this.controller=undefined}})()
  }
  async settled(){await this.task;await this.writes}
- async installer(){await this.settled();if(!this.asset||this.state?.phase!=='ready'||!await verifiedFile(join(this.root,this.asset.name),this.asset))throw Error('updates.unavailable');return join(this.root,this.asset.name)}
+ async installer(){
+  await this.settled()
+  const asset=this.asset
+  if(!asset||this.state?.phase!=='ready')throw Error('updates.unavailable')
+  const file=join(this.root,asset.name)
+  const valid=await verifiedFile(file,asset).catch(()=>false)
+  if(this.asset!==asset||this.state?.phase!=='ready')throw Error('updates.unavailable')
+  if(!valid){
+   this.state={...this.state,phase:'error',downloaded:0,error:'resources.checksum'}
+   this.emit()
+   throw Error('updates.unavailable')
+  }
+  return file
+ }
+ setInstalling(installing:boolean,error?:string){
+  if(this.state?.phase!=='ready')return
+  this.state={...this.state,installing,error}
+  this.emit()
+ }
  stop(){this.controller?.abort()}
 }

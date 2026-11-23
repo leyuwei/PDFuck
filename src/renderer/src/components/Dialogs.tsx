@@ -740,12 +740,13 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
 }
 
 export function UpdateDialog({ update, onLater, onSkip, onDownload }: { update: UpdateCheckResult & { status: 'available' }; onLater(): void; onSkip(): void; onDownload(): void }) {
+  useInterfaceLanguage()
   return <div className="modal-backdrop update-backdrop"><ScrollWindow className="modal update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
     <header className="update-heading"><div className="update-symbol" aria-hidden="true"><span>↑</span></div>
     <div className="update-copy"><small>{ui("ui.pdfuckUpdateCheck")}</small><h2 id="update-title">{t('update.availableTitle', { version: update.latestVersion || '' })}</h2><p>{t('update.description', { current: update.currentVersion })}</p></div></header>
     <div className="update-version"><span>{t('update.current', { version: update.currentVersion })}</span><i>→</i><span>{t('update.latest', { version: update.latestVersion || '' })}</span></div>
     <ReleaseNotes content={update.releaseNotes} version={update.latestVersion} />
-    <div className="update-actions"><button type="button" onClick={onSkip}>{ui("ui.doNotRemindMeAboutThisVersion")}</button><span /><button type="button" onClick={onLater}>{ui("ui.remindMeLater")}</button><button type="button" className="primary" onClick={onDownload}>{ui("ui.download")}</button></div>
+    <div className="update-actions"><button type="button" onClick={onSkip}>{ui("ui.doNotRemindMeAboutThisVersion")}</button><span /><button type="button" onClick={onLater}>{ui("ui.remindMeLater")}</button><button type="button" className="primary" onClick={onDownload}>{ui(update.canDownload ? 'ui.download' : 'about.releases')}</button></div>
   </ScrollWindow></div>
 }
 

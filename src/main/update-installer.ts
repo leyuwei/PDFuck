@@ -1,4 +1,6 @@
+import { shell } from 'electron'
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { writeFile } from 'node:fs/promises'
 import { dirname,join } from 'node:path'
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'"
@@ -48,10 +50,18 @@ if [[ -d "$backup" ]]; then /bin/rm -rf "$backup"; fi
 if [[ "$mode" != --elevated ]]; then /usr/bin/open "$target"; fi
 `
 }
-export async function prepareUpdateLaunch(root:string,file:string,version:string,executable:string,platform:string,arch:string,failureMessage:string):Promise<()=>void>{
- if(platform==='win32')return()=>{spawn(file,[],{detached:true,stdio:'ignore'}).unref()}
+export async function prepareUpdateLaunch(root:string,file:string,version:string,executable:string,platform:string,arch:string,failureMessage:string):Promise<()=>Promise<void>>{
+ if(platform==='win32')return async()=>{
+  // Windows Shell handles elevation for the per-machine NSIS installer.
+  const error=await shell.openPath(file)
+  if(error)throw Error(error)
+ }
  if(platform!=='darwin')throw Error('updates.unavailable')
  const running=dirname(dirname(dirname(executable))),target=running.startsWith('/Volumes/')?'/Applications/PDFuck.app':running
  const script=join(root,'install-update.sh');await writeFile(script,macUpdateScript(file,target,version,process.pid,arch,script,failureMessage),{mode:0o700})
- return()=>{spawn('/bin/bash',[script],{detached:true,stdio:'ignore',cwd:root}).unref()}
+ return async()=>{
+  const child=spawn('/bin/bash',[script],{detached:true,stdio:'ignore',cwd:root})
+  await once(child,'spawn')
+  child.unref()
+ }
 }

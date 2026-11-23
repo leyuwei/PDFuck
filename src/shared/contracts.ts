@@ -244,6 +244,7 @@ export interface DesktopApi {
   downloadUpdate():Promise<void>
   updateAction(action:import('./resources').ResourceAction):Promise<void>
   installUpdate():Promise<void>
+  openUpdateFolder():Promise<void>
   cancelUpdateInstall():void
   ensureFeatureResources(request:FeatureResourceRequest):Promise<boolean>
   resourceState():Promise<ResourceDownloadState|undefined>
