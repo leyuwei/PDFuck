@@ -209,7 +209,7 @@ export class PdfDocumentModel {
     const model = new PdfDocumentModel()
     model.document = await PDFDocument.load(data, { updateMetadata: false })
     model.currentBytes = new Uint8Array(data)
-    model.savedBytes = new Uint8Array(data)
+    model.savedBytes = model.currentBytes
     model.filePath = path
     model.fileName = name || path?.split(/[\\/]/).pop() || '未命名.pdf'
     return model
@@ -341,8 +341,10 @@ export class PdfDocumentModel {
   }
 
   private async commit(): Promise<void> {
-    const previous = Uint8Array.from(this.currentBytes)
-    const next = Uint8Array.from(await this.document.save({ useObjectStreams: false, addDefaultPage: false }))
+    // Internal byte snapshots are replaced as a unit; bytes exposed to other
+    // callers are copied by the getter.
+    const previous = this.currentBytes
+    const next = await this.document.save({ useObjectStreams: false, addDefaultPage: false })
     if (!sameBytes(previous, next)) {
       this.undoStack.push(previous)
       this.trimHistory(this.undoStack)
@@ -353,7 +355,7 @@ export class PdfDocumentModel {
   }
 
   private async restoreHistory(bytes: Uint8Array<ArrayBufferLike>): Promise<void> {
-    this.currentBytes = Uint8Array.from(bytes)
+    this.currentBytes = bytes
     this.document = await PDFDocument.load(this.currentBytes, { updateMetadata: false })
     this.dirty = this.externallyDirty || !sameBytes(this.currentBytes, this.savedBytes)
   }
@@ -361,14 +363,14 @@ export class PdfDocumentModel {
   async undo(): Promise<void> {
     const previous = this.undoStack.pop()
     if (!previous) return
-    this.redoStack.push(Uint8Array.from(this.currentBytes)); this.trimHistory(this.redoStack)
+    this.redoStack.push(this.currentBytes); this.trimHistory(this.redoStack)
     await this.restoreHistory(previous)
   }
 
   async redo(): Promise<void> {
     const next = this.redoStack.pop()
     if (!next) return
-    this.undoStack.push(Uint8Array.from(this.currentBytes)); this.trimHistory(this.undoStack)
+    this.undoStack.push(this.currentBytes); this.trimHistory(this.undoStack)
     await this.restoreHistory(next)
   }
 
@@ -383,14 +385,16 @@ export class PdfDocumentModel {
     return { data: await repairedDocument.save({ useObjectStreams: false, addDefaultPage: false }), repairedDocument }
   }
 
-  markSaved(path: string, prepared?: PreparedPdfSave): void {
+  markSaved(path: string | undefined, prepared?: PreparedPdfSave): void {
     if (prepared?.repairedDocument) {
       this.document = prepared.repairedDocument
       this.currentBytes = Uint8Array.from(prepared.data)
     }
-    this.filePath = path
-    this.fileName = path.split(/[\\/]/).pop() || this.fileName
-    this.savedBytes = Uint8Array.from(this.currentBytes)
+    if (path) {
+      this.filePath = path
+      this.fileName = path.split(/[\\/]/).pop() || this.fileName
+    }
+    this.savedBytes = this.currentBytes
     this.externallyDirty = false
     this.dirty = false
   }

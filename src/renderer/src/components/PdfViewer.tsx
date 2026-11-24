@@ -21,7 +21,9 @@ import { normalizeTextSpacing } from '../../../shared/text-spacing'
 import { createPortal } from 'react-dom'
 import { ContextMenu } from './ContextMenu'
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { AnnotationMode, getDocument, normalizeUnicode, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, PDFJS_CMAP_URL, PDFJS_STANDARD_FONTS_URL, PDFJS_WASM_URL, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, getRangeDocument, normalizeUnicode, OPS, PDFJS_CANVAS_MAX_AREA_IN_BYTES, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
+import { nativePagePreferred, paintNativePdfPage } from '../lib/range-page-render'
+import { pdfPasswordFailure, type PdfPasswordFailure } from '../lib/pdf-password'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import type { AnnotationRecord, AnnotationReply, CanvasAction, EditableTextRegion, ImageDraft, ImageObjectRecord, PdfBookmark, PdfPoint, PdfRect, TextObjectRecord, TextSelection, TextStyle, Tool, ViewMode } from '../types'
 import { normalizeRect, rectUnion } from '../lib/geometry'
@@ -46,7 +48,7 @@ import { AnnotationColorPicker } from './AnnotationControls'
 import { abbreviationLinks, citationLinks, visualHits, type CitationLink, type GrammarIssue, type InsightHit, type PageTextSnapshot } from '../lib/document-insights'
 import { readingOffsetForPage, scrollTopForReadingPosition } from '../lib/reading-position'
 import { pagePointerLossCancelsDrag, pageToolUsesPointerCapture } from '../lib/pointer-capture'
-import type { ReadingPosition } from '../../../shared/contracts'
+import type { PdfRangeSource, ReadingPosition } from '../../../shared/contracts'
 import { bindTextSelectionToPage, bodySelectionBetween, mergePageTextSelections, type CrossPageSelection, type PageTextSelection } from '../lib/page-text-selection'
 import { translationContextForSelection } from '../lib/automatic-annotation-context'
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
@@ -75,7 +77,10 @@ function centerPageHorizontally(viewport: HTMLElement, page: HTMLElement) {
 interface ViewerProps {
   notice?: ReactNode
   data?: Uint8Array
+  rangeSource?: PdfRangeSource
+  pageBackdrop?: string
   password?: string
+  onRangePassword?(source: PdfRangeSource, reason: PdfPasswordFailure): Promise<string | undefined>
   mode: ViewMode
   activeTool: Tool
   annotations: AnnotationRecord[]
@@ -95,7 +100,7 @@ interface ViewerProps {
   onZoomChange(zoom: number): void
   onPageChange(pageIndex: number): void
   onReadingPositionChange(position: ReadingPosition): void
-  onDocumentReady(pageCount: number): void
+  onDocumentReady(pageCount: number, document?: PDFDocumentProxy): void
   onDocumentBookmarks?(bookmarks: PdfBookmark[]): void
   onAction(action: CanvasAction): void | Promise<void | boolean>
   onSelectionChange(pageIndex: number, selection?: TextSelection): void
@@ -125,6 +130,9 @@ interface ViewerProps {
 
 interface PageProps {
   initialSize?: { width: number; height: number }
+  rangeSource?: PdfRangeSource
+  pageBackdrop?: string
+  schedulePaint?: (paint: () => Promise<void>) => Promise<void>
   inlineAnnotationId?: string
   inlineMode: boolean
   annotationMarkdown: boolean
@@ -696,7 +704,7 @@ function scaledLayoutOverride(override: PageLayoutOverride | undefined, width: n
   }
 }
 
-function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdown, onInlineClose, onAnnotationReply, document, pageIndex, zoom, renderZoom, tool, annotations, nativeAnnotationIds, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, citationHits, visualReferenceIndex, onVisualReference, textFocus, searchOutlines, activeSearchMatch, onRevealSearchRegion, visualFocus, showVisualRegions }: PageProps) {
+function PdfPage({ initialSize, schedulePaint, rangeSource, pageBackdrop, inlineAnnotationId, inlineMode, annotationMarkdown, onInlineClose, onAnnotationReply, document, pageIndex, zoom, renderZoom, tool, annotations, nativeAnnotationIds, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, activePage, annotationMode, onAction, onSelectionChange, onTextMap, onCrossSelectionStart, onCrossSelectionMove, onCrossSelectionEnd, externalSelection, crossSelection, crossSelecting, showSelectionToolbar, selectionCancelToken, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftPage, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onSize, onError, onLink, citationHits, visualReferenceIndex, onVisualReference, textFocus, searchOutlines, activeSearchMatch, onRevealSearchRegion, visualFocus, showVisualRegions }: PageProps) {
   useInterfaceLanguage()
   const documentKey = pdfDocumentKey(document)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -755,8 +763,11 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   const boundaryDragRef = useRef<{ index: number; values: number[] } | undefined>(undefined)
   const spanningDrawRef = useRef<{ start: number; current: number } | undefined>(undefined)
   const spanningEdgeDragRef = useRef<{ index: number; edge: 0 | 1; values: Array<[number, number]> } | undefined>(undefined)
-  const [renderEligible, setRenderEligible] = useState(pageIndex < 2)
-  const [textRequested, setTextRequested] = useState(pageIndex < 2)
+  const [renderEligible, setRenderEligible] = useState(schedulePaint ? activePage : pageIndex < 2)
+  const nativePreferred = nativePagePreferred(rangeSource, document.numPages)
+  const [textRequested, setTextRequested] = useState(!schedulePaint && pageIndex < 2)
+  const [renderFailed, setRenderFailed] = useState(false)
+  const [paintAttempt, setPaintAttempt] = useState(0)
   const textLoadedRef = useRef(false)
   const editableRegions = useMemo(() => {
     const overlays = textObjects.filter(object => !object.pageTextBlock)
@@ -772,24 +783,34 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     const element = pageRef.current
     if (!element || typeof IntersectionObserver === 'undefined') { setRenderEligible(true); return }
     const root = element.closest('.viewer')
-    const observer = new IntersectionObserver(([entry]) => { setRenderEligible(entry.isIntersecting); if (entry.isIntersecting) setTextRequested(true) }, { root, rootMargin: '800px 0px' })
+    const observer = new IntersectionObserver(([entry]) => {
+      setRenderEligible(entry.isIntersecting)
+      if (entry.isIntersecting && !schedulePaint) setTextRequested(true)
+    }, { root, rootMargin: schedulePaint ? '260px 0px' : '800px 0px' })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [schedulePaint])
 
   useEffect(() => {
+    if (schedulePaint && !nativePreferred && activePage && rendered && renderEligible) setTextRequested(true)
+  }, [activePage, nativePreferred, rendered, renderEligible, schedulePaint])
+
+  const needsPage = !schedulePaint || renderEligible || activePage
+  useEffect(() => {
+    if (!needsPage || page) return
     let cancelled = false
     setRendered(false)
     canvasRef.current?.removeAttribute('data-rendered')
+    setRenderFailed(false)
     document.getPage(pageIndex + 1).then((value) => {
       if (cancelled) return
       setPage(value)
       const viewport = value.getViewport({ scale: 1 })
       const next = { width: viewport.width, height: viewport.height }
       setSize(next); onSize(pageIndex, next)
-    }).catch((error) => { if (!cancelled) { setRendered(true); onError(error instanceof Error ? error : new Error(String(error))) } })
+    }).catch(() => { if (!cancelled) setRenderFailed(true) })
     return () => { cancelled = true }
-  }, [document, pageIndex, onError, onSize])
+  }, [document, needsPage, page, pageIndex, paintAttempt, onSize])
 
   useEffect(() => {
     if (!page || !renderEligible) return
@@ -799,7 +820,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   }, [document, page, pageIndex, renderEligible])
 
   useEffect(() => {
-    if (!page || !textRequested || textLoadedRef.current) return
+    if (!page || nativePreferred || !textRequested || textLoadedRef.current) return
     textLoadedRef.current = true
     let cancelled = false
     const viewport = page.getViewport({ scale: 1 })
@@ -807,7 +828,8 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
     page.getTextContent({ includeMarkedContent: savedBlocks.length > 0 }).then(async content => {
       if (cancelled) return
       const items = content.items.filter((item): item is TextItem => 'str' in item)
-      const [fontDetails, peers] = await Promise.all([fontDetailsForPage(page, items), nearbyMarginSamples(document,pageIndex)])
+      if (schedulePaint && !items.length) return
+      const [fontDetails, peers] = await Promise.all([fontDetailsForPage(page, items), schedulePaint ? [] : nearbyMarginSamples(document,pageIndex)])
       if (cancelled) return
       const operators = await page.getOperatorList()
       const selectableItems = selectionTextItems(items, operators, OPS)
@@ -850,9 +872,13 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
         const right = edge ? edge - region.style.size * .5 : boundaries.length ? viewport.width - margin : bodyRight
         return { ...region, layoutWidth: Math.max(region.rect.width, right - region.rect.x) }
       }), ...savedRegions])
-    }).catch((error) => { if (!cancelled) { textLoadedRef.current = false; onError(error instanceof Error ? error : new Error(String(error))) } })
+    }).catch((error) => {
+      if (cancelled || (rangeSource && error?.message === 'pdf.largeReadLimit')) return
+      textLoadedRef.current = false
+      onError(error instanceof Error ? error : new Error(String(error)))
+    })
     return () => { cancelled = true }
-  }, [page, pageIndex, textRequested, onError, onTextMap])
+  }, [page, pageIndex, nativePreferred, rangeSource, textRequested, onError, onTextMap])
 
   useEffect(() => {
     layoutOverrideRef.current = layoutOverride
@@ -874,8 +900,8 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   // The active page must always expose its text layer, even when a fast
   // programmatic jump outruns the intersection observer during startup.
   useEffect(() => {
-    if (activePage) setTextRequested(true)
-  }, [activePage])
+    if (activePage && !schedulePaint) setTextRequested(true)
+  }, [activePage, schedulePaint])
 
   const suppressedObjects = useRef(new Set<string>())
   for (const id of [...formFieldIds, ...[...textObjects, ...imageObjects].map(object => object.pdfAnnotationId)]) {
@@ -884,33 +910,72 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   const overlaidAnnotationIds = [...new Set([...nativeAnnotationIds ?? [], ...suppressedObjects.current])].join(',')
 
   useEffect(() => {
-    if (!page || !canvasRef.current || !renderEligible) return
+    const canvas = canvasRef.current
+    if (!page || !canvas) return
+    if (!renderEligible) {
+      canvas.width = canvas.height = 0
+      delete canvas.dataset.rendered
+      setRendered(false)
+      page.cleanup()
+      return
+    }
     let cancelled = false
     const viewport = page.getViewport({ scale: renderZoom })
-    const outputScale = canvasOutputScale(viewport.width, viewport.height, window.devicePixelRatio || 1)
-    const canvas = canvasRef.current
-    const target = canvas.dataset.rendered ? window.document.createElement('canvas') : canvas
-    target.width = Math.max(1, Math.floor(viewport.width * outputScale))
-    target.height = Math.max(1, Math.floor(viewport.height * outputScale))
-    const context = target.getContext('2d', { alpha: false })
-    if (!context) return
+    const outputScale = canvasOutputScale(viewport.width, viewport.height, window.devicePixelRatio || 1, schedulePaint ? 4_000_000 : undefined)
     let task: ReturnType<PDFPageProxy['render']> | undefined
     const paint = async () => {
+      if (cancelled) return
+      setRenderFailed(false)
       const operationsFilter = overlaidAnnotationIds ? annotationOperationsFilter(await page.getOperatorList({annotationMode:AnnotationMode.ENABLE}),overlaidAnnotationIds.split(','),OPS) : undefined
       if (cancelled) return
-      task = page.render({ canvas: target, canvasContext: context, viewport, transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0], annotationMode: AnnotationMode.ENABLE, operationsFilter })
-      await task.promise
-      if (cancelled || !canvasRef.current) return
-      if (target !== canvas) {
-        canvas.width = target.width; canvas.height = target.height
-        canvas.getContext('2d', { alpha: false })?.drawImage(target, 0, 0)
+      const target = canvas.dataset.rendered ? window.document.createElement('canvas') : canvas
+      const render = async (scale: number) => {
+        target.width = Math.max(1, Math.floor(viewport.width * scale))
+        target.height = Math.max(1, Math.floor(viewport.height * scale))
+        const context = target.getContext('2d', { alpha: false })
+        if (!context) throw new Error('pdf.pageRenderFailed')
+        task = page.render({ canvas: target, canvasContext: context, viewport, transform: scale === 1 ? undefined : [scale, 0, 0, scale, 0, 0], annotationMode: AnnotationMode.ENABLE, operationsFilter })
+        await task.promise
       }
-      canvas.dataset.rendered = 'true'
-      setRendered(true)
+      try {
+        try {
+          if (nativePreferred && rangeSource) {
+            target.width = Math.max(1, Math.floor(viewport.width * outputScale))
+            target.height = Math.max(1, Math.floor(viewport.height * outputScale))
+            await paintNativePdfPage(rangeSource, pageIndex, target)
+          } else await render(outputScale)
+        }
+        catch (error) {
+          if (cancelled || (error as Error)?.name === 'RenderingCancelledException') return
+          if (rangeSource && window.desktop.platform === 'win32' && !nativePreferred) {
+            target.width = Math.max(1, Math.floor(viewport.width * outputScale))
+            target.height = Math.max(1, Math.floor(viewport.height * outputScale))
+            await paintNativePdfPage(rangeSource, pageIndex, target)
+          } else if (!nativePreferred) await render(outputScale / 2)
+          else throw error
+        }
+        if (cancelled) return
+        if (target !== canvas) {
+          canvas.width = target.width; canvas.height = target.height
+          const context = canvas.getContext('2d', { alpha: false })
+          if (!context) throw new Error('pdf.pageRenderFailed')
+          context.drawImage(target, 0, 0)
+        }
+        canvas.dataset.rendered = 'true'
+        setRendered(true)
+      } finally {
+        if (target !== canvas) target.width = target.height = 0
+      }
     }
-    paint().catch((error) => { if (!cancelled && error?.name !== 'RenderingCancelledException') { setRendered(true); onError(error) } })
+    void (schedulePaint ? schedulePaint(paint) : paint()).catch(error => {
+      if (!cancelled && error?.name !== 'RenderingCancelledException') setRenderFailed(true)
+    })
     return () => { cancelled = true; task?.cancel() }
-  }, [page, renderEligible, renderZoom, overlaidAnnotationIds, onError])
+  }, [page, renderEligible, renderZoom, overlaidAnnotationIds, paintAttempt, schedulePaint, nativePreferred, rangeSource, pageIndex])
+  useEffect(() => {
+    const canvas = canvasRef.current
+    return () => { if (canvas) canvas.width = canvas.height = 0; page?.cleanup() }
+  }, [page])
 
   useEffect(() => { setMenu(undefined); setTextCaret(undefined); setSelection(undefined); setSelectionAnchor(undefined); changeCropDraft(undefined); setPageTextEditor(undefined); setCitationPopup(undefined); setBoundaryEditing(false); setBoundaryDraft(undefined); setSpanningRegionsDraft(undefined); setNewSpanningRegion(undefined); setDrawingSpanningRegion(false) }, [tool])
   useEffect(() => { if (!activePage) setPageTextEditor(undefined) }, [activePage])
@@ -1198,7 +1263,7 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
   const insertPreview = hoverInsert && insertionMarkerRect(hoverInsert)
   const contextAnnotation = menu?.annotation && (annotations.find(annotation => annotation.id === menu.annotation!.id) || menu.annotation)
   const quickToolbarVisible = annotationMode && showSelectionToolbar && Boolean(activeSelection?.text) && !menu
-  return <div className="pdf-sheet" style={{ width: size.width * zoom }}>{inlineMode && <PageAnnotationSummary annotations={annotations} />}<div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, zIndex: menu || boundaryEditing ? 100 : quickToolbarVisible ? 80 : inlineMode && inlineAnnotationId && annotations.some(annotation => annotation.id === inlineAnnotationId) ? 40 : imageDraft || cropDraft ? 30 : undefined }}
+  return <div className="pdf-sheet" style={{ width: size.width * zoom }}>{inlineMode && <PageAnnotationSummary annotations={annotations} />}<div className={`pdf-page tool-${tool}`} ref={pageRef} data-page={pageIndex} data-page-width={size.width} data-page-height={size.height} tabIndex={-1} style={{ width: size.width * zoom, height: size.height * zoom, backgroundImage: pageBackdrop ? 'url(' + pageBackdrop + ')' : undefined, backgroundSize: '100% 100%', zIndex: menu || boundaryEditing ? 100 : quickToolbarVisible ? 80 : inlineMode && inlineAnnotationId && annotations.some(annotation => annotation.id === inlineAnnotationId) ? 40 : imageDraft || cropDraft ? 30 : undefined }}
     onKeyDown={handleKeyDown}
     onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel} onPointerLeave={() => setHoverInsert(undefined)} onDoubleClick={handleDoubleClick} onContextMenu={handleContext}>
     <canvas ref={canvasRef} />
@@ -1207,10 +1272,11 @@ function PdfPage({ initialSize, inlineAnnotationId, inlineMode, annotationMarkdo
       {activeSearchMatch?.rects?.length && <path className="pdf-search-active" d={searchBoxes(activeSearchMatch.rects)} vectorEffect="non-scaling-stroke" />}
     </svg>}
     {activeSearchMatch?.rects?.length ? <SearchSelectionBadge match={activeSearchMatch} zoom={zoom} reveal={onRevealSearchRegion} /> : null}
-    {page && renderEligible && <PdfFormFields document={document} page={page} zoom={zoom} enabled={canSelectText} editable={editableTextObjects} onReady={setFormFieldIds} onError={onError}
+    {page && renderEligible && !nativePreferred && <PdfFormFields document={document} page={page} zoom={zoom} enabled={canSelectText} editable={editableTextObjects} onReady={setFormFieldIds} onError={onError}
       onDraft={(id, value) => { void onAction({ pageIndex, tool: 'edit_text', formFieldDraft: { id, value } }) }}
       onEdit={edit => Promise.resolve(onAction({ pageIndex, tool: 'edit_text', formFieldEdit: edit }))} />}
-    {!rendered && <div className="pdf-page-loading" role="status" aria-live="polite"><i aria-hidden="true" /><span>{ui('ui.loadingPage')}</span></div>}
+    {renderFailed ? <div className="pdf-page-loading pdf-page-error" role="status"><span>{ui('pdf.pageRenderFailed')}</span><button type="button" onPointerDown={event => event.stopPropagation()} onClick={() => setPaintAttempt(value => value + 1)}>{ui('pdf.retryPage')}</button></div>
+      : !rendered && <div className="pdf-page-loading" role="status" aria-live="polite"><i aria-hidden="true" /><span>{ui('ui.loadingPage')}</span></div>}
     {pageLinks.map((link) => <button type="button" key={link.id} className="pdf-embedded-link" style={{ left: link.rect.x * zoom, top: link.rect.y * zoom, width: Math.max(6, link.rect.width * zoom), height: Math.max(6, link.rect.height * zoom) }} aria-label={link.url ? ui('pdfLink.openExternal') : t('pdfLink.goToPage', { page: (link.pageIndex || 0) + 1 })} onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onLink(link) }} />)}
     <div className="text-map" aria-hidden>{words.map((word) => <span key={word.order} style={{ left: word.rect.x * zoom, top: word.rect.y * zoom, width: word.rect.width * zoom, height: word.rect.height * zoom }}>{word.text}</span>)}</div>
     {boundaryEditing && <div className={`column-boundary-editor${drawingSpanningRegion ? ' drawing-spanning-region' : ''}`} onPointerDown={beginLayoutEditorPointer} onPointerMove={drawSpanningRegion} onPointerUp={finishSpanningRegion} onPointerCancel={finishSpanningRegion} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}>
@@ -1301,9 +1367,18 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     window.addEventListener('pointerdown', dismiss, true)
     return () => window.removeEventListener('pointerdown', dismiss, true)
   }, [inlineAnnotationId, annotationView.mode])
-  const { data, password, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationReply, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
+  const { data, rangeSource, password, onRangePassword, mode, activeTool, annotations, focusedAnnotationId, annotationFocusToken, textObjects, imageObjects, imageDraft, imageDraftBusy, editableTextObjects, annotationMode, zoom, fitWidthRequest, fitPageRequest, currentPage, initialReadingPosition, onZoomChange, onPageChange, onReadingPositionChange, onDocumentReady, onDocumentBookmarks, onAction, onSelectionChange, onCopyText, translationEnabled, onTranslateSelection, onAnnotationMove, onAnnotationSelect, onAnnotationReply, onAnnotationEdit, onAnnotationColor, onAnnotationDelete, onTextObjectMove, onTextObjectResize, onTextObjectEdit, onTextObjectDelete, onImageEdit, onImageDraftChange, onImageDraftConfirm, onImageDraftCancel, onImageDraftDelete, onError, onInsight } = props
   const viewportRef = useRef<HTMLDivElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy>()
+  const [documentLoadFailed, setDocumentLoadFailed] = useState(false)
+  const rangePasswordHandler = useRef(onRangePassword)
+  rangePasswordHandler.current = onRangePassword
+  const rangePaintTail = useRef(Promise.resolve())
+  const scheduleRangePaint = useCallback((paint: () => Promise<void>) => {
+    const next = rangePaintTail.current.then(paint)
+    rangePaintTail.current = next.catch(() => undefined)
+    return next
+  }, [])
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
   const resizeStateRef = useRef({ currentPage, sizes, zoom })
   resizeStateRef.current = { currentPage, sizes, zoom }
@@ -1531,16 +1606,36 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     wordMapsDocumentRef.current = undefined
     wordMapsRef.current.clear()
     visualMapsRef.current.clear()
-    if (!data?.length) { setDocument(undefined); return }
+    setDocumentLoadFailed(false)
+    if (!data?.length && !rangeSource) { setDocument(undefined); return }
     // Fully unmount old pages while a replacement byte stream is loading.
     // This prevents PDF.js from retaining a previously painted canvas when a
     // user confirms a new image on the same page.
     setDocument(undefined); setSizes({})
     let active = true
-    const task = getDocument({ data: data.slice(), fontExtraProperties: true, wasmUrl: PDFJS_WASM_URL, cMapUrl: PDFJS_CMAP_URL, cMapPacked: true, standardFontDataUrl: PDFJS_STANDARD_FONTS_URL, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, ...(password === undefined ? {} : { password }) })
-    task.promise.then((value) => { if (active) { wordMapsDocumentRef.current = value; wordMapsRef.current.clear(); setDocument(value); setSizes({}); onDocumentReady(value.numPages) } }).catch((error) => { if (active) onError(error instanceof Error ? error : new Error(String(error))) })
+    const fail = (error: unknown) => {
+      if (!active) return
+      active = false
+      setDocumentLoadFailed(true)
+      if (rangeSource) { setDocument(undefined); onDocumentReady(0) }
+      onError(error instanceof Error ? error : new Error(String(error)))
+    }
+    const task = rangeSource ? getRangeDocument(rangeSource, window.desktop.readPdfRange, fail, password)
+      : getDocument({ data: data!.slice(), fontExtraProperties: true, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES, useWasm: false, password })
+    if (rangeSource && rangePasswordHandler.current) task.onPassword = (submit: (password: string) => void, reason: number) => {
+      void rangePasswordHandler.current?.(rangeSource, pdfPasswordFailure({ name: 'PasswordException', code: reason }) || 'required').then(value => {
+        if (!active) return
+        if (value !== undefined) submit(value)
+        else { active = false; void task.destroy().catch(() => undefined) }
+      }).catch(fail)
+    }
+    task.promise.then((value) => {
+      if (!active) return
+      wordMapsDocumentRef.current = value; wordMapsRef.current.clear(); setDocument(value); setSizes({})
+      onDocumentReady(value.numPages, value)
+    }).catch(fail)
     return () => { active = false; task.destroy().catch(() => undefined) }
-  }, [data, password, onDocumentReady, onError])
+  }, [data, rangeSource, password, onDocumentReady, onError])
 
   useEffect(() => {
     if (!document || !onDocumentBookmarks) return
@@ -1685,9 +1780,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       if (pending.horizontalOffset === undefined) centerPageHorizontally(viewport, target)
       else viewport.scrollLeft += targetBounds.left + targetBounds.width * pending.horizontalOffset - viewportBounds.left
     }
+    const bounds = target.getBoundingClientRect()
+    onReadingPositionChange({ page: currentPage, zoom,
+      offset: mode === 'single' ? 0 : readingOffsetForPage(viewport.getBoundingClientRect().top, bounds.top, bounds.height) })
     if (navigationTimerRef.current !== undefined) window.clearTimeout(navigationTimerRef.current)
     navigationTimerRef.current = window.setTimeout(() => { if (pendingNavigationRef.current === pending) pendingNavigationRef.current = undefined }, 700)
-  }, [currentPage, document, mode, navigationRequest, sizes, zoom])
+  }, [currentPage, document, mode, navigationRequest, onReadingPositionChange, sizes, zoom])
   const rememberJumpOrigin = (page: HTMLElement | null | undefined) => {
     const viewport = viewportRef.current
     if (!viewport || !page) return
@@ -1969,17 +2067,17 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     return () => window.clearTimeout(timer)
   }, [document, mode, zoom])
 
-  const virtualized = Boolean(document && mode !== 'single' && document.numPages > 80)
+  const virtualized = Boolean(document && mode !== 'single' && (rangeSource || document.numPages > 80))
   const pages = useMemo(() => document ? (mode === 'single' ? [Math.min(currentPage, document.numPages - 1)] : virtualized ? [] : Array.from({ length: document.numPages }, (_, index) => index)) : [], [document, mode, currentPage, virtualized])
   const visiblePages = useMemo(() => {
     if (!virtualized || !document) return pages
-    const start = Math.max(0, currentPage - 7)
-    const end = Math.min(document.numPages, currentPage + 9)
+    const start = Math.max(0, currentPage - (rangeSource ? 3 : 7))
+    const end = Math.min(document.numPages, currentPage + (rangeSource ? 5 : 9))
     const visible = Array.from({ length: Math.max(0, end - start) }, (_, index) => start + index)
     // Keep the captured drag source mounted without rendering every intervening page.
     if (imageDraft && !visible.includes(imageDraft.pageIndex)) visible.push(imageDraft.pageIndex)
     return visible.sort((left, right) => left - right)
-  }, [currentPage, document, pages, virtualized, imageDraft?.pageIndex])
+  }, [currentPage, document, pages, virtualized, imageDraft?.pageIndex, rangeSource])
   const handleWheel = (event: WheelEvent) => {
     if (mode === 'single' && !event.ctrlKey) {
       const viewport = viewportRef.current
@@ -2059,6 +2157,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     return () => { observer.disconnect(); window.removeEventListener('resize', place) }
   }, [])
   return <div className="viewer" ref={viewportRef} onPointerMove={(event) => { zoomPointerRef.current = { clientX: event.clientX, clientY: event.clientY } }}>
+      {rangeSource && !document && !documentLoadFailed && <div className="pdf-document-loading" role="status">{ui('pdf.largeOpening')}</div>}
+      {rangeSource && documentLoadFailed && <div className="pdf-document-loading" role="status">{ui('pdf.largeReadFailed')}</div>}
       {viewportRef.current && createPortal(<div className="viewer-notices" style={noticeBounds}>{props.notice}{grammarProgress && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{grammarProgress.total?t('grammar.checking',{done:grammarProgress.done,total:grammarProgress.total}):ui('grammar.preparing')}</div>}{readingBusy.length > 0 && <div className="reading-progress" role="status" aria-live="polite"><i aria-hidden="true"/>{t('reading.preparing', { tools: readingBusy.map(kind => ui(kind === 'visual' ? 'reading.linkVisualReferences' : kind === 'citation' ? 'ui.linkCitations' : 'ui.abbreviationLookup')).join(' · ') })}</div>}{returnPosition && <button type="button" className="pdf-link-return" onClick={() => { goToPage(returnPosition.page, returnPosition.offset, undefined, false, returnPosition.horizontalOffset); setReturnPosition(undefined) }}>↶ {ui('ui.returnBeforeJump')}</button>}<ScrollPageHint zoom={zoom} viewport={viewportRef} documentKey={document?.fingerprints[0]} pageIndex={currentPage} pageCount={document?.numPages || 0} navigating={pendingNavigationRef} restoring={restoringPositionRef} /></div>, viewportRef.current.parentElement!)}
       {visualPreview && document && viewportRef.current?.parentElement && createPortal(
         <VisualReferencePreview key={`${visualPreview.target.pageIndex}-${visualPreview.target.label}`} document={document} viewer={viewportRef.current}
@@ -2072,7 +2172,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       <ZoomScrollAnchor zoom={zoom} currentPage={currentPage} viewport={viewportRef} anchor={wheelAnchorRef} pointer={zoomPointerRef} sizes={sizes} pages={virtualized ? visiblePages : undefined}>
       <div className={`page-stack ${mode}`}>{document && virtualized && visiblePages[0] > 0 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(0, visiblePages[0], sizes, zoom) }} aria-hidden />}{document && (virtualized ? visiblePages : pages).map((pageIndex, index) => <Fragment key={`${document.loadingTask.docId}-${pageIndex}`}>
       {virtualized && index > 0 && pageIndex > visiblePages[index - 1] + 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages[index - 1] + 1, pageIndex, sizes, zoom) }} aria-hidden />}
-      <PdfPage key={`${document.loadingTask.docId}-${pageIndex}`} document={document} pageIndex={pageIndex} initialSize={sizes[pageIndex]} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
+      <PdfPage key={`${document.loadingTask.docId}-${pageIndex}`} document={document} pageIndex={pageIndex} initialSize={sizes[pageIndex]} rangeSource={rangeSource} pageBackdrop={props.pageBackdrop} schedulePaint={rangeSource ? scheduleRangePaint : undefined} zoom={zoom} renderZoom={renderZoom} tool={activeTool}
       annotations={annotations.filter((annotation) => annotation.pageIndex === pageIndex)} nativeAnnotationIds={nativeAnnotationIds.get(pageIndex)} focusedAnnotationId={focusedAnnotationId} annotationFocusToken={annotationFocusToken} onAction={onAction} onSelectionChange={(selection) => updateSelection(selection ? [bindTextSelectionToPage(pageIndex, selection)] : [])} onTextMap={onTextMap} onCrossSelectionStart={beginCrossSelection} onCrossSelectionMove={moveCrossSelection} onCrossSelectionEnd={endCrossSelection} externalSelection={pageSelections.find((selection) => selection.pageIndex === pageIndex)} crossSelection={crossSelection} crossSelecting={crossSelecting} showSelectionToolbar={crossSelection?.segments?.[0]?.pageIndex === pageIndex} selectionCancelToken={selectionCancelToken} onCopyText={onCopyText} translationEnabled={translationEnabled} onTranslateSelection={onTranslateSelection}
       textObjects={textObjects.filter((textObject) => textObject.pageIndex === pageIndex)} imageObjects={imageObjects.filter((image) => image.pageIndex === pageIndex)} imageDraft={imageDraft?.pageIndex === pageIndex ? imageDraft : undefined} imageDraftBusy={imageDraftBusy} editableTextObjects={editableTextObjects} activePage={pageIndex === currentPage} annotationMode={annotationMode}
       onAnnotationMove={onAnnotationMove} onAnnotationSelect={(annotation, options) => { setInlineAnnotationId(annotation.id); onAnnotationSelect(annotation, options) }} onAnnotationReply={onAnnotationReply} inlineAnnotationId={inlineAnnotationId} inlineMode={annotationView.mode === 'document'} annotationMarkdown={annotationView.markdown} onInlineClose={() => setInlineAnnotationId(undefined)} onAnnotationEdit={onAnnotationEdit} onAnnotationColor={onAnnotationColor} onAnnotationDelete={onAnnotationDelete} onTextObjectMove={onTextObjectMove} onTextObjectResize={onTextObjectResize} onTextObjectEdit={onTextObjectEdit} onTextObjectDelete={onTextObjectDelete} onImageEdit={onImageEdit} onImageDraftChange={onImageDraftChange} onImageDraftPage={(index) => void changeImagePage(index)} onImageDraftConfirm={onImageDraftConfirm} onImageDraftCancel={onImageDraftCancel} onImageDraftDelete={onImageDraftDelete} onSize={handleSize} onError={onError} onLink={openPdfLink} visualReferenceIndex={visualReferenceIndex} onVisualReference={(target, trigger) => setVisualPreview({ target, trigger })} citationHits={citationsByPage.get(pageIndex) || EMPTY_CITATIONS} textFocus={textFocus?.pageIndex === pageIndex ? textFocus : undefined} searchOutlines={searchOutlines.get(pageIndex)} activeSearchMatch={activeSearchMatch?.pageIndex === pageIndex ? activeSearchMatch : undefined} onRevealSearchRegion={revealSearchRegion} showVisualRegions={showVisualRegions} visualFocus={visualFocus?.pageIndex === pageIndex ? visualFocus : undefined} /></Fragment>)}{document && virtualized && visiblePages.at(-1)! < document.numPages - 1 && <div className="pdf-page-virtual-spacer" style={{ height: virtualPageSpacerHeight(visiblePages.at(-1)! + 1, document.numPages, sizes, zoom) }} aria-hidden />}</div>

@@ -1,11 +1,23 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
+
+export async function convertPdfFileToEps(command: string, source: string, output: string): Promise<void> {
+  try {
+    await run(command, ['-eps', '-level3', '-r', '600', '-f', '1', '-l', '1', source, output], { windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 })
+    const file = await open(output, 'r')
+    try {
+      const header = Buffer.alloc(80)
+      const { bytesRead } = await file.read(header)
+      if (!header.subarray(0, bytesRead).toString().includes('EPSF-3.0')) throw new Error('ui.epsConversionFailed')
+    } finally { await file.close() }
+  } catch { throw new Error('ui.epsConversionFailed') }
+}
 
 /** Cairo preserves vectors and confines unsupported transparency to local fallback regions.
  * The caller supplies a one-page PDF including all current edits. Never render a canvas. */
@@ -15,10 +27,8 @@ export async function convertPdfToEps(command: string, data: Uint8Array): Promis
   try {
     const source = join(directory, 'page.pdf'), output = join(directory, 'page.eps')
     await writeFile(source, data)
-    await run(command, ['-eps', '-level3', '-r', '600', '-f', '1', '-l', '1', source, output], { windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 })
-    const bytes = await readFile(output)
-    if (!bytes.subarray(0, 80).toString().includes('EPSF-3.0')) throw new Error('ui.epsConversionFailed')
-    return new Uint8Array(bytes)
+    await convertPdfFileToEps(command, source, output)
+    return new Uint8Array(await readFile(output))
   } catch { throw new Error('ui.epsConversionFailed') }
   finally { await rm(directory, { recursive: true, force: true }) }
 }

@@ -10,7 +10,9 @@ const release = path.join(root, 'release')
 const archive = path.join(release, 'win-unpacked/resources/app.asar')
 const version = '2.2.2'
 const prefix = `PDFuck-${version}-Windows`
-const sourceOnly = process.argv.includes('--source-only')
+const largePdf = process.argv.includes('--large-pdf')
+const largeOperations = process.argv.includes('--large-operations')
+const sourceOnly = largePdf || largeOperations || process.argv.includes('--source-only')
 const lock = require('../../package-lock.json')
 assert.equal(require('../../package.json').version, version)
 assert.equal(lock.version, version)
@@ -52,10 +54,44 @@ const revisions = {
     portable: { searchMatches: 530, portableLaunch: true }
   }
 }
-const revision = ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
+const revision = largeOperations ? 'large-operations' : largePdf ? 'large-pdf' : ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
 const selected = revisions[revision === 'welcome-sidebar-copy' ? 'welcome' : revision]
 const result = phase => JSON.parse(fs.readFileSync(path.join(root, selected.suite, phase, 'results.json')))
-assert.deepEqual(result('source'), selected.source)
+const pdfResult = file => JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-large-pdf', file)))
+const sourceResult = largeOperations
+  ? JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-large-operations/results.json')))
+  : largePdf ? pdfResult('results.json') : result('source')
+const deletion = largePdf ? pdfResult('annotation-delete.json') : undefined
+if (largeOperations) {
+  assert.equal(sourceResult.sourceOnly, true)
+  assert.equal(sourceResult.editedPages, 145)
+  assert.equal(sourceResult.arrangedPages, 144)
+  assert.equal(sourceResult.exportedPages, 2)
+  assert.equal(sourceResult.raster, 'png')
+  assert.equal(sourceResult.printedPages, 2)
+  assert.equal(sourceResult.densePages, 1)
+  assert.ok(sourceResult.denseMiB > 1024)
+  for (const check of ['epsExport', 'densePreview', 'denseVectorExport', 'densePrinted', 'denseOverlaySaved', 'localizedLayout']) {
+    assert.equal(sourceResult[check], true)
+  }
+  const resources = path.dirname(archive)
+  for (const file of ['qpdf/win32-x64/bin/qpdf.exe', 'qpdf/win32-x64/license.html',
+    'app.asar.unpacked/out/main/pdfium-render-worker.js',
+    'app.asar.unpacked/node_modules/windows-pdf-printer-native/bin/pdfium.dll']) {
+    assert.ok(fs.statSync(path.join(resources, file)).size > 0, file)
+  }
+} else if (largePdf) {
+  assert.equal(sourceResult.sourceOnly, true)
+  assert.equal(sourceResult.layoutChecks, 80)
+  assert.equal(sourceResult.pageChecks, 28)
+  assert.ok(sourceResult.storyboardChecks >= 250)
+  assert.equal(sourceResult.damagedIndexHandled, true)
+  assert.equal(sourceResult.tabRestored, true)
+  assert.deepEqual(sourceResult.reports.map(report => report.pages), [36, 66, 145, 280])
+  assert.ok(sourceResult.reports[3].fileMiB > 2048)
+  assert.equal(deletion.sourceOnly, true)
+  assert.deepEqual(deletion.records, ['Highlight', 'Underline', 'Text'].map(kind => ({ kind, deleteCycles: 3, redoCleared: true })))
+} else assert.deepEqual(sourceResult, selected.source)
 if (!sourceOnly) {
   assert.deepEqual(result('packaged'), result('source'))
   assert.deepEqual(result('portable'), selected.portable)
@@ -79,7 +115,7 @@ const properties = JSON.parse(execFileSync('pwsh.exe', ['-NoProfile', '-NonInter
 `], { encoding: 'utf8', env: { ...process.env, PDFUCK_222_FILES: JSON.stringify(paths.slice(0, 3)) } }))
 const artifacts = paths.map((file, index) => {
   const meta = properties[index]
-  if (!sourceOnly && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
+  if ((!sourceOnly || largeOperations) && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
   const bytes = fs.readFileSync(file)
   return { file, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), ...meta }
 })
@@ -93,7 +129,8 @@ if (!sourceOnly) {
 }
 
 const report = { product: 'PDFuck', version, platform: 'Windows x64', revision, generatedAt: new Date().toISOString(),
-  source: result('source'),
+  source: sourceResult,
+  ...(deletion ? { annotationDeletion: deletion } : {}),
   ...(sourceOnly ? { verificationScope: 'Source tests only. Package artifacts listed with metadata and SHA-256 hashes.' }
     : { productionFilesVerified, packaged: result('packaged'), portable: result('portable'),
       installVerification: 'Checked installer file metadata and update digest. Real installation and uninstallation were outside the targeted run.' }),

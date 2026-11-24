@@ -165,11 +165,14 @@
       "package.json"
     ],
     "asar": true,
+    "beforePack": "scripts/prepare-qpdf.cjs",
     "artifactBuildCompleted": "scripts/macos-installer-icon.cjs",
     "asarUnpack": [
       "node_modules/koffi/**/*",
       "node_modules/{pdf-lib,@pdf-lib,pako,tslib}/**/*",
-      "out/main/ocr-worker.js"
+      "out/main/ocr-worker.js",
+      "out/main/pdfium-render-worker.js",
+      "node_modules/windows-pdf-printer-native/bin/pdfium.dll"
     ],
     "win": {
       "target": [
@@ -330,6 +333,10 @@
       ]
     },
     "extraResources": [
+      {
+        "from": "resources/qpdf",
+        "to": "qpdf"
+      },
       {
         "from": "resources/feature-notices",
         "to": "resource-notices"

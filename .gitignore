@@ -7,6 +7,7 @@ tmp/
 *.log
 *.spec
 node_modules/
+resources/qpdf/
 out/
 output/
 release/

@@ -553,6 +553,10 @@
 .page-manager-summary.invalid small { color: #b33a45; }
 .page-manager-footer-actions { flex: none; }
 .page-manager-footer-actions button { min-width: 94px; height: 40px; padding: 0 16px; }
+.page-manager-dialog.read-only .page-manager-commandbar { grid-template-columns: minmax(0, 1fr) auto; }
+.page-manager-dialog.read-only .page-manager-storyboard { grid-template-rows: auto minmax(0, 1fr); }
+.page-manager-dialog.read-only .page-manager-card { grid-template-rows: minmax(0, 1fr); }
+.page-manager-dialog.read-only .page-manager-footer { justify-content: end; }
 
 .theme-dark .page-manager-backdrop { background: #020711a3; }
 .theme-dark .page-manager-dialog { border-color: #42536c; background: #111a28; }
@@ -570,6 +574,10 @@
 .theme-dark .page-manager-inspector dl > div { border-color: #42546e; background: #172235; }
 .theme-dark .page-manager-stats b,
 .theme-dark .page-manager-inspector dd { color: #e5edf8; }
+.theme-dark .page-manager-pager b { color: #e5edf8; }
+.theme-dark .page-manager-pager span,
+.theme-dark .page-manager-jump,
+.theme-dark .page-manager-thumbnail-loading { color: #b5c2d5; }
 .theme-dark .page-manager-stats > span.primary { border-color: #536fae; background: #263958; }
 .theme-dark .page-manager-stats > span.primary small,
 .theme-dark .page-manager-stats > span.primary b { color: var(--theme-accent-soft-ink); }

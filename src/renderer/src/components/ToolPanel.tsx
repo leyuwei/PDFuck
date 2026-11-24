@@ -36,6 +36,8 @@ interface Props {
   onSaveSource?(saveAs: boolean): void
   dirty: boolean
   readOnly: boolean
+  largePdf?: boolean
+  overlayEdit?: boolean
   onTool(tool: Tool): void
   onMode(mode: ViewMode): void
   onDeletePages(): void
@@ -175,18 +177,21 @@ export function ToolPanel(props: Props) {
       <h3>{ui("ui.readingTools")}</h3><div className="reading-tools">
         <button type="button" className="wide tool-action-button search-pdf-action" disabled={!hasDocument} onClick={props.onSearch}><ReadingIcon kind="search"/><span>{ui(props.searchSource ? "ui.searchDocument" : "ui.searchPdf")}</span><kbd>{shortcutLabel('search', platform)}</kbd></button>
         <button type="button" className="wide tool-action-button recognize-bookmark-action" disabled={documentDisabled} onClick={() => props.onRecognizeBookmarks?.()}><ReadingIcon kind="bookmark"/><span>{ui("ui.recognizeBookmarks")}</span></button>
-        <button type="button" className={`wide tool-action-button tool-button${props.visualsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={!!props.visualsEnabled} onClick={props.onVisuals}><ReadingIcon kind="visual"/><span>{ui('reading.linkVisualReferences')}</span></button>
-        <button type="button" className={`wide tool-action-button tool-button${props.citationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={props.citationsEnabled} onClick={props.onCitations}><ReadingIcon kind="citation"/><span>{ui("ui.linkCitations")}</span></button>
-        <button type="button" className={`wide tool-action-button tool-button${props.abbreviationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable} aria-pressed={!!props.abbreviationsEnabled} onClick={props.onAbbreviations}><ReadingIcon kind="abbreviation"/><span>{ui("ui.abbreviationLookup")}</span></button>
-        <button type="button" className="wide tool-action-button" disabled={!pdfAvailable} onClick={props.onGrammar}><ReadingIcon kind="grammar"/><span>{ui("ui.grammarCheck")}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.visualsEnabled ? ' active' : ''}`} disabled={!pdfAvailable || props.largePdf} aria-pressed={!!props.visualsEnabled} onClick={props.onVisuals}><ReadingIcon kind="visual"/><span>{ui('reading.linkVisualReferences')}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.citationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable || props.largePdf} aria-pressed={props.citationsEnabled} onClick={props.onCitations}><ReadingIcon kind="citation"/><span>{ui("ui.linkCitations")}</span></button>
+        <button type="button" className={`wide tool-action-button tool-button${props.abbreviationsEnabled ? ' active' : ''}`} disabled={!pdfAvailable || props.largePdf} aria-pressed={!!props.abbreviationsEnabled} onClick={props.onAbbreviations}><ReadingIcon kind="abbreviation"/><span>{ui("ui.abbreviationLookup")}</span></button>
+        <button type="button" className="wide tool-action-button" disabled={!pdfAvailable || props.largePdf} onClick={props.onGrammar}><ReadingIcon kind="grammar"/><span>{ui("ui.grammarCheck")}</span></button>
       </div>
-      {readOnly && <div className="encrypted-readonly"><b>{ui("ui.encryptedDocumentReadOnly")}</b><span>{ui("ui.theEditorCannotSafelyWriteBackToThisEncryptedPdf")}</span></div>}
+      {props.largePdf ? <div className="encrypted-readonly large-pdf-mode"><b>{ui('pdf.largeWorkspace')}</b><span>{ui('pdf.largeWorkspaceHint')}</span>
+        <PanelAction disabled={!pdfAvailable} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('pdf.openStoryboardPage')}>{ui('page.managerStoryboard')}</PanelAction>
+      </div> : readOnly && <div className="encrypted-readonly"><b>{ui("ui.encryptedDocumentReadOnly")}</b><span>{ui("ui.theEditorCannotSafelyWriteBackToThisEncryptedPdf")}</span></div>}
       <div className="info-card"><b>{ui("ui.readingTip")}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div></>}
-    {module === 'edit' && <><h3>{ui("ui.page2")}</h3>
+    {props.overlayEdit && <p className="hint">{ui('pdf.largeOverlayHint')}</p>}
+    {module === 'edit' && <>{!props.overlayEdit && <><h3>{ui("ui.page2")}</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="crop" />} hint={ui("ui.dragToSelectTheAreaToKeep")}>{ui("ui.cropPage")}</ToolButton>
       <PanelAction disabled={readOnly} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui("ui.supportsPdfImagesEpsWordAndPowerpointOfficeDocumentsAre")}>{ui("ui.mergePdfFromFiles2")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui("ui.previewReorderRotateAndRemovePagesInABatch")}>{ui("ui.managePages")}</PanelAction><h3>{ui("ui.content")}</h3>
-      <PanelAction className="ocr-launch" windowState={props.ocrWindowState || 'closed'} disabled={documentDisabled} icon={<EditIcon kind="ocr" />} onClick={() => props.onOcr?.()} hint={ui('ocr.hint')}>{ui('ocr.title')}</PanelAction>
+      <PanelAction className="ocr-launch" windowState={props.ocrWindowState || 'closed'} disabled={documentDisabled} icon={<EditIcon kind="ocr" />} onClick={() => props.onOcr?.()} hint={ui('ocr.hint')}>{ui('ocr.title')}</PanelAction></>}
       <ToolButton tool="edit_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="edit_text" />} hint={ui("ui.showTextBlocksOnThisPageAndClickOneTo")}>{ui("ui.editPageText")}</ToolButton>
       <ToolButton tool="add_text" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<EditIcon kind="add_text" />} hint={ui("ui.dragOutATextBoxThenSetItsContentAnd")}>{ui("ui.addTextToPage")}</ToolButton>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>

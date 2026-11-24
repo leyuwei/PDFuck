@@ -20,6 +20,22 @@ export interface PageTextRenderRequest {
 }
 export interface PageTextRenderResult { pdf: Uint8Array; width: number; height: number; fallbackUsed: boolean }
 
+export interface PdfRangeSource { id: string; length: number }
+export const LARGE_PDF_THRESHOLD = 128 * 1024 * 1024
+export const PDF_RANGE_CHUNK_SIZE = 64 * 1024
+export const PDF_RANGE_IPC_BYTES = 1024 * 1024
+export const PDF_RANGE_REQUEST_BYTES = 128 * 1024 * 1024
+export const PDF_EDIT_SLICE_MAX_BYTES = 96 * 1024 * 1024
+export interface LargePdfEdit { sourceId: string; first: number; count: number; overlay?: boolean }
+export interface LargePdfOutput {
+  sourceId: string
+  pages?: number[]
+  rotations?: Record<number, number>
+  replacement?: { first: number; count: number; data: Uint8Array; overlay?: boolean }
+  format?: 'pdf' | 'eps'
+  separate?: boolean
+}
+
 export interface OpenedPdf {
   markdown?: string
   encoding?: TextEncoding
@@ -28,6 +44,7 @@ export interface OpenedPdf {
   name: string
   data: Uint8Array
   credentialKey: string
+  rangeSource?: PdfRangeSource
 }
 
 export interface PdfPasswordUpdate {
@@ -189,6 +206,7 @@ export interface DocumentTabsSnapshot {
  * selection state is intentionally not carried over.
  */
 export interface DetachedPdfDocument {
+  rangePdf?: boolean
   markdown?: MarkdownDocument
   pdfDirty?: boolean
   pdfPath?: string
@@ -262,6 +280,15 @@ export interface DesktopApi {
   recognizeOcrPage(request: OcrPageRequest, onProgress: (value: number) => void): Promise<OcrPageResult>
   cancelOcr(jobId: string): void
   readPdf(path: string): Promise<OpenedPdf>
+  readPdfRange(id: string, begin: number, end: number): Promise<Uint8Array>
+  releasePdfRange(id: string): Promise<void>
+  readLargePdfPages(id: string, pages: number[]): Promise<Uint8Array>
+  beginLargePdfEdit(id: string, first: number, last: number, overlaySize?: { width: number; height: number }): Promise<{ data: Uint8Array; edit: LargePdfEdit }>
+  renderLargePdfPage(id: string, page: number, width: number, height: number): Promise<Uint8Array>
+  writeLargePdf(request: LargePdfOutput): Promise<string[] | null>
+  beginLargeRasterExport(id: string, format: RasterExportFormat, pages: number[]): Promise<string | null>
+  writeLargeRasterPage(id: string, page: ExportPage): Promise<string>
+  closeLargeRasterExport(id: string): Promise<void>
   getPdfPassword(credentialKey: string): Promise<string | undefined>
   openPdfFolder(path: string): Promise<void>
   updatePdfPassword(request: PdfPasswordUpdate): Promise<boolean>

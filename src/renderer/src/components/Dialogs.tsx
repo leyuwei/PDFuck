@@ -16,11 +16,12 @@ import type { TextMark } from '../lib/annotation-rich-text'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AnnotationKind, AnnotationReply, PageNumberSettings, TextStyle, WatermarkSettings } from '../types'
 import { fontCssFamily, fontOptionsFor, normalizeFontFamily } from '../lib/text-fonts'
-import type { PdfImportFile, PrinterDescriptor, PrintPdfOptions, RecentPdf, UpdateCheckResult } from '../../../shared/contracts'
+import { nativePagePreferred, paintNativePdfPage } from '../lib/range-page-render'
+import type { PdfRangeSource, PdfImportFile, PrinterDescriptor, PrintPdfOptions, RecentPdf, UpdateCheckResult } from '../../../shared/contracts'
 import { allPageIndices, compactPageSelection, parsePageSelection } from '../lib/page-selection'
 import { DEFAULT_ANNOTATION_COLOR } from '../lib/annotation-style'
 import { AnnotationColorPicker, AnnotationReplyPicker } from './AnnotationControls'
-import { AnnotationMode, getDocument, PDFJS_WASM_URL, type PDFDocumentProxy } from '../lib/pdfjs'
+import { AnnotationMode, getDocument, PDFJS_CANVAS_MAX_AREA_IN_BYTES, type PDFDocumentProxy, type PDFPageProxy } from '../lib/pdfjs'
 import { createImposedPrintJob, DEFAULT_PRINT_PDF_OPTIONS, printCellsForSheet, printPaperSize, printSheetCount, printSheetOrientation, type ResolvedPrintOrientation } from '../lib/print-layout'
 import { t, translateUiText, ui, useInterfaceLanguage } from '../lib/i18n'
 import { DEFAULT_PAGE_NUMBER_SETTINGS, formatPageNumber, validatePageNumberTemplate } from '../lib/page-numbers'
@@ -140,6 +141,7 @@ export function SaveAsRequiredDialog({ target, onCancel, onSaveAs }: { target: s
 export interface PdfPasswordDialogState {
   fileName: string
   reason: 'required' | 'incorrect' | 'saved-password-failed'
+  allowRemember?: boolean
 }
 
 export interface PdfPasswordDialogResult {
@@ -165,7 +167,7 @@ export function PdfPasswordDialog({ state, onCancel, onSubmit }: { state: PdfPas
     <div className="password-file"><span>PDF</span><div><b>{state.fileName}</b><small>{ui("ui.theEncryptedDocumentWillOpenReadOnly")}</small></div></div>
     <p className={invalid ? 'password-message invalid' : 'password-message'}>{message}</p>
     <label className="password-field"><span>{ui("ui.password")}</span><div><input ref={inputRef} type={visible ? 'text' : 'password'} value={password} autoComplete="off" spellCheck={false} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') submit() }} /><button type="button" onClick={() => setVisible((value) => !value)}>{visible ? ui("ui.hide") : ui("ui.show")}</button></div></label>
-    <label className="remember-password"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span><b>{ui("ui.savePasswordOnThisDevice")}</b><small>{ui("ui.encryptedWithSystemSecureStorageAndTriedAutomaticallyNextTime")}</small></span></label>
+    {state.allowRemember !== false && <label className="remember-password"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span><b>{ui("ui.savePasswordOnThisDevice")}</b><small>{ui("ui.encryptedWithSystemSecureStorageAndTriedAutomaticallyNextTime")}</small></span></label>}
     <div className="modal-actions"><button type="button" onClick={onCancel}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!password.length} onClick={submit}>{ui("ui.unlockOpen")}</button></div>
   </ScrollWindow></div>
 }
@@ -216,7 +218,10 @@ export type PageManagerRotations = Record<number, number>
 function normalizedPageRotation(value: number): number { return ((Math.round(value / 90) * 90) % 360 + 360) % 360 }
 
 /** A storyboard workspace: final card order is the PDF order, selected cards are removed. */
-export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pageOrder: number[], rotations: PageManagerRotations): void }) {
+export function PageManagerDialog({ data, sourceDocument, rangeSource, pageCount, currentPage, readOnly = false, onNavigate, onCancel, onSubmit }: {
+  data?: Uint8Array; sourceDocument?: PDFDocumentProxy; rangeSource?: PdfRangeSource; pageCount: number; currentPage: number; readOnly?: boolean
+  onNavigate?(page: number): void; onCancel(): void; onSubmit(pageOrder: number[], rotations: PageManagerRotations): void
+}) {
   useInterfaceLanguage()
   const initialOrder = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount])
   const [order, setOrder] = useState(initialOrder)
@@ -233,7 +238,7 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
   const windowCount = Math.max(1, Math.ceil(order.length / PAGE_MANAGER_WINDOW_SIZE))
   const visibleStart = Math.min(windowIndex, windowCount - 1) * PAGE_MANAGER_WINDOW_SIZE
   const visibleOrder = order.slice(visibleStart, visibleStart + PAGE_MANAGER_WINDOW_SIZE)
-  const { thumbnails } = usePrintThumbnails(data, visibleOrder, 360, 460)
+  const { thumbnails, failed, retry } = usePrintThumbnails(data, visibleOrder, 360, 460, sourceDocument, rangeSource ? 1 : 2, rangeSource)
   const kept = order.filter((page) => !removed.has(page))
   const reordered = order.some((page, index) => page !== initialOrder[index])
   const orientationChanged = Object.values(rotations).some((rotation) => normalizedPageRotation(rotation) !== 0)
@@ -380,20 +385,20 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     movePageBy(page, event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
   }
 
-  return <div className="modal-backdrop page-manager-backdrop"><ScrollWindow className="modal page-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
+  return <div className="modal-backdrop page-manager-backdrop"><ScrollWindow className={`modal page-manager-dialog${readOnly ? ' read-only' : ''}`} role="dialog" aria-modal="true" aria-labelledby="page-manager-title">
     <header className="page-manager-heading">
       <div className="page-manager-title-mark"><PageManagerIcon name="pages" /></div>
-      <div className="page-manager-heading-copy"><h2 id="page-manager-title">{t('page.managerTitle')}</h2><p>{t('page.managerDescription')}</p></div>
-      <div className="page-manager-stats" aria-label={t('page.managerStatus')}><span><small>{t('page.managerTotal')}</small><b>{pageCount}</b></span><span><small>{t('page.managerRemoveCount')}</small><b>{removed.size}</b></span><span className="primary"><small>{t('page.managerRemaining')}</small><b>{kept.length}</b></span></div>
+      <div className="page-manager-heading-copy"><h2 id="page-manager-title">{t(readOnly ? 'page.managerStoryboard' : 'page.managerTitle')}</h2><p>{t(readOnly ? 'pdf.largeReadOnlyHint' : 'page.managerDescription')}</p></div>
+      <div className="page-manager-stats" aria-label={t('page.managerStatus')}><span><small>{t('page.managerTotal')}</small><b>{pageCount}</b></span>{!readOnly && <><span><small>{t('page.managerRemoveCount')}</small><b>{removed.size}</b></span><span className="primary"><small>{t('page.managerRemaining')}</small><b>{kept.length}</b></span></>}</div>
       <button type="button" className="page-manager-close" title={t('page.managerClose')} aria-label={t('page.managerClose')} onClick={onCancel}><PageManagerIcon name="close" /></button>
     </header>
 
     <div className="page-manager-commandbar">
-      <div className="page-manager-batch-actions">
+      {!readOnly && <div className="page-manager-batch-actions">
         <button type="button" onClick={markCurrent}><PageManagerIcon name="trash" /><span>{t('page.managerMarkCurrent')}</span></button>
         <button type="button" disabled={!removed.size} onClick={() => setRemoved(new Set())}><PageManagerIcon name="restore" /><span>{t('page.managerClearRemoval')}</span></button>
         <button type="button" disabled={!hasChanges} onClick={resetChanges}><PageManagerIcon name="reset" /><span>{t('page.managerReset')}</span></button>
-      </div>
+      </div>}
       <div className="page-manager-pager">
         <button type="button" disabled={windowIndex <= 0} title={t('page.managerPreviousGroup')} aria-label={t('page.managerPreviousGroup')} onClick={() => goToWindow(windowIndex - 1)}><PageManagerIcon name="previous" /></button>
         <div><b>{t('page.managerRange', { start: visibleStart + 1, end: Math.min(order.length, visibleStart + PAGE_MANAGER_WINDOW_SIZE), count: order.length })}</b><span>{t('page.managerGroup', { current: windowIndex + 1, count: windowCount })}</span></div>
@@ -403,13 +408,13 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
     </div>
 
     <div className="page-manager-workspace">
-      <section className="page-manager-storyboard" aria-labelledby="page-manager-storyboard-title">
-        <div className="page-manager-section-heading"><div><h3 id="page-manager-storyboard-title">{t('page.managerStoryboard')}</h3><p>{t('page.managerOnDemandHint', { count: PAGE_MANAGER_WINDOW_SIZE })}</p></div><span>{t('page.managerDragHint')}</span></div>
-        <div className={`page-manager-bulk-remove${parsedRemovalRange.invalid.length ? ' invalid' : ''}`}>
+      <section className="page-manager-storyboard" aria-labelledby={readOnly ? 'page-manager-title' : 'page-manager-storyboard-title'}>
+        <div className="page-manager-section-heading"><div>{!readOnly && <h3 id="page-manager-storyboard-title">{t('page.managerStoryboard')}</h3>}<p>{t('page.managerOnDemandHint', { count: PAGE_MANAGER_WINDOW_SIZE })}</p></div>{!readOnly && <span>{t('page.managerDragHint')}</span>}</div>
+        {!readOnly && <div className={`page-manager-bulk-remove${parsedRemovalRange.invalid.length ? ' invalid' : ''}`}>
           <label><span>{t('page.managerBatchRange')}</span><input value={removalRange} placeholder={ui('ui.forExample135810')} aria-label={t('page.managerBatchRange')} onChange={(event) => setRemovalRange(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Enter') markRemovalRange() }} /></label>
           <button type="button" disabled={!validRemovalRange} onClick={markRemovalRange}><PageManagerIcon name="trash" /><span>{t('page.managerMarkRange')}</span></button>
           <small>{parsedRemovalRange.invalid.length ? t('page.rangeInvalid', { value: parsedRemovalRange.invalid.join('、') }) : t('page.managerBatchRangeHint')}</small>
-        </div>
+        </div>}
         <div ref={galleryRef} className="page-manager-grid" aria-label={t('page.managerStoryboard')}>
           {visibleOrder.map((page, visibleIndex) => {
             const index = visibleStart + visibleIndex
@@ -417,12 +422,13 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
             const rotation = normalizedPageRotation(rotations[page] || 0)
             const dropClass = dragVisual?.targetPage === page && dragVisual.placement ? ` drop-${dragVisual.placement}` : ''
             return <article key={page} data-page-manager-page={page} className={`page-manager-card${isRemoved ? ' removed' : ''}${focusedPage === page ? ' focused' : ''}${dragVisual?.page === page ? ' dragging' : ''}${dropClass}`} onClick={() => focusPage(page)}>
-              <div className="page-manager-card-top">
+              {!readOnly && <div className="page-manager-card-top">
                 <button type="button" className="page-manager-drag-handle" title={t('page.managerDragHandle')} aria-label={t('page.managerDragHandle', { position: index + 1 })} onClick={() => focusPage(page)} onKeyDown={(event) => handleDragKey(event, page)} onPointerDown={(event) => beginPointerDrag(event, page)} onPointerMove={continuePointerDrag} onPointerUp={(event) => finishPointerDrag(event)} onPointerCancel={(event) => finishPointerDrag(event, false)} onLostPointerCapture={() => { if (pointerDrag.current?.page === page) { pointerDrag.current = undefined; setDragVisual(undefined) } }}><PageManagerIcon name="grip" /><span>{t('page.managerPosition', { position: index + 1 })}</span></button>
                 <button type="button" className="page-manager-remove-toggle" aria-pressed={isRemoved} title={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} aria-label={isRemoved ? t('page.managerRestorePage') : t('page.managerRemovePage')} onClick={(event) => { event.stopPropagation(); toggleRemoved(page) }}>{isRemoved ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}</button>
-              </div>
-              <button type="button" className="page-manager-thumbnail" onClick={(event) => { event.stopPropagation(); focusPage(page) }} aria-label={t('page.preview', { page: page + 1 })}>
-                {thumbnails[page] ? <img className={rotation % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${rotation}deg)` }} draggable={false} src={thumbnails[page]} alt="" /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+              </div>}
+              <button type="button" className="page-manager-thumbnail" onClick={(event) => { event.stopPropagation(); focusPage(page); if (failed.has(page)) retry() }} aria-label={t(failed.has(page) ? 'pdf.retryPage' : 'page.preview', { page: page + 1 })}>
+                {thumbnails[page] ? <img className={rotation % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${rotation}deg)` }} draggable={false} src={thumbnails[page]} alt="" />
+                  : <span className="page-manager-thumbnail-loading">{!failed.has(page) && <i />}<small>{t(failed.has(page) ? 'pdf.retryPage' : 'page.managerGeneratingPreview')}</small></span>}
                 <span className="page-manager-original-badge">{t('page.managerOriginalShort', { page: page + 1 })}</span>
                 {page === currentPage && <span className="page-manager-current-badge">{t('page.managerCurrentBadge')}</span>}
                 {rotation !== 0 && <span className="page-manager-rotation-badge">{t('page.managerRotation', { degrees: rotation })}</span>}
@@ -436,22 +442,47 @@ export function PageManagerDialog({ data, pageCount, currentPage, onCancel, onSu
       <aside className="page-manager-inspector" aria-label={t('page.managerInspector')}>
         <header><div><small>{t('page.managerInspector')}</small><h3>{t('page.managerFocusedPage', { position: focusedPosition + 1 })}</h3></div>{focusedPage === currentPage && <span>{t('page.managerCurrentBadge')}</span>}</header>
         <div className={`page-manager-inspector-preview${removed.has(focusedPage) ? ' removed' : ''}`}>
-          {thumbnails[focusedPage] ? <img className={normalizedPageRotation(rotations[focusedPage] || 0) % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${normalizedPageRotation(rotations[focusedPage] || 0)}deg)` }} draggable={false} src={thumbnails[focusedPage]} alt={t('page.preview', { page: focusedPage + 1 })} /> : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
+          {thumbnails[focusedPage] ? <img className={normalizedPageRotation(rotations[focusedPage] || 0) % 180 ? 'quarter-turn' : undefined} style={{ transform: `rotate(${normalizedPageRotation(rotations[focusedPage] || 0)}deg)` }} draggable={false} src={thumbnails[focusedPage]} alt={t('page.preview', { page: focusedPage + 1 })} />
+            : failed.has(focusedPage) ? <button type="button" onClick={retry}>{t('pdf.retryPage')}</button>
+            : <span className="page-manager-thumbnail-loading"><i /><small>{t('page.managerGeneratingPreview')}</small></span>}
           {removed.has(focusedPage) && <b>{t('page.managerMarkedForRemoval')}</b>}
         </div>
         <dl><div><dt>{t('page.managerFinalPosition')}</dt><dd>{focusedPosition + 1}</dd></div><div><dt>{t('page.managerOriginalPage')}</dt><dd>{focusedPage + 1}</dd></div></dl>
-        <section className="page-manager-orientation"><header><span>{t('page.managerOrientation')}</span><b>{t('page.managerRotation', { degrees: normalizedPageRotation(rotations[focusedPage] || 0) })}</b></header><div><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateLeft')} aria-label={t('page.managerRotateLeft')} onClick={() => rotatePage(focusedPage, -90)}><PageManagerIcon name="rotate-left" /><span>{t('page.managerRotateLeft')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerFlip')} aria-label={t('page.managerFlip')} onClick={() => rotatePage(focusedPage, 180)}><PageManagerIcon name="flip" /><span>{t('page.managerFlip')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateRight')} aria-label={t('page.managerRotateRight')} onClick={() => rotatePage(focusedPage, 90)}><PageManagerIcon name="rotate-right" /><span>{t('page.managerRotateRight')}</span></button></div></section>
+        {!readOnly && <><section className="page-manager-orientation"><header><span>{t('page.managerOrientation')}</span><b>{t('page.managerRotation', { degrees: normalizedPageRotation(rotations[focusedPage] || 0) })}</b></header><div><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateLeft')} aria-label={t('page.managerRotateLeft')} onClick={() => rotatePage(focusedPage, -90)}><PageManagerIcon name="rotate-left" /><span>{t('page.managerRotateLeft')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerFlip')} aria-label={t('page.managerFlip')} onClick={() => rotatePage(focusedPage, 180)}><PageManagerIcon name="flip" /><span>{t('page.managerFlip')}</span></button><button type="button" disabled={removed.has(focusedPage)} title={t('page.managerRotateRight')} aria-label={t('page.managerRotateRight')} onClick={() => rotatePage(focusedPage, 90)}><PageManagerIcon name="rotate-right" /><span>{t('page.managerRotateRight')}</span></button></div></section>
         <div className="page-manager-move-control"><label htmlFor="page-manager-position">{t('page.managerMoveTo')}</label><div><input id="page-manager-position" value={moveValue} inputMode="numeric" pattern="[0-9]*" placeholder={String(focusedPosition + 1)} onChange={(event) => setMoveValue(event.target.value.replace(/\D/g, ''))} onKeyDown={(event) => { if (event.key === 'Enter') moveFocusedToPosition() }} /><button type="button" disabled={!validMovePosition} onClick={moveFocusedToPosition}>{t('page.managerMoveAction')}</button></div><small>{t('page.managerMoveHint', { count: pageCount })}</small></div>
         <button type="button" className={`page-manager-inspector-remove${removed.has(focusedPage) ? ' restore' : ''}`} onClick={() => toggleRemoved(focusedPage)}>{removed.has(focusedPage) ? <PageManagerIcon name="restore" /> : <PageManagerIcon name="trash" />}<span>{removed.has(focusedPage) ? t('page.managerRestorePage') : t('page.managerRemovePage')}</span></button>
-        <p className="page-manager-keyboard-hint">{t('page.managerKeyboardHint')}</p>
+        <p className="page-manager-keyboard-hint">{t('page.managerKeyboardHint')}</p></>}
       </aside>
     </div>
 
     {dragVisual && <div className="page-manager-drag-preview" style={{ left: dragVisual.x, top: dragVisual.y }}><PageManagerIcon name="grip" /><span>{t('page.managerDraggingPage', { page: dragVisual.page + 1 })}</span></div>}
     <footer className="page-manager-footer">
-      <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : hasChanges ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>
-      <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t('page.managerCancel')}</button><button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept, Object.fromEntries(Object.entries(rotations).filter(([page, rotation]) => kept.includes(Number(page)) && normalizedPageRotation(rotation) !== 0)))}>{t('page.managerApply')}</button></div>
+      {!readOnly && <div className={`page-manager-summary${kept.length ? hasChanges ? ' changed' : '' : ' invalid'}`}><span aria-hidden="true" /><div><b>{!kept.length ? t('page.managerInvalid') : hasChanges ? t('page.managerSummaryChanged', { keep: kept.length, remove: removed.size }) : t('page.managerSummaryClean')}</b><small>{!kept.length ? t('page.managerInvalidHint') : hasChanges ? t('page.managerReordered') : t('page.managerReady')}</small></div></div>}
+      <div className="page-manager-footer-actions"><button type="button" onClick={onCancel}>{t(readOnly ? 'ui.close' : 'page.managerCancel')}</button>
+        {readOnly ? <button type="button" className="primary" onClick={() => onNavigate?.(focusedPage)}>{t('pdf.openStoryboardPage')}</button>
+          : <button type="button" className="primary" disabled={!kept.length} onClick={() => onSubmit(kept, Object.fromEntries(Object.entries(rotations).filter(([page, rotation]) => kept.includes(Number(page)) && normalizedPageRotation(rotation) !== 0)))}>{t('page.managerApply')}</button>}</div>
     </footer>
+  </ScrollWindow></div>
+}
+
+export function LargePdfEditDialog({ pageCount, currentPage, onCancel, onSubmit }: {
+  pageCount: number; currentPage: number; onCancel(): void; onSubmit(first: number, last: number): void
+}) {
+  const [first, setFirst] = useState(String(currentPage + 1))
+  const [last, setLast] = useState(String(currentPage + 1))
+  const pageNumber = (value: string) => {
+    const digits = value.trim().normalize('NFKC').replace(/[٠-٩۰-۹]/g, digit => String((digit.charCodeAt(0) & 15) % 10))
+    return /^\d+$/.test(digits) ? Number(digits) : NaN
+  }
+  const from = pageNumber(first), to = pageNumber(last)
+  const valid = from >= 1 && to >= from && to <= pageCount
+  return <div className="modal-backdrop"><ScrollWindow className="modal page-selection-dialog large-pdf-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="large-edit-title">
+    <form onSubmit={event => { event.preventDefault(); if (valid) onSubmit(from - 1, to - 1) }}>
+      <div className="page-selection-heading"><div><h2 id="large-edit-title">{ui('pdf.largeEditPages')}</h2><p>{ui('pdf.largeEditHint')}</p></div></div>
+      <label className="page-range-input"><span>{ui('pdf.largeFirstPage')}</span><input autoFocus inputMode="numeric" value={first} onChange={event => setFirst(event.target.value)} /></label>
+      <label className="page-range-input"><span>{ui('pdf.largeLastPage')}</span><input inputMode="numeric" value={last} onChange={event => setLast(event.target.value)} /></label>
+      <div className="modal-actions"><button type="button" onClick={onCancel}>{ui('ui.cancel')}</button><button type="submit" className="primary" disabled={!valid}>{ui('pdf.largeEditPages')}</button></div>
+    </form>
   </ScrollWindow></div>
 }
 
@@ -482,32 +513,46 @@ export function PageSelectionDialog({ purpose: _purpose, pageCount, currentPage,
   </ScrollWindow></div>
 }
 
-function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 220, maxHeight = 280): { thumbnails: Record<number, string>; sizes: Record<number, { width: number; height: number }>; failed: Set<number> } {
-  const [document, setDocument] = useState<PDFDocumentProxy>()
+function usePrintThumbnails(data: Uint8Array | undefined, pageIndices: number[], maxWidth = 220, maxHeight = 280, sourceDocument?: PDFDocumentProxy, concurrency = 2, rangeSource?: PdfRangeSource) {
+  const [ownedDocument, setOwnedDocument] = useState<PDFDocumentProxy>()
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
   const [sizes, setSizes] = useState<Record<number, { width: number; height: number }>>({})
   const [failed, setFailed] = useState<Set<number>>(new Set())
+  const [attempt, setAttempt] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [loadFailed, setLoadFailed] = useState(false)
   const cache = useRef<Record<number, string>>({})
   const pageKey = pageIndices.join(',')
   const wantsThumbnails = pageIndices.length > 0
   useEffect(() => {
     let active = true
-    cache.current = {}
+    const release = () => {
+      for (const url of Object.values(cache.current)) URL.revokeObjectURL(url)
+      cache.current = {}
+    }
+    release()
     setThumbnails({})
     setSizes({})
     setFailed(new Set())
-    setDocument(undefined)
-    if (!wantsThumbnails) return () => { active = false }
-    const task = getDocument({ data: data.slice(), wasmUrl: PDFJS_WASM_URL, useWasm: false })
-    task.promise.then((value) => { if (active) setDocument(value) }).catch(() => { if (active) setFailed(new Set(pageIndices)) })
-    return () => { active = false; void task.destroy() }
-  }, [data, wantsThumbnails])
+    setLoadFailed(false)
+    setOwnedDocument(undefined)
+    if (sourceDocument || !data || !wantsThumbnails) return release
+    const task = getDocument({ data: data.slice(), useWasm: false, canvasMaxAreaInBytes: PDFJS_CANVAS_MAX_AREA_IN_BYTES })
+    task.promise.then(value => { if (active) setOwnedDocument(value) }).catch(() => { if (active) setLoadFailed(true) })
+    return () => { active = false; release(); void task.destroy().catch(() => undefined) }
+  }, [data, sourceDocument, wantsThumbnails, reload])
+  const document = sourceDocument || ownedDocument
   useEffect(() => {
     if (!document) return
     let cancelled = false
     const wanted = new Set(pageIndices)
-    cache.current = Object.fromEntries(Object.entries(cache.current).filter(([page]) => wanted.has(Number(page))))
+    for (const [page, url] of Object.entries(cache.current)) if (!wanted.has(Number(page))) {
+      URL.revokeObjectURL(url)
+      delete cache.current[Number(page)]
+    }
     setThumbnails({ ...cache.current })
+    setFailed(new Set())
+    const tasks = new Set<ReturnType<PDFPageProxy['render']>>()
     const render = async () => {
       let cursor = 0
       const worker = async () => {
@@ -515,30 +560,61 @@ function usePrintThumbnails(data: Uint8Array, pageIndices: number[], maxWidth = 
           const pageIndex = pageIndices[cursor++]
           if (pageIndex === undefined) return
           if (cache.current[pageIndex]) continue
+          let page: PDFPageProxy | undefined
+          let canvas: HTMLCanvasElement | undefined
           try {
-            const page = await document.getPage(pageIndex + 1)
+            page = await document.getPage(pageIndex + 1)
+            if (cancelled) return
             const base = page.getViewport({ scale: 1 })
             setSizes((current) => ({ ...current, [pageIndex]: { width: base.width, height: base.height } }))
-            const viewport = page.getViewport({ scale: Math.min(maxWidth / base.width, maxHeight / base.height) })
-            const canvas = window.document.createElement('canvas')
-            canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height))
-            const context = canvas.getContext('2d', { alpha: false })
-            if (!context) throw new Error('Canvas is unavailable')
-            await page.render({ canvas, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE }).promise
+            const scale = Math.min(maxWidth / base.width, maxHeight / base.height)
+            const target = canvas = window.document.createElement('canvas')
+            const pdfPage = page
+            const paint = async (scale: number): Promise<Blob> => {
+              const viewport = pdfPage.getViewport({ scale })
+              target.width = Math.max(1, Math.round(viewport.width)); target.height = Math.max(1, Math.round(viewport.height))
+              const context = target.getContext('2d', { alpha: false })
+              if (!context) throw new Error('pdf.pageRenderFailed')
+              let task: ReturnType<PDFPageProxy['render']> | undefined
+              try {
+                if (rangeSource && nativePagePreferred(rangeSource, document.numPages)) await paintNativePdfPage(rangeSource, pageIndex, target)
+                else {
+                  task = pdfPage.render({ canvas: target, canvasContext: context, viewport, annotationMode: AnnotationMode.ENABLE })
+                  tasks.add(task)
+                  try { await task.promise } catch (error) {
+                    if (!rangeSource || cancelled || window.desktop.platform !== 'win32') throw error
+                    await paintNativePdfPage(rangeSource, pageIndex, target)
+                  }
+                }
+                const image = await new Promise<Blob | null>(resolve => target.toBlob(resolve))
+                if (!image) throw new Error('pdf.pageRenderFailed')
+                return image
+              } finally { if (task) tasks.delete(task) }
+            }
+            let image: Blob
+            try { image = await paint(scale) }
+            catch {
+              if (cancelled) return
+              image = await paint(scale / 2)
+            }
             if (cancelled) return
-            cache.current[pageIndex] = canvas.toDataURL('image/png')
+            cache.current[pageIndex] = URL.createObjectURL(image)
             setThumbnails({ ...cache.current })
           } catch {
             if (!cancelled) setFailed((current) => new Set(current).add(pageIndex))
+          } finally {
+            if (canvas) canvas.width = canvas.height = 0
+            page?.cleanup()
           }
         }
       }
-      await Promise.all(Array.from({ length: Math.min(4, pageIndices.length) }, worker))
+      await Promise.all(Array.from({ length: Math.min(concurrency, pageIndices.length) }, worker))
     }
     void render().catch(() => undefined)
-    return () => { cancelled = true }
-  }, [document, pageKey, maxHeight, maxWidth])
-  return { thumbnails, sizes, failed }
+    return () => { cancelled = true; for (const task of tasks) task.cancel() }
+  }, [document, pageKey, maxHeight, maxWidth, attempt, concurrency, rangeSource])
+  return { thumbnails, sizes, failed: loadFailed ? new Set(pageIndices) : failed,
+    retry: () => { if (loadFailed) setReload(value => value + 1); else setAttempt(value => value + 1) } }
 }
 
 interface ImposedPrintPreview {
@@ -559,7 +635,7 @@ function printPreviewCanvas(width: number, height: number) {
   return { canvas, context }
 }
 
-function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options: PrintPdfOptions): ImposedPrintPreview {
+function useImposedPrintPreview(data: Uint8Array | undefined, pageIndices: number[], options: PrintPdfOptions, sourceDocument?: PDFDocumentProxy, rangeSource?: PdfRangeSource): ImposedPrintPreview {
   const [preview, setPreview] = useState<ImposedPrintPreview>({ loading: pageIndices.length > 0, failed: false, pixelWidth: 0, pixelHeight: 0 })
   const pageKey = pageIndices.join(',')
   const optionsKey = [options.pageSize, options.orientation, options.multiPage, options.rows, options.columns, options.scale, options.frame].join('|')
@@ -579,6 +655,7 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
       }
     }
     const renderImposed = async () => {
+      if (!data) throw new Error('pdf.largeOperationFailed')
       const job = await createImposedPrintJob(data, pageIndices, options)
       const orientation = job.orientations[0] || 'portrait'
       return withDocument(job.data, async (document) => {
@@ -596,7 +673,7 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
       })
     }
     // The reader tolerates streams that the vector page embedder cannot copy.
-    const renderSource = () => withDocument(data, async (document) => {
+    const paintSource = async (document: PDFDocumentProxy) => {
       const pages = await Promise.all(pageIndices.map(index => document.getPage(index + 1)))
       const sizes = pages.map(page => page.getViewport({ scale: 1 }))
       const orientation = printSheetOrientation(sizes, 0, options)
@@ -609,7 +686,12 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
         const page = pages[cell.pageIndex]
         const viewport = page.getViewport({ scale: cell.width * scale / sizes[cell.pageIndex].width })
         const raster = printPreviewCanvas(viewport.width, viewport.height)
-        await page.render({ canvas: raster.canvas, canvasContext: raster.context, viewport, intent: 'print', annotationMode: AnnotationMode.ENABLE }).promise
+        const native = () => paintNativePdfPage(rangeSource!, page.pageNumber - 1, raster.canvas)
+        if (rangeSource && nativePagePreferred(rangeSource, document.numPages)) await native()
+        else {
+          try { await page.render({ canvas: raster.canvas, canvasContext: raster.context, viewport, intent: 'print', annotationMode: AnnotationMode.ENABLE }).promise }
+          catch (error) { if (!rangeSource || window.desktop.platform !== 'win32') throw error; await native() }
+        }
         const x = cell.x * scale, y = (height - cell.y - cell.height) * scale
         context.drawImage(raster.canvas, x, y, cell.width * scale, cell.height * scale)
         if (options.frame) {
@@ -620,12 +702,13 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
         raster.canvas.width = 0
       }
       return { canvas, orientation }
-    })
+    }
+    const renderSource = () => sourceDocument ? paintSource(sourceDocument) : withDocument(data!, paintSource)
     const timer = window.setTimeout(() => {
       if (!pageIndices.length) { setPreview({ loading: false, failed: false, pixelWidth: 0, pixelHeight: 0 }); return }
       setPreview({ loading: true, failed: false, pixelWidth: 0, pixelHeight: 0 })
       void (async () => {
-        const { canvas, orientation } = await renderImposed().catch(renderSource)
+        const { canvas, orientation } = await (sourceDocument ? renderSource() : renderImposed().catch(renderSource))
         if (active) setPreview({ image: canvas.toDataURL('image/png'), orientation, loading: false, failed: false, pixelWidth: canvas.width, pixelHeight: canvas.height })
       })().catch(() => { if (active) setPreview({ loading: false, failed: true, pixelWidth: 0, pixelHeight: 0 }) })
     }, 90)
@@ -635,11 +718,11 @@ function useImposedPrintPreview(data: Uint8Array, pageIndices: number[], options
       void task?.destroy().catch(() => undefined)
       task = undefined
     }
-  }, [data, optionsKey, pageKey])
+  }, [data, optionsKey, pageKey, sourceDocument, rangeSource])
   return preview
 }
 
-export function PrintDialog({ data, pageCount, currentPage, printers, printersLoading, printerError, onRefreshPrinters, onOpenPrinterSettings, onCancel, onSubmit }: { data: Uint8Array; pageCount: number; currentPage: number; printers: PrinterDescriptor[]; printersLoading: boolean; printerError?: string; onRefreshPrinters(): void; onOpenPrinterSettings?(printerName: string): Promise<void>; onCancel(): void; onSubmit(pages: number[], options: PrintPdfOptions, printerName: string): void }) {
+export function PrintDialog({ data, sourceDocument, rangeSource, pageCount, currentPage, printers, printersLoading, printerError, onRefreshPrinters, onOpenPrinterSettings, onCancel, onSubmit }: { data?: Uint8Array; sourceDocument?: PDFDocumentProxy; rangeSource?: PdfRangeSource; pageCount: number; currentPage: number; printers: PrinterDescriptor[]; printersLoading: boolean; printerError?: string; onRefreshPrinters(): void; onOpenPrinterSettings?(printerName: string): Promise<void>; onCancel(): void; onSubmit(pages: number[], options: PrintPdfOptions, printerName: string): void }) {
   const allPages = allPageIndices(pageCount)
   const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))
   const [manual, setManual] = useState(() => compactPageSelection(allPages))
@@ -678,7 +761,7 @@ export function PrintDialog({ data, pageCount, currentPage, printers, printersLo
   const perSheet = multiPage ? rows * columns : 1
   const sheetCount = printSheetCount(pages.length, options)
   const previewPages = pages.slice(sheetIndex * perSheet, (sheetIndex + 1) * perSheet)
-  const preview = useImposedPrintPreview(data, previewPages, options)
+  const preview = useImposedPrintPreview(data, previewPages, options, sourceDocument, rangeSource)
   const resolvedOrientation = preview.orientation || (orientation === 'landscape' ? 'landscape' : 'portrait')
   const [paperWidth, paperHeight] = printPaperSize(options, resolvedOrientation)
   useEffect(() => { setSheetIndex((current) => Math.min(current, Math.max(0, sheetCount - 1))) }, [sheetCount])

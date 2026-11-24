@@ -19,10 +19,11 @@ import type { LabReportRequest } from '../shared/contracts'
 import { cancelOcr, recognizeOcrPage } from './ocr'
 import type { OcrPageRequest } from '../shared/ocr'
 import { convertPdfToEps, findPdfToCairo } from './eps-export'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, safeStorage, shell, utilityProcess, type WebContents } from 'electron'
+import { PDFDocument } from 'pdf-lib'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
@@ -39,6 +40,10 @@ import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 import { validExternalLink } from './external-links'
+import { PdfRangeFiles } from './pdf-range-files'
+import { LARGE_PDF_THRESHOLD } from '../shared/contracts'
+import type { ExportPage, LargePdfOutput, RasterExportFormat } from '../shared/contracts'
+import { bundledQpdf, largePageNumbers, largePdfPageCount, readLargePages, writeLargeEps, writeLargeOutput } from './large-pdf-operations'
 
 let grammarEngine:LocalGrammarEngine|undefined
 let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;transport:ReturnType<typeof resourceTransport>;ready:Promise<void>}|undefined
@@ -373,7 +378,38 @@ async function refreshMacPdfAssociation(): Promise<void> {
   await execFileAsync(lsregister, ['-f', currentBundle]).catch(() => undefined)
 }
 
-async function openPdfAt(path: string) {
+const pdfRangeFiles = new PdfRangeFiles()
+const rasterExports = new Map<string, { owner: number; format: RasterExportFormat; target: string; pages: Set<number>; many: boolean }>()
+const qpdfCommand = () => bundledQpdf(process.resourcesPath, join(__dirname, '../..'))
+let pdfiumTail: Promise<unknown> = Promise.resolve()
+
+async function renderPdfium(path: string, index: number, width: number, height: number): Promise<Uint8Array> {
+  if (process.platform !== 'win32' || !Number.isSafeInteger(index) || index < 0 ||
+      !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || width * height > 12_000_000) {
+    throw new Error('pdf.pageRenderFailed')
+  }
+  const appPath = app.isPackaged ? app.getAppPath() : join(__dirname, '../..')
+  const unpacked = (name: string) => name.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+  const dll = unpacked(join(appPath, 'node_modules/windows-pdf-printer-native/bin/pdfium.dll'))
+  const workerPath = unpacked(join(__dirname, 'pdfium-render-worker.js'))
+  const data = await new Promise<Uint8Array>((resolve, reject) => {
+    const worker = utilityProcess.fork(workerPath, [JSON.stringify({ dll, appPath, path, index, width, height })], { stdio: 'ignore' })
+    const done = (data?: Uint8Array) => {
+      clearTimeout(timer)
+      worker.removeAllListeners()
+      worker.kill()
+      if (data?.byteLength === width * height * 4) resolve(data)
+      else reject(new Error('pdf.pageRenderFailed'))
+    }
+    const timer = setTimeout(() => done(), 120_000)
+    worker.once('message', (message: { data?: Uint8Array }) => done(message.data))
+    worker.once('exit', () => done())
+    worker.once('error', () => done())
+  })
+  return nativeImage.createFromBitmap(Buffer.from(data.buffer, data.byteOffset, data.byteLength), { width, height }).toPNG()
+}
+
+async function openPdfAt(path: string, owner: WebContents) {
   if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('md.invalid')
   const absolute = resolve(path)
   if (isTextPath(absolute)) {
@@ -381,10 +417,23 @@ async function openPdfAt(path: string) {
     await rememberRecentPdf(absolute).catch(() => undefined)
     return { path: absolute, name: basename(absolute), data: new Uint8Array(), credentialKey: '', markdown, encoding, lineEnding }
   }
-  const data = await readFile(absolute)
-  const credentialKey = createHash('sha256').update(data).digest('hex')
-  await rememberRecentPdf(absolute).catch(() => undefined)
-  return { path: absolute, name: basename(absolute), data: new Uint8Array(data), credentialKey }
+  const file = await open(absolute, 'r')
+  let retain = false
+  try {
+    const stat = await file.stat()
+    if (!stat.isFile()) throw new Error('md.invalid')
+    if (stat.size >= LARGE_PDF_THRESHOLD) {
+      await rememberRecentPdf(absolute).catch(() => undefined)
+      if (owner.isDestroyed()) throw new Error('pdf.largeReadFailed')
+      const rangeSource = pdfRangeFiles.add(owner.id, file, stat.size, stat.mtimeMs, absolute)
+      retain = true
+      return { path: absolute, name: basename(absolute), data: new Uint8Array(), credentialKey: '', rangeSource }
+    }
+    const data = await file.readFile()
+    const credentialKey = createHash('sha256').update(data).digest('hex')
+    await rememberRecentPdf(absolute).catch(() => undefined)
+    return { path: absolute, name: basename(absolute), data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength), credentialKey }
+  } finally { if (!retain) await file.close() }
 }
 
 function recentPdfsPath(): string { return join(app.getPath('userData'), 'recent-pdfs.json') }
@@ -610,6 +659,7 @@ function validDetachedDocument(value: unknown): value is DetachedPdfDocument {
   const document = value as Partial<DetachedPdfDocument>
   const validNumber = (candidate: unknown) => typeof candidate === 'number' && Number.isFinite(candidate)
   return (document.data === undefined || document.data instanceof Uint8Array)
+    && (document.rangePdf === undefined || document.rangePdf === true && typeof document.filePath === 'string' && !document.data && !document.markdown && !document.dirty)
     && (document.markdown === undefined || (typeof document.markdown.source === 'string' && document.markdown.source.length <= MAX_MARKDOWN_LENGTH && (document.markdown.unsaved === undefined || typeof document.markdown.unsaved === 'boolean') && typeof document.markdown.savedSource === 'string' && typeof document.markdown.path === 'string' && isTextPath(document.markdown.path) && (document.markdown.encoding === undefined || isTextEncoding(document.markdown.encoding)) && (document.markdown.savedEncoding === undefined || isTextEncoding(document.markdown.savedEncoding)) && (document.markdown.lineEnding === undefined || isTextLineEnding(document.markdown.lineEnding)) && typeof document.markdown.renderedKey === 'string' && Boolean(document.markdown.options)))
     && typeof document.fileName === 'string'
     && typeof document.encrypted === 'boolean'
@@ -682,7 +732,10 @@ function createAppWindow(options: { initialPaths?: string[]; detachedDocument?: 
     if (!window.webContents.isDestroyed()) window.webContents.send('window:request-close')
   })
   const ocrOwner = window.webContents.id
-  window.webContents.once('destroyed', () => {cancelOcr(ocrOwner);resourceService?.manager.closeOwner(ocrOwner)})
+  window.webContents.once('destroyed', () => {
+    cancelOcr(ocrOwner); resourceService?.manager.closeOwner(ocrOwner); pdfRangeFiles.closeOwner(ocrOwner)
+    for (const [id, job] of rasterExports) if (job.owner === ocrOwner) rasterExports.delete(id)
+  })
   window.on('closed', () => {
     windowSessions.delete(webContentsId)
     for (const [transferId, transfer] of documentTransfers) if (transfer.source === session) clearDocumentTransfer(transferId)
@@ -752,7 +805,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('pdf:choose-open', async (event) => {
     const session = requireWindowSession(event.sender)
     const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md', 'txt'] }] })
-    return result.canceled ? null : openPdfAt(result.filePaths[0])
+    return result.canceled ? null : openPdfAt(result.filePaths[0], event.sender)
   })
   ipcMain.handle('resources:ensure',async(event,request:unknown)=>{requireMainWindow(event.sender);if(!validResourceRequest(request))throw resourceError('invalidResource');const service=resources();await service.ready;if(event.sender.isDestroyed())return false;return service.manager.request(event.sender.id,request)})
   ipcMain.handle('resources:state',event=>{requireMainWindow(event.sender);return resourceService?.manager.state(event.sender.id)})
@@ -761,7 +814,120 @@ app.whenReady().then(async () => {
   ipcMain.handle('resources:proxy',event=>{requireMainWindow(event.sender);return resources().proxy.publicValue()})
   ipcMain.handle('resources:proxy-save',(event,proxy:unknown)=>{requireMainWindow(event.sender);const service=resources();if(service.manager.isActive())throw resourceError('busy');return service.proxy.save(proxy)})
   ipcMain.handle('grammar:check',async(event,request:unknown)=>{requireMainWindow(event.sender);const service=resources();await service.ready;if((await service.manager.catalog.missing({kind:'grammar'},new AbortController().signal)).length)throw resourceError('notReady');if(event.sender.isDestroyed())throw resourceError('canceled');grammarEngine??=new LocalGrammarEngine(service.manager.catalog.grammar);return grammarEngine.check(request as import('../shared/grammar').GrammarRequest)})
-  ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path) })
+  ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path, event.sender) })
+  ipcMain.handle('pdf:range-read', (event, id: string, begin: number, end: number) => {
+    requireMainWindow(event.sender)
+    return pdfRangeFiles.read(event.sender.id, id, begin, end)
+  })
+  ipcMain.handle('pdf:range-release', (event, id: string) => {
+    requireMainWindow(event.sender)
+    return pdfRangeFiles.release(event.sender.id, id)
+  })
+  ipcMain.handle('pdf:large-read-pages', async (event, id: string, pages: number[]) => {
+    requireMainWindow(event.sender)
+    const input = await pdfRangeFiles.currentPath(event.sender.id, id)
+    const data = await readLargePages(qpdfCommand(), input, pages)
+    await pdfRangeFiles.currentPath(event.sender.id, id)
+    return data
+  })
+  ipcMain.handle('pdf:large-begin-edit', async (event, id: string, first: number, last: number, overlaySize?: { width: number; height: number }) => {
+    requireMainWindow(event.sender)
+    const owner = event.sender.id
+    const input = await pdfRangeFiles.currentPath(owner, id)
+    const count = last - first + 1
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last > 10_000_000 || count < 1 || count > 1000) {
+      throw new Error('pdf.largeInvalidPages')
+    }
+    const pages = Array.from({ length: count }, (_, index) => index + first)
+    let overlay = false
+    let data: Uint8Array
+    try { data = await readLargePages(qpdfCommand(), input, pages) }
+    catch (error) {
+      if (!(error instanceof Error) || error.message !== 'pdf.largeSliceLimit' || count !== 1 ||
+          !overlaySize || ![overlaySize.width, overlaySize.height].every(value => Number.isFinite(value) && value > 0 && value <= 200_000)) throw error
+      const blank = await PDFDocument.create()
+      blank.addPage([overlaySize.width, overlaySize.height])
+      data = await blank.save()
+      overlay = true
+    }
+    const copy = await open(input, 'r')
+    try {
+      const info = await copy.stat()
+      await pdfRangeFiles.currentPath(owner, id)
+      if (event.sender.isDestroyed()) throw new Error('pdf.largeReadFailed')
+      const source = pdfRangeFiles.add(owner, copy, info.size, info.mtimeMs, input)
+      return { data, edit: { sourceId: source.id, first, count, overlay } }
+    } catch (error) { await copy.close(); throw error }
+  })
+  ipcMain.handle('pdf:large-native-render', async (event, id: string, page: number, width: number, height: number) => {
+    requireMainWindow(event.sender)
+    const next = pdfiumTail.then(async () => renderPdfium(await pdfRangeFiles.currentPath(event.sender.id, id), page, width, height))
+    pdfiumTail = next.catch(() => undefined)
+    return next
+  })
+  ipcMain.handle('pdf:large-write', async (event, request: LargePdfOutput) => {
+    const session = requireWindowSession(event.sender)
+    const confirmSource = () => pdfRangeFiles.currentPath(event.sender.id, request.sourceId)
+    const input = await confirmSource()
+    const format = request.format ?? 'pdf'
+    if (format !== 'pdf' && format !== 'eps' || request.separate && !request.pages?.length || request.replacement && (format !== 'pdf' || request.separate)) {
+      throw new Error('pdf.largeInvalidPages')
+    }
+    const command = qpdfCommand()
+    if (request.pages) largePageNumbers(request.pages, await largePdfPageCount(command, input))
+    const eps = format === 'eps' ? findPdfToCairo(process.resourcesPath) : undefined
+    if (format === 'eps' && !eps) throw new Error('ui.epsNeedsPoppler')
+    const result = await dialog.showSaveDialog(session.window, {
+      title: nativeText(session.interfaceLanguage, request.replacement || !request.pages ? 'ui.saveAsPdf' : 'ui.export'),
+      defaultPath: join(dirname(input), `${parse(input).name}${request.replacement ? '-edited' : '-export'}.${format}`),
+      filters: [{ name: format.toUpperCase(), extensions: [format] }]
+    })
+    if (result.canceled || !result.filePath) return null
+    const selected = parse(result.filePath)
+    const output = (page?: number) => join(selected.dir, `${selected.name}${page === undefined ? '' : `_${String(page + 1).padStart(3, '0')}`}.${format}`)
+    if (!request.separate && format === 'pdf') {
+      const target = output()
+      await writeLargeOutput(command, input, target, request, confirmSource)
+      return [target]
+    }
+    const outputs: string[] = []
+    for (const page of request.pages ?? []) {
+      const target = output(request.pages!.length > 1 ? page : undefined)
+      if (eps) await writeLargeEps(command, eps, input, page, target, confirmSource)
+      else await writeLargeOutput(command, input, target, { sourceId: request.sourceId, pages: [page] }, confirmSource)
+      outputs.push(target)
+    }
+    return outputs
+  })
+  ipcMain.handle('pdf:large-raster-begin', async (event, id: string, format: RasterExportFormat, pages: number[]) => {
+    const session = requireWindowSession(event.sender)
+    const input = await pdfRangeFiles.currentPath(event.sender.id, id)
+    if (format !== 'png' && format !== 'jpg') throw new Error('pdf.largeInvalidPages')
+    const selectedPages = largePageNumbers(pages, await largePdfPageCount(qpdfCommand(), input))
+    const result = await dialog.showSaveDialog(session.window, {
+      title: nativeText(session.interfaceLanguage, 'ui.export'), defaultPath: `${parse(input).name}.${format}`,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }]
+    })
+    if (result.canceled || !result.filePath || event.sender.isDestroyed()) return null
+    const token = randomUUID()
+    rasterExports.set(token, { owner: event.sender.id, format, target: result.filePath,
+      pages: new Set(selectedPages.map(page => page + 1)), many: selectedPages.length > 1 })
+    return token
+  })
+  ipcMain.handle('pdf:large-raster-page', async (event, id: string, page: ExportPage) => {
+    requireMainWindow(event.sender)
+    const job = rasterExports.get(id)
+    if (!job || job.owner !== event.sender.id || !(page?.data instanceof Uint8Array) || !page.data.length ||
+        page.data.length > LARGE_PDF_THRESHOLD || !job.pages.delete(page.pageNumber)) throw new Error('pdf.largeOperationFailed')
+    const target = parse(job.target)
+    const output = join(target.dir, `${target.name}${job.many ? `_${String(page.pageNumber).padStart(3, '0')}` : ''}.${job.format}`)
+    await atomicWrite(output, page.data)
+    return output
+  })
+  ipcMain.handle('pdf:large-raster-close', (event, id: string) => {
+    requireMainWindow(event.sender)
+    if (rasterExports.get(id)?.owner === event.sender.id) rasterExports.delete(id)
+  })
   ipcMain.handle('pdf:password-get', (event, credentialKey: string) => {
     requireMainWindow(event.sender)
     return getPasswordStore().get(credentialKey)

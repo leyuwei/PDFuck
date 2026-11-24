@@ -10,7 +10,11 @@ export default defineConfig({
       name: 'remove-bundled-ocr-assets',
       buildStart() { rmSync(resolve(__dirname,'out/ocr'),{recursive:true,force:true}) }
     }],
-    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), 'ocr-worker': resolve(__dirname, 'src/main/ocr-worker.ts') } } }
+    build: { rollupOptions: { input: {
+      index: resolve(__dirname, 'src/main/index.ts'),
+      'ocr-worker': resolve(__dirname, 'src/main/ocr-worker.ts'),
+      'pdfium-render-worker': resolve(__dirname, 'src/main/pdfium-render-worker.ts')
+    } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
@@ -26,7 +30,7 @@ export default defineConfig({
       closeBundle() {
         const target = resolve(__dirname, 'out/renderer/pdfjs-wasm')
         mkdirSync(target, { recursive: true })
-        for (const name of ['jbig2.wasm', 'openjpeg.wasm', 'qcms_bg.wasm', 'quickjs-eval.wasm', 'jbig2_nowasm_fallback.js']) copyFileSync(resolve(__dirname, 'node_modules/pdfjs-dist/wasm', name), resolve(target, name))
+        for (const name of ['jbig2.wasm', 'openjpeg.wasm', 'qcms_bg.wasm', 'quickjs-eval.wasm', 'jbig2_nowasm_fallback.js', 'openjpeg_nowasm_fallback.js']) copyFileSync(resolve(__dirname, 'node_modules/pdfjs-dist/wasm', name), resolve(target, name))
         cpSync(resolve(__dirname, 'node_modules/pdfjs-dist/cmaps'), resolve(__dirname, 'out/renderer/cmaps'), { recursive: true })
         cpSync(resolve(__dirname, 'node_modules/pdfjs-dist/standard_fonts'), resolve(__dirname, 'out/renderer/standard_fonts'), { recursive: true })
       }

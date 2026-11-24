@@ -1,4 +1,5 @@
 export const MAX_PAGE_CANVAS_PIXELS = 12_000_000
+const MAX_PAGE_CANVAS_SIDE = 8192
 
 export function virtualPageSpacerHeight(start: number, end: number, sizes: Record<number, { height: number }>, zoom: number): number {
   let height = Math.max(0, end - start - 1) * 20
@@ -9,7 +10,7 @@ export function virtualPageSpacerHeight(start: number, end: number, sizes: Recor
 export function canvasOutputScale(width: number, height: number, deviceScale: number, maxPixels = MAX_PAGE_CANVAS_PIXELS): number {
   const safeArea = Math.max(1, width * height)
   const memoryScale = Math.sqrt(maxPixels / safeArea)
-  return Math.min(Math.max(0.01, deviceScale || 1), memoryScale)
+  return Math.min(Math.max(0.01, deviceScale || 1), memoryScale, MAX_PAGE_CANVAS_SIDE / Math.max(1, width, height))
 }
 
 export function wheelZoom(current: number, deltaY: number): number {
