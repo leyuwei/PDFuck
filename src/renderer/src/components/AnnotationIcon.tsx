@@ -6,7 +6,11 @@ export function AnnotationIcon({ kind, size = 22 }: { kind: IconKind; size?: num
   const normalized = kind === 'delete_text' ? 'delete' : kind
   return <svg className={`annotation-icon ${normalized}`} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
     {normalized === 'highlight' && <><path d="m6 15 8.9-8.9 3 3L9 18H6z" /><path className="accent" d="M4 19h14" /></>}
-    {normalized === 'note' && <><path d="M7 4h10a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-6l-4.5 3v-3A4 4 0 0 1 3 14V8a4 4 0 0 1 4-4Z" /><path d="M8 9.5h8M8 13h5" fill="none" /></>}
+    {normalized === 'note' && <>
+      <path d="M7 4h10c2.2 0 4 1.8 4 4v6c0 2.2-1.8 4-4 4h-6l-4.5 3v-3C4.5 18 3 16.2 3 14V8c0-2.2 1.8-4 4-4Z" />
+      <path d="M8.5 9.5h.01m6.99 0h.01" fill="none" stroke="#18316f" strokeWidth="2.6" />
+      <path d="M8.5 13c1.8-1.4 5.2-1.4 7 0-1.8 2-5.2 2-7 0Z" fill="#ffd24a" stroke="#a86a08" strokeWidth=".9" />
+    </>}
     {normalized === 'replace' && <><path d="M5 8h12l-3-3M19 16H7l3 3" /><path className="detail" d="M4 12h16" /></>}
     {normalized === 'insert' && <><path d="m6 17 6-10 6 10" /><path className="accent" d="M12 5v14M9.5 12h5" /></>}
     {normalized === 'delete' && <><path className="detail" d="M5 8h14M5 16h14" /><path className="accent" d="M4 12h16" /></>}

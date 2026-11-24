@@ -1,6 +1,7 @@
 import { useAnnotationView } from '../lib/annotation-preferences'
 import { AnnotationContent } from './AnnotationContent'
 import { AnnotationRichEditor } from './AnnotationRichText'
+import { AnnotationEditSplit } from './AnnotationEditSplit'
 import { ANNOTATION_PALETTE, QUICK_REPLIES, quickReply } from '../lib/annotation-style'
 import type { AnnotationReply } from '../types'
 import { ui, useInterfaceLanguage } from '../lib/i18n'
@@ -18,9 +19,11 @@ export function AnnotationReplyPicker({ reply, onChange }: { reply?: AnnotationR
   const { markdown } = useAnnotationView()
   useInterfaceLanguage()
   const t = ui
-  return <div className="annotation-reply-picker"><span className="annotation-control-label">{t("ui.reply")}</span>
+  const custom = reply?.status === 'custom' ? reply : undefined
+  return <div className="annotation-reply-picker">
     <div className="quick-reply-row">{QUICK_REPLIES.map((item) => <button type="button" key={item.status} className={reply?.status === item.status ? `active ${item.status}` : item.status} onClick={() => onChange(reply?.status === item.status ? undefined : quickReply(item.status))}><i />{t(item.label)}</button>)}{reply && <button type="button" className="clear-reply" onClick={() => onChange(undefined)}>{t("ui.clear")}</button>}</div>
-    {markdown && reply?.status === 'custom' && reply.content.trim() && <AnnotationContent text={reply.content} marks={reply.marks} markdown />}
-    <AnnotationRichEditor label={t("ui.customReply")} text={reply?.status === 'custom' ? reply.content : ''} marks={reply?.status === 'custom' ? reply.marks : []} onChange={(content, marks) => onChange(content ? { status: 'custom', content, marks, aiGenerated: reply?.aiGenerated } : undefined)} />
+    <AnnotationEditSplit enabled={markdown} preview={<AnnotationContent text={custom?.content ?? ''} marks={custom?.marks} markdown />}>
+      <AnnotationRichEditor label={t("ui.customReply")} text={custom?.content ?? ''} marks={custom?.marks} onChange={(content, marks) => onChange(content ? { status: 'custom', content, marks, aiGenerated: custom?.aiGenerated } : undefined)} />
+    </AnnotationEditSplit>
   </div>
 }

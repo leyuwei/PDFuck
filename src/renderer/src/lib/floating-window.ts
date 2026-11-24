@@ -147,7 +147,20 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
     return () => { observer?.disconnect(); window.removeEventListener('resize', fit); element.removeEventListener('pointerdown',down,true); element.removeEventListener('pointermove',move,true); element.removeEventListener('pointerup',up,true); element.removeEventListener('pointercancel',up,true); element.removeEventListener('lostpointercapture',up,true); element.style.cursor='' }
   }, [active, bottomRight, minHeight, minWidth, resizable, storageKey])
   const style: CSSProperties | undefined = position || size ? { ...position, ...(size ? { width: size.width, height: size.height } : {}) } : undefined
-  return { ref, style, dragHandlers: {
+  const moveTo = (left: number, top: number, requestedSize?: FloatingSize) => {
+    const bounds = ref.current?.getBoundingClientRect()
+    if (!bounds) return
+    const nextSize = requestedSize && resizable
+      ? clampFloatingSize(requestedSize.width, requestedSize.height, window.innerWidth, window.innerHeight, minWidth, minHeight)
+      : bounds
+    if (requestedSize && resizable && (nextSize.width !== bounds.width || nextSize.height !== bounds.height)) {
+      sizeRef.current = { width: nextSize.width, height: nextSize.height }
+      setSize(sizeRef.current)
+    }
+    const next = clampFloatingPosition(left, top, nextSize.width, nextSize.height, window.innerWidth, window.innerHeight, floatingTop())
+    setPosition(current => current?.left === next.left && current.top === next.top ? current : next)
+  }
+  return { ref, style, moveTo, dragHandlers: {
     onPointerDown(event: React.PointerEvent) {
       if (event.button !== 0 || (event.target as HTMLElement).closest('button, input, textarea, select, a, [contenteditable="true"]')) return
       event.preventDefault()

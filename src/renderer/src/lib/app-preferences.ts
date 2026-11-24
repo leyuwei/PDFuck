@@ -1,7 +1,26 @@
 import { DEFAULT_ANNOTATION_AUTHOR, normalizeAnnotationAuthor } from './annotation-author'
+import type { ModuleKey } from '../types'
 
 export type AppTheme = 'light' | 'dark'
 export type PageFitPreference = 'none' | 'width' | 'page'
+export type SidebarKey = ModuleKey | 'annotationList'
+export type SidebarPreferences = Partial<Record<SidebarKey, boolean>>
+export const SIDEBAR_PREFERENCES_KEY = 'pdfuck.sidebar-preferences.v1'
+
+export function loadSidebarPreferences(): SidebarPreferences {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SIDEBAR_PREFERENCES_KEY) || '{}')
+    const collapsed: SidebarPreferences = {}
+    for (const key of ['view', 'edit', 'annotate', 'save', 'annotationList'] as const) {
+      if (typeof stored?.[key] === 'boolean') collapsed[key] = stored[key]
+    }
+    return collapsed
+  } catch { return {} }
+}
+
+export function saveSidebarPreferences(value: SidebarPreferences): void {
+  try { localStorage.setItem(SIDEBAR_PREFERENCES_KEY, JSON.stringify(value)) } catch { /* Keep the current window usable if storage is unavailable. */ }
+}
 
 export interface AppPreferences {
   theme: AppTheme

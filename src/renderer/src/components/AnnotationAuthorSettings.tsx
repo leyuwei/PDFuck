@@ -44,14 +44,15 @@ export function AnnotationAuthorSettings({ author, showAuthors, theme, accent, o
 
   return <>
     <button ref={trigger} type="button" className="annotation-author-button" aria-expanded={open} aria-haspopup="dialog" title={ui("ui.setAnnotationAuthor")} onClick={() => setOpen((value) => !value)}><AuthorGlyph /><span>{ui("ui.author")}</span></button>
-    {open && createPortal(<ScrollWindow ref={floating.ref} className={`annotation-author-window${theme === 'dark' ? ' theme-dark' : ''}`} style={{ ...(floating.style || initialPosition), '--app-accent': accent } as CSSProperties & { '--app-accent': string }} role="dialog" aria-modal="false" aria-label={ui("ui.annotationAuthor")}>
-      <header {...floating.dragHandlers} title={ui("ui.dragAnnotationAuthorWindow")}><div><span><AuthorGlyph size={18} /></span><div><b>{ui("ui.annotationAuthor")}</b><small>{ui("ui.usedForNewAnnotations")}</small></div></div><button type="button" aria-label={ui("ui.closeAnnotationAuthorSettings")} title={ui("ui.close")} onPointerDown={(event) => event.stopPropagation()} onClick={() => setOpen(false)}>×</button></header>
+    {open && createPortal(<ScrollWindow ref={floating.ref} className={`annotation-author-window${theme === 'dark' ? ' theme-dark' : ''}`} style={{ ...(floating.style || initialPosition), '--app-accent': accent } as CSSProperties & { '--app-accent': string }} role="dialog" aria-modal="false" aria-label={ui("ui.annotationAuthor")} footer={
+      <footer className="settings-window-actions"><button type="button" onClick={() => setOpen(false)}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!valid} onClick={save}>{ui("ui.saveSettings")}</button></footer>
+    }>
+      <header className="settings-window-heading" {...floating.dragHandlers} title={ui("ui.dragAnnotationAuthorWindow")}><div><span><AuthorGlyph size={18} /></span><b>{ui("ui.annotationAuthor")}</b></div><button type="button" aria-label={ui("ui.closeAnnotationAuthorSettings")} title={ui("ui.close")} onPointerDown={(event) => event.stopPropagation()} onClick={() => setOpen(false)}>×</button></header>
       <div className="annotation-author-body">
         <label className={`annotation-author-name${valid ? '' : ' invalid'}`}><span>{ui("ui.authorName")}</span><input autoFocus value={name} maxLength={MAX_ANNOTATION_AUTHOR_LENGTH} placeholder={ui("ui.enterAnAuthorName")} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); save() } }} /><small>{ui("ui.theNameIsSavedOnThisDeviceAndWrittenInto")}</small></label>
-        <div className={`annotation-author-visible${show ? ' active' : ''}`}><span><b>{ui("ui.showAuthorsInTheList")}</b><small>{ui("ui.usesCompactColourBadgesWithoutAddingAColumn")}</small></span><button type="button" className="annotation-author-switch" role="switch" aria-checked={show} aria-label={ui("ui.showAuthorsInTheList")} onClick={() => setShow((value) => !value)}><i aria-hidden="true" /></button></div>
-        <div className="annotation-author-preview"><span>{ui("ui.listPreview")}</span><b className="annotation-author-badge" style={badgeStyle} title={normalized}><i /><span dir="auto">{normalized}</span></b><small>{ui("ui.eachAuthorReceivesAStableColourForQuickIdentification")}</small></div>
+        <button type="button" className="annotation-author-visible annotation-author-switch" role="switch" aria-checked={show} onClick={() => setShow((value) => !value)}><b>{ui("ui.showAuthorsInTheList")}</b><i className="settings-switch-track" aria-hidden="true" /></button>
+        <div className="annotation-author-preview"><span>{ui("ui.listPreview")}</span><b className="annotation-author-badge" style={badgeStyle} title={normalized}><i /><span dir="auto">{normalized}</span></b></div>
       </div>
-      <footer><button type="button" onClick={() => setOpen(false)}>{ui("ui.cancel")}</button><button type="button" className="primary" disabled={!valid} onClick={save}>{ui("ui.saveSettings")}</button></footer>
     </ScrollWindow>, document.body)}
   </>
 }

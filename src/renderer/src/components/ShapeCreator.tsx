@@ -8,7 +8,7 @@ export type ShapeCreatorArrowStyle = 'open' | 'triangle' | 'diamond'
 
 export interface ShapeCreatorLabels {
   title: string
-  description: string
+  description?: string
   preview: string
   shapeType: string
   arrow: string
@@ -188,8 +188,8 @@ export function ShapeCreator({ labels, onCancel, onCreate }: ShapeCreatorProps) 
   }
 
   return <div className="shape-creator-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel() }}>
-    <ScrollWindow className="shape-creator-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
-      <header><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div><button type="button" disabled={busy} onClick={onCancel} aria-label={labels.cancel}>×</button></header>
+    <ScrollWindow className="shape-creator-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={labels.description ? descriptionId : undefined}>
+      <header><div><h2 id={titleId}>{labels.title}</h2>{labels.description && <p id={descriptionId}>{labels.description}</p>}</div><button type="button" disabled={busy} onClick={onCancel} aria-label={labels.cancel}>×</button></header>
       <div className="shape-creator-layout">
         <section className="shape-creator-preview" aria-label={labels.preview}><span>{labels.preview}</span><div><canvas ref={canvasRef} /></div></section>
         <section className="shape-creator-settings">

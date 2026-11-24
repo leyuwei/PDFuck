@@ -31,8 +31,8 @@ function readEditor(root: HTMLElement) {
   return { text, marks: normalizeMarks(text, marks) }
 }
 
-export function AnnotationRichEditor({ text, marks = [], label, autoFocus, tools, onChange, onSubmit }: { text: string; marks?: TextMark[]; label: string; autoFocus?: boolean; tools?: ReactNode; onChange(text: string, marks: TextMark[]): void; onSubmit?(): void }) {
-  useInterfaceLanguage()
+export function AnnotationRichEditor({ text, marks = [], label, autoFocus, headingAction, tools, onChange, onSubmit }: { text: string; marks?: TextMark[]; label: string; autoFocus?: boolean; headingAction?: ReactNode; tools?: ReactNode; onChange(text: string, marks: TextMark[]): void; onSubmit?(): void }) {
+  const language = useInterfaceLanguage()
   const ref = useRef<HTMLDivElement>(null)
   const last = useRef('')
   const [active, setActive] = useState<string[]>([])
@@ -56,7 +56,7 @@ export function AnnotationRichEditor({ text, marks = [], label, autoFocus, tools
     document.execCommand(name, false, name === 'hiliteColor' ? (active.includes(name) ? 'transparent' : '#fff29a') : undefined)
     sync()
   }
-  return <div className="annotation-rich-editor"><div className="rich-editor-toolbar" role="toolbar" aria-label={label}><b>{label}</b>{controls.map((control) => <button type="button" key={control.name} className={`rich-format-${control.name}`} title={`${control.label} (${modifier}+${control.key})`} aria-label={control.label} aria-pressed={active.includes(control.name)} onMouseDown={(event) => event.preventDefault()} onClick={() => format(control.name)}>{control.icon}</button>)}{tools}<small>{ui('ui.richTextHint')}</small></div><div ref={ref} className="rich-editor-content" role="textbox" aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning dir="auto" onInput={sync} onMouseUp={sync} onKeyUp={sync} onPaste={(event) => { event.preventDefault(); document.execCommand('insertText', false, event.clipboardData.getData('text/plain')); sync() }} onDrop={(event) => event.preventDefault()} onKeyDown={(event) => {
+  return <div className="annotation-rich-editor" dir={language === 'ar' ? 'rtl' : 'ltr'}><div className="rich-editor-toolbar" role="toolbar" aria-label={label}><div className="rich-editor-heading"><b>{label}</b>{headingAction}</div>{controls.map((control) => <button type="button" key={control.name} className={`rich-format-${control.name}`} title={`${control.label} (${modifier}+${control.key})`} aria-label={control.label} aria-pressed={active.includes(control.name)} onMouseDown={(event) => event.preventDefault()} onClick={() => format(control.name)}>{control.icon}</button>)}{tools}</div><div ref={ref} className="rich-editor-content" role="textbox" aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning dir="auto" onInput={sync} onMouseUp={sync} onKeyUp={sync} onPaste={(event) => { event.preventDefault(); document.execCommand('insertText', false, event.clipboardData.getData('text/plain')); sync() }} onDrop={(event) => event.preventDefault()} onKeyDown={(event) => {
     event.stopPropagation()
     if (event.nativeEvent.isComposing) return
     if (event.ctrlKey || event.metaKey) {

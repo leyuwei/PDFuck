@@ -1165,7 +1165,12 @@ export class PdfDocumentModel {
     const page = this.document.getPage(request.pageIndex)
     const geometry = pageGeometry(page)
     let normalized = request.rects.map((rect) => ({ ...rect }))
-    if (request.kind === 'note' && request.point) normalized = [{ x: request.point.x, y: request.point.y, width: 20, height: 20 }]
+    if (request.kind === 'note' && request.point) {
+      const width = geometry.rotation % 180 ? geometry.height : geometry.width
+      const height = geometry.rotation % 180 ? geometry.width : geometry.height
+      const size = Math.min(30, width, height)
+      normalized = [{ x: Math.max(0, Math.min(request.point.x, width - size)), y: Math.max(0, Math.min(request.point.y, height - size)), width: size, height: size }]
+    }
     if (request.kind === 'insert' && request.point) normalized = [insertionMarkerRect(request.point)]
     if (!normalized.length) throw new Error('请先选择文字或页面位置。')
     return { ...request, rects: request.rects.map((rect) => ({ ...rect })), content: request.content || '', reason: request.reason?.trim() || undefined, page, geometry, normalized }
@@ -1198,7 +1203,12 @@ export class PdfDocumentModel {
     dictionary.set(PDFName.of('Subj'), pdfString(translateMessage('zh', KIND_LABEL[kind])))
     if (!['note', 'insert'].includes(kind)) dictionary.set(PDFName.of('QuadPoints'), this.document.context.obj(displayRectsToPdfQuads(normalized, geometry)))
     if (kind === 'insert') { dictionary.set(PDFName.of('Sy'), PDFName.of('P')); dictionary.set(PDFName.of('PDFuckInsertionAligned'), PDFName.of('true')) }
-    if (kind === 'insert') this.setAnnotationColor(dictionary, colorHex)
+    if (kind === 'note') {
+      dictionary.set(PDFName.of('Name'), PDFName.of('Comment'))
+      dictionary.set(PDFName.of('F'), PDFNumber.of(20)) // Print, NoRotate.
+      dictionary.set(PDFName.of('PDFuckNoteMarker'), PDFName.of('true'))
+    }
+    if (kind === 'insert' || kind === 'note') this.setAnnotationColor(dictionary, colorHex)
     page.node.addAnnot(this.document.context.register(dictionary))
     return id
   }
@@ -1278,7 +1288,20 @@ export class PdfDocumentModel {
     const normalized = normalizeHexColor(color, '#173f7a')
     dict.set(PDFName.of('C'), this.document.context.obj(hexColor(normalized)))
     dict.set(PDFName.of('PDFuckColor'), pdfString(normalized))
-    if (kindFor(dict, this.document) === 'insert') {
+    const kind = kindFor(dict, this.document)
+    if (kind === 'note' && decodeObject(this.document, dict.get(PDFName.of('PDFuckNoteMarker'))) === 'true') {
+      // The normal appearance is a vector Form XObject in a standard Text annotation.
+      const paint = (base: number[], amount: number) => hexColor(normalized).map((value, index) => (base[index] * (1 - amount) + value * amount).toFixed(4)).join(' ')
+      const contents = [
+        'q 1 0 0 -1 0 24 cm 1 J 1 j 1.8 w',
+        `${paint([1, 1, 1], .2)} rg ${paint(hexColor('#172033'), .45)} RG`,
+        '7 4 m 17 4 l 19.2 4 21 5.8 21 8 c 21 14 l 21 16.2 19.2 18 17 18 c 11 18 l 6.5 21 l 6.5 18 l 4.5 18 3 16.2 3 14 c 3 8 l 3 5.8 4.8 4 7 4 c h B',
+        '.094 .192 .435 RG 2.6 w 8.5 9.5 m 8.51 9.5 l 15.5 9.5 m 15.51 9.5 l S',
+        '1 .824 .29 rg .659 .416 .031 RG .9 w 8.5 13 m 10.3 11.6 13.7 11.6 15.5 13 c 13.7 15 10.3 15 8.5 13 c h B Q'
+      ].join('\n')
+      const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, 24, 24], Resources: {} })
+      dict.set(PDFName.of('AP'), this.document.context.obj({ N: this.document.context.register(stream) }))
+    } else if (kind === 'insert') {
       const rect = numberArray(this.document, dict.get(PDFName.of('Rect')))
       const width = Math.max(1, Math.abs((rect[2] ?? 14) - (rect[0] ?? 0))), height = Math.max(1, Math.abs((rect[3] ?? 18) - (rect[1] ?? 0)))
       const [red, green, blue] = hexColor(normalized), center = width / 2
@@ -1286,7 +1309,7 @@ export class PdfDocumentModel {
       const contents = `q ${red} ${green} ${blue} RG ${red} ${green} ${blue} rg ${stroke} w 1 J ${center} ${triangle} m ${center} ${height - stroke / 2} l S 0 0 m ${center} ${triangle} l ${width} 0 l h f Q`
       const stream = this.document.context.flateStream(contents, { Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, width, height], Resources: {} })
       dict.set(PDFName.of('AP'), this.document.context.obj({ N: this.document.context.register(stream) }))
-    } else dict.delete(PDFName.of('AP'))
+    } else if (kind !== 'note') dict.delete(PDFName.of('AP'))
   }
 
   private setAnnotationReply(dict: PDFDict, reply?: AnnotationReply): void {

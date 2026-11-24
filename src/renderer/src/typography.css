@@ -14,7 +14,7 @@ button, input, select, textarea { line-height: 1.35; }
 .nav-rail button { height: auto; min-height: 76px; flex: none; padding: 12px 6px; }
 .nav-module-label { min-width: 0; max-width: 100%; font-size: var(--ui-font-small); line-height: 1.4; text-align: center; white-space: normal; overflow-wrap: anywhere; }
 .tool-panel { width: var(--ui-tool-panel-width); flex-basis: var(--ui-tool-panel-width); padding: 18px 14px; }
-.tool-panel .tool-button, .tool-panel-action { height: auto; min-height: 58px; }
+.tool-panel .tool-button, .tool-panel-action { height: auto; min-height: 52px; }
 .tool-panel .window-scroll-body { scrollbar-gutter: stable; }
 .tool-panel .segmented button { white-space: normal; overflow-wrap: anywhere; height: auto; }
 .annotation-summary-grid button { height: auto; min-height: 52px; }
@@ -56,6 +56,7 @@ h1, h2, h3, h4, h5, h6 { font-size: var(--ui-font-title); }
 .tool-panel .tool-button, .tool-panel .tool-panel-action, .tool-panel .tool-action-button { padding: 14px 12px; margin-bottom: 14px; }
 .tool-panel .tool-button-copy { gap: 6px; }
 .app-shell .tool-panel h3 { font-size: var(--ui-font-body); font-weight: 650; letter-spacing: 0; margin-block: 28px 14px; }
+.app-shell .tool-panel .window-scroll-body > h3:first-child { margin-block-start: 8px; }
 .app-shell .tool-panel .annotation-lab-heading h3 { margin: 0; }
 .tool-panel .annotation-lab-heading { margin-bottom: 14px; }
 .tool-panel .annotation-lab-tools { gap: 14px; }

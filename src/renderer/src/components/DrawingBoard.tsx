@@ -5,7 +5,7 @@ import './drawing-board.css'
 
 export interface DrawingBoardLabels {
   title: string
-  description: string
+  description?: string
   brushSize: string
   color: string
   canvasActions: string
@@ -160,8 +160,8 @@ export function DrawingBoard({ labels, hidden = false, onMinimize, minimizeLabel
       setBusy(undefined)
     }
   }
-  return <ScrollWindow ref={floating.ref} hidden={hidden} className="drawing-board-window" style={floating.style} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={descriptionId}>
-    <header {...floating.dragHandlers}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2><p id={descriptionId}>{labels.description}</p></div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
+  return <ScrollWindow ref={floating.ref} hidden={hidden} className="drawing-board-window" style={floating.style} role="dialog" aria-modal="false" aria-labelledby={titleId} aria-describedby={labels.description ? descriptionId : undefined}>
+    <header {...floating.dragHandlers}><div className="drawing-board-heading"><DrawingBoardIcon /><div><h2 id={titleId}>{labels.title}</h2>{labels.description && <p id={descriptionId}>{labels.description}</p>}</div></div>{onMinimize && <button type="button" aria-label={minimizeLabel} title={minimizeLabel} onClick={onMinimize}>−</button>}<button type="button" aria-label={labels.close} title={labels.close} onClick={onClose}>×</button></header>
     <div className="drawing-board-toolbar">
       <div className="drawing-board-control drawing-board-brush" role="group" aria-label={labels.brushSize}><div className="drawing-board-control-heading"><span>{labels.brushSize}</span><output dir="ltr" aria-live="polite">{brushSize}<small>px</small></output></div><input type="range" min={1} max={32} step={1} value={brushSize} aria-label={labels.brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></div>
       <div className="drawing-board-control drawing-board-color" role="group" aria-label={labels.color}><div className="drawing-board-control-heading"><span>{labels.color}</span><code dir="ltr">{color.toUpperCase()}</code></div><input type="color" value={color} aria-label={labels.color} onChange={(event) => setColor(event.target.value)} /></div>

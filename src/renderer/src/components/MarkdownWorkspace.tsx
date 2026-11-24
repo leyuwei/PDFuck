@@ -11,7 +11,8 @@ import type { ViewMode } from '../types'
 import { t, ui, useInterfaceLanguage } from '../lib/i18n'
 import { clampFloatingPosition, floatingTop, useFloatingWindow } from '../lib/floating-window'
 import { ScrollWindow } from './ScrollWindow'
-import { SearchPanel, type SearchMatch } from './SearchPanel'
+import { SearchPanel } from './SearchPanel'
+import type { SearchMatch } from '../lib/pdf-search'
 import { isImeCompositionKey } from '../lib/keyboard-input'
 import { sourceLineStarts, sourceMirror, visibleSourceLines } from '../lib/source-editor-layout'
 import './markdown-workspace.css'
@@ -205,9 +206,9 @@ export const MarkdownWorkspace = forwardRef<MarkdownWorkspaceHandle, Props>(func
     } else { setSourceSearch(false); onSearchPdf() }
   }
   useImperativeHandle(ref, () => ({ openSearch }))
-  const focusSearchMatch = (match: SearchMatch) => {
+  const focusSearchMatch = (match?: SearchMatch) => {
     const text = editor.current
-    if (!text) return
+    if (!text || !match) return
     text.setSelectionRange(match.start, match.end); text.focus({ preventScroll: true }); sourceCaretPoint(text, true)
     selection.current = { start: match.start, end: match.end }; onSelection(selection.current); updateLines(); onHistoryTarget('source')
   }
@@ -324,7 +325,7 @@ export const MarkdownWorkspace = forwardRef<MarkdownWorkspaceHandle, Props>(func
     {syntaxAnchor && view !== 'pdf' && <div ref={syntaxPanel} onPointerDown={event => { if ((event.target as Element).closest('button')) event.preventDefault() }} className="md-editor-tools md-floating-tools" id="md-syntax-tools" role="toolbar" aria-label={ui('md.format')}><div className="md-syntax-toolbar"><div role="group" aria-label={ui('md.format')}>{(['bold', 'italic', 'underline', 'strike', 'inline_code'] as const).map(kind => <button key={kind} className={`md-symbol md-symbol-${kind}`} type="button" aria-label={ui(`md.${kind}`)} data-hint={shortcutHint(kind)} onClick={() => insert(kind)}>{symbols[kind]}</button>)}</div><div role="group" aria-label={ui('md.blocks')}>{(['heading', 'list', 'ordered', 'quote'] as const).map(kind => <button key={kind} className="md-symbol" type="button" aria-label={ui(`md.${kind}`)} onClick={() => { if (kind === 'heading') { setSyntaxAnchor(undefined); setDialog('heading') } else insert(kind) }}>{symbols[kind]}</button>)}</div><button type="button" className="md-quick-trigger" aria-label={ui('md.quick')} onClick={() => { setSyntaxAnchor(undefined); setDialog('link') }}><span aria-hidden="true">+</span></button></div></div>}
     {dialog === 'layout' && <MarkdownLayoutDialog document={document} onChange={next => onChange(source, next)} onClose={() => setDialog(undefined)} />}
     {dialog && dialog !== 'layout' && <MarkdownInsertDialog initialType={dialog} selectedText={source.slice(selection.current.start, selection.current.end)} onInsert={insert} onClose={() => setDialog(undefined)} />}
-    {sourceSearch && <SearchPanel sourceLabel={sourceLabel} sourceHint={ui('text.sourceSearchHint')} source={source} focusToken={searchToken} initialQuery={searchSeed.current} onClose={() => setSourceSearch(false)} onFocusTarget={focusSearchMatch} />}
+    {sourceSearch && <SearchPanel source={source} focusToken={searchToken} initialQuery={searchSeed.current} onClose={() => setSourceSearch(false)} onFocusTarget={focusSearchMatch} />}
     {encodingOpen && <div className="modal-backdrop md-dialog-backdrop" onKeyDown={event => { if (event.key === 'Escape' && !encodingBusy) setEncodingOpen(false) }}><ScrollWindow className="modal md-dialog md-encoding-dialog" role="dialog" aria-modal="true" aria-label={ui('text.encoding')}><header><h2>{ui('text.encoding')}</h2><button type="button" disabled={encodingBusy} aria-label={ui('ui.close')} onClick={() => setEncodingOpen(false)}>×</button></header><p>{ui('text.encodingHint')}</p>{([['text.readEncoding', readEncoding, setReadEncoding, true], ['text.saveEncoding', saveEncoding, setSaveEncoding, false]] as const).map(([label, value, setValue, reread]) => <section key={label}><label>{ui(label)}<select value={value} disabled={encodingBusy || (reread && document.unsaved)} onChange={event => setValue(event.target.value as TextEncoding)}>{TEXT_ENCODINGS.map(encoding => <option key={encoding} value={encoding}>{encoding.toUpperCase()}</option>)}</select></label><button type="button" disabled={encodingBusy || (reread && document.unsaved)} onClick={async () => { setEncodingBusy(true); try { if (await onEncoding(value, reread)) setEncodingOpen(false) } finally { setEncodingBusy(false) } }}>{ui(reread ? 'text.reread' : 'text.convert')}</button></section>)}</ScrollWindow></div>}
     {hint && createPortal(<div ref={tooltip} className="md-tooltip" role="tooltip">{hint.text}</div>, window.document.body)}
   </div>

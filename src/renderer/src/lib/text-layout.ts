@@ -737,9 +737,8 @@ export function fitTextAdvances(natural: number[], fullWidth: number, text: stri
   return natural.map((value) => Math.max(0, value) * scale)
 }
 
-export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride, graphics: PageGraphic[] = [], pageMargins?: (words: WordBox[]) => Map<WordBox, MarginRegion>): WordBox[] {
+export function positionedTextWords(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}): WordBox[] {
   const words: WordBox[] = []
-  const horizontalWords = new Set<WordBox>()
   const fontWidths = new Map<NativeTextFont, Map<string, number>>()
   let order = 0
   for (const [textRun, item] of items.entries()) {
@@ -808,10 +807,39 @@ export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, P
       const upper = Math.max(ascent, cjk ? .9 : ascent), lower = Math.max(descent, cjk ? .22 : 1-ascent)
       const selectionRect = Math.abs(angle) < .01 ? { ...rect, y: transform[5] - upper * fontHeight, height: (upper + lower) * fontHeight } : rect
       const boundaries = [0, ...wordCharacters.map((_character, index) => (prefixAdvances[start + index + 1] || logicalOffset) - logicalOffset)]
-      words.push({ text: match[0], order: order++, rect, selectionRect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), ...(Math.abs(angle) >= .01 && !native?.vertical ? { rotated: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } })
-      if (Math.abs(angle) < .01 && !native?.vertical) horizontalWords.add(words.at(-1)!)
+      const word: WordBox = { text: match[0], order: order++, rect, selectionRect, boundaries: wordRtl ? boundaries.map(value => width - value) : boundaries, ...(wordRtl ? { rtl: true } : {}), ...(Math.abs(angle) >= .01 && !native?.vertical ? { rotated: true } : {}), baselineY: transform[5], lineBreakAfter: Boolean(item.hasEOL && matchIndex === matches.length - 1), textRun, textRunRect: { ...textRunRect } }
+      const previous = words.at(-1)
+      // Small caps often use a separate, smaller PDF text run after the initial.
+      // A tight, aligned glyph gap is part of the word even if PDF.js emitted a space item.
+      if (previous && matchIndex === 0 && !/^\s/u.test(item.str) && !previous.lineBreakAfter && !previous.rotated && !previous.rtl && !native?.vertical && Math.abs(angle) < .01 &&
+        /^(?:(?:[IVXLCDM]+|\d+)\.)?[A-Z]$/u.test(previous.text) && /^[A-Za-z]{2,}/u.test(word.text) &&
+        Math.abs(previous.baselineY! - transform[5]) <= fontHeight * .1) {
+        const priorItem = items[previous.textRun!]
+        const advance = rect.x - previous.rect.x, gap = advance - previous.rect.width
+        const smaller = fontHeight < previous.rect.height * .94 && fontHeight >= previous.rect.height * .55
+        const intervening = items.slice(previous.textRun! + 1, textRun)
+        const sameSizeSplit = !intervening.length && Math.abs(fontHeight - previous.rect.height) <= fontHeight * .06
+        if (previous.textRun !== textRun && !/\s$/u.test(priorItem.str) && intervening.every(part => !part.str.trim() && !part.hasEOL) &&
+          (smaller || sameSizeSplit) && gap >= -fontHeight * .12 && gap <= fontHeight * (smaller ? .19 : .08)) {
+          const totalWidth = advance + rect.width
+          const right = previous.boundaries!.length - 1
+          previous.boundaries = [...previous.boundaries!.slice(0, right), advance, ...boundaries.slice(1).map(value => advance + value)]
+          previous.text += word.text
+          previous.rect.width = totalWidth
+          if (previous.selectionRect) previous.selectionRect.width = totalWidth
+          previous.lineBreakAfter = word.lineBreakAfter
+          continue
+        }
+      }
+      words.push(word)
     }
   }
+  return words
+}
+
+export function textItemsToWordBoxes(items: TextItem[], styles: Record<string, PdfJsTextStyle>, viewportTransform: Matrix, fontDetails: Record<string, PdfFontDetails> = {}, override?: TextLayoutOverride, graphics: PageGraphic[] = [], pageMargins?: (words: WordBox[]) => Map<WordBox, MarginRegion>): WordBox[] {
+  const words = positionedTextWords(items, styles, viewportTransform, fontDetails)
+  const horizontalWords = new Set(words.filter(word => !word.rotated && !fontDetails[items[word.textRun!].fontName]?.native?.vertical))
   const marginNumbers=pageLineNumbers(words,graphics)
   for(let index=words.length-1;index>=0;index--)if(marginNumbers.has(words[index]))words.splice(index,1)
   // PDF.js generally follows content-stream order, but mathematical

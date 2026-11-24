@@ -26,7 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px 10px 9px 14px;
+  padding: 9px 12px;
   border-bottom: 1px solid #e2e7ef;
   background: linear-gradient(180deg, #fbfcff, #f6f8fc);
   cursor: move;
