@@ -12,7 +12,8 @@ const version = '2.2.2'
 const prefix = `PDFuck-${version}-Windows`
 const largePdf = process.argv.includes('--large-pdf')
 const largeOperations = process.argv.includes('--large-operations')
-const sourceOnly = largePdf || largeOperations || process.argv.includes('--source-only')
+const largeInPlace = process.argv.includes('--large-in-place')
+const sourceOnly = largePdf || largeOperations || largeInPlace || process.argv.includes('--source-only')
 const lock = require('../../package-lock.json')
 assert.equal(require('../../package.json').version, version)
 assert.equal(lock.version, version)
@@ -54,15 +55,22 @@ const revisions = {
     portable: { searchMatches: 530, portableLaunch: true }
   }
 }
-const revision = largeOperations ? 'large-operations' : largePdf ? 'large-pdf' : ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
+const revision = largeInPlace ? 'large-in-place' : largeOperations ? 'large-operations' : largePdf ? 'large-pdf' : ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
 const selected = revisions[revision === 'welcome-sidebar-copy' ? 'welcome' : revision]
 const result = phase => JSON.parse(fs.readFileSync(path.join(root, selected.suite, phase, 'results.json')))
 const pdfResult = file => JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-large-pdf', file)))
-const sourceResult = largeOperations
-  ? JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-large-operations/results.json')))
+const sourceResult = largeOperations || largeInPlace
+  ? JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-' + revision, 'results.json')))
   : largePdf ? pdfResult('results.json') : result('source')
 const deletion = largePdf ? pdfResult('annotation-delete.json') : undefined
-if (largeOperations) {
+if (largeInPlace) {
+  assert.equal(sourceResult.sourceOnly, true)
+  assert.equal(sourceResult.readingTools, 6)
+  assert.equal(sourceResult.pages, 18)
+  assert.deepEqual(sourceResult.editedPages, [5, 6])
+  assert.ok(sourceResult.denseMiB > 1024)
+  for (const check of ['denseSaved', 'sameTab', 'originalPathSave', 'externalChangeProtected', 'localizedLayout']) assert.equal(sourceResult[check], true)
+} else if (largeOperations) {
   assert.equal(sourceResult.sourceOnly, true)
   assert.equal(sourceResult.editedPages, 145)
   assert.equal(sourceResult.arrangedPages, 144)
@@ -115,7 +123,7 @@ const properties = JSON.parse(execFileSync('pwsh.exe', ['-NoProfile', '-NonInter
 `], { encoding: 'utf8', env: { ...process.env, PDFUCK_222_FILES: JSON.stringify(paths.slice(0, 3)) } }))
 const artifacts = paths.map((file, index) => {
   const meta = properties[index]
-  if ((!sourceOnly || largeOperations) && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
+  if ((!sourceOnly || largeOperations || largeInPlace) && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
   const bytes = fs.readFileSync(file)
   return { file, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), ...meta }
 })

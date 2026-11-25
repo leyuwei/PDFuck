@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { PDF_EDIT_SLICE_MAX_BYTES, type LargePdfOutput } from '../shared/contracts'
+import { PDF_EDIT_SLICE_MAX_BYTES, type LargePdfBookmark, type LargePdfOutput } from '../shared/contracts'
+import type { StagedPdfPage } from './pdf-range-files'
 import { convertPdfFileToEps } from './eps-export'
 
 const execute = promisify(execFile)
@@ -16,9 +17,9 @@ export function bundledQpdf(resourcesPath: string, appPath: string): string {
   return existsSync(bundled) ? bundled : existsSync(development) ? development : 'qpdf'
 }
 
-async function qpdf(command: string, args: string[]): Promise<string> {
+async function qpdf(command: string, args: string[], maxBuffer = 1024 * 1024): Promise<string> {
   try {
-    return (await execute(command, args, { windowsHide: true, timeout: 600_000, maxBuffer: 1024 * 1024 })).stdout.trim()
+    return (await execute(command, args, { windowsHide: true, timeout: 600_000, maxBuffer })).stdout.trim()
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('pdf.largeEngineUnavailable')
     throw new Error('pdf.largeOperationFailed')
@@ -78,44 +79,114 @@ export async function writeLargeEps(command: string, converter: string, input: s
   })
 }
 
-export async function writeLargeOutput(command: string, input: string, target: string, request: LargePdfOutput,
-  confirmSource: () => Promise<string>): Promise<void> {
+
+async function updateOutlines(command: string, folder: string, input: string, output: string, bookmarks: LargePdfBookmark[]) {
+  type Dict = Record<string, unknown>
+  type ObjectTable = Record<string, { value: Dict }>
+  const json = async (options: string[]) => JSON.parse(await qpdf(command, ['--warning-exit-0', '--json=2', ...options, input], 64 * 1024 * 1024))
+  const { pages, qpdf: [header, trailer] } = await json(['--json-key=pages', '--json-key=qpdf', '--json-object=trailer']) as {
+    pages: { object: string }[]; qpdf: [{ maxobjectid: number }, ObjectTable]
+  }
+  const rootRef = trailer.trailer.value['/Root']
+  if (typeof rootRef !== 'string' || !/^\d+ \d+ R$/.test(rootRef)) throw new Error('pdf.largeOperationFailed')
+  const { qpdf: [, objects] } = await json(['--json-key=qpdf', '--json-object=' + rootRef.split(' ').slice(0, 2).join(',')]) as { qpdf: [unknown, ObjectTable] }
+  const catalog = objects['obj:' + rootRef]?.value
+  if (!catalog) throw new Error('pdf.largeOperationFailed')
+  let nextId = header.maxobjectid + 1
+  let total = 0
+  const add = (value: Dict) => {
+    const ref = String(nextId++) + ' 0 R'
+    objects['obj:' + ref] = { value }
+    return ref
+  }
+  const build = (parent: Dict, parentRef: string, items: LargePdfBookmark[], depth: number) => {
+    if (!Array.isArray(items) || depth > 16) throw new Error('pdf.largeOperationFailed')
+    let prev: string | undefined
+    let visible = 0
+    for (const item of items) {
+      if (++total > 10_000 || typeof item.title !== 'string' || !item.title.trim()) throw new Error('pdf.largeOperationFailed')
+      const value: Dict = { '/Parent': parentRef, '/Title': 'u:' + item.title }
+      if (Number.isInteger(item.pageIndex) && pages[item.pageIndex!]) {
+        value['/Dest'] = [pages[item.pageIndex!].object, '/XYZ', Number.isFinite(item.left) ? item.left : null, Number.isFinite(item.top) ? item.top : null, null]
+      } else if (typeof item.url === 'string') value['/A'] = { '/S': '/URI', '/URI': 'u:' + item.url }
+      const flags = Number(Boolean(item.italic)) + 2 * Number(Boolean(item.bold))
+      if (flags) value['/F'] = flags
+      if (item.color && /^#[\da-f]{6}$/i.test(item.color)) value['/C'] = [1, 3, 5].map(index => parseInt(item.color!.slice(index, index + 2), 16) / 255)
+      const ref = add(value)
+      if (prev) { value['/Prev'] = prev; objects['obj:' + prev].value['/Next'] = ref }
+      else parent['/First'] = ref
+      prev = ref
+      visible++
+      if (item.children?.length) {
+        const count = build(value, ref, item.children, depth + 1)
+        value['/Count'] = item.open === false ? -count : count
+        if (item.open !== false) visible += count
+      }
+    }
+    if (prev) parent['/Last'] = prev
+    return visible
+  }
+  if (bookmarks.length) {
+    const root: Dict = { '/Type': '/Outlines' }
+    const ref = add(root)
+    root['/Count'] = build(root, ref, bookmarks, 1)
+    catalog['/Outlines'] = ref
+  } else delete catalog['/Outlines']
+  const patch = join(folder, 'outlines.json')
+  await writeFile(patch, JSON.stringify({ qpdf: [{ jsonversion: 2, calledgetallpages: true }, objects] }))
+  await writeQpdf(command, folder, input, output, ['--update-from-json=' + patch])
+}
+
+export async function writeLargeOutput(command: string, input: string, target: string,
+  request: Pick<LargePdfOutput, 'pages' | 'rotations'> & { bookmarks?: LargePdfBookmark[] },
+  confirmSource: () => Promise<unknown>, edits: ReadonlyMap<number, StagedPdfPage> = new Map(),
+  replace?: (output: string, target: string) => Promise<void>): Promise<void> {
   const count = await largePdfPageCount(command, input)
-  if (request.pages && request.replacement) throw new Error('pdf.largeInvalidPages')
-  if ((process.platform === 'win32' ? target.toLowerCase() : target) === (process.platform === 'win32' ? input.toLowerCase() : input)) {
+  if (!replace && (process.platform === 'win32' ? target.toLowerCase() === input.toLowerCase() : target === input)) {
     throw new Error('pdf.largeChooseCopy')
   }
   return temporary(dirname(target), async folder => {
     const output = join(folder, 'output.pdf')
     const options: string[] = []
-    if (request.pages) {
-      const pages = largePageNumbers(request.pages, count)
-      options.push('--pages', '.', pages.map(page => page + 1).join(','), '--')
+    if (request.pages || edits.size) {
+      const order = request.pages ? largePageNumbers(request.pages, count) : Array.from({ length: count }, (_, index) => index)
+      const selections: string[] = []
+      let originalPages: number[] = []
+      const flushPages = () => {
+        if (!originalPages.length) return
+        selections.push('.', originalPages.join(','))
+        originalPages = []
+      }
+      order.forEach((page, index) => {
+        const edit = edits.get(page)
+        if (edit && !edit.overlay) {
+          flushPages()
+          selections.push(edit.path, '1')
+        } else {
+          originalPages.push(page + 1)
+          if (edit) options.push('--overlay', edit.path, '--to=' + (index + 1), '--')
+        }
+      })
+      flushPages()
+      options.unshift('--pages', ...selections, '--')
       const rotations = new Map<number, number[]>()
-      pages.forEach((page, index) => {
+      order.forEach((page, index) => {
         const angle = request.rotations?.[page]
         if (!angle) return
         if (![-90, 90, 180, 270].includes(angle)) throw new Error('pdf.largeInvalidPages')
-        rotations.set(angle, [...rotations.get(angle) || [], index + 1])
+        if (!rotations.has(angle)) rotations.set(angle, [])
+        rotations.get(angle)!.push(index + 1)
       })
-      for (const [angle, positions] of rotations) options.push(`--rotate=${angle > 0 ? '+' : ''}${angle}:${positions.join(',')}`)
-    } else if (request.replacement) {
-      const { first, count: replaced, data } = request.replacement
-      if (!Number.isSafeInteger(first) || first < 0 || !Number.isSafeInteger(replaced) || replaced < 1 || first + replaced > count ||
-          !(data instanceof Uint8Array) || !data.length || data.length > PDF_EDIT_SLICE_MAX_BYTES) throw new Error('pdf.largeSliceLimit')
-      const edited = join(folder, 'edited.pdf')
-      await writeFile(edited, data)
-      if (request.replacement.overlay) {
-        if (replaced !== 1 || await largePdfPageCount(command, edited) !== 1) throw new Error('pdf.largeInvalidPages')
-        options.push('--overlay', edited, `--to=${first + 1}`, '--')
-      } else {
-        const before = first ? ['.', `1-${first}`] : []
-        const after = first + replaced < count ? ['.', `${first + replaced + 1}-z`] : []
-        options.push('--pages', ...before, edited, '1-z', ...after, '--')
-      }
+      for (const [angle, positions] of rotations) options.push('--rotate=' + (angle > 0 ? '+' : '') + angle + ':' + positions.join(','))
     }
-    await writeQpdf(command, folder, input, output, options)
+    if (request.bookmarks === undefined) await writeQpdf(command, folder, input, output, options)
+    else {
+      if (!Array.isArray(request.bookmarks)) throw new Error('pdf.largeOperationFailed')
+      const composed = options.length ? join(folder, 'composed.pdf') : input
+      if (options.length) await writeQpdf(command, folder, input, composed, options)
+      await updateOutlines(command, folder, composed, output, request.bookmarks)
+    }
     await confirmSource()
-    await rename(output, target)
+    await (replace ?? rename)(output, target)
   })
 }

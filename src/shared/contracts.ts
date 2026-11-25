@@ -26,12 +26,23 @@ export const PDF_RANGE_CHUNK_SIZE = 64 * 1024
 export const PDF_RANGE_IPC_BYTES = 1024 * 1024
 export const PDF_RANGE_REQUEST_BYTES = 128 * 1024 * 1024
 export const PDF_EDIT_SLICE_MAX_BYTES = 96 * 1024 * 1024
-export interface LargePdfEdit { sourceId: string; first: number; count: number; overlay?: boolean }
+export interface LargePdfEdit { page: number; overlay: boolean }
+export interface LargePdfBookmark {
+  title: string
+  pageIndex?: number
+  left?: number
+  top?: number
+  url?: string
+  color?: string
+  bold?: boolean
+  italic?: boolean
+  open?: boolean
+  children?: LargePdfBookmark[]
+}
 export interface LargePdfOutput {
   sourceId: string
   pages?: number[]
   rotations?: Record<number, number>
-  replacement?: { first: number; count: number; data: Uint8Array; overlay?: boolean }
   format?: 'pdf' | 'eps'
   separate?: boolean
 }
@@ -283,7 +294,10 @@ export interface DesktopApi {
   readPdfRange(id: string, begin: number, end: number): Promise<Uint8Array>
   releasePdfRange(id: string): Promise<void>
   readLargePdfPages(id: string, pages: number[]): Promise<Uint8Array>
-  beginLargePdfEdit(id: string, first: number, last: number, overlaySize?: { width: number; height: number }): Promise<{ data: Uint8Array; edit: LargePdfEdit }>
+  beginLargePdfEdit(id: string, page: number, overlaySize?: { width: number; height: number }): Promise<{ data: Uint8Array; edit: LargePdfEdit }>
+  stageLargePdfPage(id: string, page: number, overlay: boolean, data: Uint8Array): Promise<void>
+  previewLargePdf(id: string, change?: { pages?: number[]; rotations?: Record<number, number>; bookmarks?: LargePdfBookmark[] }): Promise<PdfRangeSource>
+  commitLargePdf(id: string, original: string, saveAs: boolean): Promise<({ status: 'saved'; source: PdfRangeSource } & Pick<OpenedPdf, 'path' | 'name'>) | { status: 'canceled' } | { status: 'save-as-required'; target: string }>
   renderLargePdfPage(id: string, page: number, width: number, height: number): Promise<Uint8Array>
   writeLargePdf(request: LargePdfOutput): Promise<string[] | null>
   beginLargeRasterExport(id: string, format: RasterExportFormat, pages: number[]): Promise<string | null>

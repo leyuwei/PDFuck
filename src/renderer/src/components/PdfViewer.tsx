@@ -820,7 +820,7 @@ function PdfPage({ initialSize, schedulePaint, rangeSource, pageBackdrop, inline
   }, [document, page, pageIndex, renderEligible])
 
   useEffect(() => {
-    if (!page || nativePreferred || !textRequested || textLoadedRef.current) return
+    if (!page || !textRequested || textLoadedRef.current) return
     textLoadedRef.current = true
     let cancelled = false
     const viewport = page.getViewport({ scale: 1 })
@@ -878,7 +878,7 @@ function PdfPage({ initialSize, schedulePaint, rangeSource, pageBackdrop, inline
       onError(error instanceof Error ? error : new Error(String(error)))
     })
     return () => { cancelled = true }
-  }, [page, pageIndex, nativePreferred, rangeSource, textRequested, onError, onTextMap])
+  }, [page, pageIndex, rangeSource, textRequested, onError, onTextMap])
 
   useEffect(() => {
     layoutOverrideRef.current = layoutOverride
@@ -1471,8 +1471,12 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (document && wordMapsDocumentRef.current === document) {
       wordMapsRef.current.set(pageIndex, words)
       visualMapsRef.current.set(pageIndex, visuals)
+      if (rangeSource && wordMapsRef.current.size > 16) {
+        const oldest = wordMapsRef.current.keys().next().value!
+        wordMapsRef.current.delete(oldest); visualMapsRef.current.delete(oldest)
+      }
     }
-  }, [document])
+  }, [document, rangeSource])
   const beginCrossSelection = useCallback((pageIndex: number, position?: TextPosition, extend = false) => {
     if (!position) {
       selectionAnchorRef.current = undefined
@@ -1870,14 +1874,14 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     const content = await page.getTextContent()
     const items = content.items.filter((item): item is TextItem => 'str' in item)
     const operators = await page.getOperatorList(), graphics = pageGraphics(operators, viewport.transform as Matrix, OPS)
-    const [fontDetails, peers] = await Promise.all([fontDetailsForPage(page,items),nearbyMarginSamples(document,pageIndex)])
+    const [fontDetails, peers] = await Promise.all([fontDetailsForPage(page,items), rangeSource ? [] : nearbyMarginSamples(document,pageIndex)])
     const layoutWords = textItemsToWordBoxes(selectionTextItems(items, operators, OPS), content.styles, viewport.transform as Matrix, fontDetails, scaledLayoutOverride(loadPageLayoutOverride(pdfDocumentKey(document), pageIndex), viewport.width, viewport.height), graphics,
       words => classifyPageMargins(words,viewport,graphics,peers,pageIndex === 0))
     const visuals = detectPageVisuals(layoutWords, graphics, viewport)
     const words = isolateVisualWords(layoutWords, visuals)
     onTextMap(pageIndex, words, visuals)
     return words
-  }, [document, onTextMap])
+  }, [document, onTextMap, rangeSource])
   const insertionLayouts = async () => {
     if (!document) return []
     const source = document, layouts: Array<{ id: string; rect: PdfRect }> = []
@@ -1889,22 +1893,32 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (source !== wordMapsDocumentRef.current) throw new Error(ui('ui.theActiveDocumentChangedOpenTheToolAgain'))
     return layouts
   }
-  const pageSnapshots = useCallback(async (includeImages = false): Promise<Array<PageTextSnapshot & { imageCount?: number }>> => {
+  const readAnalysisPage = useCallback(async <T,>(pageIndex: number, read: (page: PDFPageProxy) => Promise<T>) => {
+    let page: PDFPageProxy | undefined
+    try {
+      page = await document?.getPage(pageIndex + 1)
+      if (page) return await read(page)
+    }
+    catch (error) {
+      if (!rangeSource) throw error
+      return undefined
+    } finally { if (rangeSource) page?.cleanup() }
+  }, [document, rangeSource])
+  const pageSnapshots = useCallback(async (includeImages = false, active: () => boolean = () => true, onSkip?: () => void): Promise<PageTextSnapshot[]> => {
     if (!document) return []
-    const pages: Array<PageTextSnapshot & { imageCount?: number }> = []
-    for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
-      const page = await document.getPage(pageIndex + 1)
-      const content = await page.getTextContent()
-      // PDF.js text items frequently carry leading/trailing whitespace. Trim
-      // item boundaries before joining so insight rules do not report layout
-      // artifacts as document grammar errors.
-      const text = normalizeTextSpacing(content.items.filter((item): item is TextItem => 'str' in item).map((item) => item.str.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' '))
-      if (includeImages) await wordsForPage(pageIndex)
-      const visuals = includeImages ? visualMapsRef.current.get(pageIndex) : undefined
-      pages.push({ pageIndex, text, visuals })
+    const pages: PageTextSnapshot[] = []
+    for (let pageIndex = 0; pageIndex < document.numPages && active(); pageIndex += 1) {
+      const snapshot = await readAnalysisPage(pageIndex, async page => {
+        const content = await page.getTextContent()
+        const text = normalizeTextSpacing(content.items.filter((item): item is TextItem => 'str' in item).map(item => item.str.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' '))
+        if (includeImages) await wordsForPage(pageIndex)
+        return { pageIndex, text, visuals: includeImages ? visualMapsRef.current.get(pageIndex) : undefined }
+      })
+      if (snapshot) pages.push(snapshot)
+      else onSkip?.()
     }
     return pages
-  }, [document, wordsForPage])
+  }, [document, readAnalysisPage, wordsForPage])
   const readingTools = props.readingTools || READING_TOOLS_OFF
   const [readingBusy, setReadingBusy] = useState<ReadingTool[]>([])
   const [grammarProgress,setGrammarProgress] = useState<{done:number;total:number}>()
@@ -1925,7 +1939,8 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
       await new Promise(resolve => requestAnimationFrame(() => window.setTimeout(resolve,0)))
       if (!active) return
       try {
-        const pages = await pageSnapshots(readingTools.visual)
+        let skipped = 0
+        const pages = await pageSnapshots(readingTools.visual, () => active, () => skipped++)
         if (!active || wordMapsDocumentRef.current !== document) return
         for (const kind of enabled) {
           if (kind === 'visual') setVisualReferenceIndex(indexVisualReferences(pages))
@@ -1934,7 +1949,7 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
           if (kind === 'abbreviation') setAbbreviations(hits as CitationLink[])
           if (request?.kind === kind && request.token > handledReadingRequest.current) {
             handledReadingRequest.current = request.token
-            readingCallbacks.current.onInsight(kind,kind === 'abbreviation' ? (hits as CitationLink[]).filter((hit,index,all) => all.findIndex(other => other.citation===hit.citation && other.reference===hit.reference)===index) : hits)
+            readingCallbacks.current.onInsight(kind,kind === 'abbreviation' ? (hits as CitationLink[]).filter((hit,index,all) => all.findIndex(other => other.citation===hit.citation && other.reference===hit.reference)===index) : hits, skipped ? t('pdf.largeAnalysisSkipped', { count: skipped }) : undefined)
           }
         }
       } catch { if (active) readingCallbacks.current.onError(new Error(ui('reading.failed'))) }
@@ -1963,11 +1978,38 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     try {
       await new Promise(resolve=>requestAnimationFrame(()=>window.setTimeout(resolve,0)))
       const passages=[]
+      const issues: GrammarIssue[] = []
+      let skipped = 0, supportedPages = 0, foundKorean = false
+      if (rangeSource) {
+        for (let index = 0; index < document.numPages && run === grammarRun.current; index++) {
+          const words = await readAnalysisPage(index, () => wordsForPage(index))
+          if (run !== grammarRun.current) return
+          if (!words) { skipped++; continue }
+          const page = grammarPassages(index, words)
+          foundKorean ||= page.some(passage => passage.language === 'ko')
+          const supported = page.filter(passage => passage.language !== 'ko')
+          if (supported.length && ++supportedPages === 1) await ensureFeatureResources({ kind: 'grammar' })
+          setGrammarProgress({ done: index, total: document.numPages })
+          for (const passage of supported) {
+            if (run !== grammarRun.current) return
+            const response = await window.desktop.checkGrammar({ text: passage.text, language: passage.language })
+            for (const match of response.matches) {
+              const issue = grammarIssue(passage, match, ui('grammar.suggestion'))
+              if (issue) issues.push(issue)
+            }
+          }
+        }
+        if (run === grammarRun.current) readingCallbacks.current.onInsight('grammar', issues, skipped
+          ? t('pdf.largeAnalysisSkipped', { count: skipped })
+          : ui(!supportedPages ? foundKorean ? 'grammar.koreanUnavailable' : 'grammar.noProse'
+            : foundKorean ? 'grammar.koreanSkipped' : issues.length ? 'grammar.localResults' : 'grammar.noIssues'))
+        return
+      }
       for(let pageIndex=0;pageIndex<document.numPages;pageIndex++){
         if(run!==grammarRun.current)return
         passages.push(...grammarPassages(pageIndex,await wordsForPage(pageIndex)))
       }
-      const supported=passages.filter(p=>p.language!=='ko'),issues:GrammarIssue[]=[]
+      const supported=passages.filter(p=>p.language!=='ko')
       if(supported.length)await ensureFeatureResources({kind:'grammar'})
       if(run!==grammarRun.current)return
       for(let i=0;i<supported.length;i++){
@@ -2021,13 +2063,14 @@ export const PdfViewer = forwardRef<ViewerHandle, ViewerProps>(function PdfViewe
     if (!document) return []
     const lines = []
     for (let pageIndex = 0; pageIndex < document.numPages; pageIndex += 1) {
-      const page = await document.getPage(pageIndex + 1)
-      const viewport = page.getViewport({ scale: 1 })
-      const words = await wordsForPage(pageIndex)
-      lines.push(...bookmarkLinesFromWords(pageIndex, words, viewport.width, viewport.height))
+      const found = await readAnalysisPage(pageIndex, async page => {
+        const viewport = page.getViewport({ scale: 1 })
+        return bookmarkLinesFromWords(pageIndex, await wordsForPage(pageIndex), viewport.width, viewport.height)
+      })
+      if (found) lines.push(...found)
     }
     return recognizeBookmarkCandidates(lines, options)
-  }, [document, wordsForPage])
+  }, [document, readAnalysisPage, wordsForPage])
   useImperativeHandle(ref, () => ({
     captureFigure: async (pageIndex, rect) => {
       if (!document) throw new Error('ui.targetPageUnavailable')

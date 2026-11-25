@@ -465,27 +465,6 @@ export function PageManagerDialog({ data, sourceDocument, rangeSource, pageCount
   </ScrollWindow></div>
 }
 
-export function LargePdfEditDialog({ pageCount, currentPage, onCancel, onSubmit }: {
-  pageCount: number; currentPage: number; onCancel(): void; onSubmit(first: number, last: number): void
-}) {
-  const [first, setFirst] = useState(String(currentPage + 1))
-  const [last, setLast] = useState(String(currentPage + 1))
-  const pageNumber = (value: string) => {
-    const digits = value.trim().normalize('NFKC').replace(/[٠-٩۰-۹]/g, digit => String((digit.charCodeAt(0) & 15) % 10))
-    return /^\d+$/.test(digits) ? Number(digits) : NaN
-  }
-  const from = pageNumber(first), to = pageNumber(last)
-  const valid = from >= 1 && to >= from && to <= pageCount
-  return <div className="modal-backdrop"><ScrollWindow className="modal page-selection-dialog large-pdf-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="large-edit-title">
-    <form onSubmit={event => { event.preventDefault(); if (valid) onSubmit(from - 1, to - 1) }}>
-      <div className="page-selection-heading"><div><h2 id="large-edit-title">{ui('pdf.largeEditPages')}</h2><p>{ui('pdf.largeEditHint')}</p></div></div>
-      <label className="page-range-input"><span>{ui('pdf.largeFirstPage')}</span><input autoFocus inputMode="numeric" value={first} onChange={event => setFirst(event.target.value)} /></label>
-      <label className="page-range-input"><span>{ui('pdf.largeLastPage')}</span><input inputMode="numeric" value={last} onChange={event => setLast(event.target.value)} /></label>
-      <div className="modal-actions"><button type="button" onClick={onCancel}>{ui('ui.cancel')}</button><button type="submit" className="primary" disabled={!valid}>{ui('pdf.largeEditPages')}</button></div>
-    </form>
-  </ScrollWindow></div>
-}
-
 export function PageSelectionDialog({ purpose: _purpose, pageCount, currentPage, onCancel, onSubmit }: { purpose: 'export'; pageCount: number; currentPage: number; onCancel(): void; onSubmit(pages: number[]): void }) {
   const allPages = allPageIndices(pageCount)
   const [selected, setSelected] = useState<Set<number>>(() => new Set(allPages))

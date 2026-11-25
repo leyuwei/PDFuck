@@ -27,6 +27,7 @@ import { mkdir, mkdtemp, open, readFile, readdir, rm, unlink, writeFile } from '
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, delimiter, dirname, extname, join, parse, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import type { AiRequest, AiResponse, DetachedPdfDocument, DetachedWindowPosition, ExportRequest, ImageImportFile, PdfImportFile, PdfPasswordUpdate, PrinterDescriptor, PrintPdfRequest, PrintPdfResult, ReadingPosition, RecentPdf, SavePdfRequest, UpdateCheckResult, WindowDocumentState } from '../shared/contracts'
 import { nativeWindowTitle } from '../shared/window-session'
@@ -40,9 +41,9 @@ import { requiresSaveAs } from './save-pdf'
 import { listWindowsPrinters, printPdfWithWindowsDriver, validateWindowsPrintBackend } from './windows-printing'
 import { returnFocusToWindow, showAndFocusWindow } from './window-focus'
 import { validExternalLink } from './external-links'
-import { PdfRangeFiles } from './pdf-range-files'
+import { PdfRangeFiles, removePdfScratch } from './pdf-range-files'
 import { LARGE_PDF_THRESHOLD } from '../shared/contracts'
-import type { ExportPage, LargePdfOutput, RasterExportFormat } from '../shared/contracts'
+import type { DesktopApi, ExportPage, LargePdfOutput, RasterExportFormat } from '../shared/contracts'
 import { bundledQpdf, largePageNumbers, largePdfPageCount, readLargePages, writeLargeEps, writeLargeOutput } from './large-pdf-operations'
 
 let grammarEngine:LocalGrammarEngine|undefined
@@ -830,34 +831,95 @@ app.whenReady().then(async () => {
     await pdfRangeFiles.currentPath(event.sender.id, id)
     return data
   })
-  ipcMain.handle('pdf:large-begin-edit', async (event, id: string, first: number, last: number, overlaySize?: { width: number; height: number }) => {
+  ipcMain.handle('pdf:large-begin-edit', async (event, id: string, page: number, overlaySize?: { width: number; height: number }) => {
     requireMainWindow(event.sender)
     const owner = event.sender.id
     const input = await pdfRangeFiles.currentPath(owner, id)
-    const count = last - first + 1
-    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last > 10_000_000 || count < 1 || count > 1000) {
-      throw new Error('pdf.largeInvalidPages')
-    }
-    const pages = Array.from({ length: count }, (_, index) => index + first)
-    let overlay = false
+    const staged = await pdfRangeFiles.stagedPage(owner, id, page)
+    if (staged) return { data: staged.data, edit: { page, overlay: staged.overlay } }
     let data: Uint8Array
-    try { data = await readLargePages(qpdfCommand(), input, pages) }
+    let overlay = false
+    try { data = await readLargePages(qpdfCommand(), input, [page]) }
     catch (error) {
-      if (!(error instanceof Error) || error.message !== 'pdf.largeSliceLimit' || count !== 1 ||
+      if (!(error instanceof Error) || error.message !== 'pdf.largeSliceLimit' ||
           !overlaySize || ![overlaySize.width, overlaySize.height].every(value => Number.isFinite(value) && value > 0 && value <= 200_000)) throw error
       const blank = await PDFDocument.create()
       blank.addPage([overlaySize.width, overlaySize.height])
       data = await blank.save()
       overlay = true
     }
-    const copy = await open(input, 'r')
+    await pdfRangeFiles.currentPath(owner, id)
+    return { data, edit: { page, overlay } }
+  })
+  ipcMain.handle('pdf:large-stage-page', async (event, id: string, page: number, overlay: boolean, data: Uint8Array) => {
+    requireMainWindow(event.sender)
+    const owner = event.sender.id
+    largePageNumbers([page], await largePdfPageCount(qpdfCommand(), await pdfRangeFiles.currentPath(owner, id)))
+    return pdfRangeFiles.stage(owner, id, page, overlay, data)
+  })
+  ipcMain.handle('pdf:large-preview', async (event, id: string, change: Parameters<DesktopApi['previewLargePdf']>[1] = {}) => {
+    requireMainWindow(event.sender)
+    const owner = event.sender.id
+    const confirm = () => pdfRangeFiles.currentPath(owner, id)
+    const input = await confirm()
+    const folder = await mkdtemp(join(tmpdir(), 'pdfuck-edited-preview-'))
+    let retained = false
     try {
-      const info = await copy.stat()
-      await pdfRangeFiles.currentPath(owner, id)
+      const path = join(folder, 'preview.pdf')
+      await writeLargeOutput(qpdfCommand(), input, path, change, confirm, pdfRangeFiles.stagedPages(owner, id))
+      const file = await open(path, 'r')
+      try {
+        const info = await file.stat()
+        if (event.sender.isDestroyed()) throw new Error('pdf.largeReadFailed')
+        const source = pdfRangeFiles.add(owner, file, info.size, info.mtimeMs, path, folder)
+        retained = true
+        await pdfRangeFiles.clearStages(owner, id)
+        return source
+      } finally { if (!retained) await file.close() }
+    } finally { if (!retained) await removePdfScratch(folder) }
+  })
+  ipcMain.handle('pdf:large-commit', async (event, id: string, original: string, saveAs: boolean) => {
+    const session = requireWindowSession(event.sender)
+    const owner = event.sender.id
+    const originalPath = pdfRangeFiles.path(owner, original)
+    const confirm = () => pdfRangeFiles.currentPath(owner, id)
+    const input = await confirm()
+    let target = originalPath
+    if (saveAs) {
+      const result = await dialog.showSaveDialog(session.window, { title: nativeText(session.interfaceLanguage, 'ui.saveAsPdf'),
+        defaultPath: originalPath, filters: [{ name: nativeText(session.interfaceLanguage, 'ui.pdfFiles'), extensions: ['pdf'] }] })
+      if (result.canceled || !result.filePath) return { status: 'canceled' as const }
+      target = result.filePath
+    }
+    if (!isPdf(target)) target += '.pdf'
+    target = resolve(target)
+    const sameSource = process.platform === 'win32' ? originalPath.toLowerCase() === target.toLowerCase() : originalPath === target
+    const check = async () => {
+      await confirm()
+      if (sameSource) await pdfRangeFiles.currentPath(owner, original)
+    }
+    try {
+      await check()
+      await writeLargeOutput(qpdfCommand(), input, target, {}, check, pdfRangeFiles.stagedPages(owner, id), async (output, target) => {
+        await pdfiumTail
+        await check()
+        await pdfRangeFiles.replaceFile(output, target)
+      })
+    } catch (error) {
+      if (requiresSaveAs(error)) return { status: 'save-as-required' as const, target }
+      throw error
+    }
+    const file = await open(target, 'r')
+    let retained = false
+    try {
+      const info = await file.stat()
       if (event.sender.isDestroyed()) throw new Error('pdf.largeReadFailed')
-      const source = pdfRangeFiles.add(owner, copy, info.size, info.mtimeMs, input)
-      return { data, edit: { sourceId: source.id, first, count, overlay } }
-    } catch (error) { await copy.close(); throw error }
+      const source = pdfRangeFiles.add(owner, file, info.size, info.mtimeMs, target)
+      retained = true
+      await pdfRangeFiles.clearStages(owner, id)
+      await rememberRecentPdf(target).catch(() => undefined)
+      return { status: 'saved' as const, source, path: target, name: basename(target) }
+    } finally { if (!retained) await file.close() }
   })
   ipcMain.handle('pdf:large-native-render', async (event, id: string, page: number, width: number, height: number) => {
     requireMainWindow(event.sender)
@@ -870,7 +932,7 @@ app.whenReady().then(async () => {
     const confirmSource = () => pdfRangeFiles.currentPath(event.sender.id, request.sourceId)
     const input = await confirmSource()
     const format = request.format ?? 'pdf'
-    if (format !== 'pdf' && format !== 'eps' || request.separate && !request.pages?.length || request.replacement && (format !== 'pdf' || request.separate)) {
+    if (format !== 'pdf' && format !== 'eps' || request.separate && !request.pages?.length) {
       throw new Error('pdf.largeInvalidPages')
     }
     const command = qpdfCommand()
@@ -878,8 +940,8 @@ app.whenReady().then(async () => {
     const eps = format === 'eps' ? findPdfToCairo(process.resourcesPath) : undefined
     if (format === 'eps' && !eps) throw new Error('ui.epsNeedsPoppler')
     const result = await dialog.showSaveDialog(session.window, {
-      title: nativeText(session.interfaceLanguage, request.replacement || !request.pages ? 'ui.saveAsPdf' : 'ui.export'),
-      defaultPath: join(dirname(input), `${parse(input).name}${request.replacement ? '-edited' : '-export'}.${format}`),
+      title: nativeText(session.interfaceLanguage, !request.pages ? 'ui.saveAsPdf' : 'ui.export'),
+      defaultPath: join(dirname(input), `${parse(input).name}${'-export'}.${format}`),
       filters: [{ name: format.toUpperCase(), extensions: [format] }]
     })
     if (result.canceled || !result.filePath) return null
@@ -894,7 +956,7 @@ app.whenReady().then(async () => {
     for (const page of request.pages ?? []) {
       const target = output(request.pages!.length > 1 ? page : undefined)
       if (eps) await writeLargeEps(command, eps, input, page, target, confirmSource)
-      else await writeLargeOutput(command, input, target, { sourceId: request.sourceId, pages: [page] }, confirmSource)
+      else await writeLargeOutput(command, input, target, { pages: [page] }, confirmSource)
       outputs.push(target)
     }
     return outputs

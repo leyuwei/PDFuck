@@ -1,31 +1,126 @@
 import { randomUUID } from 'node:crypto'
-import { stat, type FileHandle } from 'node:fs/promises'
-import { PDF_RANGE_IPC_BYTES, type PdfRangeSource } from '../shared/contracts'
+import { mkdtemp, open, readFile, rename, rm, stat, type FileHandle } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { PDF_EDIT_SLICE_MAX_BYTES, PDF_RANGE_IPC_BYTES, type PdfRangeSource } from '../shared/contracts'
+import { atomicWrite } from './atomic-write'
+
+export interface StagedPdfPage { path: string; overlay: boolean }
+
+export async function removePdfScratch(path: string): Promise<void> {
+  if (dirname(resolve(path)) === resolve(tmpdir())) {
+    await rm(path, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
+  }
+}
 
 interface RangeFile extends PdfRangeSource {
   owner: number
   file: FileHandle
   modified: number
   path?: string
+  scratch?: string
+  staging?: Promise<string>
+  replacing?: Promise<void>
+  stale?: boolean
+  pages: Map<number, StagedPdfPage>
 }
 
 export class PdfRangeFiles {
   private files = new Map<string, RangeFile>()
 
-  add(owner: number, file: FileHandle, length: number, modified: number, path?: string): PdfRangeSource {
+  add(owner: number, file: FileHandle, length: number, modified: number, path?: string, scratch?: string): PdfRangeSource {
     const id = randomUUID()
-    this.files.set(id, { owner, file, id, length, modified, path })
+    this.files.set(id, { owner, file, id, length, modified, path, scratch, pages: new Map() })
     return { id, length }
+  }
+
+  path(owner: number, id: string): string {
+    const entry = this.files.get(id)
+    if (entry?.owner !== owner || !entry.path) throw new Error('pdf.largeReadFailed')
+    return entry.path
+  }
+
+  stagedPages(owner: number, id: string): ReadonlyMap<number, StagedPdfPage> {
+    this.path(owner, id)
+    return this.files.get(id)!.pages
+  }
+
+  async stagedPage(owner: number, id: string, page: number) {
+    const entry = this.stagedPages(owner, id).get(page)
+    if (entry) return { data: await readFile(entry.path), overlay: entry.overlay }
+  }
+
+  async stage(owner: number, id: string, page: number, overlay: boolean, data: Uint8Array): Promise<void> {
+    await this.currentPath(owner, id)
+    if (!(data instanceof Uint8Array) || !data.length || data.byteLength > PDF_EDIT_SLICE_MAX_BYTES ||
+      typeof overlay !== 'boolean') throw new Error('pdf.largeSliceLimit')
+    const file = this.files.get(id)
+    if (!file) throw new Error('pdf.largeReadFailed')
+    const folder = await (file.staging ||= mkdtemp(join(tmpdir(), 'pdfuck-page-edits-')))
+    const path = join(folder, String(page) + '.pdf')
+    await atomicWrite(path, data)
+    file.pages.set(page, { path, overlay })
+  }
+
+  async clearStages(owner: number, id: string): Promise<void> {
+    const entry = this.files.get(id)
+    if (entry?.owner !== owner || !entry.staging) return
+    const folder = entry.staging
+    entry.staging = undefined
+    entry.pages.clear()
+    await folder.then(removePdfScratch).catch(() => undefined)
   }
 
   async currentPath(owner: number, id: string): Promise<string> {
     const entry = this.files.get(id)
     if (!entry?.path || entry.owner !== owner) throw new Error('pdf.largeReadFailed')
+    await entry.replacing
+    if (entry.stale) throw new Error('pdf.largeReadFailed')
     const [original, current] = await Promise.all([entry.file.stat(), stat(entry.path)])
     if (current.size !== entry.length || current.mtimeMs !== entry.modified || current.ino !== original.ino || current.dev !== original.dev) {
       throw new Error('pdf.largeReadFailed')
     }
     return entry.path
+  }
+
+  async replaceFile(output: string, target: string): Promise<void> {
+    const key = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path)
+    const entries = [...this.files.values()].filter(entry => entry.path && key(entry.path) === key(target) && !entry.stale)
+    if (entries.some(entry => entry.replacing)) throw new Error('pdf.largeOperationFailed')
+    if (!entries.length) { await rename(output, target); return }
+    let resume!: () => void
+    const replacing = new Promise<void>(resolve => { resume = resolve })
+    for (const entry of entries) entry.replacing = replacing
+    const closed: RangeFile[] = []
+    let before: Awaited<ReturnType<typeof stat>>
+    try {
+      before = await stat(target)
+      // On Windows a live reader can prevent replacement of the target.
+      for (const entry of entries) {
+        await entry.file.close()
+        closed.push(entry)
+      }
+      const current = await stat(target)
+      if (current.ino !== before.ino || current.dev !== before.dev || current.mtimeMs !== before.mtimeMs || current.size !== before.size) {
+        throw new Error('pdf.largeReadFailed')
+      }
+      await rename(output, target)
+      for (const entry of entries) entry.stale = true
+    } finally {
+      await Promise.all(closed.filter(entry => !entry.stale).map(async entry => {
+        try {
+          const current = await stat(entry.path!)
+          if (current.ino !== before.ino || current.dev !== before.dev || current.mtimeMs !== before.mtimeMs || current.size !== before.size) {
+            entry.stale = true
+            return
+          }
+          entry.file = await open(entry.path!, 'r')
+        }
+        catch { entry.stale = true }
+      }))
+      for (const entry of entries) entry.replacing = undefined
+      resume()
+    }
   }
 
   async read(owner: number, id: string, begin: number, end: number): Promise<Uint8Array> {
@@ -34,13 +129,15 @@ export class PdfRangeFiles {
         begin < 0 || end > entry.length || begin >= end || end - begin > PDF_RANGE_IPC_BYTES) {
       throw new Error('pdf.largeReadFailed')
     }
-    const { file, length, modified } = entry
-    const current = await file.stat()
+    const { length, modified } = entry
+    if (entry.replacing) await entry.replacing
+    if (entry.stale) throw new Error('pdf.largeReadFailed')
+    const current = await entry.file.stat()
     if (current.size !== length || current.mtimeMs !== modified) throw new Error('pdf.largeReadFailed')
     const data = new Uint8Array(end - begin)
     let offset = 0
     while (offset < data.length) {
-      const { bytesRead } = await file.read(data, offset, data.length - offset, begin + offset)
+      const { bytesRead } = await entry.file.read(data, offset, data.length - offset, begin + offset)
       if (!bytesRead) throw new Error('pdf.largeReadFailed')
       offset += bytesRead
     }
@@ -50,8 +147,14 @@ export class PdfRangeFiles {
   async release(owner: number, id: string): Promise<void> {
     const entry = this.files.get(id)
     if (!entry || entry.owner !== owner) return
+    const staging = this.clearStages(owner, id)
     this.files.delete(id)
-    await entry.file.close()
+    await entry.replacing
+    try { await entry.file.close() }
+    finally {
+      await staging
+      if (entry.scratch) await removePdfScratch(entry.scratch)
+    }
   }
 
   closeOwner(owner: number): void {

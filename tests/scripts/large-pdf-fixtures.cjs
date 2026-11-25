@@ -18,7 +18,7 @@ image.save(sys.argv[1], no_jp2=True)
   return fs.readFile(imagePath)
 }
 
-async function createScanPdf(file, pages, jpx, { small = false } = {}) {
+async function createScanPdf(file, pages, jpx, { small = false, extraContent } = {}) {
   // The same scan texture is written into independent page image streams so
   // the reader must seek and decode real data throughout the physical file.
   const width = small ? 192 : 2048
@@ -66,7 +66,7 @@ async function createScanPdf(file, pages, jpx, { small = false } = {}) {
       const imageSize = jpxPage ? '/Width 1024 /Height 768 /Filter /JPXDecode' : `/Width ${width} /Height ${height}`
       await object(id + 1, `<< /Type /XObject /Subtype /Image ${imageSize} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${scan.length} >>`, scan)
       const text = index === 0 ? 'First-page unique search target' : `Synthetic scan page ${index + 1}`
-      const content = Buffer.from(`q ${pageWidth * .8} 0 0 ${pageHeight * .63} ${pageWidth * .1} ${pageHeight * .14} cm /Scan Do Q\nBT /F1 24 Tf 40 ${pageHeight - 68} Td (${text}) Tj ET\n`)
+      const content = Buffer.from(`q ${pageWidth * .8} 0 0 ${pageHeight * .63} ${pageWidth * .1} ${pageHeight * .14} cm /Scan Do Q\nBT /F1 24 Tf 40 ${pageHeight - 68} Td (${text}) Tj ET\n${extraContent?.(index, pageWidth, pageHeight) || ''}`)
       await object(id + 2, `<< /Length ${content.length} >>`, content)
     }
     const xref = position
