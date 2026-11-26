@@ -88,7 +88,7 @@ Electron 主进程位于 `src/main`，负责本地文件、窗口、打印、AI 
 
 ### 开源与许可
 
-基于 [Electron](https://github.com/electron/electron)、[React](https://github.com/facebook/react)、[PDF.js](https://github.com/mozilla/pdf.js)、[pdf-lib](https://github.com/Hopding/pdf-lib)、[Tesseract.js](https://github.com/naptha/tesseract.js)、[LanguageTool](https://github.com/languagetool-org/languagetool)、[Temurin](https://github.com/adoptium/temurin17-binaries)、[react-markdown](https://github.com/remarkjs/react-markdown) 和 [remark-gfm](https://github.com/remarkjs/remark-gfm) 构建。完整依赖见 [package.json](package.json)，OCR 来源与许可见 [OCR 说明](resources/OCR-NOTICE.txt)。可选转换工具由用户另行安装，遵循各自许可证。
+基于 [Electron](https://github.com/electron/electron)、[React](https://github.com/facebook/react)、[PDF.js](https://github.com/mozilla/pdf.js)、[pdf-lib](https://github.com/Hopding/pdf-lib)、[QPDF](https://github.com/qpdf/qpdf)、[PDFium](https://pdfium.googlesource.com/pdfium/)、[windows-pdf-printer-native](https://github.com/ClemersonAssuncao/windows-pdf-printer-native)、[Koffi](https://github.com/Koromix/koffi)、[Tesseract.js](https://github.com/naptha/tesseract.js)、[LanguageTool](https://github.com/languagetool-org/languagetool)、[Temurin](https://github.com/adoptium/temurin17-binaries)、[react-markdown](https://github.com/remarkjs/react-markdown) 和 [remark-gfm](https://github.com/remarkjs/remark-gfm) 构建。完整依赖见 [package.json](package.json)，OCR 来源与许可见 [OCR 说明](resources/OCR-NOTICE.txt)。可选转换工具由用户另行安装，遵循各自许可证。
 
 本项目采用 [MIT 许可证](LICENSE)。© 2026 [leyuwei](https://github.com/leyuwei)
 
@@ -177,6 +177,6 @@ The Electron main process in `src/main` handles files, windows, printing, AI req
 
 ### Open source and license
 
-Built with [Electron](https://github.com/electron/electron), [React](https://github.com/facebook/react), [PDF.js](https://github.com/mozilla/pdf.js), [pdf-lib](https://github.com/Hopding/pdf-lib), [Tesseract.js](https://github.com/naptha/tesseract.js), [LanguageTool](https://github.com/languagetool-org/languagetool), [Temurin](https://github.com/adoptium/temurin17-binaries), [react-markdown](https://github.com/remarkjs/react-markdown), and [remark-gfm](https://github.com/remarkjs/remark-gfm). See [package.json](package.json) for dependencies and the [OCR notice](resources/OCR-NOTICE.txt) for OCR provenance and licenses. Optional converters are installed separately and retain their own licenses.
+Built with [Electron](https://github.com/electron/electron), [React](https://github.com/facebook/react), [PDF.js](https://github.com/mozilla/pdf.js), [pdf-lib](https://github.com/Hopding/pdf-lib), [QPDF](https://github.com/qpdf/qpdf), [PDFium](https://pdfium.googlesource.com/pdfium/), [windows-pdf-printer-native](https://github.com/ClemersonAssuncao/windows-pdf-printer-native), [Koffi](https://github.com/Koromix/koffi), [Tesseract.js](https://github.com/naptha/tesseract.js), [LanguageTool](https://github.com/languagetool-org/languagetool), [Temurin](https://github.com/adoptium/temurin17-binaries), [react-markdown](https://github.com/remarkjs/react-markdown), and [remark-gfm](https://github.com/remarkjs/remark-gfm). See [package.json](package.json) for dependencies and the [OCR notice](resources/OCR-NOTICE.txt) for OCR provenance and licenses. Optional converters are installed separately and retain their own licenses.
 
 Licensed under [MIT](LICENSE). © 2026 [leyuwei](https://github.com/leyuwei)

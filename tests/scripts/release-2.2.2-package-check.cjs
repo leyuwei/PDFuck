@@ -13,7 +13,8 @@ const prefix = `PDFuck-${version}-Windows`
 const largePdf = process.argv.includes('--large-pdf')
 const largeOperations = process.argv.includes('--large-operations')
 const largeInPlace = process.argv.includes('--large-in-place')
-const sourceOnly = largePdf || largeOperations || largeInPlace || process.argv.includes('--source-only')
+const largePageNotice = process.argv.includes('--large-page-notice')
+const sourceOnly = largePdf || largeOperations || largeInPlace || largePageNotice || process.argv.includes('--source-only')
 const lock = require('../../package-lock.json')
 assert.equal(require('../../package.json').version, version)
 assert.equal(lock.version, version)
@@ -55,15 +56,23 @@ const revisions = {
     portable: { searchMatches: 530, portableLaunch: true }
   }
 }
-const revision = largeInPlace ? 'large-in-place' : largeOperations ? 'large-operations' : largePdf ? 'large-pdf' : ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
+const revision = largePageNotice ? 'large-page-notice' : largeInPlace ? 'large-in-place' : largeOperations ? 'large-operations' : largePdf ? 'large-pdf' : ['welcome-sidebar-copy', 'welcome', 'selection-lab', 'layout'].find(name => process.argv.includes('--' + name)) || 'initial'
 const selected = revisions[revision === 'welcome-sidebar-copy' ? 'welcome' : revision]
 const result = phase => JSON.parse(fs.readFileSync(path.join(root, selected.suite, phase, 'results.json')))
 const pdfResult = file => JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-large-pdf', file)))
-const sourceResult = largeOperations || largeInPlace
+const sourceResult = largeOperations || largeInPlace || largePageNotice
   ? JSON.parse(fs.readFileSync(path.join(root, 'tests/output/release-2.2.2-' + revision, 'results.json')))
   : largePdf ? pdfResult('results.json') : result('source')
 const deletion = largePdf ? pdfResult('annotation-delete.json') : undefined
-if (largeInPlace) {
+if (largePageNotice) {
+  assert.equal(sourceResult.sourceOnly, true)
+  assert.equal(sourceResult.languages, 10)
+  assert.equal(sourceResult.themes, 2)
+  assert.equal(sourceResult.fontPresets, 4)
+  for (const check of ['narrowLayout', 'pageSwitch', 'sameTabReturn', 'unsavedRetained', 'denseHint', 'ordinaryPdfExcluded']) {
+    assert.equal(sourceResult[check], true)
+  }
+} else if (largeInPlace) {
   assert.equal(sourceResult.sourceOnly, true)
   assert.equal(sourceResult.readingTools, 6)
   assert.equal(sourceResult.pages, 18)
@@ -123,7 +132,7 @@ const properties = JSON.parse(execFileSync('pwsh.exe', ['-NoProfile', '-NonInter
 `], { encoding: 'utf8', env: { ...process.env, PDFUCK_222_FILES: JSON.stringify(paths.slice(0, 3)) } }))
 const artifacts = paths.map((file, index) => {
   const meta = properties[index]
-  if ((!sourceOnly || largeOperations || largeInPlace) && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
+  if ((!sourceOnly || largeOperations || largeInPlace || largePageNotice) && meta) assert.match(meta.productVersion, /^2\.2\.2(?:\.0)?$/)
   const bytes = fs.readFileSync(file)
   return { file, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), ...meta }
 })

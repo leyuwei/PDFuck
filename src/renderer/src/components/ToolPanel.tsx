@@ -186,7 +186,6 @@ export function ToolPanel(props: Props) {
         <PanelAction disabled={!pdfAvailable} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('pdf.openStoryboardPage')}>{ui('page.managerStoryboard')}</PanelAction>
       </div> : readOnly && <div className="encrypted-readonly"><b>{ui("ui.encryptedDocumentReadOnly")}</b><span>{ui("ui.theEditorCannotSafelyWriteBackToThisEncryptedPdf")}</span></div>}
       <div className="info-card"><b>{ui("ui.readingTip")}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div></>}
-    {props.largePdf && (module === 'edit' || module === 'annotate') && <p className="hint">{ui(props.overlayEdit ? 'pdf.largeOverlayHint' : 'pdf.largeCurrentPage')}</p>}
     {module === 'edit' && <><h3>{ui("ui.page2")}</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} disabled={documentDisabled || props.overlayEdit} icon={<EditIcon kind="crop" />} hint={ui("ui.dragToSelectTheAreaToKeep")}>{ui("ui.cropPage")}</ToolButton>
       <PanelAction disabled={readOnly || props.largePdf} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui("ui.supportsPdfImagesEpsWordAndPowerpointOfficeDocumentsAre")}>{ui("ui.mergePdfFromFiles2")}</PanelAction>

@@ -222,7 +222,7 @@ async function main() {
     await chooseLanguage('ar')
     await nav(2).click()
     await quiet()
-    await page.locator('.tool-panel .hint').filter({ hasText: /[\u0600-\u06ff]/ }).first().waitFor()
+    await page.locator('.large-page-notice .large-page-overlay-hint').filter({ hasText: /[\u0600-\u06ff]/ }).waitFor()
     assert.ok(await page.locator('.app-shell').evaluate(shell =>
       shell.classList.contains('theme-dark') && document.documentElement.dir === 'rtl' && document.documentElement.dataset.interfaceSize === '18'))
     assert.equal(await tabs.count(), 2)

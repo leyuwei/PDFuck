@@ -133,6 +133,17 @@ button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #e59aa0;
 .theme-dark .pdf-document-loading { color: #c8d5e7; }
 .pdf-page-loading.pdf-page-error { pointer-events: auto; padding: 12px; text-align: center; }
 .large-pdf-busy { position: absolute; z-index: 105; inset: 0; display: grid; place-content: start center; padding: 18px; color: var(--theme-accent-soft-ink); background: var(--theme-accent-faint); font-size: var(--ui-font-body); font-weight: 700; }
+.document-area.range-page-editing { display: flex; flex-direction: column; }
+.range-page-editing > .viewer { position: relative; inset: auto; flex: 1; min-block-size: 0; }
+.large-page-notice { display: flex; flex-wrap: wrap; align-items: center; gap: .5em .85em; padding: .58em .9em; border-block-end: 1px solid var(--theme-accent-border); background: var(--theme-accent-faint); color: #243149; font-size: var(--ui-font-body); line-height: 1.4; }
+.theme-dark .large-page-notice { color: #edf3ff; }
+.large-page-notice > div { flex: 1 1 21em; min-inline-size: 0; overflow-wrap: anywhere; }
+.large-page-notice h2 { margin: 0; font-size: inherit; font-weight: 750; }
+.large-page-notice p { margin: .18em 0 0; }
+.large-page-notice .large-page-overlay-hint { font-size: var(--ui-font-small); }
+.app-shell .large-page-notice button { flex: 0 0 auto; max-inline-size: 100%; min-block-size: 2.4em; padding: .36em .7em; background: var(--theme-accent-soft); border-color: var(--theme-accent-border); color: inherit; font-weight: 650; overflow-wrap: anywhere; }
+.app-shell .large-page-notice button:hover:not(:disabled) { background: var(--theme-accent-faint); border-color: currentColor; }
+.large-page-notice button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .large-pdf-mode .tool-button { width: 100%; margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) { .pdf-page-loading i { animation: none; } }
 
