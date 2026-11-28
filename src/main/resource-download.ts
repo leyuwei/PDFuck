@@ -16,7 +16,7 @@ export async function verifiedFile(file:string,spec:DownloadSpec):Promise<boolea
   const hash=createHash(algorithm);for await(const chunk of createReadStream(file))hash.update(chunk)
   return hash.digest(spec.sha256?'hex':'base64')===expected
 }
-export function downloadPath(root:string,spec:DownloadSpec):string { return join(root,'downloads',createHash('sha256').update(spec.url+'\n'+(spec.sha256||spec.integrity)).digest('hex')+'.archive') }
+export function downloadPath(root:string,spec:Pick<DownloadSpec, 'url' | 'sha256' | 'integrity'>):string { return join(root,'downloads',createHash('sha256').update(spec.url+'\n'+(spec.sha256||spec.integrity)).digest('hex')+'.archive') }
 async function metadata(file:string,value:unknown):Promise<void> {await writeFile(file+'.tmp',JSON.stringify(value));await rename(file+'.tmp',file)}
 
 /** Partial files survive cancellation and process death. Only a pinned digest can promote one. */

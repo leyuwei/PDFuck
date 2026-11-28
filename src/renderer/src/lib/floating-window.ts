@@ -53,7 +53,7 @@ function saveFloatingPosition(key: string | undefined, position: { left: number;
   if (key) { try { localStorage.setItem(`${key}.position`, JSON.stringify(position)) } catch { /* Storage is optional. */ } }
 }
 
-export function useFloatingWindow(active: unknown, bottomRight = false, options: FloatingWindowOptions = {}) {
+export function useFloatingWindow(active: unknown, bottomRight: boolean | 'end' = false, options: FloatingWindowOptions = {}) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ left: number; top: number }>()
   const [size, setSize] = useState<FloatingSize>()
@@ -93,7 +93,8 @@ export function useFloatingWindow(active: unknown, bottomRight = false, options:
         const anchored = bottomRight && !moved.current
         const width = sizeRef.current?.width ?? element.offsetWidth
         const height = sizeRef.current?.height ?? element.offsetHeight
-        const next = clampFloatingPosition(anchored ? window.innerWidth - width - 16 : current?.left ?? bounds.left, anchored ? window.innerHeight - height - 36 : current?.top ?? bounds.top, width, height, window.innerWidth, window.innerHeight, minTop)
+        const anchorX = bottomRight === 'end' && document.documentElement.dir === 'rtl' ? 16 : window.innerWidth - width - 16
+        const next = clampFloatingPosition(anchored ? anchorX : current?.left ?? bounds.left, anchored ? window.innerHeight - height - 36 : current?.top ?? bounds.top, width, height, window.innerWidth, window.innerHeight, minTop)
         return current?.left === next.left && current.top === next.top ? current : next
       })
     }

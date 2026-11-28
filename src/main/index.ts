@@ -6,6 +6,8 @@ import { ResourceManager } from './resource-manager'
 import { ResourceProxyStore } from './resource-proxy'
 import { resourceTransport } from './resource-network'
 import { resourceError } from './resource-download'
+import { clearQueuedRuntimeCaches, diskCacheEntries, queueRuntimeCacheRemoval, removeCachePaths } from './cache-storage'
+import type { CacheEntry, CacheRemoval } from '../shared/cache'
 import type { ResourceAction } from '../shared/resources'
 import { LocalGrammarEngine } from './grammar'
 import { prepareMacosPrinterData } from './macos-printing'
@@ -16,7 +18,7 @@ import { encodeText } from './text-encoding'
 import { documentType, isDocumentPath, isTextPath, isTextEncoding, isTextLineEnding, MAX_MARKDOWN_LENGTH, type TextEncoding } from '../shared/markdown'
 import type { SaveMarkdownRequest } from '../shared/markdown'
 import type { LabReportRequest } from '../shared/contracts'
-import { cancelOcr, recognizeOcrPage } from './ocr'
+import { cancelOcr, hasOcrJobs, recognizeOcrPage } from './ocr'
 import type { OcrPageRequest } from '../shared/ocr'
 import { convertPdfToEps, findPdfToCairo } from './eps-export'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, safeStorage, shell, utilityProcess, type WebContents } from 'electron'
@@ -47,6 +49,9 @@ import type { DesktopApi, ExportPage, LargePdfOutput, RasterExportFormat } from 
 import { bundledQpdf, largePageNumbers, largePdfPageCount, readLargePages, writeLargeEps, writeLargeOutput } from './large-pdf-operations'
 
 let grammarEngine:LocalGrammarEngine|undefined
+let cacheClearing = false
+let resourceReads = 0
+let updatePreparing = 0
 let resourceService:{manager:ResourceManager;proxy:ResourceProxyStore;transport:ReturnType<typeof resourceTransport>;ready:Promise<void>}|undefined
 function resources(){
   if(!resourceService){
@@ -88,6 +93,7 @@ let nativePrintBusy = false
 const RECENT_PDF_LIMIT = 50
 let recentWriteQueue: Promise<void> = Promise.resolve()
 let readingPositionWriteQueue: Promise<void> = Promise.resolve()
+let readingPositionsResetAt = -1
 let passwordStore: PdfPasswordStore | undefined
 const execFileAsync = promisify(execFile)
 
@@ -111,6 +117,24 @@ let launchingUpdate=false
 function updater(){
  if(!updateDownload){updateDownload=new AppUpdateDownload(join(resources().manager.catalog.root,'app-updates'),resources().transport,state=>{for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed())window.webContents.send('app:update-state',state)});updateReady=resources().ready.then(()=>updateDownload!.restore()).then(()=>{if(updateDownload?.state&&compareVersions(updateDownload.state.version,app.getVersion())<=0)updateDownload.action('cancel')})}
  return updateDownload
+}
+
+async function cachedFiles() {
+  const service = resources()
+  updater()
+  await Promise.all([service.ready, updateReady])
+  return diskCacheEntries(service.manager.catalog, join(app.getPath('userData'), 'feature-resources'), app.getPath('userData'), app.getPath('sessionData'))
+}
+
+function cacheInUse(group: CacheEntry['group']) {
+  if (group === 'libraries') return resourceReads > 0 || hasOcrJobs() || resources().manager.hasRequests()
+  return group === 'updates' && Boolean(updatePreparing || updater().isBusy() || launchUpdate || launchingUpdate)
+}
+
+async function withFeatureFiles<T>(operation: () => Promise<T>): Promise<T> {
+  if (cacheClearing) throw resourceError('busy')
+  resourceReads++
+  try { return await operation() } finally { resourceReads-- }
 }
 app.on('will-quit',event=>{
  if(launchingUpdate){event.preventDefault();return}
@@ -462,8 +486,14 @@ async function readReadingPosition(path: string): Promise<ReadingPosition | null
   return positions[resolve(path)] || null
 }
 
-async function rememberReadingPosition(path: string, position: ReadingPosition): Promise<void> {
-  readingPositionWriteQueue = readingPositionWriteQueue.catch(() => undefined).then(async () => {
+function queueReadingPositionWrite(write: () => Promise<void>): Promise<void> {
+  readingPositionWriteQueue = readingPositionWriteQueue.catch(() => undefined).then(write)
+  return readingPositionWriteQueue
+}
+
+function rememberReadingPosition(path: string, position: ReadingPosition, observedAt: number): Promise<void> {
+  return queueReadingPositionWrite(async () => {
+    if (!Number.isFinite(observedAt) || observedAt <= readingPositionsResetAt) return
     const positions = await readReadingPositions()
     positions[resolve(path)] = {
       page: Math.max(0, Math.floor(position.page)),
@@ -472,7 +502,6 @@ async function rememberReadingPosition(path: string, position: ReadingPosition):
     }
     await atomicWrite(readingPositionsPath(), new TextEncoder().encode(JSON.stringify(positions, null, 2)))
   })
-  return readingPositionWriteQueue
 }
 
 function getPasswordStore(): PdfPasswordStore {
@@ -789,8 +818,49 @@ app.whenReady().then(async () => {
     }
     return
   }
+  await clearQueuedRuntimeCaches(app.getPath('userData'), app.getPath('sessionData')).catch(error => console.warn('Runtime cache cleanup deferred.', error))
   void refreshMacPdfAssociation()
-  ipcMain.handle('ocr:page', async (event, request: OcrPageRequest) => {
+  ipcMain.handle('cache:inventory', async event => {
+    requireMainWindow(event.sender)
+    const [files, bytes] = await Promise.all([cachedFiles(), event.sender.session.getCacheSize().catch(() => -1)])
+    const web: CacheEntry = { id: 'web', group: 'app', kind: 'web', bytes: Math.max(0, bytes), status: bytes < 0 ? 'unknown' : bytes ? 'stored' : 'empty' }
+    return [web, ...files.map(({ paths: _paths, ...entry }): CacheEntry => {
+      if (cacheInUse(entry.group)) return { ...entry, status: 'busy' }
+      if (entry.kind === 'update') {
+        const state = updater().state
+        if (state) return { ...entry, detail: [...new Set([entry.detail, state.name].filter(Boolean))].join(' · '),
+          status: state.phase === 'ready' ? 'stored' : state.downloaded > 0 ? 'partial' : entry.status }
+      }
+      return entry
+    })]
+  })
+  ipcMain.handle('cache:remove', async (event, ids: unknown): Promise<CacheRemoval> => {
+    requireMainWindow(event.sender)
+    if (!Array.isArray(ids) || ids.length > 32 || ids.some(id => typeof id !== 'string')) throw resourceError('invalidResource')
+    if (cacheClearing) throw resourceError('busy')
+    cacheClearing = true
+    try {
+      const files = await cachedFiles()
+      const selected = [...new Set<string>(ids)]
+      if (selected.some(id => id !== 'web' && !files.some(file => file.id === id))) throw resourceError('invalidResource')
+      const result: CacheRemoval = { failed: [], restart: false }
+      for (const id of selected) {
+        try {
+          if (id === 'web') { await event.sender.session.clearCache(); continue }
+          const entry = files.find(file => file.id === id)!
+          if (cacheInUse(entry.group) || entry.status === 'unknown') throw resourceError('busy')
+          if (id === 'runtime') { await queueRuntimeCacheRemoval(app.getPath('userData')); result.restart = true; continue }
+          if (id === 'grammar') await grammarEngine?.stopForCacheRemoval()
+          if (id === 'updates') await updater().settled()
+          if (entry.group === 'libraries') resources().manager.catalog.invalidateInstalledResources()
+          await removeCachePaths(entry.paths)
+          if (id === 'updates') updater().forgetCache()
+        } catch { result.failed.push(id) }
+      }
+      return result
+    } finally { cacheClearing = false }
+  })
+  ipcMain.handle('ocr:page', (event, request: OcrPageRequest) => withFeatureFiles(async () => {
     requireMainWindow(event.sender)
     const service=resources();await service.ready
     if(!validResourceRequest({kind:'ocr',language:request?.language})||(await service.manager.catalog.missing({kind:'ocr',language:request.language},new AbortController().signal)).length)throw resourceError('notReady')
@@ -798,7 +868,7 @@ app.whenReady().then(async () => {
     return recognizeOcrPage(event.sender.id, request, service.manager.catalog.ocrModels, value => {
       if (!event.sender.isDestroyed()) event.sender.send('ocr:progress', request.jobId, value)
     },service.manager.catalog.ocrRuntime)
-  })
+  }))
   ipcMain.on('ocr:cancel', (event, jobId: unknown) => {
     requireMainWindow(event.sender)
     if (typeof jobId === 'string') cancelOcr(event.sender.id, jobId)
@@ -808,13 +878,13 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(session.window, { title: nativeText(session.interfaceLanguage, 'md.open'), properties: ['openFile'], filters: [{ name: nativeText(session.interfaceLanguage, 'md.files'), extensions: ['pdf', 'md', 'txt'] }] })
     return result.canceled ? null : openPdfAt(result.filePaths[0], event.sender)
   })
-  ipcMain.handle('resources:ensure',async(event,request:unknown)=>{requireMainWindow(event.sender);if(!validResourceRequest(request))throw resourceError('invalidResource');const service=resources();await service.ready;if(event.sender.isDestroyed())return false;return service.manager.request(event.sender.id,request)})
+  ipcMain.handle('resources:ensure',async(event,request:unknown)=>{requireMainWindow(event.sender);if(!validResourceRequest(request))throw resourceError('invalidResource');const service=resources();await service.ready;if(cacheClearing)throw resourceError('busy');if(event.sender.isDestroyed())return false;return service.manager.request(event.sender.id,request)})
   ipcMain.handle('resources:state',event=>{requireMainWindow(event.sender);return resourceService?.manager.state(event.sender.id)})
-  ipcMain.handle('resources:action',(event,id:unknown,action:unknown)=>{requireMainWindow(event.sender);if(typeof id!=='string'||!['start','pause','cancel'].includes(String(action)))throw resourceError('invalidResource');resources().manager.action(event.sender.id,id,action as ResourceAction)})
+  ipcMain.handle('resources:action',(event,id:unknown,action:unknown)=>{requireMainWindow(event.sender);if(typeof id!=='string'||!['start','pause','cancel'].includes(String(action)))throw resourceError('invalidResource');if(cacheClearing&&action==='start')throw resourceError('busy');resources().manager.action(event.sender.id,id,action as ResourceAction)})
   ipcMain.on('resources:cancel',(event,request:unknown)=>{requireMainWindow(event.sender);if(validResourceRequest(request))resources().manager.cancelRequest(event.sender.id,request)})
   ipcMain.handle('resources:proxy',event=>{requireMainWindow(event.sender);return resources().proxy.publicValue()})
   ipcMain.handle('resources:proxy-save',(event,proxy:unknown)=>{requireMainWindow(event.sender);const service=resources();if(service.manager.isActive())throw resourceError('busy');return service.proxy.save(proxy)})
-  ipcMain.handle('grammar:check',async(event,request:unknown)=>{requireMainWindow(event.sender);const service=resources();await service.ready;if((await service.manager.catalog.missing({kind:'grammar'},new AbortController().signal)).length)throw resourceError('notReady');if(event.sender.isDestroyed())throw resourceError('canceled');grammarEngine??=new LocalGrammarEngine(service.manager.catalog.grammar);return grammarEngine.check(request as import('../shared/grammar').GrammarRequest)})
+  ipcMain.handle('grammar:check',(event,request:unknown)=>withFeatureFiles(async()=>{requireMainWindow(event.sender);const service=resources();await service.ready;if((await service.manager.catalog.missing({kind:'grammar'},new AbortController().signal)).length)throw resourceError('notReady');if(event.sender.isDestroyed())throw resourceError('canceled');grammarEngine??=new LocalGrammarEngine(service.manager.catalog.grammar);return grammarEngine.check(request as import('../shared/grammar').GrammarRequest)}))
   ipcMain.handle('pdf:read', (event, path: string) => { requireMainWindow(event.sender); return openPdfAt(path, event.sender) })
   ipcMain.handle('pdf:range-read', (event, id: string, begin: number, end: number) => {
     requireMainWindow(event.sender)
@@ -1074,20 +1144,26 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('pdf:recent', (event) => { requireMainWindow(event.sender); return readRecentPdfs() })
   ipcMain.handle('pdf:recent-clear', (event) => { requireMainWindow(event.sender); return clearRecentPdfs() })
-  ipcMain.handle('pdf:reading-position-get', (event, path: string) => {
+  ipcMain.handle('pdf:reading-position-get', async (event, path: string) => {
     requireMainWindow(event.sender)
     if (typeof path !== 'string' || !isDocumentPath(path)) throw new Error('阅读位置请求无效。')
+    await readingPositionWriteQueue.catch(() => undefined)
     return readReadingPosition(path)
   })
-  ipcMain.handle('pdf:reading-position-set', (event, request: { path: string; position: ReadingPosition }) => {
+  ipcMain.handle('pdf:reading-positions-reset', event => {
+    requireMainWindow(event.sender)
+    readingPositionsResetAt = Date.now()
+    return queueReadingPositionWrite(() => atomicWrite(readingPositionsPath(), Buffer.from('{}')))
+  })
+  ipcMain.handle('pdf:reading-position-set', (event, request: { path: string; position: ReadingPosition; observedAt: number }) => {
     requireMainWindow(event.sender)
     if (!request || typeof request.path !== 'string' || !isDocumentPath(request.path) || !request.position) throw new Error('阅读位置请求无效。')
-    return rememberReadingPosition(request.path, request.position)
+    return rememberReadingPosition(request.path, request.position, request.observedAt)
   })
-  ipcMain.on('pdf:reading-position-flush', (event, request: { path: string; position: ReadingPosition }) => {
+  ipcMain.on('pdf:reading-position-flush', (event, request: { path: string; position: ReadingPosition; observedAt: number }) => {
     requireMainWindow(event.sender)
     if (!request || typeof request.path !== 'string' || !isDocumentPath(request.path) || !request.position) return
-    void rememberReadingPosition(request.path, request.position)
+    void rememberReadingPosition(request.path, request.position, request.observedAt).catch(() => undefined)
   })
   ipcMain.handle('markdown:render', (event, request) => { requireMainWindow(event.sender); return renderMarkdownPdf(request) })
   ipcMain.handle('pdf:render-page-text', (event, request) => { requireMainWindow(event.sender); return renderPageText(request) })
@@ -1178,8 +1254,18 @@ app.whenReady().then(async () => {
     activeRequest.controller.abort()
   })
   ipcMain.handle('app:update-state',async(event)=>{requireMainWindow(event.sender);const service=updater();await updateReady;return service.state})
-  ipcMain.handle('app:update-download',async(event)=>{requireMainWindow(event.sender);const check=await checkForUpdates();if(!['available','skipped'].includes(check.status)||!latestInstaller||check.latestVersion!==latestInstaller.version)throw Error('updates.unavailable');const service=updater();await updateReady;await service.prepare(latestInstaller.version,latestInstaller.asset);service.action('start')})
-  ipcMain.handle('app:update-action',(event,action:unknown)=>{requireMainWindow(event.sender);if(!['start','pause','cancel'].includes(String(action)))throw Error('updates.unavailable');updater().action(action as ResourceAction)})
+  ipcMain.handle('app:update-download', async event => {
+    requireMainWindow(event.sender)
+    const check = await checkForUpdates()
+    if (!['available', 'skipped'].includes(check.status) || !latestInstaller || check.latestVersion !== latestInstaller.version) throw Error('updates.unavailable')
+    const service = updater()
+    await updateReady
+    if (cacheClearing) throw resourceError('busy')
+    updatePreparing++
+    try { await service.prepare(latestInstaller.version, latestInstaller.asset); service.action('start') }
+    finally { updatePreparing-- }
+  })
+  ipcMain.handle('app:update-action',(event,action:unknown)=>{requireMainWindow(event.sender);if(!['start','pause','cancel'].includes(String(action)))throw Error('updates.unavailable');if(cacheClearing)throw resourceError('busy');updater().action(action as ResourceAction)})
   ipcMain.handle('app:update-open-folder',async event=>{
     requireMainWindow(event.sender)
     const service=updater()
@@ -1189,12 +1275,13 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('app:update-install',async event=>{
     const {interfaceLanguage}=requireWindowSession(event.sender)
+    if(cacheClearing)throw resourceError('busy')
     if(!app.isPackaged||launchUpdate||launchingUpdate)throw Error('updates.installUnavailable')
     const service=updater()
     await updateReady
     const state=service.state
     const file=await service.installer()
-    if(!state||state!==service.state||launchUpdate||event.sender.isDestroyed())throw Error('updates.installUnavailable')
+    if(cacheClearing||!state||state!==service.state||launchUpdate||event.sender.isDestroyed())throw Error('updates.installUnavailable')
     service.setInstalling(true)
     try{
       launchUpdate=await prepareUpdateLaunch(service.root,file,state.version,app.getPath('exe'),process.platform,process.arch,nativeText(interfaceLanguage,'updates.installUnavailable'))

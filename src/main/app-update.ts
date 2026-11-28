@@ -44,6 +44,8 @@ export class AppUpdateDownload {
   this.task=(async()=>{try{let lastBytes=this.state!.downloaded,lastTime=Date.now();const file=await downloadResource(this.root,asset,this.transport,controller.signal,(downloaded,phase)=>{if(controller.signal.aborted||!this.state)return;const now=Date.now(),elapsed=now-lastTime;this.state={...this.state!,downloaded,phase,speed:elapsed>=300?Math.max(0,(downloaded-lastBytes)*1000/elapsed):this.state!.speed};if(elapsed>=300){lastTime=now;lastBytes=downloaded}if(now-this.last>=150||phase==='verifying'){this.last=now;this.emit()}});controller.signal.throwIfAborted();await copyFile(file,join(this.root,asset.name));controller.signal.throwIfAborted();this.state={...this.state!,phase:'ready',downloaded:asset.bytes,speed:0};await this.journal();this.emit()}catch(error){if(this.state){this.state={...this.state,phase:controller.signal.aborted?'paused':'error',speed:0,error:controller.signal.aborted?undefined:error instanceof Error&&/^resources\./.test(error.message)?error.message:'resources.network'};await this.journal().catch(()=>{});this.emit()}}finally{this.controller=undefined}})()
  }
  async settled(){await this.task;await this.writes}
+ isBusy(){return Boolean(this.controller || this.state?.installing)}
+ forgetCache(){this.asset=undefined;this.state=undefined;this.emit()}
  async installer(){
   await this.settled()
   const asset=this.asset

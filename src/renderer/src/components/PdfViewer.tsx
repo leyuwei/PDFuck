@@ -60,6 +60,7 @@ import { bookmarkLinesFromWords, recognizeBookmarkCandidates, type BookmarkRecog
 import { pdfJsBookmarks } from '../lib/pdfjs-bookmarks'
 import { pdfPageLinks, type PdfLinkTarget, type PdfPageLink } from '../lib/pdfjs-links'
 import { loadPageLayoutOverride, savePageLayoutOverride, type PageLayoutOverride } from '../lib/page-layout-overrides'
+import { DOCUMENT_PREFERENCES_RESET_KEY } from '../lib/app-preferences'
 
 const EMPTY_CITATIONS: CitationLink[] = []
 
@@ -758,6 +759,16 @@ function PdfPage({ initialSize, schedulePaint, rangeSource, pageBackdrop, inline
   const [spanningRegionsDraft, setSpanningRegionsDraft] = useState<Array<[number, number]>>()
   const [newSpanningRegion, setNewSpanningRegion] = useState<[number, number]>()
   const [drawingSpanningRegion, setDrawingSpanningRegion] = useState(false)
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key !== DOCUMENT_PREFERENCES_RESET_KEY) return
+      setLayoutOverride(loadPageLayoutOverride(documentKey, pageIndex))
+      setBoundaryDraft(undefined)
+      setSpanningRegionsDraft(undefined)
+    }
+    window.addEventListener('storage', sync)
+    return () => window.removeEventListener('storage', sync)
+  }, [documentKey, pageIndex])
   const layoutOverrideRef = useRef(layoutOverride)
   const rebuildTextMapRef = useRef<((override?: PageLayoutOverride) => void) | undefined>(undefined)
   const boundaryDragRef = useRef<{ index: number; values: number[] } | undefined>(undefined)

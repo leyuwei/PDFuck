@@ -43,6 +43,8 @@
 
 使用“编辑页面文字”修改现有文本，或用“在页面上添加文字”放置文字框。添加的文字可拖动、调整尺寸和双击编辑；页面修改支持撤销与重做。原生 PDF 表单文字可以选择复制，在“编辑”模块直接填写，离开字段时自动应用；支持多行、同名字段同步和保存重开，保留表单结构及只读限制。临时目录中的文件会在文档标签上显示琥珀色时钟图标，悬停可查看另存提醒。
 
+在“编辑 → 内容 → 文档备忘”打开便签。便签浮在页面上方，可拖动和调整大小，支持多行输入、自动换行和选中文字复制。在本机再次打开同一文档时，会恢复便签内容和上次的显示状态。
+
 文字框选自动跳过叠加水印，保留淡色脚注和普通旋转文字。
 
 从表格单元格内开始拖选，可选择格内文字与换行，选区保持在该单元格中。“一键图表”以淡色半透明区域显示图表，并提供点击定位的索引；选择正文时会跳过独立图表及图注。
@@ -131,6 +133,8 @@ Open or drop a document to begin. Change language, theme, paper background, and 
 ### Reading and editing
 
 Use **Edit page text** to change existing text, or **Add text to page** to place a text box. Drag added text, resize it, or double-click to edit it. Page edits support undo and redo. Select and copy native PDF form text, or fill fields directly in **Edit** mode; changes apply when leaving a field. Multiline values, linked fields, saving and reopening preserve the form structure and read-only restrictions. Files in temporary folders show an amber clock icon on their document tab; hover for the save-copy reminder.
+
+Open **Edit → Content → Document memo** for a floating note you can drag and resize. Enter multiple lines, let text wrap to the note width, and select any portion to copy. Reopening the document on the same device restores the memo content and whether it was open.
 
 Text selection skips overlay watermarks while retaining faint footnotes and ordinary rotated labels.
 

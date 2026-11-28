@@ -12,13 +12,16 @@ interface OcrJob {
 
 // One sequential worker per requesting window; pages are never retained here.
 const jobs = new Map<number, OcrJob>()
+let stopping = 0
+export function hasOcrJobs(): boolean { return jobs.size > 0 || stopping > 0 }
 
 export function cancelOcr(owner: number, jobId?: string, reason = 'ocr.canceled'): void {
   const job = jobs.get(owner)
   if (!job || (jobId !== undefined && job.id !== jobId)) return
   jobs.delete(owner)
   job.controller.abort(new Error(reason))
-  void job.worker.terminate().catch(() => undefined)
+  stopping++
+  void job.worker.terminate().catch(() => undefined).finally(() => { stopping-- })
 }
 
 export async function recognizeOcrPage(owner: number, request: OcrPageRequest, assetPath: string, progress: (value: number) => void, enginePath?:string): Promise<OcrPageResult> {

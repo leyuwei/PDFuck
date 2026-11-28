@@ -3,6 +3,8 @@ import type { AiRequest, DesktopApi, DetachedPdfDocument, DetachedWindowPosition
 
 const api: DesktopApi = {
   updateState:()=>ipcRenderer.invoke('app:update-state'),
+  cacheInventory:()=>ipcRenderer.invoke('cache:inventory'),
+  removeCachedItems:ids=>ipcRenderer.invoke('cache:remove',ids),
   onUpdateState:callback=>{const listener=(_event:Electron.IpcRendererEvent,state:import('../shared/app-update').AppUpdateState|undefined)=>callback(state);ipcRenderer.on('app:update-state',listener);return()=>ipcRenderer.removeListener('app:update-state',listener)},
   downloadUpdate:()=>ipcRenderer.invoke('app:update-download'),
   updateAction:action=>ipcRenderer.invoke('app:update-action',action),
@@ -80,8 +82,9 @@ const api: DesktopApi = {
   recentPdfs: () => ipcRenderer.invoke('pdf:recent'),
   clearRecentPdfs: () => ipcRenderer.invoke('pdf:recent-clear'),
   getReadingPosition: (path) => ipcRenderer.invoke('pdf:reading-position-get', path),
-  setReadingPosition: (path, position: ReadingPosition) => ipcRenderer.invoke('pdf:reading-position-set', { path, position }),
-  flushReadingPosition: (path, position: ReadingPosition) => ipcRenderer.send('pdf:reading-position-flush', { path, position }),
+  setReadingPosition: (path, position: ReadingPosition, observedAt = Date.now()) => ipcRenderer.invoke('pdf:reading-position-set', { path, position, observedAt }),
+  flushReadingPosition: (path, position: ReadingPosition, observedAt = Date.now()) => ipcRenderer.send('pdf:reading-position-flush', { path, position, observedAt }),
+  resetReadingPositions: () => ipcRenderer.invoke('pdf:reading-positions-reset'),
   updateWindowDocument: (state: WindowDocumentState) => ipcRenderer.send('window:update-document', state),
   setInterfaceLanguage: (language) => ipcRenderer.send('app:set-interface-language', language),
   windowMinimize: () => ipcRenderer.send('window:minimize'),

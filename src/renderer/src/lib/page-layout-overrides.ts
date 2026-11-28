@@ -1,4 +1,4 @@
-const KEY = 'pdfuck.page-layout-overrides.v1'
+export const PAGE_LAYOUT_OVERRIDES_KEY = 'pdfuck.page-layout-overrides.v1'
 
 export interface PageLayoutOverride {
   /** Normalized x positions. An empty array explicitly forces one column. */
@@ -33,7 +33,7 @@ function normalized(value: unknown): PageLayoutOverride | undefined {
 
 function loadStore(): Store {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) || '{}') as unknown
+    const value = JSON.parse(localStorage.getItem(PAGE_LAYOUT_OVERRIDES_KEY) || '{}') as unknown
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Store : {}
   } catch { return {} }
 }
@@ -50,7 +50,7 @@ export function savePageLayoutOverride(documentKey: string, pageIndex: number, o
       if (store[documentKey]) delete store[documentKey][pageIndex]
       if (store[documentKey] && !Object.keys(store[documentKey]).length) delete store[documentKey]
     } else store[documentKey] = { ...(store[documentKey] || {}), [pageIndex]: value }
-    if (Object.keys(store).length) localStorage.setItem(KEY, JSON.stringify(store))
-    else localStorage.removeItem(KEY)
+    if (Object.keys(store).length) localStorage.setItem(PAGE_LAYOUT_OVERRIDES_KEY, JSON.stringify(store))
+    else localStorage.removeItem(PAGE_LAYOUT_OVERRIDES_KEY)
   } catch { /* Keep selection usable when browser storage is disabled or full. */ }
 }

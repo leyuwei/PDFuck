@@ -62,6 +62,9 @@ interface Props {
   visualsEnabled?: boolean
   abbreviationsEnabled?: boolean
   onGrammar(): void
+  onMemo?(): void
+  memoOpen?: boolean
+  onCacheSettings?(): void
   onRecognizeBookmarks?(): void
   theme: 'light' | 'dark'
   accent: string
@@ -93,7 +96,7 @@ interface Props {
 
 const ToolButton = ({ tool, activeTool, children, hint, icon, shortcut, disabled, onTool }: { tool: Tool; activeTool: Tool; children: React.ReactNode; hint: string; icon?: React.ReactNode; shortcut?: string; disabled?: boolean; onTool(tool: Tool): void }) => <button className={`tool-button${activeTool === tool ? ' active' : ''}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}`} disabled={disabled} onClick={() => onTool(activeTool === tool ? 'none' : tool)}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
 
-const PanelAction = ({ children, hint, disabled, icon, onClick, tone = 'default', shortcut, windowState, className = '' }: { children: React.ReactNode; hint: string; disabled?: boolean; icon?: React.ReactNode; onClick(): void; tone?: 'default' | 'primary' | 'danger'; shortcut?: string; windowState?: 'closed' | 'open' | 'minimized'; className?: string }) => <button type="button" className={`tool-panel-action ${tone}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}${className ? ` ${className}` : ''}`} data-window-state={windowState} disabled={disabled} onClick={onClick}>{icon}<span className="tool-button-copy"><strong>{children}</strong><small>{hint}</small></span>{shortcut && <kbd>{shortcut}</kbd>}</button>
+const PanelAction = ({ children, hint, disabled, icon, onClick, tone = 'default', shortcut, windowState, className = '' }: { children: React.ReactNode; hint?: string; disabled?: boolean; icon?: React.ReactNode; onClick(): void; tone?: 'default' | 'primary' | 'danger'; shortcut?: string; windowState?: 'closed' | 'open' | 'minimized'; className?: string }) => <button type="button" className={`tool-panel-action ${tone}${icon ? ' with-icon' : ''}${shortcut ? ' has-shortcut' : ''}${className ? ` ${className}` : ''}`} data-window-state={windowState} disabled={disabled} onClick={onClick}>{icon}<span className="tool-button-copy"><strong>{children}</strong>{hint && <small>{hint}</small>}</span>{shortcut && <kbd>{shortcut}</kbd>}</button>
 
 const THEME_COLORS = [
   ["ui.indigo", '#5575de'], ["ui.blue", '#2f7de1'], ["ui.teal", '#23826b'], ["ui.forestGreen", '#3d8a57'],
@@ -185,7 +188,8 @@ export function ToolPanel(props: Props) {
       {props.largePdf ? <div className="encrypted-readonly large-pdf-mode"><b>{ui('pdf.largeWorkspace')}</b><span>{ui('pdf.largeWorkspaceHint')}</span>
         <PanelAction disabled={!pdfAvailable} icon={<EditIcon kind="manage" />} onClick={props.onDeletePages} hint={ui('pdf.openStoryboardPage')}>{ui('page.managerStoryboard')}</PanelAction>
       </div> : readOnly && <div className="encrypted-readonly"><b>{ui("ui.encryptedDocumentReadOnly")}</b><span>{ui("ui.theEditorCannotSafelyWriteBackToThisEncryptedPdf")}</span></div>}
-      <div className="info-card"><b>{ui("ui.readingTip")}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div></>}
+      <div className="info-card"><b>{ui("ui.readingTip")}</b><span>{t('shortcut.navigationHint', { zoom: mac ? '⌘' : 'Ctrl', page: mac ? 'Option' : 'Alt' })}</span></div>
+      <h3>{ui('cache.storage')}</h3><PanelAction className="cache-settings-launch" icon={<EditIcon kind="cache" />} onClick={() => props.onCacheSettings?.()}>{ui('cache.title')}</PanelAction></>}
     {module === 'edit' && <><h3>{ui("ui.page2")}</h3>
       <ToolButton tool="crop" activeTool={activeTool} onTool={onTool} disabled={documentDisabled || props.overlayEdit} icon={<EditIcon kind="crop" />} hint={ui("ui.dragToSelectTheAreaToKeep")}>{ui("ui.cropPage")}</ToolButton>
       <PanelAction disabled={readOnly || props.largePdf} icon={<EditIcon kind="merge" />} onClick={props.onMergeFiles} hint={ui("ui.supportsPdfImagesEpsWordAndPowerpointOfficeDocumentsAre")}>{ui("ui.mergePdfFromFiles2")}</PanelAction>
@@ -196,7 +200,8 @@ export function ToolPanel(props: Props) {
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="image" />} onClick={() => props.onAddImage?.()} hint={ui("ui.importPngOrJpgThenPositionResizeRotateAndConfirm")}>{ui("ui.addImageToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled || !props.onAddShape} icon={<ShapeToolIcon />} onClick={() => setShapeCreatorDocumentId(documentSessionKey)} hint={ui("ui.createArrowsEllipsesAndRectanglesWithCustomStyles")}>{ui("ui.addShapeToPage")}</PanelAction>
       <PanelAction disabled={documentDisabled} icon={<EditIcon kind="page_numbers" />} onClick={() => props.onPageNumbers?.()} hint={ui("ui.addCustomizableRemovablePageNumbersToEveryPage")}>{ui("ui.addPageNumbers")}</PanelAction>
-      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="watermark" />} onClick={() => props.onWatermark?.()} hint={ui('ui.watermarkHint')}>{ui('ui.addWatermark')}</PanelAction></>}
+      <PanelAction disabled={documentDisabled} icon={<EditIcon kind="watermark" />} onClick={() => props.onWatermark?.()} hint={ui('ui.watermarkHint')}>{ui('ui.addWatermark')}</PanelAction>
+      <PanelAction className="document-memo-launch" windowState={props.memoOpen ? 'open' : 'closed'} disabled={!hasDocument} icon={<EditIcon kind="memo" />} onClick={() => props.onMemo?.()} hint={ui('memo.hint')}>{ui('memo.title')}</PanelAction></>}
     {module === 'annotate' && <><section className="annotation-view-settings"><h3>{ui('ui.annotationView')}</h3><div className="segmented" role="radiogroup" aria-label={ui('ui.annotationView')}>{(['list', 'document'] as const).map(mode => <button key={mode} type="button" disabled={documentDisabled} role="radio" aria-checked={annotationView.mode === mode} className={annotationView.mode === mode ? 'active' : ''} onClick={() => saveAnnotationView({ mode })}>{ui(mode === 'list' ? 'ui.annotationList' : 'ui.annotationsInDocument')}</button>)}</div><label className="annotation-markdown-toggle"><input type="checkbox" disabled={documentDisabled} checked={annotationView.markdown} onChange={event => saveAnnotationView({ markdown: event.target.checked })} />{ui('ui.renderAnnotationMarkdown')}</label></section><p className="subtitle">{t('shortcut.annotationSelectionHint', { add: mac ? '⌘' : 'Ctrl', remove: shortcutLabel('deleteSelection', platform) || '' })}</p><h3>{ui("ui.textAnnotations")}</h3>
       <ToolButton tool="highlight" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="highlight" />} shortcut={shortcutLabel('highlight', platform)} hint={ui("ui.selectText")}>{ui("ui.highlightText")}</ToolButton>
       <ToolButton tool="replace" activeTool={activeTool} onTool={onTool} disabled={documentDisabled} icon={<AnnotationIcon kind="replace" />} shortcut={shortcutLabel('replace', platform)} hint={ui("ui.selectTheOriginalText")}>{ui("ui.replaceText")}</ToolButton>

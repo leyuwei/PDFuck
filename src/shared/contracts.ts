@@ -269,6 +269,8 @@ export interface AiResponse {
 
 export interface DesktopApi {
   updateState():Promise<AppUpdateState|undefined>
+  cacheInventory(): Promise<import('./cache').CacheEntry[]>
+  removeCachedItems(ids: string[]): Promise<import('./cache').CacheRemoval>
   onUpdateState(callback:(state:AppUpdateState|undefined)=>void):()=>void
   downloadUpdate():Promise<void>
   updateAction(action:import('./resources').ResourceAction):Promise<void>
@@ -333,8 +335,9 @@ export interface DesktopApi {
   recentPdfs(): Promise<RecentPdf[]>
   clearRecentPdfs(): Promise<void>
   getReadingPosition(path: string): Promise<ReadingPosition | null>
-  setReadingPosition(path: string, position: ReadingPosition): Promise<void>
-  flushReadingPosition(path: string, position: ReadingPosition): void
+  setReadingPosition(path: string, position: ReadingPosition, observedAt?: number): Promise<void>
+  flushReadingPosition(path: string, position: ReadingPosition, observedAt?: number): void
+  resetReadingPositions(): Promise<void>
   updateWindowDocument(state: WindowDocumentState): void
   setInterfaceLanguage(language: InterfaceLanguage): void
   windowMinimize(): void

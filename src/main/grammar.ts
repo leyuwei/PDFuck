@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
@@ -27,6 +28,13 @@ export class LocalGrammarEngine {
   private idle?: ReturnType<typeof setTimeout>
   constructor(private readonly root: string) {}
   stop(): void { clearTimeout(this.idle); this.child?.kill(); this.child=undefined; this.ready=undefined }
+  async stopForCacheRemoval(): Promise<void> {
+    const child = this.child
+    if (!child) return
+    const closed = once(child, 'close', { signal: AbortSignal.timeout(5000) })
+    this.stop()
+    await closed
+  }
   private start(): Promise<string> {
     if (this.ready) return this.ready
     this.ready = (async () => {

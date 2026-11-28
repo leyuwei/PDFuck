@@ -25,6 +25,7 @@ export function isTextPath(path: string): boolean { return /\.(md|txt)$/i.test(p
 export function documentType(path = ''): 'TXT' | 'Markdown' | 'PDF' { return /\.txt$/i.test(path) ? 'TXT' : isMarkdownPath(path) ? 'Markdown' : 'PDF' }
 export function sourceDirty(document: MarkdownDocument): boolean { return Boolean(document.unsaved) || document.source !== document.savedSource || (document.encoding || 'utf-8') !== (document.savedEncoding || 'utf-8') }
 export interface MarkdownDocument {
+  draftMemoId?: string
   /** The display path has no file on disk until the first successful source save. */
   unsaved?: boolean
   path: string

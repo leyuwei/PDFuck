@@ -1,7 +1,9 @@
-export type EditIconKind = 'crop' | 'merge' | 'manage' | 'edit_text' | 'add_text' | 'image' | 'page_numbers' | 'watermark' | 'ocr'
+export type EditIconKind = 'crop' | 'merge' | 'manage' | 'edit_text' | 'add_text' | 'image' | 'page_numbers' | 'watermark' | 'ocr' | 'memo' | 'cache'
 
 export function EditIcon({ kind, size = 22 }: { kind: EditIconKind; size?: number }) {
   return <svg className={`edit-tool-icon ${kind}`} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    {kind === 'memo' && <><path d="M4 4h16v11l-5 5H4zM15 20v-5h5" /><path className="accent" d="M8 8h8m-8 4h6" /></>}
+    {kind === 'cache' && <><rect x="3" y="5" width="18" height="6" rx="2" /><rect x="3" y="13" width="18" height="6" rx="2" /><path className="accent" d="M7 8h1m-1 8h1m4 0h5" /></>}
     {kind === 'ocr' && <><path d="M3 8V4h4M17 4h4v4M21 16v4h-4M7 20H3v-4" /><path d="m8 16 4-9 4 9M9.3 13h5.4" /><path className="accent" d="M2 11.5h4M18 11.5h4" /></>}
     {kind === 'crop' && <><path d="M7 3v14a2 2 0 0 0 2 2h12" /><path d="M3 7h14a2 2 0 0 1 2 2v12" /><path className="accent" d="M4 4h3v3M17 17h3v3" /></>}
     {kind === 'merge' && <><path d="M5 4h8l3 3v9H5z" /><path d="M13 4v3h3" /><path d="M9 19h10V9" /><path className="accent" d="M9 11h4M11 9v4" /></>}

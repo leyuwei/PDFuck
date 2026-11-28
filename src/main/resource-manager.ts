@@ -15,6 +15,7 @@ export class ResourceManager {
   constructor(readonly catalog:FeatureResourceCatalog,private transport:ResourceTransport,private notify:(owner:number,state:ResourceDownloadState|undefined)=>void){}
   state(owner:number):ResourceDownloadState|undefined{return this.jobs.get(owner)?.state}
   isActive():boolean{return Boolean(this.active)}
+  hasRequests():boolean{return Boolean(this.active || this.jobs.size || this.preparing.size)}
   request(owner:number,request:FeatureResourceRequest):Promise<boolean>{
     if(!validResourceRequest(request))return Promise.reject(resourceError('invalidResource'))
     request=request.kind==='grammar'?{kind:'grammar'}:{kind:'ocr',language:request.language}

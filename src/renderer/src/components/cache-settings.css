@@ -1,0 +1,92 @@
+.document-memo, .cache-settings {
+  --utility-surface: #fff;
+  --utility-muted: #526078;
+  --utility-border: #dce3ef;
+  --utility-ink: #233047;
+}
+.theme-dark :is(.document-memo, .cache-settings) {
+  --utility-surface: #1d293b;
+  --utility-muted: #b6c3d7;
+  --utility-border: #45546c;
+  --utility-ink: #eef3fc;
+}
+.document-memo {
+  position: fixed;
+  inset: auto 16px 36px auto;
+  z-index: 101;
+  width: min(320px, calc(100vw - 16px));
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--utility-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--utility-surface);
+  color: var(--utility-ink);
+  box-shadow: 0 10px 30px #0f172a44;
+  -webkit-app-region: no-drag;
+}
+.document-memo[style*="left"] { right: auto; bottom: auto; }
+.app-shell:has(> .modal-backdrop, > .lab-modal-backdrop) > .document-memo { z-index: 90; }
+.document-memo > header, .cache-heading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--utility-border);
+  background: color-mix(in srgb, var(--theme-accent) 9%, var(--utility-surface));
+}
+.document-memo h2, .cache-heading h2 { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: var(--ui-font-title); }
+.document-memo header button, .cache-heading button { flex: none; width: 32px; height: 32px; padding: 0; font-size: var(--ui-font-title); }
+.document-memo > header { gap: 7px; padding: 3px 10px; }
+.app-shell .document-memo h2, .document-memo header button { font-size: var(--ui-font-body); }
+.document-memo header button { width: 26px; height: 26px; }
+.document-memo textarea {
+  flex: 1;
+  min-height: 0;
+  margin: 6px 8px 10px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--ui-font-body);
+  line-height: 1.5;
+  resize: none;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.document-memo textarea::placeholder { color: var(--utility-muted); }
+.document-memo textarea:focus-visible { outline: 1px solid var(--theme-accent); }
+.document-memo::after {
+  content: '';
+  position: absolute;
+  inset: auto 4px 4px auto;
+  width: 9px;
+  height: 9px;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--utility-muted) 3px 4px);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+.tool-panel-action.document-memo-launch[data-window-state="open"] { border-color: var(--theme-accent); }
+.modal.cache-settings { width: min(640px, calc(100vw - 28px)); height: min(560px, calc(100dvh - 132px)); padding: 0; color: var(--utility-ink); background: var(--utility-surface); }
+.modal.cache-settings > .window-scroll-body { padding: 0 16px 14px; }
+.cache-summary { display: grid; gap: 6px; padding: 13px 0 4px; color: var(--utility-muted); }
+.cache-summary p { margin: 0; }
+.cache-summary strong { color: var(--utility-ink); }
+.app-shell .cache-settings .cache-group h3 { margin: 15px 0 5px; font-size: var(--ui-font-body); }
+.cache-document-preferences { padding: 2px 0 12px; border-bottom: 1px solid var(--utility-border); }
+.cache-document-preferences p { margin: 0 0 9px; color: var(--utility-muted); font-size: var(--ui-font-small); }
+.cache-document-preferences button { max-width: 100%; white-space: normal; }
+.cache-item { display: grid; align-items: center; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; padding: 7px 6px; border-top: 1px solid var(--utility-border); }
+.cache-item:has(input:checked) { background: color-mix(in srgb, var(--theme-accent) 9%, transparent); }
+.cache-item:has(input:enabled) { cursor: pointer; }
+.cache-item input { accent-color: var(--theme-accent); }
+.cache-item-copy { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.cache-item-copy small, .cache-size { color: var(--utility-muted); font-size: var(--ui-font-small); }
+.cache-size { white-space: nowrap; }
+.cache-footer { padding: 10px 16px; border-top: 1px solid var(--utility-border); }
+.cache-footer > div:first-child { font-size: var(--ui-font-small); color: var(--utility-muted); }
+.cache-footer .modal-actions { margin-top: 6px; flex-wrap: wrap; }

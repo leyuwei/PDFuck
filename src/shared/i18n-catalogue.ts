@@ -1,3 +1,4 @@
+import { cacheMessages } from './cache-messages'
 import { updateMessages } from './update-messages'
 import { interactionMessages } from './interaction-messages'
 import { guideMessages } from './guide-messages'
@@ -17,6 +18,7 @@ export const messages = {
   ...resourceMessages,
   ...guideMessages,
   ...largePdfMessages,
+  ...cacheMessages,
   'pdf.largeReadOnly': { zh: '大文件阅读模式', en: 'Large PDF reading mode', ja: '大容量 PDF 閲覧モード', ru: 'Режим чтения больших PDF', es: 'Lectura de PDF grandes', fr: 'Lecture des PDF volumineux', de: 'Lesemodus für große PDFs', pt: 'Leitura de PDFs grandes', ko: '대용량 PDF 읽기 모드', ar: 'وضع قراءة ملفات PDF الكبيرة' },
   'pdf.largeReadOnlyHint': { zh: '按需加载页面。可阅读、搜索和浏览故事板，编辑、导出和打印暂不可用。', en: 'Pages load on demand. You can read, search and browse thumbnails. Editing, exporting and printing are unavailable.', ja: 'ページを必要に応じて読み込みます。閲覧、検索、サムネイル表示が可能です。編集、書き出し、印刷はできません。', ru: 'Страницы загружаются по мере необходимости. Доступны чтение, поиск и просмотр миниатюр. Редактирование, экспорт и печать недоступны.', es: 'Las páginas se cargan bajo demanda. Puedes leer, buscar y ver miniaturas. La edición, la exportación y la impresión no están disponibles.', fr: 'Les pages sont chargées à la demande. La lecture, la recherche et les miniatures sont disponibles. La modification, l’exportation et l’impression sont indisponibles.', de: 'Seiten werden bei Bedarf geladen. Lesen, Suchen und Miniaturansichten sind verfügbar. Bearbeiten, Exportieren und Drucken sind nicht verfügbar.', pt: 'As páginas são carregadas sob demanda. É possível ler, pesquisar e ver miniaturas. Edição, exportação e impressão estão indisponíveis.', ko: '필요한 페이지를 불러옵니다. 읽기, 검색, 미리 보기를 사용할 수 있습니다. 편집, 내보내기, 인쇄는 사용할 수 없습니다.', ar: 'تُحمّل الصفحات عند الحاجة. يمكنك القراءة والبحث وتصفح الصور المصغرة. التعديل والتصدير والطباعة غير متاحة.' },
   'pdf.largeOpening': { zh: '正在读取 PDF 页索引…', en: 'Reading the PDF page index…', ja: 'PDF のページ索引を読み込み中…', ru: 'Чтение указателя страниц PDF…', es: 'Leyendo el índice de páginas del PDF…', fr: 'Lecture de l’index des pages du PDF…', de: 'PDF-Seitenindex wird gelesen…', pt: 'Lendo o índice de páginas do PDF…', ko: 'PDF 페이지 색인을 읽는 중…', ar: 'جارٍ قراءة فهرس صفحات PDF…' },
@@ -213,6 +215,8 @@ export const messages = {
   "ui.saturationAndBrightness": { zh: "饱和度和明度", en: "Saturation and brightness", ja: "彩度と明度", ru: "Насыщенность и яркость", es: "Saturación y brillo" , fr: "Saturation et luminosité", de: "Sättigung und Helligkeit", pt: "Saturação e brilho", ko: "채도 및 밝기", ar: "التشبع والسطوع" },
   "ui.keepTheSourcePageOrder": { zh: "保持原文件页序", en: "Keep the source page order", ja: "元ファイルのページ順を保持", ru: "Сохранить порядок страниц исходного файла", es: "Conservar el orden de páginas de origen" , fr: "Conserver l'ordre des pages sources", de: "Seitenreihenfolge beibehalten", pt: "Manter a ordem das páginas de origem", ko: "원본 페이지 순서 유지", ar: "الاحتفاظ بترتيب صفحات المصدر" },
   "ui.titlebarFiles": { zh: "文件操作", en: "File actions", ja: "ファイル操作", ru: "Действия с файлом", es: "Acciones de archivo", fr: "Actions sur le fichier", de: "Dateiaktionen", pt: "Ações de arquivo", ko: "파일 작업", ar: "إجراءات الملف" },
+  "ui.copyDocumentName": { zh: "复制文件名", en: "Copy file name", ja: "ファイル名をコピー", ru: "Копировать имя файла", es: "Copiar nombre de archivo", fr: "Copier le nom du fichier", de: "Dateinamen kopieren", pt: "Copiar nome do arquivo", ko: "파일 이름 복사", ar: "نسخ اسم الملف" },
+  "ui.documentNameCopied": { zh: "已复制文件名", en: "File name copied", ja: "ファイル名をコピーしました", ru: "Имя файла скопировано", es: "Nombre de archivo copiado", fr: "Nom du fichier copié", de: "Dateiname kopiert", pt: "Nome do arquivo copiado", ko: "파일 이름을 복사했습니다", ar: "نُسخ اسم الملف" },
   "ui.titlebarHistory": { zh: "编辑历史", en: "Edit history", ja: "編集履歴", ru: "История правок", es: "Historial de edición", fr: "Historique des modifications", de: "Bearbeitungsverlauf", pt: "Histórico de edição", ko: "편집 기록", ar: "سجل التحرير" },
   "ui.save": { zh: "保存", en: "Save", ja: "保存", ru: "Сохранить", es: "Guardar" , fr: "Enregistrer", de: "Speichern", pt: "Salvar", ko: "저장", ar: "حفظ" },
   "ui.savePdf": { zh: "保存 PDF", en: "Save PDF", ja: "PDF を保存", ru: "Сохранить PDF", es: "Guardar PDF" , fr: "Enregistrer au format PDF", de: "PDF speichern", pt: "Salvar PDF", ko: "PDF 저장", ar: "حفظ ملف PDF" },

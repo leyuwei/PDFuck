@@ -6,6 +6,7 @@ export type PageFitPreference = 'none' | 'width' | 'page'
 export type SidebarKey = ModuleKey | 'annotationList'
 export type SidebarPreferences = Partial<Record<SidebarKey, boolean>>
 export const SIDEBAR_PREFERENCES_KEY = 'pdfuck.sidebar-preferences.v1'
+export const DOCUMENT_PREFERENCES_RESET_KEY = 'pdfuck.document-preferences-reset.v1'
 
 export function loadSidebarPreferences(): SidebarPreferences {
   try {

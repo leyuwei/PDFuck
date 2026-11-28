@@ -31,6 +31,7 @@ export class FeatureResourceCatalog {
   readonly ocrModels:string
   readonly grammar:string
   private checked=new Set<string>()
+  invalidateInstalledResources(): void { this.checked.clear() }
   constructor(readonly root:string,private notices:string,private target=resourceTarget()){
     this.ocrRuntime=join(root,'ocr-'+fingerprint(manifest.ocr.packages));this.ocrModels=join(root,'models-'+fingerprint(manifest.ocr.models));this.grammar=join(root,'grammar-'+fingerprint({engine:manifest.grammar.engine,java:manifest.grammar.runtimes[target as keyof typeof manifest.grammar.runtimes]}))
   }
